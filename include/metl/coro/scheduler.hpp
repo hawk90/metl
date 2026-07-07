@@ -50,11 +50,22 @@ class scheduler {
   // Generic attach for any callable `bool(*)(void*) noexcept`.
   METL_NODISCARD bool try_attach(void* task, poll_fn fn) noexcept { return try_attach_impl(task, fn); }
 
-  // Detach (linear search; O(N)). Returns true if removed.
+  // Detach (linear search; O(N)). Returns true if removed. Safe to call from
+  // within a task's own poll (see run_once for the reentrancy contract).
   bool detach(void* task) noexcept {
     for (size_type i = 0; i < tasks_.size(); ++i) {
       if (tasks_[i].task == task) {
         tasks_.erase(tasks_.begin() + static_cast<std::ptrdiff_t>(i));
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Is a task currently attached? O(N) linear search.
+  METL_NODISCARD bool is_attached(void* task) const noexcept {
+    for (size_type i = 0; i < tasks_.size(); ++i) {
+      if (tasks_[i].task == task) {
         return true;
       }
     }
@@ -96,20 +107,34 @@ class scheduler {
 
 template <std::size_t Capacity>
 typename scheduler<Capacity>::size_type scheduler<Capacity>::run_once() noexcept {
-  size_type still_running = 0;
-  size_type write = 0;
+  // Reentrancy contract: a task's poll() may detach() or (try_)attach() tasks
+  // — including itself — mid-round. We therefore snapshot the set of tasks
+  // attached at entry and poll exactly that set, in attachment order. Iterating
+  // the live vector by cached index/size is unsafe: a detach() shifts elements
+  // and shrinks the vector, so a cached index would read a stale or
+  // out-of-bounds slot.
+  task_slot snapshot[Capacity == 0 ? 1 : Capacity];
   const size_type n = tasks_.size();
-  for (size_type read = 0; read < n; ++read) {
-    const task_slot s = tasks_[read];
+  for (size_type i = 0; i < n; ++i) {
+    snapshot[i] = tasks_[i];
+  }
+
+  size_type still_running = 0;
+  for (size_type i = 0; i < n; ++i) {
+    const task_slot s = snapshot[i];
+    // A previous poll in this round may already have detached this task; if so,
+    // skip it (do not poll a task the caller has removed).
+    if (!is_attached(s.task)) {
+      continue;
+    }
     const bool more = s.poll(s.task);
     if (more) {
-      tasks_[write] = s;
-      ++write;
       ++still_running;
+    } else {
+      // Completed: remove it. The task may already be gone if its own poll
+      // detached itself; detach() tolerates a missing task.
+      detach(s.task);
     }
-  }
-  while (tasks_.size() > write) {
-    tasks_.pop_back();
   }
   return still_running;
 }
