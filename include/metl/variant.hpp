@@ -11,6 +11,7 @@
 
 namespace metl {
 
+/// @brief Sentinel index value for a valueless variant (largest size_t).
 constexpr std::size_t variant_npos = static_cast<std::size_t>(-1);
 
 template <typename... Ts>
@@ -145,6 +146,8 @@ void move_value(void* destination, void* source) noexcept(std::is_nothrow_move_c
 
 // ---------- variant_size / variant_alternative ----------
 
+/// @brief Provides the number of alternatives of a variant as `value`.
+/// @tparam V The variant type (cv-qualified variants are supported).
 template <typename V>
 struct variant_size;
 
@@ -160,9 +163,13 @@ struct variant_size<volatile V> : variant_size<V> {};
 template <typename V>
 struct variant_size<const volatile V> : variant_size<V> {};
 
+/// @brief Convenience variable template for `variant_size<V>::value`.
 template <typename V>
 inline constexpr std::size_t variant_size_v = variant_size<V>::value;
 
+/// @brief Provides the type of the I-th alternative of a variant as `type`.
+/// @tparam I The zero-based alternative index.
+/// @tparam V The variant type (cv-qualified variants are supported).
 template <std::size_t I, typename V>
 struct variant_alternative;
 
@@ -187,11 +194,21 @@ struct variant_alternative<I, const volatile V> {
   using type = typename std::add_cv<typename variant_alternative<I, V>::type>::type;
 };
 
+/// @brief Convenience alias for `variant_alternative<I, V>::type`.
 template <std::size_t I, typename V>
 using variant_alternative_t = typename variant_alternative<I, V>::type;
 
 // ---------- variant ----------
 
+/// @brief A fixed-storage tagged union holding one of `Ts...` (in-place, no heap).
+///
+/// Stores the active alternative inline in an aligned byte buffer sized/aligned
+/// for the largest alternative; it never allocates. Trivially copyable when all
+/// alternatives are.
+/// @tparam Ts The alternative types (at least one required).
+/// @note `get<>()` (both free and by-index) ASSERTS (aborts by default) when the
+/// requested alternative is not active; it does NOT throw std::bad_variant_access.
+/// `get_if<>()` returns nullptr instead of asserting.
 template <typename... Ts>
 class variant {
  public:
@@ -200,6 +217,7 @@ class variant {
   using first_type = typename detail::nth_type<0, Ts...>::type;
   static constexpr std::size_t alternative_count = sizeof...(Ts);
 
+  /// @brief Default-constructs, activating the first alternative.
   // Default constructor: requires first alternative to be default-constructible.
   template <typename First = first_type,
             typename = typename std::enable_if<std::is_default_constructible<First>::value>::type>
@@ -209,6 +227,8 @@ class variant {
     index_ = 0;
   }
 
+  /// @brief Constructs by selecting the unique alternative matching `value`.
+  /// @param value The value forwarded into the matching alternative.
   // Converting constructor.
   template <typename T,
             typename Decayed = typename std::decay<T>::type,
@@ -221,6 +241,10 @@ class variant {
     construct<Decayed>(std::forward<T>(value));
   }
 
+  /// @brief Constructs the alternative of type `T` in place.
+  /// @tparam T The (unique) alternative type to activate.
+  /// @tparam Args Constructor argument types forwarded to `T`.
+  /// @param args Arguments forwarded to `T`'s constructor.
   // in_place_type constructor.
   template <
       typename T,
@@ -234,6 +258,10 @@ class variant {
     construct<T>(std::forward<Args>(args)...);
   }
 
+  /// @brief Constructs the alternative at index `I` in place.
+  /// @tparam I The zero-based alternative index to activate.
+  /// @tparam Args Constructor argument types forwarded to the alternative.
+  /// @param args Arguments forwarded to the alternative's constructor.
   // in_place_index constructor.
   template <std::size_t I,
             typename... Args,
@@ -248,6 +276,7 @@ class variant {
     index_ = I;
   }
 
+  /// @brief Copy constructor; copies the active alternative.
   variant(const variant& other) noexcept(detail::all_nothrow_copy_constructible<Ts...>::value)
       : storage_{}, index_(variant_npos) {
     if (other.index_ != variant_npos) {
@@ -256,6 +285,7 @@ class variant {
     }
   }
 
+  /// @brief Move constructor; moves the active alternative.
   variant(variant&& other) noexcept(detail::all_nothrow_move_constructible<Ts...>::value)
       : storage_{}, index_(variant_npos) {
     if (other.index_ != variant_npos) {
@@ -264,12 +294,14 @@ class variant {
     }
   }
 
+  /// @brief Destroys the active alternative.
   ~variant() {
     if (index_ != variant_npos) {
       destroy_ops()[index_](raw_addr());
     }
   }
 
+  /// @brief Copy-assigns the active alternative from another variant.
   variant& operator=(const variant& other) noexcept(detail::all_nothrow_copy_assignable<Ts...>::value) {
     if (this == &other) {
       return *this;
@@ -282,6 +314,7 @@ class variant {
     return *this;
   }
 
+  /// @brief Move-assigns the active alternative from another variant.
   variant& operator=(variant&& other) noexcept(detail::all_nothrow_move_assignable<Ts...>::value) {
     if (this == &other) {
       return *this;
@@ -294,6 +327,8 @@ class variant {
     return *this;
   }
 
+  /// @brief Assigns `value`, activating its unique matching alternative.
+  /// @param value The value forwarded into the matching alternative.
   template <typename T,
             typename Decayed = typename std::decay<T>::type,
             typename = typename std::enable_if<!std::is_same<Decayed, variant>::value>::type,
@@ -306,15 +341,25 @@ class variant {
     return *this;
   }
 
+  /// @brief Returns the zero-based index of the active alternative.
+  /// @return The active index, or `variant_npos` if valueless.
   METL_NODISCARD constexpr std::size_t index() const noexcept { return index_; }
 
+  /// @brief Returns true if the variant holds no alternative (valueless).
   METL_NODISCARD constexpr bool valueless_by_exception() const noexcept { return index_ == variant_npos; }
 
+  /// @brief Returns true if alternative `T` is currently active.
+  /// @tparam T The alternative type to test for.
   template <typename T>
   METL_NODISCARD constexpr bool holds_alternative() const noexcept {
     return index_ != variant_npos && index_ == detail::index_of_type<T, Ts...>::value;
   }
 
+  /// @brief Destroys the active alternative and constructs `T` in place.
+  /// @tparam T The (unique) alternative type to activate.
+  /// @tparam Args Constructor argument types forwarded to `T`.
+  /// @param args Arguments forwarded to `T`'s constructor.
+  /// @return Reference to the newly constructed alternative.
   template <typename T, typename... Args>
   T& emplace(Args&&... args) noexcept(std::is_nothrow_constructible<T, Args&&...>::value &&
                                       detail::all_nothrow_destructible<Ts...>::value) {
@@ -328,6 +373,11 @@ class variant {
     return construct<T>(std::forward<Args>(args)...);
   }
 
+  /// @brief Destroys the active alternative and constructs alternative `I`.
+  /// @tparam I The zero-based alternative index to activate.
+  /// @tparam Args Constructor argument types forwarded to the alternative.
+  /// @param args Arguments forwarded to the alternative's constructor.
+  /// @return Reference to the newly constructed alternative.
   template <std::size_t I, typename... Args>
   variant_alternative_t<I, variant>& emplace(Args&&... args) noexcept(
       std::is_nothrow_constructible<typename detail::nth_type<I, Ts...>::type, Args&&...>::value &&
@@ -443,6 +493,9 @@ class variant {
 
 // ---------- holds_alternative ----------
 
+/// @brief Returns true if alternative `T` is active in `value`.
+/// @tparam T The (unique) alternative type to test for.
+/// @param value The variant to inspect.
 template <typename T, typename... Ts>
 METL_NODISCARD constexpr bool holds_alternative(const variant<Ts...>& value) noexcept {
   static_assert(detail::count_of_type<T, Ts...>::value == 1,
@@ -452,6 +505,10 @@ METL_NODISCARD constexpr bool holds_alternative(const variant<Ts...>& value) noe
 
 // ---------- get_if ----------
 
+/// @brief Returns a pointer to the active alternative `T`, or nullptr.
+/// @tparam T The (unique) alternative type to retrieve.
+/// @param value Pointer to the variant (may be null).
+/// @return Pointer to the alternative if active, otherwise nullptr. Never asserts.
 template <typename T, typename... Ts>
 METL_NODISCARD constexpr T* get_if(variant<Ts...>* value) noexcept {
   static_assert(detail::count_of_type<T, Ts...>::value == 1, "get_if<T> requires unique alternative type");
@@ -470,6 +527,10 @@ METL_NODISCARD constexpr const T* get_if(const variant<Ts...>* value) noexcept {
   return std::launder(static_cast<const T*>(value->storage_ptr()));
 }
 
+/// @brief Returns a pointer to the active alternative at index `I`, or nullptr.
+/// @tparam I The zero-based alternative index to retrieve.
+/// @param value Pointer to the variant (may be null).
+/// @return Pointer to the alternative if active, otherwise nullptr. Never asserts.
 template <std::size_t I, typename... Ts>
 METL_NODISCARD constexpr variant_alternative_t<I, variant<Ts...>>* get_if(variant<Ts...>* value) noexcept {
   static_assert(I < sizeof...(Ts), "get_if<I> index out of range");
@@ -493,6 +554,12 @@ METL_NODISCARD constexpr const variant_alternative_t<I, variant<Ts...>>* get_if(
 
 // ---------- get ----------
 
+/// @brief Returns a reference to the active alternative `T`.
+/// @tparam T The (unique) alternative type to retrieve.
+/// @param value The variant to access.
+/// @pre `holds_alternative<T>(value)`
+/// @warning Asserts (aborts by default) if `T` is not active; it does NOT throw
+/// std::bad_variant_access. Use `get_if<T>` for a checked pointer alternative.
 template <typename T, typename... Ts>
 METL_NODISCARD constexpr T& get(variant<Ts...>& value) {
   T* pointer = get_if<T>(&value);
@@ -521,6 +588,12 @@ METL_NODISCARD constexpr const T&& get(const variant<Ts...>&& value) {
   return static_cast<const T&&>(*pointer);
 }
 
+/// @brief Returns a reference to the active alternative at index `I`.
+/// @tparam I The zero-based alternative index to retrieve.
+/// @param value The variant to access.
+/// @pre `value.index() == I`
+/// @warning Asserts (aborts by default) if index `I` is not active; it does NOT
+/// throw. Use `get_if<I>` for a checked pointer alternative.
 template <std::size_t I, typename... Ts>
 METL_NODISCARD constexpr variant_alternative_t<I, variant<Ts...>>& get(variant<Ts...>& value) {
   using alternative_type = variant_alternative_t<I, variant<Ts...>>;
@@ -629,6 +702,11 @@ constexpr Result visit_impl(Visitor&& visitor, const variant<Ts...>&& value) {
 
 }  // namespace detail
 
+/// @brief Invokes `visitor` with the active alternative of `value`.
+/// @param visitor Callable accepting any alternative; its result is returned.
+/// @param value The variant whose active alternative is passed to `visitor`.
+/// @pre `!value.valueless_by_exception()`
+/// @warning Asserts (aborts by default) if `value` is valueless; it does not throw.
 template <typename Visitor, typename... Ts>
 constexpr decltype(auto) visit(Visitor&& visitor, variant<Ts...>& value) {
   METL_ASSERT(!value.valueless_by_exception());
@@ -720,6 +798,7 @@ struct cmp_ge {
 
 }  // namespace detail
 
+/// @brief Compares two variants: equal indices and equal active alternatives.
 template <typename... Ts>
 constexpr bool operator==(const variant<Ts...>& lhs, const variant<Ts...>& rhs) {
   if (lhs.index() != rhs.index()) {
@@ -742,6 +821,8 @@ constexpr bool operator!=(const variant<Ts...>& lhs, const variant<Ts...>& rhs) 
   return detail::compare_alternative<detail::cmp_ne, 0>(lhs, rhs);
 }
 
+/// @brief Orders two variants by index, then by active alternative value.
+/// @note A valueless variant orders before any engaged variant.
 template <typename... Ts>
 constexpr bool operator<(const variant<Ts...>& lhs, const variant<Ts...>& rhs) {
   if (rhs.valueless_by_exception()) {

@@ -15,6 +15,11 @@ namespace metl {
 // unexpected<E>
 // =============================================================================
 
+/// @brief In-place wrapper marking a value as an error for expected.
+///
+/// Holds an `E` inside the object (no heap allocation). Used to construct or
+/// assign the error state of an expected. Trivially copyable when `E` is.
+/// @tparam E The error type.
 template <typename E>
 class unexpected {
  public:
@@ -26,6 +31,8 @@ class unexpected {
   unexpected& operator=(const unexpected&) = default;
   unexpected& operator=(unexpected&&) = default;
 
+  /// @brief Constructs the wrapper by forwarding a value into `E`.
+  /// @param e The value used to direct-initialize the contained error.
   // P0323 requires these to be explicit (per LWG / std::unexpected).
   template <typename Err = E,
             typename = std::enable_if_t<!std::is_same<std::decay_t<Err>, unexpected>::value &&
@@ -33,15 +40,20 @@ class unexpected {
                                         std::is_constructible<E, Err>::value>>
   constexpr explicit unexpected(Err&& e) : value_(std::forward<Err>(e)) {}
 
+  /// @brief Constructs the wrapped error in place from `args`.
+  /// @tparam Args Constructor argument types forwarded to `E`.
+  /// @param args Arguments forwarded to `E`'s constructor.
   template <typename... Args, typename = std::enable_if_t<std::is_constructible<E, Args...>::value>>
   constexpr explicit unexpected(in_place_t, Args&&... args) : value_(std::forward<Args>(args)...) {}
 
+  /// @brief Returns a reference to the wrapped error value.
   // error() accessors (std::unexpected interface).
   constexpr const E& error() const& noexcept { return value_; }
   constexpr E& error() & noexcept { return value_; }
   constexpr const E&& error() const&& noexcept { return static_cast<const E&&>(value_); }
   constexpr E&& error() && noexcept { return static_cast<E&&>(value_); }
 
+  /// @brief Returns the wrapped error (legacy alias for `error()`).
   // Legacy `value()` accessors (kept for backwards compatibility with the
   // previous metl::unexpected interface).
   constexpr const E& value() const& noexcept { return value_; }
@@ -49,6 +61,7 @@ class unexpected {
   constexpr const E&& value() const&& noexcept { return static_cast<const E&&>(value_); }
   constexpr E&& value() && noexcept { return static_cast<E&&>(value_); }
 
+  /// @brief Swaps the wrapped error with another unexpected.
   void swap(unexpected& other) noexcept(std::is_nothrow_move_constructible<E>::value &&
                                         std::is_nothrow_move_assignable<E>::value) {
     using std::swap;
@@ -63,6 +76,7 @@ class unexpected {
 template <typename E>
 unexpected(E) -> unexpected<E>;
 
+/// @brief Equality comparison of two unexpected wrappers by error value.
 // Comparisons.
 template <typename E1, typename E2>
 constexpr auto operator==(const unexpected<E1>& lhs,
@@ -76,12 +90,15 @@ constexpr auto operator!=(const unexpected<E1>& lhs,
   return lhs.error() != rhs.error();
 }
 
+/// @brief Swaps two unexpected wrappers.
 // Free swap for unexpected.
 template <typename E>
 void swap(unexpected<E>& lhs, unexpected<E>& rhs) noexcept(noexcept(lhs.swap(rhs))) {
   lhs.swap(rhs);
 }
 
+/// @brief Creates an unexpected wrapper holding a decayed copy of `error`.
+/// @param error The error value to wrap.
 template <typename E>
 constexpr unexpected<typename std::decay<E>::type> make_unexpected(E&& error) {
   return unexpected<typename std::decay<E>::type>(std::forward<E>(error));
@@ -91,6 +108,15 @@ constexpr unexpected<typename std::decay<E>::type> make_unexpected(E&& error) {
 // expected<T, E>
 // =============================================================================
 
+/// @brief A fixed-storage value-or-error result type (in-place, no heap).
+///
+/// Holds either a value `T` or an error `E` in an internal union; it never
+/// allocates. Trivially copyable when both `T` and `E` are.
+/// @tparam T The expected (success) value type.
+/// @tparam E The error type.
+/// @note `value()`, `operator*`, `operator->`, and `error()` ASSERT (abort by
+/// default) when accessed in the wrong state; they do NOT throw
+/// std::bad_expected_access. Use `value_or`/`error_or` for checked fallbacks.
 template <typename T, typename E>
 class expected {
  public:
@@ -103,15 +129,19 @@ class expected {
 
   // ---- Constructors --------------------------------------------------------
 
+  /// @brief Constructs a value-state expected by default-constructing `T`.
   // Default constructor (requires T default-constructible).
   template <typename U = T, typename = std::enable_if_t<std::is_default_constructible<U>::value>>
   constexpr expected() : has_value_(true) {
     construct_value();
   }
 
+  /// @brief Constructs a value-state expected from a copied value.
   expected(const T& value) : has_value_(true) { construct_value(value); }
+  /// @brief Constructs a value-state expected from a moved value.
   expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
 
+  /// @brief Constructs an error-state expected from an unexpected wrapper.
   // unexpected conversion constructors.
   template <typename G = E, typename = std::enable_if_t<std::is_constructible<E, const G&>::value>>
   expected(const unexpected<G>& u) : has_value_(false) {
@@ -123,17 +153,24 @@ class expected {
     construct_error(static_cast<G&&>(u.error()));
   }
 
+  /// @brief Constructs a value-state expected, building `T` in place.
+  /// @tparam Args Constructor argument types forwarded to `T`.
+  /// @param args Arguments forwarded to `T`'s constructor.
   // in_place_t and unexpect_t tag constructors.
   template <typename... Args, typename = std::enable_if_t<std::is_constructible<T, Args...>::value>>
   constexpr explicit expected(in_place_t, Args&&... args) : has_value_(true) {
     construct_value(std::forward<Args>(args)...);
   }
 
+  /// @brief Constructs an error-state expected, building `E` in place.
+  /// @tparam Args Constructor argument types forwarded to `E`.
+  /// @param args Arguments forwarded to `E`'s constructor.
   template <typename... Args, typename = std::enable_if_t<std::is_constructible<E, Args...>::value>>
   constexpr explicit expected(unexpect_t, Args&&... args) : has_value_(false) {
     construct_error(std::forward<Args>(args)...);
   }
 
+  /// @brief Copy constructor; copies the active value or error.
   expected(const expected& other) : has_value_(other.has_value_) {
     if (has_value_) {
       construct_value(other.value_unchecked());
@@ -142,6 +179,7 @@ class expected {
     }
   }
 
+  /// @brief Move constructor; moves the active value or error.
   expected(expected&& other) noexcept(std::is_nothrow_move_constructible<T>::value &&
                                       std::is_nothrow_move_constructible<E>::value)
       : has_value_(other.has_value_) {
@@ -152,10 +190,12 @@ class expected {
     }
   }
 
+  /// @brief Destroys the active value or error.
   ~expected() { destroy_active(); }
 
   // ---- Assignment ----------------------------------------------------------
 
+  /// @brief Copy-assigns, switching state if needed (exception-safe).
   expected& operator=(const expected& other) {
     if (this == &other) {
       return *this;
@@ -170,6 +210,7 @@ class expected {
     return *this;
   }
 
+  /// @brief Move-assigns, switching state if needed (exception-safe).
   expected& operator=(expected&& other) noexcept(std::is_nothrow_move_assignable<T>::value &&
                                                  std::is_nothrow_move_constructible<T>::value &&
                                                  std::is_nothrow_move_assignable<E>::value &&
@@ -187,6 +228,8 @@ class expected {
     return *this;
   }
 
+  /// @brief Assigns a value, switching to the value state if needed.
+  /// @param value The value forwarded into the contained `T`.
   template <
       typename U = T,
       typename = std::enable_if_t<!std::is_same<std::decay_t<U>, expected>::value &&
@@ -196,6 +239,7 @@ class expected {
     return *this;
   }
 
+  /// @brief Assigns an error, switching to the error state if needed.
   template <typename G = E,
             typename = std::enable_if_t<std::is_constructible<E, const G&>::value &&
                                         std::is_assignable<E&, const G&>::value>>
@@ -204,6 +248,7 @@ class expected {
     return *this;
   }
 
+  /// @brief Assigns an error, switching to the error state if needed.
   template <
       typename G = E,
       typename = std::enable_if_t<std::is_constructible<E, G&&>::value && std::is_assignable<E&, G&&>::value>>
@@ -214,94 +259,146 @@ class expected {
 
   // ---- Observers -----------------------------------------------------------
 
+  /// @brief Returns true if the expected holds a value (not an error).
   METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
+  /// @brief Returns true if the expected holds a value (not an error).
   METL_NODISCARD constexpr bool has_value() const noexcept { return has_value_; }
 
+  /// @brief Accesses a member of the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) in the error state; it does not throw.
   METL_NODISCARD const T* operator->() const noexcept {
     METL_ASSERT(has_value_);
     return value_ptr();
   }
 
+  /// @brief Accesses a member of the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) in the error state; it does not throw.
   METL_NODISCARD T* operator->() noexcept {
     METL_ASSERT(has_value_);
     return value_ptr();
   }
 
+  /// @brief Returns a reference to the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) in the error state; it does not throw.
   METL_NODISCARD const T& operator*() const& noexcept {
     METL_ASSERT(has_value_);
     return *value_ptr();
   }
 
+  /// @brief Returns a reference to the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) in the error state; it does not throw.
   METL_NODISCARD T& operator*() & noexcept {
     METL_ASSERT(has_value_);
     return *value_ptr();
   }
 
+  /// @brief Returns an rvalue reference to the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) in the error state; it does not throw.
   METL_NODISCARD const T&& operator*() const&& noexcept {
     METL_ASSERT(has_value_);
     return static_cast<const T&&>(*value_ptr());
   }
 
+  /// @brief Returns an rvalue reference to the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) in the error state; it does not throw.
   METL_NODISCARD T&& operator*() && noexcept {
     METL_ASSERT(has_value_);
     return static_cast<T&&>(*value_ptr());
   }
 
+  /// @brief Returns a reference to the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) in the error state; it does NOT throw
+  /// std::bad_expected_access. Use `value_or` for a checked fallback.
   METL_NODISCARD T& value() & noexcept {
     METL_ASSERT(has_value_);
     return *value_ptr();
   }
 
+  /// @brief Returns a reference to the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) in the error state; it does NOT throw.
   METL_NODISCARD const T& value() const& noexcept {
     METL_ASSERT(has_value_);
     return *value_ptr();
   }
 
+  /// @brief Returns an rvalue reference to the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) in the error state; it does NOT throw.
   METL_NODISCARD T&& value() && noexcept {
     METL_ASSERT(has_value_);
     return static_cast<T&&>(*value_ptr());
   }
 
+  /// @brief Returns an rvalue reference to the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) in the error state; it does NOT throw.
   METL_NODISCARD const T&& value() const&& noexcept {
     METL_ASSERT(has_value_);
     return static_cast<const T&&>(*value_ptr());
   }
 
+  /// @brief Returns a reference to the contained error.
+  /// @pre !has_value()
+  /// @warning Asserts (aborts by default) in the value state; it does NOT throw.
+  /// Use `error_or` for a checked fallback.
   METL_NODISCARD E& error() & noexcept {
     METL_ASSERT(!has_value_);
     return *error_ptr();
   }
 
+  /// @brief Returns a reference to the contained error.
+  /// @pre !has_value()
+  /// @warning Asserts (aborts by default) in the value state; it does NOT throw.
   METL_NODISCARD const E& error() const& noexcept {
     METL_ASSERT(!has_value_);
     return *error_ptr();
   }
 
+  /// @brief Returns an rvalue reference to the contained error.
+  /// @pre !has_value()
+  /// @warning Asserts (aborts by default) in the value state; it does NOT throw.
   METL_NODISCARD E&& error() && noexcept {
     METL_ASSERT(!has_value_);
     return static_cast<E&&>(*error_ptr());
   }
 
+  /// @brief Returns an rvalue reference to the contained error.
+  /// @pre !has_value()
+  /// @warning Asserts (aborts by default) in the value state; it does NOT throw.
   METL_NODISCARD const E&& error() const&& noexcept {
     METL_ASSERT(!has_value_);
     return static_cast<const E&&>(*error_ptr());
   }
 
+  /// @brief Returns the value if present, else `default_value`. Never asserts.
+  /// @param default_value Returned (converted to `T`) in the error state.
   template <typename U>
   METL_NODISCARD T value_or(U&& default_value) const& {
     return has_value_ ? *value_ptr() : static_cast<T>(std::forward<U>(default_value));
   }
 
+  /// @brief Returns the value if present, else `default_value`. Never asserts.
   template <typename U>
   METL_NODISCARD T value_or(U&& default_value) && {
     return has_value_ ? static_cast<T&&>(*value_ptr()) : static_cast<T>(std::forward<U>(default_value));
   }
 
+  /// @brief Returns the error if present, else `default_value`. Never asserts.
+  /// @param default_value Returned (converted to `E`) in the value state.
   template <typename G>
   METL_NODISCARD E error_or(G&& default_value) const& {
     return has_value_ ? static_cast<E>(std::forward<G>(default_value)) : *error_ptr();
   }
 
+  /// @brief Returns the error if present, else `default_value`. Never asserts.
   template <typename G>
   METL_NODISCARD E error_or(G&& default_value) && {
     return has_value_ ? static_cast<E>(std::forward<G>(default_value)) : static_cast<E&&>(*error_ptr());
@@ -309,6 +406,10 @@ class expected {
 
   // ---- Modifiers -----------------------------------------------------------
 
+  /// @brief Replaces the contents with a value built in place.
+  /// @tparam Args Constructor argument types forwarded to `T`.
+  /// @param args Arguments forwarded to `T`'s constructor.
+  /// @return Reference to the newly constructed value.
   template <typename... Args>
   T& emplace(Args&&... args) {
     destroy_active();
@@ -317,6 +418,10 @@ class expected {
     return *value_ptr();
   }
 
+  /// @brief Replaces the contents with an error built in place.
+  /// @tparam Args Constructor argument types forwarded to `E`.
+  /// @param args Arguments forwarded to `E`'s constructor.
+  /// @return Reference to the newly constructed error.
   template <typename... Args>
   E& emplace_error(Args&&... args) {
     destroy_active();
@@ -327,6 +432,7 @@ class expected {
 
   // ---- swap ----------------------------------------------------------------
 
+  /// @brief Swaps contents and state with another expected (exception-safe).
   void swap(expected& other) noexcept(std::is_nothrow_move_constructible<T>::value &&
                                       std::is_nothrow_move_constructible<E>::value &&
                                       std::is_nothrow_move_assignable<T>::value &&
@@ -346,6 +452,8 @@ class expected {
 
   // ---- Monadic operations (P2505 / std::expected) --------------------------
 
+  /// @brief Chains `f` on the value; forwards the error unchanged.
+  /// @param f Callable `T -> expected<U, E>`; called only in the value state.
   // and_then: F(T) -> expected<U, E>.
   template <typename F>
   METL_NODISCARD constexpr auto and_then(F&& f) & {
@@ -385,6 +493,8 @@ class expected {
     return result_t(unexpected<E>(static_cast<const E&&>(*error_ptr())));
   }
 
+  /// @brief Maps the value through `f`; forwards the error unchanged.
+  /// @param f Callable `T -> U`; called only in the value state.
   // transform: F(T) -> U  =>  expected<U, E>.
   template <typename F>
   METL_NODISCARD constexpr auto transform(F&& f) & {
@@ -424,6 +534,8 @@ class expected {
     return expected<result_value_t, E>(unexpect, static_cast<const E&&>(*error_ptr()));
   }
 
+  /// @brief Recovers from the error via `f`; forwards the value unchanged.
+  /// @param f Callable `E -> expected<T, G>`; called only in the error state.
   // or_else: F(E) -> expected<T, G>.
   template <typename F>
   METL_NODISCARD constexpr auto or_else(F&& f) & {
@@ -463,6 +575,8 @@ class expected {
     return std::forward<F>(f)(static_cast<const E&&>(*error_ptr()));
   }
 
+  /// @brief Maps the error through `f`; forwards the value unchanged.
+  /// @param f Callable `E -> G`; called only in the error state.
   // transform_error: F(E) -> G  =>  expected<T, G>.
   template <typename F>
   METL_NODISCARD constexpr auto transform_error(F&& f) & {
@@ -678,6 +792,12 @@ class expected {
 // expected<void, E> partial specialization
 // =============================================================================
 
+/// @brief Void specialization of expected: success carries no value.
+///
+/// Holds either a valueless "success" state or an error `E` (in-place, no heap).
+/// @tparam E The error type.
+/// @note `value()` and `operator*` return void and ASSERT (abort by default) in
+/// the error state; `error()` asserts in the success state. Neither throws.
 template <typename E>
 class expected<void, E> {
  public:
@@ -690,16 +810,22 @@ class expected<void, E> {
 
   // ---- Constructors --------------------------------------------------------
 
+  /// @brief Constructs a success-state expected<void, E>.
   constexpr expected() noexcept : has_value_(true) {}
 
+  /// @brief Constructs a success-state expected<void, E> (no value to build).
   // in_place_t: produces a value-state expected<void, E> (no T to construct).
   constexpr explicit expected(in_place_t) noexcept : has_value_(true) {}
 
+  /// @brief Constructs an error-state expected, building `E` in place.
+  /// @tparam Args Constructor argument types forwarded to `E`.
+  /// @param args Arguments forwarded to `E`'s constructor.
   template <typename... Args, typename = std::enable_if_t<std::is_constructible<E, Args...>::value>>
   constexpr explicit expected(unexpect_t, Args&&... args) : has_value_(false) {
     construct_error(std::forward<Args>(args)...);
   }
 
+  /// @brief Constructs an error-state expected from an unexpected wrapper.
   template <typename G = E, typename = std::enable_if_t<std::is_constructible<E, const G&>::value>>
   expected(const unexpected<G>& u) : has_value_(false) {
     construct_error(u.error());
@@ -710,12 +836,14 @@ class expected<void, E> {
     construct_error(static_cast<G&&>(u.error()));
   }
 
+  /// @brief Copy constructor; copies the error if in the error state.
   expected(const expected& other) : has_value_(other.has_value_) {
     if (!has_value_) {
       construct_error(*other.error_ptr());
     }
   }
 
+  /// @brief Move constructor; moves the error if in the error state.
   expected(expected&& other) noexcept(std::is_nothrow_move_constructible<E>::value)
       : has_value_(other.has_value_) {
     if (!has_value_) {
@@ -723,6 +851,7 @@ class expected<void, E> {
     }
   }
 
+  /// @brief Destroys the error if in the error state.
   ~expected() {
     if (!has_value_) {
       error_ptr()->~E();
@@ -731,6 +860,7 @@ class expected<void, E> {
 
   // ---- Assignment ----------------------------------------------------------
 
+  /// @brief Copy-assigns, switching between success and error as needed.
   expected& operator=(const expected& other) {
     if (this == &other) {
       return *this;
@@ -752,6 +882,7 @@ class expected<void, E> {
     return *this;
   }
 
+  /// @brief Move-assigns, switching between success and error as needed.
   expected& operator=(expected&& other) noexcept(std::is_nothrow_move_constructible<E>::value &&
                                                  std::is_nothrow_move_assignable<E>::value) {
     if (this == &other) {
@@ -774,6 +905,7 @@ class expected<void, E> {
     return *this;
   }
 
+  /// @brief Assigns an error, switching to the error state if needed.
   template <typename G = E,
             typename = std::enable_if_t<std::is_constructible<E, const G&>::value &&
                                         std::is_assignable<E&, const G&>::value>>
@@ -787,6 +919,7 @@ class expected<void, E> {
     return *this;
   }
 
+  /// @brief Assigns an error, switching to the error state if needed.
   template <
       typename G = E,
       typename = std::enable_if_t<std::is_constructible<E, G&&>::value && std::is_assignable<E&, G&&>::value>>
@@ -802,41 +935,66 @@ class expected<void, E> {
 
   // ---- Observers -----------------------------------------------------------
 
+  /// @brief Returns true if in the success state (not an error).
   METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
+  /// @brief Returns true if in the success state (not an error).
   METL_NODISCARD constexpr bool has_value() const noexcept { return has_value_; }
 
+  /// @brief Verifies the success state (returns void).
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) in the error state; it does not throw.
   // value() returns void; asserts on error state.
   void value() const& noexcept { METL_ASSERT(has_value_); }
+  /// @brief Verifies the success state (returns void).
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) in the error state; it does not throw.
   void value() && noexcept { METL_ASSERT(has_value_); }
 
+  /// @brief Verifies the success state (returns void).
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) in the error state; it does not throw.
   // operator*() returns void.
   void operator*() const noexcept { METL_ASSERT(has_value_); }
 
+  /// @brief Returns a reference to the contained error.
+  /// @pre !has_value()
+  /// @warning Asserts (aborts by default) in the success state; it does not throw.
   METL_NODISCARD E& error() & noexcept {
     METL_ASSERT(!has_value_);
     return *error_ptr();
   }
 
+  /// @brief Returns a reference to the contained error.
+  /// @pre !has_value()
+  /// @warning Asserts (aborts by default) in the success state; it does not throw.
   METL_NODISCARD const E& error() const& noexcept {
     METL_ASSERT(!has_value_);
     return *error_ptr();
   }
 
+  /// @brief Returns an rvalue reference to the contained error.
+  /// @pre !has_value()
+  /// @warning Asserts (aborts by default) in the success state; it does not throw.
   METL_NODISCARD E&& error() && noexcept {
     METL_ASSERT(!has_value_);
     return static_cast<E&&>(*error_ptr());
   }
 
+  /// @brief Returns an rvalue reference to the contained error.
+  /// @pre !has_value()
+  /// @warning Asserts (aborts by default) in the success state; it does not throw.
   METL_NODISCARD const E&& error() const&& noexcept {
     METL_ASSERT(!has_value_);
     return static_cast<const E&&>(*error_ptr());
   }
 
+  /// @brief Returns the error if present, else `default_value`. Never asserts.
   template <typename G>
   METL_NODISCARD E error_or(G&& default_value) const& {
     return has_value_ ? static_cast<E>(std::forward<G>(default_value)) : *error_ptr();
   }
 
+  /// @brief Returns the error if present, else `default_value`. Never asserts.
   template <typename G>
   METL_NODISCARD E error_or(G&& default_value) && {
     return has_value_ ? static_cast<E>(std::forward<G>(default_value)) : static_cast<E&&>(*error_ptr());
@@ -844,6 +1002,7 @@ class expected<void, E> {
 
   // ---- Modifiers -----------------------------------------------------------
 
+  /// @brief Sets the success state, destroying any current error.
   void emplace() noexcept {
     if (!has_value_) {
       error_ptr()->~E();
@@ -851,6 +1010,10 @@ class expected<void, E> {
     }
   }
 
+  /// @brief Replaces the contents with an error built in place.
+  /// @tparam Args Constructor argument types forwarded to `E`.
+  /// @param args Arguments forwarded to `E`'s constructor.
+  /// @return Reference to the newly constructed error.
   template <typename... Args>
   E& emplace_error(Args&&... args) {
     if (!has_value_) {
@@ -861,6 +1024,7 @@ class expected<void, E> {
     return *error_ptr();
   }
 
+  /// @brief Swaps contents and state with another expected<void, E>.
   void swap(expected& other) noexcept(std::is_nothrow_move_constructible<E>::value &&
                                       std::is_nothrow_move_assignable<E>::value) {
     if (has_value_ && other.has_value_) {
@@ -880,6 +1044,8 @@ class expected<void, E> {
 
   // ---- Monadic operations --------------------------------------------------
 
+  /// @brief Chains `f` on success; forwards the error unchanged.
+  /// @param f Callable `() -> expected<U, E>`; called only in the success state.
   // and_then: F() -> expected<U, E>.
   template <typename F>
   METL_NODISCARD constexpr auto and_then(F&& f) & {
@@ -917,6 +1083,8 @@ class expected<void, E> {
     return result_t(unexpected<E>(static_cast<const E&&>(*error_ptr())));
   }
 
+  /// @brief Maps success through `f`; forwards the error unchanged.
+  /// @param f Callable `() -> U` (U may be void); called only on success.
   // transform: F() -> U  =>  expected<U, E>. (U may be void.)
   template <typename F>
   METL_NODISCARD auto transform(F&& f) & {
@@ -986,6 +1154,8 @@ class expected<void, E> {
     }
   }
 
+  /// @brief Recovers from the error via `f`; success passes through.
+  /// @param f Callable `E -> expected<void, G>`; called only in the error state.
   // or_else: F(E) -> expected<void, G>.
   template <typename F>
   METL_NODISCARD constexpr auto or_else(F&& f) & {
@@ -1025,6 +1195,8 @@ class expected<void, E> {
     return std::forward<F>(f)(static_cast<const E&&>(*error_ptr()));
   }
 
+  /// @brief Maps the error through `f`; success passes through.
+  /// @param f Callable `E -> G`; called only in the error state.
   // transform_error: F(E) -> G  =>  expected<void, G>.
   template <typename F>
   METL_NODISCARD constexpr auto transform_error(F&& f) & {
@@ -1085,6 +1257,7 @@ class expected<void, E> {
 // Free swap
 // =============================================================================
 
+/// @brief Swaps two expected objects.
 template <typename T, typename E>
 void swap(expected<T, E>& lhs, expected<T, E>& rhs) noexcept(noexcept(lhs.swap(rhs))) {
   lhs.swap(rhs);
@@ -1094,6 +1267,7 @@ void swap(expected<T, E>& lhs, expected<T, E>& rhs) noexcept(noexcept(lhs.swap(r
 // Comparison operators
 // =============================================================================
 
+/// @brief Compares two expected objects (equal state and equal contents).
 // expected vs expected.
 template <typename T1, typename E1, typename T2, typename E2>
 constexpr auto operator==(const expected<T1, E1>& lhs, const expected<T2, E2>& rhs)
@@ -1110,6 +1284,7 @@ constexpr auto operator!=(const expected<T1, E1>& lhs, const expected<T2, E2>& r
   return !(lhs == rhs);
 }
 
+/// @brief Compares two void-expected objects (equal state, equal error if any).
 // expected<void, E1> vs expected<void, E2>.
 template <typename E1, typename E2>
 constexpr auto operator==(const expected<void, E1>& lhs,
@@ -1126,6 +1301,7 @@ constexpr auto operator!=(const expected<void, E1>& lhs,
   return !(lhs == rhs);
 }
 
+/// @brief Compares an expected against a bare value (true only in value state).
 // expected vs T (value comparison).
 template <typename T, typename E, typename U>
 constexpr auto operator==(const expected<T, E>& lhs, const U& rhs) -> decltype(*lhs == rhs, bool()) {
@@ -1147,6 +1323,7 @@ constexpr auto operator!=(const U& lhs, const expected<T, E>& rhs) -> decltype(l
   return !rhs.has_value() || (lhs != *rhs);
 }
 
+/// @brief Compares an expected against an unexpected (true only in error state).
 // expected vs unexpected.
 template <typename T, typename E, typename E2>
 constexpr auto operator==(const expected<T, E>& lhs,

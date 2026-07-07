@@ -13,6 +13,15 @@
 
 namespace metl {
 
+/// @brief A fixed-storage nullable value wrapper (in-place, no heap).
+///
+/// Stores an optional `T` inside the object itself using an internal union; it
+/// never allocates. Trivially copyable when `T` is. On C++20 it is a literal
+/// type and usable in constant expressions.
+/// @tparam T The contained value type.
+/// @note Accessors like `value()`, `operator*`, and `operator->` ASSERT (abort
+/// by default) rather than throwing when the optional is empty. Use `value_or`
+/// for a safe alternative that never asserts.
 template <typename T>
 class optional {
  public:
@@ -20,10 +29,14 @@ class optional {
 
   // ---- Constructors ---------------------------------------------------------
 
+  /// @brief Constructs an empty optional.
   constexpr optional() noexcept : storage_{}, has_value_(false) {}
 
+  /// @brief Constructs an empty optional from the nullopt tag.
   constexpr optional(nullopt_t) noexcept : storage_{}, has_value_(false) {}
 
+  /// @brief Constructs an engaged optional by forwarding a value into `T`.
+  /// @param v The value used to direct-initialize the contained `T`.
   // Converting forwarding constructor. SFINAE prevents hijacking copy/move and
   // in_place_t overloads (e.g. `optional<optional<T>>` should not bind here).
   template <typename U = T,
@@ -35,18 +48,24 @@ class optional {
     construct(std::forward<U>(v));
   }
 
+  /// @brief Constructs an engaged optional, building `T` in place.
+  /// @tparam Args Constructor argument types forwarded to `T`.
+  /// @param args Arguments forwarded to `T`'s constructor.
   // in_place_t constructor.
   template <typename... Args>
   constexpr explicit optional(in_place_t, Args&&... args) : storage_{}, has_value_(false) {
     construct(std::forward<Args>(args)...);
   }
 
+  /// @brief Copy constructor; copies the contained value if engaged.
   optional(const optional& other) : storage_{}, has_value_(false) {
     if (other.has_value_) {
       construct(*other);
     }
   }
 
+  /// @brief Move constructor; moves the contained value if engaged.
+  /// @note The source remains engaged (its value is moved-from), not reset.
   optional(optional&& other) noexcept(std::is_nothrow_move_constructible<T>::value)
       : storage_{}, has_value_(false) {
     if (other.has_value_) {
@@ -54,15 +73,18 @@ class optional {
     }
   }
 
+  /// @brief Destroys the contained value if engaged (constexpr on C++20).
   METL_CONSTEXPR20 ~optional() { reset(); }
 
   // ---- Assignment -----------------------------------------------------------
 
+  /// @brief Resets to empty from the nullopt tag.
   optional& operator=(nullopt_t) noexcept {
     reset();
     return *this;
   }
 
+  /// @brief Copy-assigns from another optional, matching engaged state.
   optional& operator=(const optional& other) {
     if (this == &other) {
       return *this;
@@ -77,6 +99,7 @@ class optional {
     return *this;
   }
 
+  /// @brief Move-assigns from another optional, matching engaged state.
   optional& operator=(optional&& other) noexcept(std::is_nothrow_move_assignable<T>::value &&
                                                  std::is_nothrow_move_constructible<T>::value) {
     if (this == &other) {
@@ -92,6 +115,8 @@ class optional {
     return *this;
   }
 
+  /// @brief Assigns a value, engaging the optional (constructs or assigns `T`).
+  /// @param value The value forwarded into the contained `T`.
   template <
       typename U = T,
       typename = std::enable_if_t<!std::is_same<std::decay_t<U>, optional>::value &&
@@ -103,74 +128,113 @@ class optional {
 
   // ---- Observers ------------------------------------------------------------
 
+  /// @brief Accesses a member of the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) if empty; it does not throw.
   METL_NODISCARD constexpr const T* operator->() const noexcept {
     METL_ASSERT(has_value_);
     return data();
   }
 
+  /// @brief Accesses a member of the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) if empty; it does not throw.
   METL_NODISCARD T* operator->() noexcept {
     METL_ASSERT(has_value_);
     return data();
   }
 
+  /// @brief Returns a reference to the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) if empty; it does not throw.
   METL_NODISCARD constexpr const T& operator*() const& noexcept {
     METL_ASSERT(has_value_);
     return *data();
   }
 
+  /// @brief Returns a reference to the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) if empty; it does not throw.
   METL_NODISCARD T& operator*() & noexcept {
     METL_ASSERT(has_value_);
     return *data();
   }
 
+  /// @brief Returns an rvalue reference to the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) if empty; it does not throw.
   METL_NODISCARD const T&& operator*() const&& noexcept {
     METL_ASSERT(has_value_);
     return static_cast<const T&&>(*data());
   }
 
+  /// @brief Returns an rvalue reference to the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) if empty; it does not throw.
   METL_NODISCARD T&& operator*() && noexcept {
     METL_ASSERT(has_value_);
     return static_cast<T&&>(*data());
   }
 
+  /// @brief Returns true if the optional holds a value.
   METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
+  /// @brief Returns true if the optional holds a value.
   METL_NODISCARD constexpr bool has_value() const noexcept { return has_value_; }
 
+  /// @brief Returns a reference to the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) if empty; it does NOT throw
+  /// std::bad_optional_access. Use `value_or` for a checked fallback.
   METL_NODISCARD T& value() & noexcept {
     METL_ASSERT(has_value_);
     return *data();
   }
 
+  /// @brief Returns a reference to the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) if empty; it does NOT throw.
   METL_NODISCARD constexpr const T& value() const& noexcept {
     METL_ASSERT(has_value_);
     return *data();
   }
 
+  /// @brief Returns an rvalue reference to the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) if empty; it does NOT throw.
   METL_NODISCARD T&& value() && noexcept {
     METL_ASSERT(has_value_);
     return static_cast<T&&>(*data());
   }
 
+  /// @brief Returns an rvalue reference to the contained value.
+  /// @pre has_value()
+  /// @warning Asserts (aborts by default) if empty; it does NOT throw.
   METL_NODISCARD constexpr const T&& value() const&& noexcept {
     METL_ASSERT(has_value_);
     return static_cast<const T&&>(*data());
   }
 
+  /// @brief Returns the contained value, or `default_value` if empty.
+  /// @param default_value Returned (converted to `T`) when the optional is empty.
+  /// @return The contained value or the fallback. Never asserts.
   template <typename U>
   METL_NODISCARD T value_or(U&& default_value) const& {
     return has_value_ ? *data() : static_cast<T>(std::forward<U>(default_value));
   }
 
+  /// @brief Returns the contained value, or `default_value` if empty. Never asserts.
   template <typename U>
   METL_NODISCARD T value_or(U&& default_value) & {
     return has_value_ ? *data() : static_cast<T>(std::forward<U>(default_value));
   }
 
+  /// @brief Returns the contained value, or `default_value` if empty. Never asserts.
   template <typename U>
   METL_NODISCARD T value_or(U&& default_value) && {
     return has_value_ ? static_cast<T&&>(*data()) : static_cast<T>(std::forward<U>(default_value));
   }
 
+  /// @brief Returns the contained value, or `default_value` if empty. Never asserts.
   template <typename U>
   METL_NODISCARD T value_or(U&& default_value) const&& {
     return has_value_ ? static_cast<const T&&>(*data()) : static_cast<T>(std::forward<U>(default_value));
@@ -178,6 +242,10 @@ class optional {
 
   // ---- Modifiers ------------------------------------------------------------
 
+  /// @brief Destroys any current value and constructs a new one in place.
+  /// @tparam Args Constructor argument types forwarded to `T`.
+  /// @param args Arguments forwarded to `T`'s constructor.
+  /// @return Reference to the newly constructed value.
   template <typename... Args>
   T& emplace(Args&&... args) {
     reset();
@@ -185,6 +253,7 @@ class optional {
     return *data();
   }
 
+  /// @brief Destroys the contained value if engaged, leaving the optional empty.
   METL_CONSTEXPR20 void reset() noexcept {
     if (!has_value_) {
       return;
@@ -194,6 +263,7 @@ class optional {
     has_value_ = false;
   }
 
+  /// @brief Swaps the contents (and engaged state) with another optional.
   void swap(optional& other) noexcept(std::is_nothrow_move_constructible<T>::value &&
                                       std::is_nothrow_move_assignable<T>::value) {
     if (has_value_ && other.has_value_) {
@@ -211,6 +281,9 @@ class optional {
 
   // ---- Monadic operations (P2505) ------------------------------------------
 
+  /// @brief Invokes `f` with the value if engaged, else returns an empty result.
+  /// @param f Callable returning an optional; called only when engaged.
+  /// @return `f(value)` if engaged, otherwise a default-constructed result.
   template <typename F>
   METL_NODISCARD constexpr auto and_then(F&& f) & {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(**this))>>;
@@ -249,6 +322,9 @@ class optional {
     return result_t{};
   }
 
+  /// @brief Maps the value through `f`, wrapping the result in an optional.
+  /// @param f Callable applied to the value; called only when engaged.
+  /// @return `optional<result>` holding `f(value)` if engaged, else empty.
   template <typename F>
   METL_NODISCARD constexpr auto transform(F&& f) & {
     using result_value_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(**this))>>;
@@ -287,6 +363,8 @@ class optional {
     return optional<result_value_t>{};
   }
 
+  /// @brief Returns `*this` if engaged, otherwise the optional produced by `f`.
+  /// @param f Callable returning an optional; called only when empty.
   template <typename F>
   METL_NODISCARD constexpr optional or_else(F&& f) const& {
     if (has_value_) {
@@ -346,11 +424,17 @@ class optional {
 
 // ---- make_optional ----------------------------------------------------------
 
+/// @brief Creates an engaged optional holding a decayed copy of `v`.
+/// @param v The value to store.
 template <typename T>
 constexpr optional<std::decay_t<T>> make_optional(T&& v) {
   return optional<std::decay_t<T>>(std::forward<T>(v));
 }
 
+/// @brief Creates an engaged optional, constructing `T` in place.
+/// @tparam T The contained value type.
+/// @tparam Args Constructor argument types forwarded to `T`.
+/// @param args Arguments forwarded to `T`'s constructor.
 template <typename T, typename... Args>
 constexpr optional<T> make_optional(Args&&... args) {
   return optional<T>(in_place, std::forward<Args>(args)...);
@@ -358,12 +442,15 @@ constexpr optional<T> make_optional(Args&&... args) {
 
 // ---- Free swap --------------------------------------------------------------
 
+/// @brief Swaps two optionals.
 template <typename T>
 void swap(optional<T>& lhs, optional<T>& rhs) noexcept(noexcept(lhs.swap(rhs))) {
   lhs.swap(rhs);
 }
 
 // ---- Comparison: optional vs optional --------------------------------------
+
+/// @brief Compares two optionals; empty compares equal only to empty.
 
 template <typename T, typename U>
 constexpr auto operator==(const optional<T>& lhs, const optional<U>& rhs) -> decltype(*lhs == *rhs, bool()) {
@@ -421,6 +508,7 @@ constexpr auto operator>=(const optional<T>& lhs, const optional<U>& rhs) -> dec
 
 // ---- Comparison: optional vs nullopt ---------------------------------------
 
+/// @brief Compares an optional against nullopt (empty state check).
 template <typename T>
 constexpr bool operator==(const optional<T>& lhs, nullopt_t) noexcept {
   return !lhs.has_value();
@@ -483,6 +571,7 @@ constexpr bool operator>=(nullopt_t, const optional<T>& rhs) noexcept {
 
 // ---- Comparison: optional vs T ---------------------------------------------
 
+/// @brief Compares an engaged optional against a bare value; empty is unequal.
 template <typename T, typename U>
 constexpr auto operator==(const optional<T>& lhs, const U& rhs) -> decltype(*lhs == rhs, bool()) {
   return lhs.has_value() ? (*lhs == rhs) : false;
@@ -547,6 +636,7 @@ constexpr auto operator>=(const U& lhs, const optional<T>& rhs) -> decltype(lhs 
 
 namespace std {
 
+/// @brief std::hash specialization; empty optionals hash to 0.
 template <typename T>
 struct hash<::metl::optional<T>> {
   size_t operator()(const ::metl::optional<T>& o) const noexcept {
