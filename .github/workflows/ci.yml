@@ -625,6 +625,72 @@ jobs:
             | xargs clang-format --dry-run --Werror
 
   # ---------------------------------------------------------------------------
+  # Fuzz smoke — build the libFuzzer harnesses (clang, ASan+UBSan+fuzzer) and
+  # run each for a short bounded time against its seed corpus. A crash, leak, or
+  # timeout makes libFuzzer exit non-zero and fails the job. BLOCKING and must
+  # stay green: the harnesses only perform contract-VALID operations (see
+  # fuzz/README-style header comments), so any finding is a genuine metl defect.
+  # Kept fast (5 harnesses x ~25s + a quick clang build, well under 6 min).
+  # ---------------------------------------------------------------------------
+  fuzz-smoke:
+    name: fuzz-smoke
+    runs-on: ubuntu-latest
+    needs: preflight
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang
+
+      - name: Configure (fuzzers on, clang)
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -B build-fuzz -S . \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DMETL_BUILD_TESTS=OFF \
+            -DMETL_INSTALL=OFF \
+            -DMETL_BUILD_DOCS=OFF \
+            -DMETL_BUILD_FUZZERS=ON
+
+      - name: Build fuzzers
+        run: cmake --build build-fuzz -j
+
+      - name: Run each fuzzer (bounded; fail on crash/leak/timeout)
+        env:
+          # Abort loudly on any sanitizer finding so libFuzzer records a crash.
+          ASAN_OPTIONS: "halt_on_error=1:abort_on_error=1:detect_leaks=1"
+          UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1:abort_on_error=1"
+        run: |
+          set -euo pipefail
+          for t in fuzz_fixed_string fuzz_flat_map fuzz_static_unordered_map \
+                   fuzz_allocators fuzz_crc; do
+            echo "::group::${t}"
+            ./build-fuzz/fuzz/metl_${t} \
+              -max_total_time=25 -runs=2000000 -timeout=10 -rss_limit_mb=2048 \
+              "fuzz/corpus/${t}"
+            echo "::endgroup::"
+          done
+
+      - name: Upload crash artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-smoke-crashes
+          path: |
+            crash-*
+            leak-*
+            timeout-*
+            oom-*
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
   # Examples — build every example under -Wall -Wextra -Werror and run them.
   # Each example self-checks and returns non-zero on a broken invariant.
   # ---------------------------------------------------------------------------
