@@ -99,8 +99,13 @@ class intrusive_ref_counter {
   }
 };
 
+// METL_ATTRIBUTE_TRIVIAL_ABI: intrusive_ptr owns a single raw pointer and is
+// trivially relocatable (its move leaves the source null; it holds no pointer
+// to itself). The attribute lets it be passed/returned in a register and
+// destroyed by the callee, matching a raw pointer's calling convention, without
+// changing observable behavior. No-op on toolchains lacking the attribute.
 template <typename T>
-class intrusive_ptr {
+class METL_ATTRIBUTE_TRIVIAL_ABI intrusive_ptr {
  public:
   using element_type = T;
   using pointer = T*;

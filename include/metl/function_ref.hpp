@@ -35,7 +35,12 @@ class function_ref<R(Args...)> {
             typename = typename std::enable_if<!std::is_same<Decayed, function_ref>::value>::type,
             typename = typename std::enable_if<!std::is_pointer<Decayed>::value>::type,
             typename = typename std::enable_if<std::is_invocable_r<R, Referenced&, Args...>::value>::type>
-  function_ref(F&& function) noexcept
+  // METL_LIFETIME_BOUND: function_ref stores a pointer to `function`; the bound
+  // callable must outlive this function_ref. clang diagnoses obvious dangling
+  // (a callable that dies before the function_ref) at the call site. This
+  // complements the deleted rvalue-binding overload below, which already
+  // rejects temporaries outright.
+  function_ref(F&& function METL_LIFETIME_BOUND) noexcept
       : object_(const_cast<void*>(static_cast<const void*>(std::addressof(function)))),
         function_(nullptr),
         callback_(&invoke_object<Referenced>) {}

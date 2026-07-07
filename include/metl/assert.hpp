@@ -1,5 +1,7 @@
 #pragma once
 
+#include "metl/compiler.hpp"
+
 #include <cstdlib>
 
 namespace metl {
@@ -18,12 +20,16 @@ namespace detail {
 }
 
 inline assert_handler_t& assert_handler_storage() noexcept {
-  static assert_handler_t handler = &default_assert_handler;
+  // METL_CONST_INIT: the initializer is the address of a function (a constant
+  // expression), so the handler slot is guaranteed constant-initialized. This
+  // makes the guarantee explicit and rejects any future change that would turn
+  // it into dynamic initialization (a static-init-order-fiasco hazard).
+  METL_CONST_INIT static assert_handler_t handler = &default_assert_handler;
   return handler;
 }
 
 inline panic_handler_t& panic_handler_storage() noexcept {
-  static panic_handler_t handler = &default_panic_handler;
+  METL_CONST_INIT static panic_handler_t handler = &default_panic_handler;
   return handler;
 }
 

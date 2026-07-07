@@ -1,6 +1,7 @@
 #pragma once
 
 #include "metl/config.hpp"
+#include "metl/optimization.hpp"
 #include "metl/type_traits.hpp"
 
 #include <atomic>
@@ -95,13 +96,13 @@ class spsc_queue {
   METL_NODISCARD static constexpr std::size_t capacity() noexcept { return Capacity; }
 
  private:
-  static constexpr std::size_t cache_line_size = 64;
-
   storage_for<T>& slot(std::size_t index) noexcept { return slots_[index & (Capacity - 1)]; }
 
-  alignas(cache_line_size) std::atomic<std::size_t> head_;
-  alignas(cache_line_size) std::atomic<std::size_t> tail_;
-  alignas(cache_line_size) storage_for<T> slots_[Capacity];
+  // Producer index, consumer index and the ring storage each occupy their own
+  // cache line so the two roles never contend on a shared line (false sharing).
+  METL_CACHELINE_ALIGNED std::atomic<std::size_t> head_;
+  METL_CACHELINE_ALIGNED std::atomic<std::size_t> tail_;
+  METL_CACHELINE_ALIGNED storage_for<T> slots_[Capacity];
 };
 
 }  // namespace metl

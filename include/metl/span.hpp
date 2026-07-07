@@ -102,8 +102,10 @@ class span {
     METL_ASSERT(Extent == dynamic_extent || static_cast<size_type>(last - first) == Extent);
   }
 
+  // METL_LIFETIME_BOUND: the span refers into `array`; the array must outlive
+  // the span. clang flags obvious dangling (e.g. binding to a temporary array).
   template <std::size_t N, typename = typename std::enable_if<Extent == dynamic_extent || Extent == N>::type>
-  constexpr span(element_type (&array)[N]) noexcept : storage_(array, N) {}
+  constexpr span(element_type (&array METL_LIFETIME_BOUND)[N]) noexcept : storage_(array, N) {}
 
   // Container constructor: enabled for types exposing data()/size() with compatible element type.
   template <typename C,
@@ -112,7 +114,10 @@ class span {
                 detail::is_qualification_convertible<
                     T,
                     typename std::remove_pointer<decltype(std::declval<C&>().data())>::type>::value>::type>
-  constexpr span(C& container) noexcept : storage_(container.data(), container.size()) {
+  // METL_LIFETIME_BOUND: the span views `container`'s storage; the container
+  // must outlive the span. clang flags obvious dangling (e.g. a span bound to a
+  // temporary container).
+  constexpr span(C& container METL_LIFETIME_BOUND) noexcept : storage_(container.data(), container.size()) {
     METL_ASSERT(Extent == dynamic_extent || container.size() == Extent);
   }
 
