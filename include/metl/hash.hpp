@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <type_traits>
 
 namespace metl {
 
@@ -105,6 +106,16 @@ struct fnv1a_hash {
 
   template <typename T>
   METL_NODISCARD std::size_t operator()(const T& value) const noexcept {
+    // Hashing the raw object representation is only sound when every distinct
+    // value has a unique byte pattern. For types with padding bytes,
+    // pointers/references, floating point (-0.0 vs +0.0), etc. two equal
+    // objects can hash differently, breaking the hash/equality invariant. Gate
+    // the raw-bytes overload on has_unique_object_representations; specialize
+    // fnv1a_hash for other types.
+    static_assert(std::has_unique_object_representations<T>::value,
+                  "fnv1a_hash default overload hashes the raw object representation, which is only "
+                  "sound for types with a unique object representation (no padding / no ambiguous "
+                  "bit patterns). Provide a specialized hash for other types.");
     return fnv1a(reinterpret_cast<const unsigned char*>(&value), sizeof(T));
   }
 
