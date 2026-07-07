@@ -25,6 +25,16 @@ inline constexpr bool flat_set_has_transparent_compare_v = flat_set_has_transpar
 
 }  // namespace detail
 
+/// @brief Fixed-capacity set of unique keys kept sorted in a flat array.
+///
+/// Stores up to @c Capacity keys in place with NO heap allocation; the capacity is fixed at
+/// compile time. Elements are held in ascending order per @c Compare, giving O(log n) lookup
+/// via binary search and O(n) insert/erase (shifting). Not thread-safe.
+///
+/// @tparam Key Element/key type used for ordering and lookup.
+/// @tparam Capacity Maximum number of elements (fixed at compile time).
+/// @tparam Compare Strict-weak-ordering comparator (transparent comparators enable
+///         heterogeneous lookup).
 template <typename Key, std::size_t Capacity, typename Compare = std::less<Key>>
 class flat_set {
  public:
@@ -38,17 +48,21 @@ class flat_set {
   using iterator = value_type*;
   using const_iterator = const value_type*;
 
+  /// @brief Construct an empty set with a default-constructed comparator.
   constexpr flat_set() noexcept(std::is_nothrow_default_constructible<Compare>::value) : comp_(), size_(0) {}
 
+  /// @brief Construct an empty set using the given comparator.
   explicit flat_set(const Compare& comp) noexcept(std::is_nothrow_copy_constructible<Compare>::value)
       : comp_(comp), size_(0) {}
 
+  /// @brief Copy-construct, copying every element from @p other.
   flat_set(const flat_set& other) : comp_(other.comp_), size_(0) {
     for (const auto& item : other) {
       emplace(item);
     }
   }
 
+  /// @brief Move-construct, moving elements out of @p other and leaving it empty.
   flat_set(flat_set&& other) noexcept(std::is_nothrow_move_constructible<value_type>::value &&
                                       std::is_nothrow_move_constructible<Compare>::value)
       : comp_(static_cast<Compare&&>(other.comp_)), size_(0) {
@@ -58,8 +72,10 @@ class flat_set {
     other.clear();
   }
 
+  /// @brief Destroy all contained elements.
   ~flat_set() { clear(); }
 
+  /// @brief Copy-assign from @p other (self-assignment safe).
   flat_set& operator=(const flat_set& other) {
     if (this == &other) {
       return *this;
@@ -73,6 +89,7 @@ class flat_set {
     return *this;
   }
 
+  /// @brief Move-assign from @p other, leaving it empty (self-assignment safe).
   flat_set& operator=(flat_set&& other) noexcept(std::is_nothrow_move_constructible<value_type>::value &&
                                                  std::is_nothrow_move_assignable<value_type>::value &&
                                                  std::is_nothrow_move_assignable<Compare>::value) {
@@ -89,32 +106,42 @@ class flat_set {
     return *this;
   }
 
+  /// @brief Iterator to the first element (elements are in ascending order).
   METL_NODISCARD iterator begin() noexcept { return data(); }
   METL_NODISCARD const_iterator begin() const noexcept { return data(); }
   METL_NODISCARD const_iterator cbegin() const noexcept { return data(); }
 
+  /// @brief Iterator one past the last element.
   METL_NODISCARD iterator end() noexcept { return data() + size_; }
   METL_NODISCARD const_iterator end() const noexcept { return data() + size_; }
   METL_NODISCARD const_iterator cend() const noexcept { return data() + size_; }
 
+  /// @brief True if the set holds no elements.
   METL_NODISCARD bool empty() const noexcept { return size_ == 0; }
+  /// @brief True if the set has reached its fixed capacity.
   METL_NODISCARD bool full() const noexcept { return size_ == Capacity; }
+  /// @brief Current number of elements.
   METL_NODISCARD size_type size() const noexcept { return size_; }
+  /// @brief Fixed maximum number of elements (the compile-time @c Capacity).
   METL_NODISCARD size_type capacity() const noexcept { return Capacity; }
 
+  /// @brief Copy of the key comparator.
   METL_NODISCARD Compare key_comp() const noexcept(std::is_nothrow_copy_constructible<Compare>::value) {
     return comp_;
   }
 
+  /// @brief Copy of the value comparator (same as the key comparator for a set).
   METL_NODISCARD Compare value_comp() const noexcept(std::is_nothrow_copy_constructible<Compare>::value) {
     return comp_;
   }
 
-  // DIVERGENCE FROM std::set: operator[] and at() here are POSITIONAL. They
-  // take a 0-based index into the sorted sequence and return the element at
-  // that position (asserting the index is in range); they are NOT key lookups.
-  // For membership/lookup use find()/contains()/lower_bound(). nth() is an
-  // explicit, self-documenting alias for this positional access.
+  /// @brief POSITIONAL element access by 0-based index into the sorted sequence.
+  /// @warning This is NOT a key lookup. Unlike an associative-container subscript, it takes a
+  ///          positional index (0..size()-1) and returns the element at that position; it never
+  ///          inserts. For membership use @c find()/@c contains(); for positional access prefer
+  ///          the self-documenting @c nth().
+  /// @param index 0-based position in ascending order.
+  /// @pre @p index < size(); a violation asserts (aborts by default), it does not throw.
   METL_NODISCARD reference operator[](size_type index) noexcept {
     METL_ASSERT(index < size_);
     return data()[index];
@@ -125,8 +152,12 @@ class flat_set {
     return data()[index];
   }
 
-  // Positional accessor (see operator[]). Asserts the index is in range; unlike
-  // std::set it does not throw and is not key-based.
+  /// @brief POSITIONAL element access by 0-based index into the sorted sequence.
+  /// @warning This is NOT a key lookup and does NOT throw @c std::out_of_range. It takes a
+  ///          positional index, not a key. For membership use @c find()/@c contains(); for
+  ///          positional access prefer @c nth().
+  /// @param index 0-based position in ascending order.
+  /// @pre @p index < size(); a violation asserts (aborts by default), it does not throw.
   METL_NODISCARD reference at(size_type index) noexcept {
     METL_ASSERT(index < size_);
     return data()[index];
@@ -137,8 +168,9 @@ class flat_set {
     return data()[index];
   }
 
-  // Explicit positional accessor: the element at 0-based `index` in sorted
-  // order. Alias for operator[]/at; named to make positional intent obvious.
+  /// @brief Explicit positional accessor: the element at 0-based @p index in sorted order.
+  /// @note Alias for @c operator[]/@c at; named to make the positional (non-key) intent obvious.
+  /// @pre @p index < size(); a violation asserts.
   METL_NODISCARD reference nth(size_type index) noexcept {
     METL_ASSERT(index < size_);
     return data()[index];
@@ -149,6 +181,7 @@ class flat_set {
     return data()[index];
   }
 
+  /// @brief Iterator to the first element not less than @p key.
   METL_NODISCARD iterator lower_bound(const key_type& key) noexcept {
     return begin() + lower_bound_index(key);
   }
@@ -157,6 +190,7 @@ class flat_set {
     return begin() + lower_bound_index(key);
   }
 
+  /// @brief Iterator to the first element greater than @p key.
   METL_NODISCARD iterator upper_bound(const key_type& key) noexcept {
     return begin() + upper_bound_index(key);
   }
@@ -165,6 +199,7 @@ class flat_set {
     return begin() + upper_bound_index(key);
   }
 
+  /// @brief Range [first, last) of elements equal to @p key (empty range if none; keys are unique).
   METL_NODISCARD std::pair<iterator, iterator> equal_range(const key_type& key) noexcept {
     const size_type lo = lower_bound_index(key);
     const size_type hi = upper_bound_index_from(key, lo);
@@ -177,8 +212,11 @@ class flat_set {
     return {begin() + lo, begin() + hi};
   }
 
+  /// @brief True if the given key is present.
   METL_NODISCARD bool contains(const key_type& key) const noexcept { return find(key) != nullptr; }
 
+  /// @brief Key-based lookup: pointer to the stored element equal to @p key, or @c nullptr.
+  /// @return Pointer to the element, or @c nullptr when the key is not found.
   METL_NODISCARD value_type* find(const key_type& key) noexcept {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index])) {
@@ -284,6 +322,10 @@ class flat_set {
     return true;
   }
 
+  /// @brief Insert @p key only if it is absent, without overflowing.
+  /// @return @c true if inserted; @c false if the key already exists OR the set is full.
+  /// @note Unlike @c emplace, a full set or duplicate key is reported by the return value
+  ///       rather than an assertion.
   template <typename K>
   bool try_emplace(K&& key) {
     const size_type index = lower_bound_index(key);
@@ -294,6 +336,10 @@ class flat_set {
     return try_insert_at(index, std::forward<K>(key));
   }
 
+  /// @brief Insert @p key and return a reference to the new element.
+  /// @return Reference to the inserted element.
+  /// @pre The key is absent and the set is not full; violations assert. Use @c try_emplace to
+  ///      handle a full set or duplicate key without asserting.
   template <typename K>
   reference emplace(K&& key) {
     const size_type index = lower_bound_index(key);
@@ -304,6 +350,8 @@ class flat_set {
     return data()[index];
   }
 
+  /// @brief Erase the element equal to the given key, if present.
+  /// @return @c true if an element was erased; @c false if the key was not found.
   bool erase(const key_type& key) noexcept {
     const size_type index = lower_bound_index(key);
     if (index >= size_ || comp_(key, data()[index])) {
@@ -314,6 +362,7 @@ class flat_set {
     return true;
   }
 
+  /// @brief Remove all elements (destroys each; size becomes 0).
   void clear() noexcept {
     while (size_ > 0) {
       erase_at(size_ - 1);

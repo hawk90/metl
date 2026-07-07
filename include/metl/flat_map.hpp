@@ -25,6 +25,18 @@ inline constexpr bool flat_has_transparent_compare_v = flat_has_transparent_comp
 
 }  // namespace detail
 
+/// @brief Fixed-capacity associative map kept sorted by key in a flat array.
+///
+/// Stores up to @c Capacity key/value pairs in place with NO heap allocation; the
+/// capacity is fixed at compile time. Elements are held in ascending key order per
+/// @c Compare, giving O(log n) lookup via binary search and O(n) insert/erase (shifting).
+/// Not thread-safe.
+///
+/// @tparam Key Key type used for ordering and lookup.
+/// @tparam T Mapped value type.
+/// @tparam Capacity Maximum number of elements (fixed at compile time).
+/// @tparam Compare Strict-weak-ordering comparator on keys (transparent comparators enable
+///         heterogeneous lookup).
 template <typename Key, typename T, std::size_t Capacity, typename Compare = std::less<Key>>
 class flat_map {
  public:
@@ -42,17 +54,21 @@ class flat_map {
   using iterator = value_type*;
   using const_iterator = const value_type*;
 
+  /// @brief Construct an empty map with a default-constructed comparator.
   constexpr flat_map() noexcept(std::is_nothrow_default_constructible<Compare>::value) : comp_(), size_(0) {}
 
+  /// @brief Construct an empty map using the given comparator.
   explicit flat_map(const Compare& comp) noexcept(std::is_nothrow_copy_constructible<Compare>::value)
       : comp_(comp), size_(0) {}
 
+  /// @brief Copy-construct, copying every element from @p other.
   flat_map(const flat_map& other) : comp_(other.comp_), size_(0) {
     for (const auto& item : other) {
       emplace(item.key, item.value);
     }
   }
 
+  /// @brief Move-construct, moving elements out of @p other and leaving it empty.
   flat_map(flat_map&& other) noexcept(std::is_nothrow_move_constructible<value_type>::value &&
                                       std::is_nothrow_move_constructible<Compare>::value)
       : comp_(static_cast<Compare&&>(other.comp_)), size_(0) {
@@ -62,8 +78,10 @@ class flat_map {
     other.clear();
   }
 
+  /// @brief Destroy all contained elements.
   ~flat_map() { clear(); }
 
+  /// @brief Copy-assign from @p other (self-assignment safe).
   flat_map& operator=(const flat_map& other) {
     if (this == &other) {
       return *this;
@@ -77,6 +95,7 @@ class flat_map {
     return *this;
   }
 
+  /// @brief Move-assign from @p other, leaving it empty (self-assignment safe).
   flat_map& operator=(flat_map&& other) noexcept(std::is_nothrow_move_constructible<value_type>::value &&
                                                  std::is_nothrow_move_assignable<value_type>::value &&
                                                  std::is_nothrow_move_assignable<Compare>::value) {
@@ -93,29 +112,37 @@ class flat_map {
     return *this;
   }
 
+  /// @brief Iterator to the first element (elements are in ascending key order).
   METL_NODISCARD iterator begin() noexcept { return data(); }
   METL_NODISCARD const_iterator begin() const noexcept { return data(); }
   METL_NODISCARD const_iterator cbegin() const noexcept { return data(); }
 
+  /// @brief Iterator one past the last element.
   METL_NODISCARD iterator end() noexcept { return data() + size_; }
   METL_NODISCARD const_iterator end() const noexcept { return data() + size_; }
   METL_NODISCARD const_iterator cend() const noexcept { return data() + size_; }
 
+  /// @brief True if the map holds no elements.
   METL_NODISCARD bool empty() const noexcept { return size_ == 0; }
+  /// @brief True if the map has reached its fixed capacity.
   METL_NODISCARD bool full() const noexcept { return size_ == Capacity; }
+  /// @brief Current number of elements.
   METL_NODISCARD size_type size() const noexcept { return size_; }
+  /// @brief Fixed maximum number of elements (the compile-time @c Capacity).
   METL_NODISCARD size_type capacity() const noexcept { return Capacity; }
 
+  /// @brief Copy of the key comparator.
   METL_NODISCARD Compare key_comp() const noexcept(std::is_nothrow_copy_constructible<Compare>::value) {
     return comp_;
   }
 
-  // DIVERGENCE FROM std::map: operator[] and at() here are POSITIONAL, not
-  // key-based. They take a 0-based index into the sorted sequence and return
-  // the element at that position (asserting the index is in range). They do
-  // NOT look up by key and do NOT insert. For key-based access use find()
-  // (returns mapped_type*/nullptr) or lower_bound()/equal_range(). nth() is an
-  // explicit, self-documenting alias for this positional access.
+  /// @brief POSITIONAL element access by 0-based index into the sorted sequence.
+  /// @warning This is NOT a key lookup. Unlike @c std::map::operator[], it takes a positional
+  ///          index (0..size()-1), returns the element at that position, and never inserts.
+  ///          For key-based access use @c find(); for positional access prefer the
+  ///          self-documenting @c nth().
+  /// @param index 0-based position in ascending key order.
+  /// @pre @p index < size(); a violation asserts (aborts by default), it does not throw.
   METL_NODISCARD reference operator[](size_type index) noexcept {
     METL_ASSERT(index < size_);
     return data()[index];
@@ -126,8 +153,12 @@ class flat_map {
     return data()[index];
   }
 
-  // Positional accessor (see operator[]). Asserts the index is in range; unlike
-  // std::map::at it does not throw and is not key-based.
+  /// @brief POSITIONAL element access by 0-based index into the sorted sequence.
+  /// @warning This is NOT a key lookup. Unlike @c std::map::at, it takes a positional index,
+  ///          not a key, and does NOT throw @c std::out_of_range. For key-based access use
+  ///          @c find(); for positional access prefer @c nth().
+  /// @param index 0-based position in ascending key order.
+  /// @pre @p index < size(); a violation asserts (aborts by default), it does not throw.
   METL_NODISCARD reference at(size_type index) noexcept {
     METL_ASSERT(index < size_);
     return data()[index];
@@ -138,8 +169,9 @@ class flat_map {
     return data()[index];
   }
 
-  // Explicit positional accessor: the element at 0-based `index` in sorted
-  // order. Alias for operator[]/at; named to make positional intent obvious.
+  /// @brief Explicit positional accessor: the element at 0-based @p index in sorted order.
+  /// @note Alias for @c operator[]/@c at; named to make the positional (non-key) intent obvious.
+  /// @pre @p index < size(); a violation asserts.
   METL_NODISCARD reference nth(size_type index) noexcept {
     METL_ASSERT(index < size_);
     return data()[index];
@@ -150,6 +182,7 @@ class flat_map {
     return data()[index];
   }
 
+  /// @brief Iterator to the first element whose key is not less than @p key.
   METL_NODISCARD iterator lower_bound(const key_type& key) noexcept {
     return begin() + lower_bound_index(key);
   }
@@ -158,6 +191,7 @@ class flat_map {
     return begin() + lower_bound_index(key);
   }
 
+  /// @brief Iterator to the first element whose key is greater than @p key.
   METL_NODISCARD iterator upper_bound(const key_type& key) noexcept {
     return begin() + upper_bound_index(key);
   }
@@ -166,6 +200,7 @@ class flat_map {
     return begin() + upper_bound_index(key);
   }
 
+  /// @brief Range [first, last) of elements equal to @p key (empty range if none; keys are unique).
   METL_NODISCARD std::pair<iterator, iterator> equal_range(const key_type& key) noexcept {
     const size_type lo = lower_bound_index(key);
     const size_type hi = upper_bound_index_from(key, lo);
@@ -178,8 +213,11 @@ class flat_map {
     return {begin() + lo, begin() + hi};
   }
 
+  /// @brief True if an element with the given key is present.
   METL_NODISCARD bool contains(const key_type& key) const noexcept { return find(key) != nullptr; }
 
+  /// @brief Key-based lookup: pointer to the mapped value for @p key, or @c nullptr if absent.
+  /// @return Pointer to the mapped value, or @c nullptr when the key is not found.
   METL_NODISCARD mapped_type* find(const key_type& key) noexcept {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index].key)) {
@@ -285,6 +323,10 @@ class flat_map {
     return true;
   }
 
+  /// @brief Insert @p key/@p value only if @p key is absent, without overflowing.
+  /// @return @c true if inserted; @c false if the key already exists OR the map is full.
+  /// @note Unlike @c emplace, a full map or duplicate key is reported by the return value
+  ///       rather than an assertion.
   template <typename K, typename V>
   bool try_emplace(K&& key, V&& value) {
     const size_type index = lower_bound_index(key);
@@ -295,6 +337,10 @@ class flat_map {
     return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
   }
 
+  /// @brief Insert @p key/@p value and return a reference to the new element.
+  /// @return Reference to the inserted element.
+  /// @pre The key is absent and the map is not full; violations assert. Use @c try_emplace to
+  ///      handle a full map or duplicate key without asserting.
   template <typename K, typename V>
   reference emplace(K&& key, V&& value) {
     const size_type index = lower_bound_index(key);
@@ -305,6 +351,8 @@ class flat_map {
     return data()[index];
   }
 
+  /// @brief Assign @p value to an existing @p key, or insert the pair if absent.
+  /// @return @c true on assign or successful insert; @c false only if a new key cannot fit (full).
   template <typename K, typename V>
   bool insert_or_assign(K&& key, V&& value) {
     const size_type index = lower_bound_index(key);
@@ -316,6 +364,8 @@ class flat_map {
     return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
   }
 
+  /// @brief Erase the element with the given key, if present.
+  /// @return @c true if an element was erased; @c false if the key was not found.
   bool erase(const key_type& key) noexcept {
     const size_type index = lower_bound_index(key);
     if (index >= size_ || comp_(key, data()[index].key)) {
@@ -326,6 +376,7 @@ class flat_map {
     return true;
   }
 
+  /// @brief Remove all elements (destroys each; size becomes 0).
   void clear() noexcept {
     while (size_ > 0) {
       erase_at(size_ - 1);

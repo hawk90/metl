@@ -11,6 +11,15 @@
 
 namespace metl {
 
+/// Slot-based object pool with a compile-time FIXED number of slots.
+///
+/// Manages up to `Capacity` objects in inline storage; performs NO heap
+/// allocation. Objects are constructed in place and referred to by raw pointer;
+/// pointers remain stable for the object's lifetime. Non-copyable and
+/// non-movable. Not thread-safe.
+///
+/// @tparam T Pooled object type.
+/// @tparam Capacity Number of slots (fixed at compile time).
 template <typename T, std::size_t Capacity>
 class object_pool {
  public:
@@ -19,6 +28,7 @@ class object_pool {
   using pointer = T*;
   using const_pointer = const T*;
 
+  /// Constructs an empty pool with all slots free.
   constexpr object_pool() noexcept : active_{}, size_(0) {}
 
   ~object_pool() { clear(); }
@@ -28,6 +38,8 @@ class object_pool {
   object_pool(object_pool&&) = delete;
   object_pool& operator=(object_pool&&) = delete;
 
+  /// Constructs an object in the first free slot.
+  /// @return Pointer to the new object, or nullptr if the pool is full (no assert).
   template <typename... Args>
   METL_NODISCARD pointer try_emplace(Args&&... args) {
     for (size_type i = 0; i < Capacity; ++i) {
@@ -42,6 +54,9 @@ class object_pool {
     return nullptr;
   }
 
+  /// Constructs an object in the first free slot and returns a pointer to it.
+  /// @pre Pool is not full; a full pool asserts and aborts. Use try_emplace for a
+  /// non-asserting path.
   template <typename... Args>
   METL_NODISCARD pointer emplace(Args&&... args) {
     pointer object = try_emplace(std::forward<Args>(args)...);
@@ -49,6 +64,9 @@ class object_pool {
     return object;
   }
 
+  /// Destroys a pooled object and frees its slot.
+  /// @param object Pointer previously returned by this pool.
+  /// @return true if destroyed; false if `object` is not a live slot of this pool.
   bool destroy(pointer object) noexcept {
     const size_type index = index_of(object);
     if (index >= Capacity || !active_[index]) {
@@ -61,6 +79,7 @@ class object_pool {
     return true;
   }
 
+  /// Destroys all live objects and frees every slot.
   void clear() noexcept {
     for (size_type i = 0; i < Capacity; ++i) {
       if (active_[i]) {
@@ -71,15 +90,21 @@ class object_pool {
     size_ = 0;
   }
 
+  /// Returns true if `object` points to a live slot of this pool.
   METL_NODISCARD bool contains(const_pointer object) const noexcept {
     const size_type index = index_of(object);
     return index < Capacity && active_[index];
   }
 
+  /// Returns true if no slots are in use.
   METL_NODISCARD constexpr bool empty() const noexcept { return size_ == 0; }
+  /// Returns true if every slot is in use.
   METL_NODISCARD constexpr bool full() const noexcept { return size_ == Capacity; }
+  /// Returns the number of live objects.
   METL_NODISCARD constexpr size_type size() const noexcept { return size_; }
+  /// Returns the fixed slot count (`Capacity`).
   METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
+  /// Returns the number of free slots (`Capacity - size()`).
   METL_NODISCARD constexpr size_type available() const noexcept { return Capacity - size_; }
 
  private:

@@ -46,6 +46,18 @@ constexpr std::size_t compute_bucket_count(std::size_t capacity) noexcept {
 
 }  // namespace detail
 
+/// @brief Fixed-capacity hash map using open addressing with linear probing.
+///
+/// Holds up to @c Capacity key/value pairs in place with NO heap allocation; capacity is fixed
+/// at compile time. The bucket table is a power of two sized so probing uses a mask instead of
+/// modulo; erased slots leave tombstones. Iteration order is unspecified. Not thread-safe.
+///
+/// @tparam Key Key type.
+/// @tparam T Mapped value type.
+/// @tparam Capacity Maximum number of elements (fixed at compile time).
+/// @tparam Hash Hash functor for keys (a transparent hasher plus transparent @c KeyEqual enables
+///         heterogeneous lookup).
+/// @tparam KeyEqual Equality comparator for keys.
 template <typename Key,
           typename T,
           std::size_t Capacity,
@@ -64,8 +76,9 @@ class static_unordered_map {
   using reference = value_type&;
   using const_reference = const value_type&;
 
-  // Number of hash buckets (always power-of-two). Computed from the user's Capacity so that
-  // probing can use `index & (bucket_count - 1)` instead of modulo.
+  /// @brief Number of hash buckets (always a power of two, >= 2*Capacity).
+  /// @note Computed from @c Capacity so probing can use `index & (bucket_count - 1)` instead of
+  ///       modulo. This is the table size, larger than @c Capacity (the element ceiling).
   static constexpr size_type bucket_count = detail::compute_bucket_count(Capacity);
   static_assert((bucket_count & (bucket_count - 1)) == 0, "bucket_count must be a power of two");
 
@@ -79,6 +92,7 @@ class static_unordered_map {
   };
 
  public:
+  /// @brief Forward iterator over occupied slots (skips empty and tombstone slots).
   class iterator {
    public:
     using difference_type = std::ptrdiff_t;
@@ -131,6 +145,7 @@ class static_unordered_map {
     size_type index_;
   };
 
+  /// @brief Const forward iterator over occupied slots (skips empty and tombstone slots).
   class const_iterator {
    public:
     using difference_type = std::ptrdiff_t;
@@ -186,8 +201,10 @@ class static_unordered_map {
     size_type index_;
   };
 
+  /// @brief Construct an empty map with all slots marked empty.
   static_unordered_map() noexcept : size_(0), hasher_(), key_equal_() { initialize_states(); }
 
+  /// @brief Copy-construct, re-inserting every element from @p other.
   static_unordered_map(const static_unordered_map& other)
       : size_(0), hasher_(other.hasher_), key_equal_(other.key_equal_) {
     initialize_states();
@@ -196,6 +213,7 @@ class static_unordered_map {
     }
   }
 
+  /// @brief Move-construct, moving elements out of @p other and leaving it empty.
   static_unordered_map(static_unordered_map&& other) noexcept(
       std::is_nothrow_move_constructible<value_type>::value)
       : size_(0),
@@ -208,8 +226,10 @@ class static_unordered_map {
     other.clear();
   }
 
+  /// @brief Destroy all contained elements.
   ~static_unordered_map() { clear(); }
 
+  /// @brief Copy-assign from @p other (self-assignment safe).
   static_unordered_map& operator=(const static_unordered_map& other) {
     if (this == &other) {
       return *this;
@@ -224,6 +244,7 @@ class static_unordered_map {
     return *this;
   }
 
+  /// @brief Move-assign from @p other, leaving it empty (self-assignment safe).
   static_unordered_map& operator=(static_unordered_map&& other) noexcept(
       std::is_nothrow_move_constructible<value_type>::value && std::is_nothrow_move_assignable<Hash>::value &&
       std::is_nothrow_move_assignable<KeyEqual>::value) {
@@ -241,21 +262,30 @@ class static_unordered_map {
     return *this;
   }
 
+  /// @brief Iterator to the first occupied slot (iteration order is unspecified).
   METL_NODISCARD iterator begin() noexcept { return iterator(this, 0); }
   METL_NODISCARD const_iterator begin() const noexcept { return const_iterator(this, 0); }
   METL_NODISCARD const_iterator cbegin() const noexcept { return const_iterator(this, 0); }
 
+  /// @brief Past-the-end iterator.
   METL_NODISCARD iterator end() noexcept { return iterator(this, bucket_count); }
   METL_NODISCARD const_iterator end() const noexcept { return const_iterator(this, bucket_count); }
   METL_NODISCARD const_iterator cend() const noexcept { return const_iterator(this, bucket_count); }
 
+  /// @brief True if the map holds no elements.
   METL_NODISCARD bool empty() const noexcept { return size_ == 0; }
+  /// @brief True if the map has reached its fixed capacity.
   METL_NODISCARD bool full() const noexcept { return size_ == Capacity; }
+  /// @brief Current number of elements.
   METL_NODISCARD size_type size() const noexcept { return size_; }
+  /// @brief Fixed maximum number of elements (the compile-time @c Capacity).
   METL_NODISCARD size_type capacity() const noexcept { return Capacity; }
 
+  /// @brief True if an element with the given key is present.
   METL_NODISCARD bool contains(const key_type& key) const noexcept { return find(key) != nullptr; }
 
+  /// @brief Key lookup: pointer to the mapped value for @p key, or @c nullptr if absent.
+  /// @return Pointer to the mapped value, or @c nullptr when the key is not found.
   METL_NODISCARD mapped_type* find(const key_type& key) noexcept {
     const size_type index = find_existing_index(key);
     return index == npos ? nullptr : &slot_value(index)->value;
@@ -266,6 +296,7 @@ class static_unordered_map {
     return index == npos ? nullptr : &slot_value(index)->value;
   }
 
+  /// @brief Key lookup returning an iterator, or @c end() if the key is absent.
   METL_NODISCARD iterator find_iterator(const key_type& key) noexcept {
     const size_type index = find_existing_index(key);
     return iterator(this, index == npos ? bucket_count : index);
@@ -276,7 +307,7 @@ class static_unordered_map {
     return const_iterator(this, index == npos ? bucket_count : index);
   }
 
-  // STL-compatible iterator-returning find (alias for find_iterator).
+  /// @brief STL-compatible iterator-returning find (alias for @c find_iterator).
   METL_NODISCARD iterator find_iter(const key_type& key) noexcept { return find_iterator(key); }
   METL_NODISCARD const_iterator find_iter(const key_type& key) const noexcept { return find_iterator(key); }
 
@@ -349,6 +380,10 @@ class static_unordered_map {
 
   // ---- Modifiers ----
 
+  /// @brief Insert @p key/@p value only if @p key is absent, without overflowing.
+  /// @return @c true if inserted; @c false if the key already exists OR the map is at capacity.
+  /// @note Unlike @c emplace, a full map or duplicate key is reported by the return value
+  ///       rather than an assertion.
   template <typename K, typename V>
   bool try_emplace(K&& key, V&& value) {
     size_type index = npos;
@@ -370,10 +405,10 @@ class static_unordered_map {
     return true;
   }
 
-  // Like std::unordered_map::emplace: if the key already exists this is a no-op
-  // and returns a reference to the existing element (it does NOT overwrite).
-  // Otherwise the element is inserted. Asserts (precondition) that the map is
-  // not full when the key is absent.
+  /// @brief Insert @p key/@p value, or return the existing element if @p key is already present.
+  /// @return Reference to the inserted or pre-existing element (an existing value is NOT overwritten).
+  /// @pre The map is not full when the key is absent; a violation asserts. Use @c try_emplace to
+  ///      handle a full map without asserting.
   template <typename K, typename V>
   reference emplace(K&& key, V&& value) {
     // Find-existing first so a duplicate key never double-constructs over a
@@ -392,6 +427,8 @@ class static_unordered_map {
     return *slot_value(index);
   }
 
+  /// @brief Assign @p value to an existing @p key, or insert the pair if absent.
+  /// @return @c true on assign or successful insert; @c false only if a new key cannot fit (full).
   template <typename K, typename V>
   bool insert_or_assign(K&& key, V&& value) {
     const size_type existing = find_existing_index(key);
@@ -413,8 +450,10 @@ class static_unordered_map {
     return true;
   }
 
-  // operator[]: default-construct the mapped value if missing, then return a reference.
-  // Asserts that the map is not full when the key is not present.
+  /// @brief Key-based subscript: return the mapped value for @p key, default-constructing and
+  ///        inserting it if the key is absent (like @c std::unordered_map::operator[]).
+  /// @return Reference to the mapped value.
+  /// @pre The map is not full when the key is absent; a violation asserts.
   mapped_type& operator[](const key_type& key) {
     const size_type existing = find_existing_index(key);
     if (existing != npos) {
@@ -430,6 +469,8 @@ class static_unordered_map {
     return slot_value(index)->value;
   }
 
+  /// @brief Key-based subscript (rvalue-key overload); inserts a default value if @p key is absent.
+  /// @pre The map is not full when the key is absent; a violation asserts.
   mapped_type& operator[](key_type&& key) {
     const size_type existing = find_existing_index(key);
     if (existing != npos) {
@@ -445,6 +486,8 @@ class static_unordered_map {
     return slot_value(index)->value;
   }
 
+  /// @brief Erase the element with the given key, if present (leaves a tombstone slot).
+  /// @return @c true if an element was erased; @c false if the key was not found.
   bool erase(const key_type& key) noexcept {
     const size_type index = find_existing_index(key);
     if (index == npos) {
@@ -455,6 +498,7 @@ class static_unordered_map {
     return true;
   }
 
+  /// @brief Remove all elements and reset every slot to empty (size becomes 0).
   void clear() noexcept {
     for (size_type i = 0; i < bucket_count; ++i) {
       if (states_[i] == slot_state::occupied) {
