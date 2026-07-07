@@ -12,6 +12,17 @@
 #include <type_traits>
 #include <utility>
 
+// ASan container annotations. The inline buffer is a single object, so the
+// unused-capacity tail [size(), capacity()) is poisoned to catch out-of-bounds
+// access past size() (à la absl::InlinedVector). Enabled only under
+// AddressSanitizer; a no-op otherwise. Uses the manual poison interface.
+#if defined(__SANITIZE_ADDRESS__) || METL_HAVE_FEATURE(address_sanitizer)
+#define METL_FIXED_VECTOR_ASAN 1
+#include <sanitizer/asan_interface.h>
+#else
+#define METL_FIXED_VECTOR_ASAN 0
+#endif
+
 namespace metl {
 
 template <typename T, std::size_t Capacity>
@@ -29,15 +40,17 @@ class fixed_vector {
   using reverse_iterator = std::reverse_iterator<iterator>;
   using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
-  constexpr fixed_vector() noexcept : size_(0) {}
+  constexpr fixed_vector() noexcept : size_(0) { asan_poison_tail_(); }
 
   fixed_vector(const fixed_vector& other) : size_(0) {
+    asan_poison_tail_();
     for (const auto& value : other) {
       emplace_back(value);
     }
   }
 
   fixed_vector(fixed_vector&& other) noexcept(std::is_nothrow_move_constructible<T>::value) : size_(0) {
+    asan_poison_tail_();
     for (auto& value : other) {
       emplace_back(static_cast<T&&>(value));
     }
@@ -45,13 +58,19 @@ class fixed_vector {
   }
 
   fixed_vector(std::initializer_list<T> il) : size_(0) {
+    asan_poison_tail_();
     METL_ASSERT(il.size() <= Capacity);
     for (const auto& value : il) {
       emplace_back(value);
     }
   }
 
-  ~fixed_vector() { clear(); }
+  ~fixed_vector() {
+    clear();
+    // Unpoison the whole buffer before the storage dies so no stale poison
+    // outlives it (which would false-positive when the memory is reused).
+    asan_unpoison_all_();
+  }
 
   fixed_vector& operator=(const fixed_vector& other) {
     if (this == &other) {
@@ -157,8 +176,10 @@ class fixed_vector {
       return false;
     }
 
+    asan_unpoison_all_();
     ::new (static_cast<void*>(slot_(size_))) T(std::forward<Args>(args)...);
     ++size_;
+    asan_poison_tail_();
     return true;
   }
 
@@ -178,8 +199,10 @@ class fixed_vector {
 
   void pop_back() noexcept {
     METL_ASSERT(size_ > 0);
+    asan_unpoison_all_();
     data()[size_ - 1].~T();
     --size_;
+    asan_poison_tail_();
   }
 
   void clear() noexcept {
@@ -202,6 +225,7 @@ class fixed_vector {
       emplace_back(std::forward<Args>(args)...);
       return begin() + index;
     }
+    asan_unpoison_all_();
     // Construct new element at end via move of last, then shift right.
     ::new (static_cast<void*>(slot_(size_))) T(static_cast<T&&>(data()[size_ - 1]));
     ++size_;
@@ -210,6 +234,7 @@ class fixed_vector {
     }
     data()[index].~T();
     ::new (static_cast<void*>(slot_(index))) T(std::forward<Args>(args)...);
+    asan_poison_tail_();
     return begin() + index;
   }
 
@@ -246,11 +271,13 @@ class fixed_vector {
   iterator erase(const_iterator pos) noexcept(std::is_nothrow_move_assignable<T>::value) {
     METL_ASSERT(pos >= begin() && pos < end());
     const size_type index = static_cast<size_type>(pos - begin());
+    asan_unpoison_all_();
     for (size_type i = index; i + 1 < size_; ++i) {
       data()[i] = static_cast<T&&>(data()[i + 1]);
     }
     data()[size_ - 1].~T();
     --size_;
+    asan_poison_tail_();
     return begin() + index;
   }
 
@@ -263,6 +290,7 @@ class fixed_vector {
     if (erase_count == 0) {
       return begin() + first_index;
     }
+    asan_unpoison_all_();
     for (size_type i = last_index; i < size_; ++i) {
       data()[i - erase_count] = static_cast<T&&>(data()[i]);
     }
@@ -270,6 +298,7 @@ class fixed_vector {
       data()[size_ - 1 - i].~T();
     }
     size_ -= erase_count;
+    asan_poison_tail_();
     return begin() + first_index;
   }
 
@@ -324,6 +353,10 @@ class fixed_vector {
     if (this == &other) {
       return;
     }
+    // Both buffers are written past their current sizes below, so expose the
+    // full capacity of each for the duration of the swap, then re-poison tails.
+    asan_unpoison_all_();
+    other.asan_unpoison_all_();
     const size_type common = (size_ < other.size_) ? size_ : other.size_;
     using std::swap;
     for (size_type i = 0; i < common; ++i) {
@@ -353,6 +386,8 @@ class fixed_vector {
       size_ = new_self;
       other.size_ = new_other;
     }
+    asan_poison_tail_();
+    other.asan_poison_tail_();
   }
 
   span<T> as_span() noexcept { return span<T>(data(), size_); }
@@ -360,6 +395,27 @@ class fixed_vector {
 
  private:
   void* slot_(size_type index) noexcept { return storage_[index].addr(); }
+
+#if METL_FIXED_VECTOR_ASAN
+  // Poison the unused-capacity tail [size_, Capacity). Rounding in the ASan
+  // interface never poisons into the live range [0, size_), so element access
+  // and iteration never false-positive.
+  void asan_poison_tail_() noexcept {
+    if (size_ < Capacity) {
+      ASAN_POISON_MEMORY_REGION(&storage_[size_], (Capacity - size_) * sizeof(storage_for<T>));
+    }
+  }
+  // Expose the whole buffer while a mutating op rearranges elements internally.
+  void asan_unpoison_all_() noexcept {
+    if (Capacity != 0) {
+      ASAN_UNPOISON_MEMORY_REGION(&storage_[0], Capacity * sizeof(storage_for<T>));
+    }
+  }
+#else
+  // No-ops. constexpr so the constexpr default constructor stays constexpr.
+  constexpr void asan_poison_tail_() noexcept {}
+  constexpr void asan_unpoison_all_() noexcept {}
+#endif
 
   storage_for<T> storage_[Capacity == 0 ? 1 : Capacity];
   size_type size_;

@@ -163,6 +163,7 @@ if(METL_BUILD_TESTS)
     fsm_reentrancy
     hash_unique_repr
     intrusive_ptr_contract
+    fixed_vector_asan
   )
 
   foreach(_t IN LISTS _metl_tests)
