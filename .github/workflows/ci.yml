@@ -177,6 +177,53 @@ jobs:
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
+  # Header hygiene — per-header self-containment + umbrella completeness
+  # ---------------------------------------------------------------------------
+  header-checks:
+    name: header-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang
+
+      # Direct implementation of the requirement: every header compiles as its
+      # own translation unit in isolation with -std=c++17 -fsyntax-only.
+      - name: Per-header self-containment (one TU per header, -fsyntax-only)
+        env:
+          CXX: clang++
+        run: |
+          fail=0
+          while IFS= read -r -d '' h; do
+            rel="${h#include/}"
+            echo "checking ${rel}"
+            printf '#include <%s>\n' "${rel}" \
+              | "${CXX}" -std=c++17 -Wall -Wextra -Werror -Iinclude -fsyntax-only -x c++ - \
+              || { echo "NOT SELF-CONTAINED: ${rel}"; fail=1; }
+          done < <(find include/metl -name '*.hpp' -print0)
+          exit "${fail}"
+
+      # The same guarantees are also enforced through CMake/CTest so `ctest`
+      # alone catches regressions on every host in the matrix.
+      - name: Configure
+        env:
+          CC: clang
+          CXX: clang++
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DMETL_WARNINGS_AS_ERRORS=ON
+
+      - name: Build self-containment target
+        run: cmake --build build -j --target metl_header_self_contained
+
+      - name: Umbrella completeness + self-containment (CTest)
+        run: ctest --test-dir build -R 'metl_umbrella_complete|metl_header_self_contained' --output-on-failure
+
+  # ---------------------------------------------------------------------------
   # clang-tidy (advisory — surfaces issues without blocking)
   # ---------------------------------------------------------------------------
   clang-tidy:

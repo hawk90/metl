@@ -163,6 +163,64 @@ if(METL_BUILD_TESTS)
       LABELS "metl"
     )
   endforeach()
+
+  # -------------------------------------------------------------------------
+  # Header hygiene checks
+  #   (a) self-containment: every public header compiles as its own TU
+  #   (b) umbrella completeness: metl.hpp includes every other public header
+  # Gated with the rest of the test surface (skipped e.g. on the freestanding
+  # ARM cross build, whose curated freestanding check is embedded_smoke).
+  # -------------------------------------------------------------------------
+  option(METL_BUILD_HEADER_CHECKS
+         "Build per-header self-containment + umbrella completeness checks" ON)
+  if(METL_BUILD_HEADER_CHECKS)
+    # (a) Generate one translation unit per public header, each including only
+    # that header, and compile them. Building the target IS the check: a header
+    # that is not self-contained fails to compile. CONFIGURE_DEPENDS re-globs so
+    # newly added headers are picked up automatically.
+    file(GLOB_RECURSE _metl_public_headers
+         RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/include
+         CONFIGURE_DEPENDS
+         ${CMAKE_CURRENT_SOURCE_DIR}/include/metl/*.hpp)
+
+    set(_selfcontain_srcs "")
+    set(_selfcontain_dir ${CMAKE_CURRENT_BINARY_DIR}/header_checks)
+    foreach(_h IN LISTS _metl_public_headers)
+      string(MAKE_C_IDENTIFIER "${_h}" _id)
+      set(_gen ${_selfcontain_dir}/selfcontain_${_id}.cpp)
+      set(_content "#include <${_h}>\n")
+      # Only (re)write when content changes, to avoid needless rebuilds.
+      set(_existing "")
+      if(EXISTS ${_gen})
+        file(READ ${_gen} _existing)
+      endif()
+      if(NOT _existing STREQUAL _content)
+        file(WRITE ${_gen} "${_content}")
+      endif()
+      list(APPEND _selfcontain_srcs ${_gen})
+    endforeach()
+
+    add_library(metl_header_self_contained OBJECT ${_selfcontain_srcs})
+    target_link_libraries(metl_header_self_contained PRIVATE metl::metl)
+    target_compile_features(metl_header_self_contained PRIVATE cxx_std_17)
+    set_target_properties(metl_header_self_contained PROPERTIES METL_KIND header_check)
+
+    # Register the self-containment build as a CTest test too, so `ctest` alone
+    # (as CI runs it) fails if any header stops being self-contained.
+    add_test(
+      NAME metl_header_self_contained
+      COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
+              --target metl_header_self_contained --config $<CONFIG>)
+    set_tests_properties(metl_header_self_contained PROPERTIES LABELS "metl")
+
+    # (b) Umbrella completeness.
+    add_test(
+      NAME metl_umbrella_complete
+      COMMAND ${CMAKE_COMMAND}
+              -D METL_INCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
+              -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckUmbrella.cmake)
+    set_tests_properties(metl_umbrella_complete PROPERTIES LABELS "metl")
+  endif()
 endif()
 
 # ---------------------------------------------------------------------------
