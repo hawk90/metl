@@ -1,6 +1,7 @@
 #pragma once
 
 #include "metl/compiler.hpp"
+#include "metl/config.hpp"
 #include "metl/register_access.hpp"
 
 #include <cstdint>
@@ -14,6 +15,9 @@ namespace metl {
 template <typename T, std::uintptr_t Address>
 struct mmio_register {
   static_assert(std::is_trivially_copyable_v<T>, "mmio_register requires a trivially copyable type");
+  // A misaligned volatile access to a peripheral register is undefined
+  // behavior. The address is a compile-time constant, so enforce it here.
+  static_assert(Address % alignof(T) == 0, "mmio_register address must be aligned to alignof(T)");
 
   static constexpr std::uintptr_t address = Address;
 
@@ -44,8 +48,14 @@ class mmio_ptr {
   static_assert(std::is_trivially_copyable_v<T>, "mmio_ptr requires a trivially copyable type");
 
  public:
-  explicit constexpr mmio_ptr(std::uintptr_t address) noexcept
-      : addr_(reinterpret_cast<volatile T*>(address)) {}
+  // NOTE: intentionally NOT constexpr. Its only code path performs an
+  // integer-to-pointer reinterpret_cast, which is never a constant expression;
+  // a `constexpr` constructor with no constant-evaluable path is ill-formed,
+  // no diagnostic required (IFNDR). Alignment is enforced at runtime because a
+  // misaligned volatile access is undefined behavior.
+  explicit mmio_ptr(std::uintptr_t address) noexcept : addr_(reinterpret_cast<volatile T*>(address)) {
+    METL_ASSERT(address % alignof(T) == 0);
+  }
 
   explicit constexpr mmio_ptr(volatile T* p) noexcept : addr_(p) {}
 
