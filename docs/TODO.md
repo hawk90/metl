@@ -28,12 +28,21 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 ## ☐ Open — by priority
 
 ### 🔐 Bug bounty / security (highest signal for a safety-claiming lib)
-- [ ] **Fuzzing harnesses** (libFuzzer/AFL, built under ASan+UBSan): `fixed_string`
+- [x] **Fuzzing harnesses** (libFuzzer, built under ASan+UBSan): `fixed_string`
   from untrusted input, `flat_map`/`static_unordered_map` random op sequences,
-  arena/static allocators, crc. Add a short CI fuzz-smoke per PR.
-- [ ] **OSS-Fuzz registration** — free 24/7 continuous fuzzing + reporting (de-facto
-  continuous bug bounty). Requires a project config PR upstream.
-- [ ] **SECURITY.md** — vulnerability disclosure policy.
+  arena/static allocators, crc — under `fuzz/`, opt-in via Clang-only
+  `METL_BUILD_FUZZERS`. Harnesses drive **contract-valid opcode streams only** so
+  any sanitizer finding is a real defect. Blocking `fuzz-smoke` CI job runs each
+  per push/PR. No library bug found (200k+ runs/target clean).
+- [x] **Continuous fuzzing** — **ClusterFuzzLite** (OSS-Fuzz tech in GitHub
+  Actions, no upstream registration): `.clusterfuzzlite/` + non-blocking
+  `cflite-pr`/`cflite-batch` workflows. The `build.sh`/`Dockerfile` are
+  OSS-Fuzz-compatible.
+- [ ] **OSS-Fuzz upstream registration** — optional drop-in follow-up: PR the
+  (already OSS-Fuzz-compatible) `.clusterfuzzlite/` layout to google/oss-fuzz for
+  free 24/7 continuous fuzzing on Google infra. Requires a project config PR
+  upstream + a maintainer contact email.
+- [x] **SECURITY.md** — vulnerability disclosure policy (root).
 - [ ] **CodeQL** security scan workflow.
 - [ ] **OSSF Scorecard** (posture badge) + optionally SLSA/signed releases.
 

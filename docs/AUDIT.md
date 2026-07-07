@@ -286,3 +286,41 @@ Surveyed the heavy standard headers pulled in by public headers (`<functional>`,
 9. Reconcile `std::`-divergences: `at()` asserts not throws; `flat_map::operator[]` positional; `value()`/`get()` assert. Rename/document.
 10. Fix the concrete High/Med bugs above.
 11. Missing utilities: `fixed_bitset`, documented iterator-invalidation contracts, `expected` monadic ops, `try_value()` recoverable paths, compile-time `static_string_map`.
+
+## Section C — Fuzzing / security (bug bounty)
+
+**Fuzzing harnesses (libFuzzer, ASan+UBSan).** ✅ **DONE** — five harnesses under
+`fuzz/` (`fuzz_fixed_string`, `fuzz_flat_map`, `fuzz_static_unordered_map`,
+`fuzz_allocators`, `fuzz_crc`), each an `LLVMFuzzerTestOneInput` built with
+`-fsanitize=fuzzer,address,undefined` behind the opt-in Clang-only CMake option
+`METL_BUILD_FUZZERS` (default OFF; the default host/arm/sanitizer builds are
+untouched). A blocking `fuzz-smoke` CI job (`needs: preflight`) builds them and
+runs each for a bounded time against a seed corpus, failing on any
+crash/leak/timeout.
+
+**Contract-respecting by construction.** metl containers assert-abort on
+precondition violations (push past capacity, pop empty, OOB index), and an abort
+inside a fuzzer reads as a crash. The harnesses therefore treat the fuzz bytes
+as an **opcode stream of contract-VALID operations only** — `try_*` variants,
+`size()/capacity()` checks before any asserting call, and `% size()`-bounded
+indices — so that any ASan/UBSan finding (heap/stack OOB, UB, use-after-poison,
+leak, uninitialized read) is a **genuine defect**. `fuzz_crc` additionally
+differential-checks overload agreement and the streaming/resumability property
+(fold(prefix) then resume == fold(whole)); a mismatch would be a real CRC bug.
+
+**Findings.** No library defect surfaced. One issue was found and fixed **in the
+harness** during bring-up: an over-strict `fixed_string` invariant
+(`strlen(c_str()) == size()`) that is false by design when the buffer holds an
+embedded NUL (`try_push_back('\0')` is contract-valid) — corrected to
+`strlen(c_str()) <= size()` with the terminator-at-`size()` check retained. This
+is a harness bug, not a metl bug, and confirms the harness would have flagged a
+real terminator/length desync. The libFuzzer engine explored 200k+ runs per
+target with no crash on the current code.
+
+**Continuous fuzzing.** ClusterFuzzLite (`.clusterfuzzlite/` + non-blocking
+`cflite-pr`/`cflite-batch` workflows) runs the OSS-Fuzz toolchain directly in
+GitHub Actions with no upstream registration; its `build.sh`/`Dockerfile` are
+OSS-Fuzz-compatible so upstream google/oss-fuzz registration is a drop-in
+follow-up. `SECURITY.md` documents the disclosure policy. Chosen over an
+immediate OSS-Fuzz PR because it lands entirely in-repo (nothing to merge
+upstream, no project-approval latency) while staying registration-ready.

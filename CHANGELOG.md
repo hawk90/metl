@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Fuzzing harnesses (libFuzzer, ASan+UBSan) + a blocking CI fuzz-smoke job.**
+  Five `LLVMFuzzerTestOneInput` harnesses under `fuzz/`
+  (`fuzz_fixed_string`, `fuzz_flat_map`, `fuzz_static_unordered_map`,
+  `fuzz_allocators`, `fuzz_crc`) drive the targets with the fuzz bytes and are
+  built with `-fsanitize=fuzzer,address,undefined` behind a new Clang-only,
+  default-OFF CMake option `METL_BUILD_FUZZERS` (a non-clang or option-off
+  configure is unaffected; default host/arm/sanitizer builds are untouched).
+  Crucially, the harnesses respect metl's assert-based **contract**: metl
+  containers abort on precondition violations (push past capacity, pop empty,
+  OOB index), so the harnesses perform **only contract-valid operations** —
+  `try_*` variants, `size()/capacity()` checks before any asserting call, and
+  `% size()`-bounded indices — treating the input as an opcode stream. This
+  makes any ASan/UBSan finding (heap/stack OOB, UB, use-after-poison, leak,
+  uninitialized read) a genuine defect rather than a by-design abort.
+  `fuzz_crc` also differential-checks overload agreement and the
+  streaming/resumability property (a mismatch would be a real CRC bug). A new
+  blocking `fuzz-smoke` CI job (`needs: preflight`) builds the harnesses and
+  runs each for a bounded time (`-max_total_time=25`) against a tiny seed corpus
+  under `fuzz/corpus/`, failing on any crash/leak/timeout. No library defect was
+  found (200k+ runs per target clean); one over-strict harness invariant
+  (`fixed_string` `strlen == size`, false by design for embedded NULs) was fixed
+  during bring-up to `strlen <= size`. See `docs/AUDIT.md` Section C.
+- **ClusterFuzzLite continuous fuzzing (OSS-Fuzz tech, no upstream
+  registration).** `.clusterfuzzlite/` (`Dockerfile`, `build.sh`, `project.yaml`)
+  plus non-blocking `cflite-pr` (per-PR, code-change mode) and `cflite-batch`
+  (scheduled) GitHub Actions workflows run the OSS-Fuzz toolchain directly in
+  CI. The `build.sh`/`Dockerfile` are OSS-Fuzz-compatible, so upstream
+  google/oss-fuzz registration remains a drop-in follow-up (tracked in
+  `docs/TODO.md`). These workflows are `continue-on-error` (non-blocking); the
+  blocking, always-green memory-safety gate is the in-repo `fuzz-smoke` job.
+- **`SECURITY.md` — vulnerability disclosure policy.** How to report privately
+  (GitHub security advisory), supported versions, response expectations, and a
+  clear statement that an abort from a documented precondition violation is
+  contractually correct (use `try_*`) — while a memory-safety failure reachable
+  through a contract-valid API is a reportable security issue.
 - **Per-symbol Doxygen API documentation across all public headers.** Every
   public class/struct in `include/metl/` (plus `coro/` and the public-facing
   `detail/construct.hpp`) now carries a `///` brief and a short contract note
