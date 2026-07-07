@@ -811,3 +811,62 @@ jobs:
             zephyrproject/build-metl/CMakeFiles/CMakeOutput.log
             zephyrproject/twister-out/**/build.log
           if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # ESP-IDF component — consume metl as a header-only ESP-IDF component and
+  # build a sample app for ESP32 (Xtensa) and ESP32-C3 (RISC-V).
+  #
+  # Proves metl is usable as an interface-only IDF component: the sample app
+  # (samples/esp-idf/metl_hello) adds this repo's components/ dir via
+  # EXTRA_COMPONENT_DIRS, its `main` component does `REQUIRES metl` to pull in
+  # metl's include/ (registered by components/metl/CMakeLists.txt), and
+  # main.cpp compiles as C++ (ESP-IDF builds .cpp as C++17+ by default, with
+  # exceptions/RTTI OFF — matching metl's contract) and links into the image.
+  #
+  # The esp32 (Xtensa) target is the key new coverage: it exercises a compiler
+  # frontend/target not touched by any other job (ARM, RISC-V, x86, PPC64).
+  # esp32c3 additionally covers the RISC-V ESP variant.
+  #
+  # Approach: the official espressif/esp-idf-ci-action runs `idf.py build`
+  # inside the pinned espressif/idf Docker image — no manual toolchain install.
+  #
+  # ITERATION NOTES (flagged because this can't be run locally on macOS):
+  #   * esp_idf_version pins the espressif/idf Docker tag. v5.3.3 is an exact
+  #     patch pin (reproducible); `release-v5.3` (release branch) or `v5.3`
+  #     (rolling minor) are moving alternatives if the exact tag is unavailable.
+  #   * The action inputs are exactly: path, esp_idf_version, target, command
+  #     (default command is `idf.py build`). There is no extra_docker_args input.
+  #   * `target` sets IDF_TARGET; the matrix covers esp32 (Xtensa) + esp32c3
+  #     (RISC-V). Add esp32s3/esp32c6/... by extending the matrix.
+  #   * C++: ESP-IDF compiles .cpp as C++ automatically (default std is newer
+  #     than C++17, so no CONFIG is needed for metl's C++17 surface); exceptions
+  #     and RTTI are OFF by default, which is exactly metl's contract.
+  #
+  # Provisional: the component + sample are structurally complete and follow
+  # ESP-IDF conventions, but this Docker-based build wiring can't be validated
+  # locally, so it is non-blocking (continue-on-error) until green — same
+  # pattern as the zephyr job above. The public pipeline stays green while this
+  # is tuned.
+  esp-idf:
+    name: esp-idf / ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # esp32 = Xtensa (the truly-new frontend), esp32c3 = RISC-V.
+        target: [esp32, esp32c3]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build the metl sample with ESP-IDF (${{ matrix.target }})
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          # Exact patch pin for reproducibility; see ITERATION NOTES above for
+          # moving alternatives (release-v5.3 / v5.3).
+          esp_idf_version: v5.3.3
+          target: ${{ matrix.target }}
+          path: samples/esp-idf/metl_hello
