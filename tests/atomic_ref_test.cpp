@@ -1,5 +1,6 @@
+#include "metl_check.hpp"
+
 #include <atomic>
-#include <cassert>
 #include <cstdint>
 
 #include <metl/atomic_ref.hpp>
@@ -11,8 +12,8 @@ void test_load_store_u32() {
   metl::atomic_ref<std::uint32_t> ref(storage);
 
   ref.store(0xdeadbeefu);
-  assert(ref.load() == 0xdeadbeefu);
-  assert(storage == 0xdeadbeefu);
+  CHECK_EQ(ref.load(), 0xdeadbeefu);
+  CHECK_EQ(storage, 0xdeadbeefu);
 }
 
 void test_exchange() {
@@ -20,8 +21,8 @@ void test_exchange() {
   metl::atomic_ref<std::uint32_t> ref(storage);
 
   const std::uint32_t prev = ref.exchange(0x22222222u);
-  assert(prev == 0x11111111u);
-  assert(ref.load() == 0x22222222u);
+  CHECK_EQ(prev, 0x11111111u);
+  CHECK_EQ(ref.load(), 0x22222222u);
 }
 
 void test_compare_exchange_strong_success() {
@@ -30,8 +31,8 @@ void test_compare_exchange_strong_success() {
 
   std::uint32_t expected = 100u;
   const bool ok = ref.compare_exchange_strong(expected, 200u);
-  assert(ok);
-  assert(ref.load() == 200u);
+  CHECK(ok);
+  CHECK_EQ(ref.load(), 200u);
 }
 
 void test_compare_exchange_strong_failure() {
@@ -40,9 +41,9 @@ void test_compare_exchange_strong_failure() {
 
   std::uint32_t expected = 999u;
   const bool ok = ref.compare_exchange_strong(expected, 200u);
-  assert(!ok);
-  assert(expected == 100u);  // updated to the actual value
-  assert(ref.load() == 100u);
+  CHECK(!ok);
+  CHECK_EQ(expected, 100u);  // updated to the actual value
+  CHECK_EQ(ref.load(), 100u);
 }
 
 void test_fetch_add_sub() {
@@ -50,12 +51,12 @@ void test_fetch_add_sub() {
   metl::atomic_ref<std::uint32_t> ref(storage);
 
   const std::uint32_t prev = ref.fetch_add(5u);
-  assert(prev == 10u);
-  assert(ref.load() == 15u);
+  CHECK_EQ(prev, 10u);
+  CHECK_EQ(ref.load(), 15u);
 
   const std::uint32_t prev2 = ref.fetch_sub(3u);
-  assert(prev2 == 15u);
-  assert(ref.load() == 12u);
+  CHECK_EQ(prev2, 15u);
+  CHECK_EQ(ref.load(), 12u);
 }
 
 void test_fetch_bitwise() {
@@ -63,13 +64,13 @@ void test_fetch_bitwise() {
   metl::atomic_ref<std::uint32_t> ref(storage);
 
   ref.fetch_and(0x0fff0fffu);
-  assert(ref.load() == 0x0f000f00u);
+  CHECK_EQ(ref.load(), 0x0f000f00u);
 
   ref.fetch_or(0x000000ffu);
-  assert(ref.load() == 0x0f000fffu);
+  CHECK_EQ(ref.load(), 0x0f000fffu);
 
   ref.fetch_xor(0xffffffffu);
-  assert(ref.load() == ~0x0f000fffu);
+  CHECK_EQ(ref.load(), ~0x0f000fffu);
 }
 
 void test_u8_u16_u64() {
@@ -77,21 +78,21 @@ void test_u8_u16_u64() {
     alignas(std::atomic<std::uint8_t>) std::uint8_t s = 0u;
     metl::atomic_ref<std::uint8_t> r(s);
     r.store(0x7fu);
-    assert(r.load() == 0x7fu);
-    assert(r.fetch_add(static_cast<std::uint8_t>(1)) == 0x7fu);
-    assert(r.load() == 0x80u);
+    CHECK_EQ(r.load(), 0x7fu);
+    CHECK_EQ(r.fetch_add(static_cast<std::uint8_t>(1)), 0x7fu);
+    CHECK_EQ(r.load(), 0x80u);
   }
   {
     alignas(std::atomic<std::uint16_t>) std::uint16_t s = 0u;
     metl::atomic_ref<std::uint16_t> r(s);
     r.store(0xabcdu);
-    assert(r.load() == 0xabcdu);
+    CHECK_EQ(r.load(), 0xabcdu);
   }
   {
     alignas(std::atomic<std::uint64_t>) std::uint64_t s = 0ull;
     metl::atomic_ref<std::uint64_t> r(s);
     r.store(0x1122334455667788ull);
-    assert(r.load() == 0x1122334455667788ull);
+    CHECK_EQ(r.load(), 0x1122334455667788ull);
   }
 }
 
@@ -118,5 +119,5 @@ int main() {
   test_fetch_add_sub();
   test_fetch_bitwise();
   test_u8_u16_u64();
-  return 0;
+  return metl_test::exit_code();
 }

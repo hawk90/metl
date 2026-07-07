@@ -79,6 +79,58 @@ jobs:
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
+  # Release + -Werror — gates warning hygiene in an optimized/NDEBUG build.
+  #
+  # Under NDEBUG, asserts (and their operands) compile out, so a variable used
+  # only by an assert becomes -Wunused. The tests use CHECK/CHECK_EQ (which run
+  # in Release too) precisely so this job stays green AND the assertions are
+  # actually exercised in an optimized build. Complements the Debug-only
+  # sanitizer/arm jobs, which never see the NDEBUG warning surface.
+  # ---------------------------------------------------------------------------
+  release-werror:
+    name: release-werror / ${{ matrix.compiler.cc }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - { cc: gcc, cxx: g++ }
+          - { cc: clang, cxx: clang++ }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang
+
+      - name: Configure (Release + warnings as errors)
+        env:
+          CC: ${{ matrix.compiler.cc }}
+          CXX: ${{ matrix.compiler.cxx }}
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMETL_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build -j --config Release
+
+      - name: Test
+        run: ctest --test-dir build -j --output-on-failure -C Release
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-werror-logs-${{ matrix.compiler.cc }}
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
   # LTO / IPO — link-time optimization must stay clean
   # ---------------------------------------------------------------------------
   lto:

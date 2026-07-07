@@ -177,6 +177,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Testing
 
+- **Release coverage hole closed:** `atomic_ref_test` and `register_access_test`
+  used bare `assert()` on locals that were consumed *only* by the assert. Under
+  NDEBUG (Release) the asserts — and therefore those checks — compiled out, both
+  hiding a real coverage gap and tripping `-Wunused-variable` under `-Werror`.
+  Both are migrated to `CHECK` / `CHECK_EQ` from `tests/metl_check.hpp`, so the
+  assertions now run in Release too and the variables are always used.
 - Added `tests/optional_constexpr_test.cpp`, which proves `metl::optional` is
   constant-evaluable on C++20 (`static_assert`s guarded by
   `#if __cplusplus >= 202002L`, a no-op on the C++17 matrix) and runs a runtime
@@ -202,6 +208,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Build
 
+- **`release-werror` CI job** — builds and tests in `Release`
+  (`-DCMAKE_BUILD_TYPE=Release -DMETL_WARNINGS_AS_ERRORS=ON`) with both gcc and
+  clang, gating warning hygiene on the optimized/NDEBUG surface that the
+  Debug-only sanitizer/arm jobs never see (e.g. asserts and their operands
+  compiling out). Added only after the assert-only-variable tests were migrated
+  to `CHECK`/`CHECK_EQ`, so it lands green.
 - **Embedded / environment validation CI matrix** (mirrors the existing
   `arm-cross` job; existing jobs unchanged):
   - `cmake/riscv-none-elf.cmake` toolchain (analogue of `arm-none-eabi.cmake`) and a

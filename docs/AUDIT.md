@@ -181,6 +181,13 @@ recognized signals, so host CI stays green.
 3. ✅ **DONE** — Per-header self-containment compile check + umbrella-completeness check in CI. Added the `metl_header_self_contained` target + `cmake/CheckUmbrella.cmake` CTest guard and a `header-checks` CI job.
 
 **P1 — CI/quality**
+- ✅ **DONE** — Release `-Werror` gate. A `Release` build with `-Werror` failed
+  on assert-only unused variables (`atomic_ref_test`, `register_access_test`):
+  under NDEBUG the asserts — and thus those checks — compiled out, both a real
+  coverage hole and a `-Wunused-variable` error. Both tests migrated to
+  `CHECK`/`CHECK_EQ` (run in Release too), and a `release-werror` CI job
+  (gcc + clang, `Release` + `METL_WARNINGS_AS_ERRORS=ON`, build + ctest) now
+  gates optimized/NDEBUG warning hygiene going forward.
 4. Promote clang-tidy from advisory (`ci.yml:186 continue-on-error`) to blocking.
 5. Code coverage gate (the `try_*`/full-container branches are easy to leave uncovered).
 6. Real google/benchmark benchmarks or remove the dead `metl_cc_benchmark` stub + README claim.
