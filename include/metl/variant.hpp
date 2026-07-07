@@ -163,7 +163,7 @@ struct variant_size<volatile V> : variant_size<V> {};
 template <typename V>
 struct variant_size<const volatile V> : variant_size<V> {};
 
-/// @brief Convenience variable template for `variant_size<V>::value`.
+/// @brief Convenience variable template for the value of `variant_size<V>`.
 template <typename V>
 inline constexpr std::size_t variant_size_v = variant_size<V>::value;
 
@@ -194,7 +194,7 @@ struct variant_alternative<I, const volatile V> {
   using type = typename std::add_cv<typename variant_alternative<I, V>::type>::type;
 };
 
-/// @brief Convenience alias for `variant_alternative<I, V>::type`.
+/// @brief Convenience alias for the type of `variant_alternative<I, V>`.
 template <std::size_t I, typename V>
 using variant_alternative_t = typename variant_alternative<I, V>::type;
 

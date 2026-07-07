@@ -49,7 +49,7 @@ using true_type = std::true_type;
 /// @brief Alias for `std::false_type`.
 using false_type = std::false_type;
 
-/// @brief Alias for `std::enable_if` (the trait, exposing `::type`).
+/// @brief Alias for `std::enable_if` (the trait, exposing a nested type).
 template <bool Condition, typename T = void>
 using enable_if = std::enable_if<Condition, T>;
 
@@ -221,7 +221,7 @@ struct disjunction<Trait> : Trait {};
 template <typename First, typename... Rest>
 struct disjunction<First, Rest...> : std::conditional_t<bool(First::value), First, disjunction<Rest...>> {};
 
-/// @brief Logical NOT of a trait's `::value` (C++17 `std::negation`).
+/// @brief Logical NOT of a trait's boolean value member (C++17 `std::negation`).
 template <typename Trait>
 struct negation : bool_constant<!bool(Trait::value)> {};
 
