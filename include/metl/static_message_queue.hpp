@@ -11,15 +11,17 @@
 
 namespace metl {
 
-// static_message_queue<T, Capacity>
-//
-// A fixed-capacity, single-threaded FIFO message queue (bounded ring buffer).
-//
-// THREADING: this is NOT a concurrent / lock-free queue. head_/tail_/size_ are
-// plain (non-atomic) indices, so it is single-threaded only and is NOT safe to
-// use across an ISR/thread boundary. For single-producer/single-consumer
-// hand-off between an interrupt and the main loop, use metl::spsc_queue, which
-// provides the necessary atomics and memory ordering.
+/// @brief Fixed-capacity single-threaded FIFO message queue (bounded ring buffer).
+///
+/// Backed by an inline array of @c Capacity slots with NO dynamic heap allocation.
+///
+/// @tparam T Element type.
+/// @tparam Capacity Maximum number of elements the queue can hold.
+/// @warning SINGLE-THREADED ONLY. `head_`/`tail_`/`size_` are plain non-atomic
+///          indices: this queue is NOT thread-safe and NOT ISR-safe. Never share an
+///          instance across threads or an ISR/thread boundary. For
+///          single-producer/single-consumer hand-off between an interrupt and the
+///          main loop, use `metl::spsc_queue` instead.
 template <typename T, std::size_t Capacity>
 class static_message_queue {
  public:
@@ -28,8 +30,10 @@ class static_message_queue {
   using reference = T&;
   using const_reference = const T&;
 
+  /// @brief Construct an empty queue.
   constexpr static_message_queue() noexcept : head_(0), tail_(0), size_(0) {}
 
+  /// @brief Destroy the queue, running the destructor of every remaining element.
   ~static_message_queue() { clear(); }
 
   static_message_queue(const static_message_queue& other) : head_(0), tail_(0), size_(0) {
@@ -76,21 +80,33 @@ class static_message_queue {
     return *this;
   }
 
+  /// @brief True if the queue holds no elements.
   METL_NODISCARD constexpr bool empty() const noexcept { return size_ == 0; }
+  /// @brief True if the queue holds @c Capacity elements.
   METL_NODISCARD constexpr bool full() const noexcept { return size_ == Capacity; }
+  /// @brief Current number of queued elements.
   METL_NODISCARD constexpr size_type size() const noexcept { return size_; }
+  /// @brief Maximum number of elements the queue can hold.
   METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
 
+  /// @brief Access the oldest (front) element.
+  /// @return Reference to the front element.
+  /// @pre The queue must not be empty.
   METL_NODISCARD reference front() noexcept {
     METL_ASSERT(size_ > 0);
     return storage_at(head_);
   }
 
+  /// @brief Access the oldest (front) element (const overload).
+  /// @return Const reference to the front element.
+  /// @pre The queue must not be empty.
   METL_NODISCARD const_reference front() const noexcept {
     METL_ASSERT(size_ > 0);
     return storage_at(head_);
   }
 
+  /// @brief Construct an element in place at the back if space is available.
+  /// @return True if enqueued; false if the queue is full.
   template <typename... Args>
   METL_NODISCARD bool try_emplace(Args&&... args) {
     if (full()) {
@@ -103,6 +119,9 @@ class static_message_queue {
     return true;
   }
 
+  /// @brief Construct an element in place at the back, asserting there is room.
+  /// @return Reference to the newly inserted back element.
+  /// @pre The queue must not be full.
   template <typename... Args>
   reference emplace(Args&&... args) {
     const bool inserted = try_emplace(std::forward<Args>(args)...);
@@ -111,12 +130,29 @@ class static_message_queue {
     return back_ref();
   }
 
+  /// @brief Copy-enqueue an element if space is available.
+  /// @param value Element to copy.
+  /// @return True if enqueued; false if the queue is full.
   METL_NODISCARD bool try_push(const T& value) { return try_emplace(value); }
+  /// @brief Move-enqueue an element if space is available.
+  /// @param value Element to move.
+  /// @return True if enqueued; false if the queue is full.
   METL_NODISCARD bool try_push(T&& value) { return try_emplace(static_cast<T&&>(value)); }
 
+  /// @brief Copy-enqueue an element, asserting there is room.
+  /// @param value Element to copy.
+  /// @return Reference to the newly inserted back element.
+  /// @pre The queue must not be full.
   reference push(const T& value) { return emplace(value); }
+  /// @brief Move-enqueue an element, asserting there is room.
+  /// @param value Element to move.
+  /// @return Reference to the newly inserted back element.
+  /// @pre The queue must not be full.
   reference push(T&& value) { return emplace(static_cast<T&&>(value)); }
 
+  /// @brief Move the front element into @c out and remove it, if any.
+  /// @param out Destination that receives the moved-out element on success.
+  /// @return True if an element was popped; false if the queue was empty.
   METL_NODISCARD bool try_pop(T& out) {
     if (empty()) {
       return false;
@@ -127,11 +163,14 @@ class static_message_queue {
     return true;
   }
 
+  /// @brief Remove the front element without returning it.
+  /// @pre The queue must not be empty.
   void pop() noexcept {
     METL_ASSERT(size_ > 0);
     pop_front();
   }
 
+  /// @brief Remove and destroy all elements, leaving the queue empty.
   void clear() noexcept {
     while (!empty()) {
       pop_front();
