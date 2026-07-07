@@ -98,11 +98,27 @@ class arena_allocator {
     const std::uintptr_t current = base + offset_;
     const std::uintptr_t aligned = align_up(current, alignment);
     const size_type padding = static_cast<size_type>(aligned - current);
-    const size_type total_bytes = padding + bytes + sizeof(allocation_record);
 
-    if (padding > remaining() || total_bytes > remaining()) {
+    // Overflow-safe bounds check. Computing `padding + bytes + sizeof(record)`
+    // up front can wrap size_type for a huge `bytes`, yielding a small total
+    // that slips past the bound and overruns the arena. Instead subtract each
+    // component from the remaining space (which never underflows because each
+    // step is guarded), so no addition can overflow before the check.
+    const size_type space = remaining();
+    if (padding > space) {
       return nullptr;
     }
+    size_type left = space - padding;
+    if (bytes > left) {
+      return nullptr;
+    }
+    left -= bytes;
+    if (sizeof(allocation_record) > left) {
+      return nullptr;
+    }
+
+    // Safe now: padding + bytes + sizeof(record) <= space <= Capacity.
+    const size_type total_bytes = padding + bytes + sizeof(allocation_record);
 
     const size_type previous_offset = offset_;
     const size_type payload_offset = previous_offset + padding;

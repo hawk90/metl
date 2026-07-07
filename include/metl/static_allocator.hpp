@@ -24,6 +24,13 @@ class static_allocator {
       return nullptr;
     }
 
+    // Overflow-safe: reject before computing sizeof(T) * count so a huge count
+    // cannot wrap size_type into a small byte request that slips past the
+    // buffer's bounds check. sizeof(T) >= 1, so the division is well-defined.
+    if (count > static_cast<size_type>(-1) / sizeof(T)) {
+      return nullptr;
+    }
+
     void* memory = buffer_.allocate(sizeof(T) * count, alignof(T));
     return static_cast<pointer>(memory);
   }
