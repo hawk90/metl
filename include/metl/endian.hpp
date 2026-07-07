@@ -10,12 +10,31 @@ namespace metl {
 enum class endian {
   little = 0,
   big = 1,
-#if defined(_WIN32) || (defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
+// Byte-order detection. The authoritative signal on GCC/Clang is
+// __BYTE_ORDER__, which every supported cross target (arm-none-eabi,
+// riscv*-elf, powerpc64) defines correctly, so a big-endian toolchain is
+// detected as big-endian. A chain of well-known secondary macros covers
+// compilers that omit __BYTE_ORDER__. If none of these resolve we refuse to
+// guess (a silent little-endian assumption would miscompile to_/from_*_endian
+// on a big-endian target) and stop the build with an actionable diagnostic.
+#if defined(_WIN32)
+  // Windows only runs on little-endian architectures.
   native = little,
-#elif defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#elif defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && \
+    (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+  native = little,
+#elif defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+  native = big,
+#elif defined(__LITTLE_ENDIAN__) || defined(__ARMEL__) || defined(__THUMBEL__) || defined(__AARCH64EL__) || \
+    defined(__MIPSEL__) || defined(__MIPSEL) || defined(_MIPSEL)
+  native = little,
+#elif defined(__BIG_ENDIAN__) || defined(__ARMEB__) || defined(__THUMBEB__) || defined(__AARCH64EB__) || \
+    defined(__MIPSEB__) || defined(__MIPSEB) || defined(_MIPSEB)
   native = big,
 #else
-  native = little,
+#error \
+    "metl/endian.hpp: unable to determine the target byte order. Define __BYTE_ORDER__ " \
+    "(to __ORDER_LITTLE_ENDIAN__ or __ORDER_BIG_ENDIAN__) for your compiler/target."
 #endif
 };
 
