@@ -56,11 +56,37 @@
 #define METL_HAS_ATTRIBUTE(x) 0
 #endif
 
-#if METL_HAS_CPP_ATTRIBUTE(nodiscard) >= 201603L
-#define METL_NODISCARD [[nodiscard]]
+// config.h-style feature detection (abseil `absl/base/config.h`). Each wrapper
+// has a safe fallback so `#if METL_HAVE_*(x)` is always well-formed, even on
+// toolchains lacking the underlying `__has_*` operator.
+
+// METL_HAVE_BUILTIN(x) — is compiler builtin `x` available? (spelled like
+// __has_builtin; kept as a config-style alias of METL_HAS_BUILTIN.)
+#if defined(__has_builtin)
+#define METL_HAVE_BUILTIN(x) __has_builtin(x)
 #else
-#define METL_NODISCARD
+#define METL_HAVE_BUILTIN(x) 0
 #endif
+
+// METL_HAVE_FEATURE(x) — is clang language/sanitizer feature `x` enabled?
+// Defined to 0 on compilers without __has_feature (e.g. gcc, msvc).
+#if defined(__has_feature)
+#define METL_HAVE_FEATURE(x) __has_feature(x)
+#else
+#define METL_HAVE_FEATURE(x) 0
+#endif
+
+// METL_HAVE_INCLUDE(x) — is header `x` includable? Falls back to 0 (assume
+// absent) so it may be used in `#if` on toolchains without __has_include.
+#if defined(__has_include)
+#define METL_HAVE_INCLUDE(x) __has_include(x)
+#else
+#define METL_HAVE_INCLUDE(x) 0
+#endif
+
+// METL_NODISCARD and the rest of the attribute layer live in
+// <metl/attributes.hpp>, included at the end of this header so every
+// translation unit that includes <metl/compiler.hpp> continues to see them.
 
 #if METL_HAS_CPP_ATTRIBUTE(fallthrough) >= 201603L
 #define METL_FALLTHROUGH [[fallthrough]]
@@ -146,3 +172,8 @@ inline constexpr bool has_nodiscard = METL_HAS_CPP_ATTRIBUTE(nodiscard) >= 20160
 inline constexpr bool has_fallthrough = METL_HAS_CPP_ATTRIBUTE(fallthrough) >= 201603L;
 
 }  // namespace metl
+
+// Attribute layer (METL_NODISCARD, METL_LIFETIME_BOUND, METL_CONST_INIT, ...).
+// Included last so it can use the detection macros defined above; guarded by
+// #pragma once so the mutual include with attributes.hpp is safe.
+#include "metl/attributes.hpp"

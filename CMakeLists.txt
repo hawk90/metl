@@ -31,6 +31,7 @@ set(_metl_headers
   include/metl/arena_allocator.hpp
   include/metl/assert.hpp
   include/metl/atomic_ref.hpp
+  include/metl/attributes.hpp
   include/metl/bit.hpp
   include/metl/bitfield.hpp
   include/metl/compiler.hpp
@@ -63,6 +64,7 @@ set(_metl_headers
   include/metl/mmio.hpp
   include/metl/monotonic_buffer.hpp
   include/metl/object_pool.hpp
+  include/metl/optimization.hpp
   include/metl/optional.hpp
   include/metl/register_access.hpp
   include/metl/ring_buffer.hpp
