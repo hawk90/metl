@@ -395,9 +395,16 @@ class variant {
   // remains a valid (but unreachable in normal flow) observable state.
   void assign_from(const variant& other) {
     if (index_ == other.index_) {
-      // Same alternative: destroy + copy-construct in place.
-      destroy_ops()[index_](raw_addr());
-      copy_ops()[other.index_](raw_addr(), other.raw_addr());
+      // Same alternative: destroy + copy-construct in place. Mark the variant
+      // valueless across the (possibly throwing) copy-construct so that, if it
+      // throws, we never leave a destroyed member paired with a stale
+      // discriminant (which would double-destroy). On success the discriminant
+      // is restored.
+      const std::size_t active = index_;
+      destroy_ops()[active](raw_addr());
+      index_ = variant_npos;
+      copy_ops()[active](raw_addr(), other.raw_addr());
+      index_ = active;
       return;
     }
     // Different alternative: copy-construct backup first to minimize valueless window.
@@ -409,8 +416,13 @@ class variant {
 
   void assign_from(variant&& other) {
     if (index_ == other.index_) {
-      destroy_ops()[index_](raw_addr());
-      move_ops()[other.index_](raw_addr(), other.raw_addr());
+      // Same alternative: destroy + move-construct in place, valueless across
+      // the (possibly throwing) move-construct — see assign_from(const&).
+      const std::size_t active = index_;
+      destroy_ops()[active](raw_addr());
+      index_ = variant_npos;
+      move_ops()[active](raw_addr(), other.raw_addr());
+      index_ = active;
       return;
     }
     // Different alternative: move-construct backup first, then assign.
@@ -646,14 +658,23 @@ constexpr decltype(auto) visit(Visitor&& visitor, const variant<Ts...>&& value) 
 
 namespace detail {
 
-template <typename Op, typename... Ts>
-struct compare_visitor {
-  const variant<Ts...>& other;
-  template <typename T>
-  bool operator()(const T& self) const {
-    return Op{}(self, get<T>(other));
+// Compare the active alternatives of two same-index variants *by index* rather
+// than by type. Comparing by type (get<T>) is ill-formed for a variant with
+// duplicate alternative types, since get<T> requires a unique alternative.
+// Precondition: lhs.index() == rhs.index() and neither is valueless.
+template <typename Op, std::size_t I, typename... Ts>
+constexpr bool compare_alternative(const variant<Ts...>& lhs, const variant<Ts...>& rhs) {
+  if constexpr (I >= sizeof...(Ts)) {
+    (void)lhs;
+    (void)rhs;
+    return false;  // Unreachable: index() is always a valid alternative here.
+  } else {
+    if (lhs.index() == I) {
+      return Op{}(*::metl::get_if<I>(&lhs), *::metl::get_if<I>(&rhs));
+    }
+    return compare_alternative<Op, I + 1>(lhs, rhs);
   }
-};
+}
 
 struct cmp_eq {
   template <typename A, typename B>
@@ -702,7 +723,7 @@ constexpr bool operator==(const variant<Ts...>& lhs, const variant<Ts...>& rhs) 
   if (lhs.valueless_by_exception()) {
     return true;
   }
-  return visit(detail::compare_visitor<detail::cmp_eq, Ts...>{rhs}, lhs);
+  return detail::compare_alternative<detail::cmp_eq, 0>(lhs, rhs);
 }
 
 template <typename... Ts>
@@ -713,7 +734,7 @@ constexpr bool operator!=(const variant<Ts...>& lhs, const variant<Ts...>& rhs) 
   if (lhs.valueless_by_exception()) {
     return false;
   }
-  return visit(detail::compare_visitor<detail::cmp_ne, Ts...>{rhs}, lhs);
+  return detail::compare_alternative<detail::cmp_ne, 0>(lhs, rhs);
 }
 
 template <typename... Ts>
@@ -727,7 +748,7 @@ constexpr bool operator<(const variant<Ts...>& lhs, const variant<Ts...>& rhs) {
   if (lhs.index() != rhs.index()) {
     return lhs.index() < rhs.index();
   }
-  return visit(detail::compare_visitor<detail::cmp_lt, Ts...>{rhs}, lhs);
+  return detail::compare_alternative<detail::cmp_lt, 0>(lhs, rhs);
 }
 
 template <typename... Ts>
@@ -741,7 +762,7 @@ constexpr bool operator>(const variant<Ts...>& lhs, const variant<Ts...>& rhs) {
   if (lhs.index() != rhs.index()) {
     return lhs.index() > rhs.index();
   }
-  return visit(detail::compare_visitor<detail::cmp_gt, Ts...>{rhs}, lhs);
+  return detail::compare_alternative<detail::cmp_gt, 0>(lhs, rhs);
 }
 
 template <typename... Ts>
@@ -755,7 +776,7 @@ constexpr bool operator<=(const variant<Ts...>& lhs, const variant<Ts...>& rhs) 
   if (lhs.index() != rhs.index()) {
     return lhs.index() < rhs.index();
   }
-  return visit(detail::compare_visitor<detail::cmp_le, Ts...>{rhs}, lhs);
+  return detail::compare_alternative<detail::cmp_le, 0>(lhs, rhs);
 }
 
 template <typename... Ts>
@@ -769,7 +790,7 @@ constexpr bool operator>=(const variant<Ts...>& lhs, const variant<Ts...>& rhs) 
   if (lhs.index() != rhs.index()) {
     return lhs.index() > rhs.index();
   }
-  return visit(detail::compare_visitor<detail::cmp_ge, Ts...>{rhs}, lhs);
+  return detail::compare_alternative<detail::cmp_ge, 0>(lhs, rhs);
 }
 
 }  // namespace metl
