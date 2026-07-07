@@ -1,0 +1,296 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Host build & test matrix
+  # ---------------------------------------------------------------------------
+  host-test:
+    name: host-test / ${{ matrix.os }} / ${{ matrix.compiler.cc || 'msvc' }} / ${{ matrix.build_type }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        build_type: [Debug, Release]
+        compiler:
+          - { cc: gcc, cxx: g++ }
+          - { cc: clang, cxx: clang++ }
+        exclude:
+          # macOS: only system clang
+          - os: macos-latest
+            compiler: { cc: gcc, cxx: g++ }
+          # Windows: MSVC only — skip both gcc and clang matrix entries
+          - os: windows-latest
+            compiler: { cc: gcc, cxx: g++ }
+          - os: windows-latest
+            compiler: { cc: clang, cxx: clang++ }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang clang-tools
+
+      # macOS: nothing extra (system clang + cmake preinstalled on GH runners)
+      # Windows: nothing extra (MSVC preinstalled on GH runners)
+
+      - name: Configure (POSIX)
+        if: runner.os != 'Windows'
+        env:
+          CC: ${{ matrix.compiler.cc }}
+          CXX: ${{ matrix.compiler.cxx }}
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+      - name: Configure (Windows / MSVC)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+      - name: Build
+        run: cmake --build build -j --config ${{ matrix.build_type }}
+
+      - name: Test
+        run: ctest --test-dir build -j --output-on-failure -C ${{ matrix.build_type }}
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-test-logs-${{ matrix.os }}-${{ matrix.compiler.cc || 'msvc' }}-${{ matrix.build_type }}
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Sanitizers (Linux + Clang, Debug, warnings-as-errors)
+  # ---------------------------------------------------------------------------
+  sanitizers:
+    name: sanitizers / ${{ matrix.san }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - san: asan-ubsan
+            opts: "-DMETL_ENABLE_ASAN=ON -DMETL_ENABLE_UBSAN=ON"
+          - san: tsan
+            opts: "-DMETL_ENABLE_TSAN=ON"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang clang-tools
+
+      - name: Configure
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DMETL_WARNINGS_AS_ERRORS=ON \
+            ${{ matrix.opts }}
+
+      - name: Build
+        run: cmake --build build -j --config Debug
+
+      - name: Test
+        env:
+          UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1:abort_on_error=1"
+          ASAN_OPTIONS: "halt_on_error=1:abort_on_error=1:detect_leaks=1"
+        run: ctest --test-dir build -j --output-on-failure -C Debug
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanitizers-logs-${{ matrix.san }}
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # ARM cross-compile (Cortex-M family, compile + size only)
+  # ---------------------------------------------------------------------------
+  arm-cross:
+    name: arm-cross / ${{ matrix.cpu }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        cpu: [cortex-m0, cortex-m3, cortex-m4, cortex-m7]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ARM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi
+
+      - name: Configure
+        run: |
+          cmake -B build-arm -S . \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake \
+            -DMETL_ARM_CPU=${{ matrix.cpu }} \
+            -DMETL_BUILD_TESTS=OFF \
+            -DMETL_BUILD_EMBEDDED_SMOKE=ON \
+            -DMETL_INSTALL=OFF
+
+      - name: Build
+        run: cmake --build build-arm -j
+
+      - name: Report code size
+        run: arm-none-eabi-size build-arm/libmetl_embedded_smoke.a
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm-cross-logs-${{ matrix.cpu }}
+          path: |
+            build-arm/CMakeFiles/CMakeOutput.log
+            build-arm/CMakeFiles/CMakeError.log
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # clang-tidy (advisory — surfaces issues without blocking)
+  # ---------------------------------------------------------------------------
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang clang-tidy
+
+      - name: Configure with compile commands
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Run clang-tidy on public headers
+        run: |
+          find include/metl -type f -name '*.hpp' -print0 \
+            | xargs -0 -n1 clang-tidy -p build --quiet
+
+  # ---------------------------------------------------------------------------
+  # clang-format (strict — fails on any diff)
+  # ---------------------------------------------------------------------------
+  clang-format:
+    name: clang-format
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+
+      - name: Check formatting
+        run: |
+          find include tests examples \( -name '*.hpp' -o -name '*.cpp' \) \
+            | xargs clang-format --dry-run --Werror
+
+  # ---------------------------------------------------------------------------
+  # Install check — build, install, consume via find_package(metl)
+  # ---------------------------------------------------------------------------
+  install-check:
+    name: install-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Configure metl (install enabled)
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMETL_INSTALL=ON
+
+      - name: Build metl
+        run: cmake --build build -j --config Release
+
+      - name: Install metl into staging prefix
+        run: DESTDIR=$PWD/_install cmake --install build
+
+      - name: Create downstream consumer project
+        run: |
+          mkdir -p /tmp/consumer
+          cat > /tmp/consumer/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.16)
+          project(metl_consumer CXX)
+          set(CMAKE_CXX_STANDARD 17)
+          set(CMAKE_CXX_STANDARD_REQUIRED ON)
+          find_package(metl REQUIRED)
+          add_executable(hello hello.cpp)
+          target_link_libraries(hello PRIVATE metl::metl)
+          EOF
+          cat > /tmp/consumer/hello.cpp <<'EOF'
+          #include <metl/optional.hpp>
+          #include <cstdio>
+          int main() {
+              metl::optional<int> v{42};
+              std::printf("metl optional value: %d\n", v.value());
+              return 0;
+          }
+          EOF
+
+      - name: Configure consumer against installed metl
+        run: |
+          cmake -B /tmp/consumer/build -S /tmp/consumer \
+            -DCMAKE_PREFIX_PATH=$PWD/_install/usr/local
+
+      - name: Build consumer
+        run: cmake --build /tmp/consumer/build -j
+
+      - name: Run consumer
+        run: /tmp/consumer/build/hello
