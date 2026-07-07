@@ -45,6 +45,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`expected`/`variant`/`fixed_vector`/`flat_map`/`flat_set`) carry an honest
   source note that their `constexpr` labels are effective only outside constant
   evaluation; a genuine conversion is deferred (see `docs/AUDIT.md`).
+- **function_ref — dropped the `<memory>` include.** It was pulled in solely
+  for `std::addressof` in one constructor; replaced with a tiny local
+  `metl::detail::function_ref_addressof` (`__builtin_addressof`, universally
+  available on the gcc/clang/MSVC matrix, with the standard operator&-defeating
+  fallback). Behavior and API are unchanged; the header is lighter to include.
+  The `<functional>` includes in `hash`, `optional`, `flat_map`/`flat_set`,
+  `static_unordered_map`/`set`, and `intrusive_ptr` are deliberately kept: they
+  back `std::hash` / `std::equal_to` / `std::less` that are genuinely required
+  (and, for the map/set defaults, are part of the public type), so trimming them
+  would change the API rather than just an include.
 - **function_ref / span:** the callable/container/array constructors mark the
   bound referent `METL_LIFETIME_BOUND`, so clang (`-Wdangling`) diagnoses a
   view that would outlive its referent at the call site. This complements the

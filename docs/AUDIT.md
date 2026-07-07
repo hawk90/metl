@@ -173,6 +173,26 @@ build with an actionable `#error` instead of silently assuming LE. `_WIN32` rema
 fast path (Windows is LE-only). All CI hosts and cross targets define one of the
 recognized signals, so host CI stays green.
 
+### Compile-time cost trimming (best-effort)
+
+Surveyed the heavy standard headers pulled in by public headers (`<functional>`,
+`<memory>`, `<variant>`):
+
+- **Trimmed:** `function_ref.hpp` dropped `<memory>` — it was included only for
+  `std::addressof` in one constructor, now a one-line
+  `metl::detail::function_ref_addressof` (`__builtin_addressof`, with a
+  fallback). No API/behavior change.
+- **`<variant>`:** never included (metl::variant is self-implemented) — nothing
+  to trim.
+- **Deliberately left:** the `<functional>` includes in `hash`, `optional`,
+  `flat_map`/`flat_set`, `static_unordered_map`/`set`, and `intrusive_ptr` back
+  `std::hash` / `std::equal_to` / `std::less`, which are genuinely used (and for
+  the map/set default template parameters are part of the public type). Trimming
+  them would mean substituting a metl-local comparator/hasher, i.e. an API
+  change to the default `Compare`/`Hash`/`KeyEqual` types — out of scope for a
+  no-behavior-change pass. `detail/construct.hpp` pulls `<memory>` only under
+  C++20 (for `std::construct_at`), never on the C++17 surface.
+
 ## Section B — Backlog
 
 **P0 — harness correctness (gates everything)**
