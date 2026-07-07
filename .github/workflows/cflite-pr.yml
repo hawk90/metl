@@ -1,0 +1,46 @@
+name: ClusterFuzzLite PR
+
+# Per-PR fuzzing with the OSS-Fuzz toolchain, run directly in GitHub Actions via
+# ClusterFuzzLite (no upstream registration required). Builds the harnesses from
+# .clusterfuzzlite/ and fuzzes the code touched by the PR for a short bounded
+# time. NON-BLOCKING: the whole job is continue-on-error because the Docker-based
+# build wiring can't be validated on the maintainer's machine; the blocking,
+# always-green memory-safety gate is the plain `fuzz-smoke` job in ci.yml.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  fuzzing:
+    name: cflite-pr
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, undefined]
+    steps:
+      - name: Build fuzzers (${{ matrix.sanitizer }})
+        id: build
+        uses: google/clusterfuzzlite/actions/build_fuzzers@v1
+        with:
+          language: c++
+          sanitizer: ${{ matrix.sanitizer }}
+          # Cache prior corpora to accelerate PR runs when available.
+          storage-repo: https://github.com/${{ github.repository }}.git
+          storage-repo-branch: clusterfuzzlite
+          storage-repo-branch-coverage: clusterfuzzlite-coverage
+
+      - name: Run fuzzers (${{ matrix.sanitizer }})
+        id: run
+        uses: google/clusterfuzzlite/actions/run_fuzzers@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fuzz-seconds: 120
+          mode: 'code-change'
+          sanitizer: ${{ matrix.sanitizer }}
+          output-sarif: true

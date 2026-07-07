@@ -1,0 +1,44 @@
+name: ClusterFuzzLite Batch
+
+# Scheduled longer batch fuzzing with the OSS-Fuzz toolchain via ClusterFuzzLite.
+# Grows and persists a corpus (in the `clusterfuzzlite` branch) so PR runs start
+# warm, and surfaces regressions found over time. NON-BLOCKING: the whole job is
+# continue-on-error; the blocking memory-safety gate is `fuzz-smoke` in ci.yml.
+on:
+  schedule:
+    # Daily at 05:00 UTC.
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  batch-fuzzing:
+    name: cflite-batch
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, undefined]
+    steps:
+      - name: Build fuzzers (${{ matrix.sanitizer }})
+        id: build
+        uses: google/clusterfuzzlite/actions/build_fuzzers@v1
+        with:
+          language: c++
+          sanitizer: ${{ matrix.sanitizer }}
+
+      - name: Run fuzzers (${{ matrix.sanitizer }})
+        id: run
+        uses: google/clusterfuzzlite/actions/run_fuzzers@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fuzz-seconds: 600
+          mode: 'batch'
+          sanitizer: ${{ matrix.sanitizer }}
+          storage-repo: https://github.com/${{ github.repository }}.git
+          storage-repo-branch: clusterfuzzlite
+          storage-repo-branch-coverage: clusterfuzzlite-coverage
