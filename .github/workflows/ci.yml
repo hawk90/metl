@@ -265,6 +265,48 @@ jobs:
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
+  # ARM cross-compile with Clang (second frontend, compile-only)
+  #
+  # Validates that the public headers are portable to a *different* compiler
+  # frontend targeting bare-metal ARM. Clang cross-compiles for the
+  # arm-none-eabi target but has no freestanding C++ standard library of its
+  # own, so it reuses the freestanding libstdc++ headers shipped with
+  # gcc-arm-none-eabi (their search paths are queried from the GCC driver and
+  # handed to clang as -isystem). -fsyntax-only: parse + semantic check only,
+  # no codegen, no link, no run.
+  # ---------------------------------------------------------------------------
+  arm-cross-clang:
+    name: arm-cross-clang / cortex-m4
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install toolchains
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang gcc-arm-none-eabi
+
+      - name: Clang -fsyntax-only over the public headers (arm-none-eabi target)
+        run: |
+          set -euo pipefail
+          arm_flags="-mcpu=cortex-m4 -mthumb -mfloat-abi=soft"
+          # Query the freestanding C++ header search paths from the GCC driver
+          # so clang uses the same target standard library.
+          mapfile -t GXX_INCS < <(arm-none-eabi-g++ ${arm_flags} -E -x c++ -v /dev/null 2>&1 | awk '/#include <...> search starts here:/{f=1;next} /End of search list/{f=0} f{sub(/^[ \t]+/,"");print}')
+          ISYS=()
+          for d in "${GXX_INCS[@]}"; do ISYS+=(-isystem "$d"); done
+          echo "Using GCC target include dirs:"
+          printf '  %s\n' "${GXX_INCS[@]}"
+          clang++ --target=arm-none-eabi ${arm_flags} \
+            -std=c++17 -ffreestanding -fno-exceptions -fno-rtti \
+            -Wall -Wextra \
+            "${ISYS[@]}" -Iinclude \
+            -fsyntax-only tests/embedded_smoke.cpp
+
+  # ---------------------------------------------------------------------------
   # Header hygiene — per-header self-containment + umbrella completeness
   # ---------------------------------------------------------------------------
   header-checks:
