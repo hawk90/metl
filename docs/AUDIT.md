@@ -158,6 +158,24 @@ link+run job. Existing jobs are unchanged.
     package availability). If it proves fragile, `newlib-link` remains the green
     libc-link proof and picolibc+QEMU can be deferred.
 
+- 🟡 **Zephyr module** (`zephyr` CI job) — metl is now packaged as a header-only
+  Zephyr module (`zephyr/module.yml` + `zephyr/CMakeLists.txt` + `zephyr/Kconfig`;
+  interface-only, no sources compiled into the image). A sample under
+  `samples/zephyr/metl_hello/` enables `CONFIG_METL=y`, includes
+  `fixed_vector`/`expected`/`span`, and prints a success sentinel. CI runs inside
+  the official Zephyr CI Docker image (`ghcr.io/zephyrproject-rtos/ci`), inits a
+  throwaway upstream-Zephyr workspace (LTS v3.7.0), then (1) `west build` for
+  `qemu_cortex_m3` as the structural gate and (2) `twister` build+RUN on QEMU
+  asserting the sentinel via the console harness. **May need CI iteration** (this
+  can't be run on macOS locally): candidate points are the pinned CI-image tag,
+  the pinned Zephyr revision, the libc choice in the sample `prj.conf`
+  (`CONFIG_REQUIRES_FULL_LIBCPP=y` is the low-risk default; minimal libc may
+  suffice), and QEMU run/exit semantics. The `west build` step is the
+  high-confidence, correct-by-construction proof; the twister run is the
+  execution assertion that most likely needs tuning. The module manifest, shim,
+  sample, and README "Zephyr" docs are structurally verifiable independent of the
+  CI run.
+
 ### Code-size visibility (arm-cross)
 
 The `arm-cross` job now additionally builds the embedded smoke library in

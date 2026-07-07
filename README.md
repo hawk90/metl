@@ -222,6 +222,60 @@ add_executable(app main.cpp)
 target_link_libraries(app PRIVATE metl::metl)
 ```
 
+## Zephyr
+
+METL ships as a header-only [Zephyr module](https://docs.zephyrproject.org/latest/develop/modules.html).
+The module manifest (`zephyr/module.yml`) plus a tiny CMake/Kconfig shim
+(`zephyr/CMakeLists.txt`, `zephyr/Kconfig`) expose METL's `include/` directory
+to Zephyr applications — no sources are compiled into the RTOS image
+(interface-only module).
+
+Enable it from an application's `prj.conf`:
+
+```conf
+CONFIG_CPP=y
+CONFIG_STD_CPP17=y
+CONFIG_METL=y
+# metl is exception-free / RTTI-free; keep both OFF (Zephyr default).
+CONFIG_CPP_EXCEPTIONS=n
+CONFIG_CPP_RTTI=n
+```
+
+Point Zephyr at this checkout as an extra module and build the bundled sample
+([`samples/zephyr/metl_hello`](samples/zephyr/metl_hello)):
+
+```sh
+# From an initialized Zephyr workspace (west + Zephyr SDK):
+west build -b qemu_cortex_m3 samples/zephyr/metl_hello \
+  -- -DEXTRA_ZEPHYR_MODULES=/abs/path/to/metl
+
+# Build and RUN on QEMU, asserting the sample's success sentinel:
+west twister -p qemu_cortex_m3 -T samples/zephyr/metl_hello \
+  -x=EXTRA_ZEPHYR_MODULES=/abs/path/to/metl
+```
+
+Alternatively, add METL to your workspace's `west.yml` manifest so `west update`
+fetches it and it is discovered as a module automatically. Application code then
+just includes the headers:
+
+```cpp
+#include <zephyr/kernel.h>
+#include <metl/fixed_vector.hpp>
+#include <metl/expected.hpp>
+
+int main(void) {
+    metl::fixed_vector<int, 8> v;
+    v.push_back(42);
+    printk("metl on Zephyr: %d\n", v[0]);
+    return 0;
+}
+```
+
+> C++ standard library note: the sample uses `CONFIG_REQUIRES_FULL_LIBCPP=y` as
+> a low-risk default. METL is freestanding-friendly, so the minimal libc may
+> also work for headers that don't pull in `<functional>` — see the comments in
+> [`samples/zephyr/metl_hello/prj.conf`](samples/zephyr/metl_hello/prj.conf).
+
 ## Compatibility matrix
 
 | Toolchain         | Minimum version |
@@ -258,6 +312,9 @@ metl/
 │   └── metl/
 ├── tests/
 ├── examples/
+├── samples/
+│   └── zephyr/         # Zephyr sample app (metl_hello)
+├── zephyr/             # Zephyr module manifest + CMake/Kconfig shim
 ├── docs/
 └── .github/
 ```

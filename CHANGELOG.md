@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Zephyr module support.** metl is now consumable as a header-only
+  [Zephyr module](https://docs.zephyrproject.org/latest/develop/modules.html):
+  `zephyr/module.yml` (manifest) plus a minimal `zephyr/CMakeLists.txt` +
+  `zephyr/Kconfig` shim expose metl's `include/` to Zephyr applications
+  (interface-only — no sources compiled into the RTOS image). Applications opt
+  in with `CONFIG_METL=y`. A runnable sample lives under
+  `samples/zephyr/metl_hello/` (`CMakeLists.txt`, `prj.conf`, `src/main.cpp`,
+  `sample.yaml`) exercising `fixed_vector` + `expected` + `span` on
+  `qemu_cortex_m3` / `native_sim`. A new `zephyr` CI job builds the sample in
+  the official Zephyr CI Docker image and runs it under QEMU via twister,
+  asserting a success sentinel. See the README "Zephyr" section.
 - **Portable attribute layer (`metl/attributes.hpp`, abseil `attributes.h`
   style):** `__has_cpp_attribute`/`__has_attribute`-gated macros with empty
   fallbacks, so applying one is always safe (honored or a no-op). Consolidates

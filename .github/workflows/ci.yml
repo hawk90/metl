@@ -723,3 +723,86 @@ jobs:
 
       - name: Run consumer
         run: /tmp/consumer/build/hello
+
+  # ---------------------------------------------------------------------------
+  # Zephyr module — consume metl as a Zephyr module and build+run a sample.
+  #
+  # Proves metl is usable as an "interface-only" Zephyr module: the sample app
+  # (samples/zephyr/metl_hello) enables CONFIG_METL=y, finds <metl/...> via the
+  # module's zephyr/CMakeLists.txt include hook, compiles as C++17 with no
+  # exceptions/RTTI, and links against Zephyr's C++ runtime on a Cortex-M target.
+  #
+  # Approach: run inside the official Zephyr CI Docker image (SDK + west + qemu
+  # preinstalled), init a THROWAWAY upstream-Zephyr workspace pinned to the LTS
+  # release, then point Zephyr at this checkout via EXTRA_ZEPHYR_MODULES.
+  #   1. `west build` for qemu_cortex_m3 — the hard structural gate (compile +
+  #      link; very high confidence, correct-by-construction).
+  #   2. `twister` build+RUN on qemu_cortex_m3 — launches QEMU and asserts the
+  #      sample's "metl on Zephyr: OK" sentinel via the console harness.
+  #
+  # ITERATION NOTES (flagged because this can't be run locally on macOS):
+  #   * Container tag `v0.27.4` pins the Zephyr CI image; bump if the SDK/west
+  #     combo it ships can't build the pinned Zephyr (v3.7.0 LTS). `:latest` is
+  #     the fallback if the pinned tag is unavailable.
+  #   * ZEPHYR_SDK_INSTALL_DIR is provided by the CI image; `west build` should
+  #     auto-detect the toolchain. If not, set ZEPHYR_TOOLCHAIN_VARIANT=zephyr.
+  #   * If the twister run proves flaky (QEMU exit/semihosting quirks), the
+  #     `west build` step above is the guaranteed structural proof; the run can
+  #     be narrowed to native_sim or dropped while iterating.
+  #   * libc choice lives in the sample prj.conf (CONFIG_REQUIRES_FULL_LIBCPP=y,
+  #     the low-risk default). See that file to try minimal libc.
+  zephyr:
+    name: zephyr / qemu_cortex_m3
+    runs-on: ubuntu-22.04
+    container: ghcr.io/zephyrproject-rtos/ci:v0.27.4
+    # Zephyr workspace init + build is slow; give it plenty of headroom.
+    timeout-minutes: 60
+    env:
+      # The CI image ships the SDK here and exports this variable; restate it so
+      # CMake's Zephyr toolchain lookup is unambiguous.
+      ZEPHYR_TOOLCHAIN_VARIANT: zephyr
+
+    steps:
+      - name: Checkout metl
+        uses: actions/checkout@v5
+        with:
+          path: metl
+
+      - name: Initialize a throwaway upstream Zephyr workspace
+        run: |
+          set -euo pipefail
+          # Pin upstream Zephyr to the v3.7.0 LTS. qemu_cortex_m3 + native_sim
+          # both exist there. Shallow-clone modules to keep the checkout fast.
+          west init -m https://github.com/zephyrproject-rtos/zephyr --mr v3.7.0 zephyrproject
+          cd zephyrproject
+          west update --narrow -o=--depth=1
+          west zephyr-export
+
+      - name: Build the sample for qemu_cortex_m3 (structural gate)
+        working-directory: zephyrproject
+        run: |
+          set -euo pipefail
+          west build -b qemu_cortex_m3 \
+            -d build-metl \
+            "$GITHUB_WORKSPACE/metl/samples/zephyr/metl_hello" \
+            -- -DEXTRA_ZEPHYR_MODULES="$GITHUB_WORKSPACE/metl"
+
+      - name: Build + run on QEMU via twister (assert sentinel)
+        working-directory: zephyrproject
+        run: |
+          set -euo pipefail
+          ./zephyr/scripts/twister -v --inline-logs \
+            -p qemu_cortex_m3 \
+            -T "$GITHUB_WORKSPACE/metl/samples/zephyr/metl_hello" \
+            -x=EXTRA_ZEPHYR_MODULES="$GITHUB_WORKSPACE/metl"
+
+      - name: Upload Zephyr build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: zephyr-logs
+          path: |
+            zephyrproject/build-metl/CMakeFiles/CMakeError.log
+            zephyrproject/build-metl/CMakeFiles/CMakeOutput.log
+            zephyrproject/twister-out/**/build.log
+          if-no-files-found: ignore
