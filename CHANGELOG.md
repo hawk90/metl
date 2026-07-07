@@ -83,6 +83,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **endian:** `endian::native` no longer silently assumes little-endian when the
+  byte order can't be detected. `__BYTE_ORDER__` (defined by every supported GCC/Clang
+  cross target, big-endian included) remains the authoritative signal; a chain of
+  well-known secondary macros (`__BIG_ENDIAN__`, `__ARMEB__`, `__AARCH64EB__`,
+  `__MIPSEB__`, … and their LE counterparts) is checked next, and if none resolve the
+  header stops with an actionable `#error` instead of guessing little-endian (which
+  would miscompile `to_/from_*_endian` on an undetected big-endian target). Now
+  exercised by a big-endian (`powerpc64`) CI job.
 - **assert:** the failed-assert and panic paths are now provably `[[noreturn]]`.
   After invoking the (customizable) handler, `detail::assertion_failed`,
   `detail::panic_failed`, and `panic` unconditionally `std::abort()`, so a
@@ -177,6 +185,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Build
 
+- **Embedded / environment validation CI matrix** (mirrors the existing
+  `arm-cross` job; existing jobs unchanged):
+  - `cmake/riscv-none-elf.cmake` toolchain (analogue of `arm-none-eabi.cmake`) and a
+    `riscv-cross` job building the freestanding embedded-smoke library with the
+    bare-metal RISC-V GNU toolchain for `rv32imac` (ilp32) and `rv64` (lp64), selected
+    via the new `METL_RISCV_ARCH` option. Compile + size only.
+  - `arm-cross-clang` job — a second compiler frontend (clang, `--target=arm-none-eabi
+    -mcpu=cortex-m4 -ffreestanding -fsyntax-only`) validates the public headers for
+    bare-metal ARM, reusing `gcc-arm-none-eabi`'s freestanding libstdc++ headers.
+  - `big-endian` job — `powerpc64-linux-gnu` syntax-checks every header big-endian and
+    builds + runs `endian_test` under `qemu-user`, exercising `endian.hpp` on a real
+    big-endian target.
+  - `newlib-link` job — links `tests/embedded/semihost_smoke.cpp` against newlib-nano
+    (`--specs=nano.specs --specs=nosys.specs`) for Cortex-M3, proving metl links
+    against a real bare-metal libc (link + size, no run).
+  - `picolibc-qemu` job — links the same program against picolibc with semihosting
+    (`tests/embedded/mps2-an385.ld`) and runs it under `qemu-system-arm -semihosting`,
+    asserting a success sentinel — proving metl links *and runs* on a real embedded
+    libc. (picolibc + libstdc++ linking is version-sensitive; the `newlib-link` job is
+    the guaranteed-green libc-link fallback.)
 - Added per-header self-containment and umbrella-completeness checks: the
   `metl_header_self_contained` target compiles one translation unit per public
   header, `cmake/CheckUmbrella.cmake` verifies `metl.hpp` includes every other

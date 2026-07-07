@@ -89,6 +89,56 @@ construction.
   on ASan; a `constexpr`-safe no-op otherwise. Covered by
   `tests/fixed_vector_asan_test.cpp` (boundary asserts + a forked OOB death test).
 
+## Section D — Embedded & environment validation (CI)
+
+Portability is a load-bearing claim for an embedded library, so the CI matrix now
+validates it directly instead of trusting a single host+arch. All new cross jobs
+mirror the existing `arm-cross` pattern (checkout@v5 → apt install → configure with a
+`cmake/` toolchain file → build → size) and are compile-only except the one
+link+run job. Existing jobs are unchanged.
+
+- ✅ **RISC-V freestanding compile** (`riscv-cross`) — `cmake/riscv-none-elf.cmake`
+  (mirrors `arm-none-eabi.cmake`) builds `metl_embedded_smoke` with the bare-metal
+  newlib RISC-V GNU toolchain (`gcc-riscv64-unknown-elf`) for **rv32imac** (ilp32)
+  and **rv64** (lp64) via the `METL_RISCV_ARCH` option. Compile + `size` only.
+- ✅ **Second-frontend ARM** (`arm-cross-clang`) — clang `--target=arm-none-eabi
+  -mcpu=cortex-m4 -ffreestanding -fsyntax-only` over the full public-header smoke
+  TU, reusing the freestanding libstdc++ headers from `gcc-arm-none-eabi` (their
+  search paths queried from the GCC driver, handed to clang as `-isystem`). Proves a
+  second compiler frontend accepts the headers for bare-metal ARM.
+- ✅ **Big-endian** (`big-endian`) — `powerpc64-linux-gnu` (a big-endian target whose
+  GCC defines `__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__`) syntax-checks every header
+  big-endian and **builds + runs** `endian_test` under `qemu-user`, whose new
+  byte-representation assertions fail loudly if `endian::native` were mis-detected.
+- ✅ **Real embedded libc** — two jobs prove metl links (and runs) on a bare-metal
+  libc, not just compiles:
+  - `newlib-link` — links `tests/embedded/semihost_smoke.cpp` (a `main()` exercising
+    optional/fixed_vector/expected/crc32/endian/fixed_string) against **newlib-nano**
+    (`--specs=nano.specs --specs=nosys.specs`) for Cortex-M3. Link + `size`, no run.
+    Guaranteed-green baseline / fallback for the picolibc run below.
+  - 🟡 `picolibc-qemu` — links the same program against **picolibc**
+    (`--specs=picolibc.specs --oslib=semihost`, `tests/embedded/mps2-an385.ld`) and
+    **RUNS** it under `qemu-system-arm -semihosting`, asserting a `METL_SEMIHOST_PASS`
+    sentinel (task #7 — the one place we go beyond compile/link). picolibc + libstdc++
+    linking is version-sensitive; **may need CI iteration** (spec-file flag naming,
+    package availability). If it proves fragile, `newlib-link` remains the green
+    libc-link proof and picolibc+QEMU can be deferred.
+
+### `endian.hpp` hardening (byte-order detection)
+
+The big-endian job confirmed the *primary* detection path is already correct: every
+supported cross toolchain (arm-none-eabi, riscv*-elf, powerpc64) defines
+`__BYTE_ORDER__`, so the existing `__ORDER_BIG_ENDIAN__` branch resolves
+`endian::native = big` correctly and the new representation test passes big-endian.
+The latent bug was the **fallback**: when `__BYTE_ORDER__` was undefined the header
+*silently assumed little-endian*, which would miscompile `to_/from_*_endian` on an
+undetected big-endian target. Fixed: the `#else` no longer guesses — it adds a chain
+of well-known secondary endianness macros (`__BIG_ENDIAN__`, `__ARMEB__`,
+`__AARCH64EB__`, `__MIPSEB__`, … and LE counterparts) and, if none resolve, stops the
+build with an actionable `#error` instead of silently assuming LE. `_WIN32` remains a
+fast path (Windows is LE-only). All CI hosts and cross targets define one of the
+recognized signals, so host CI stays green.
+
 ## Section B — Backlog
 
 **P0 — harness correctness (gates everything)**
