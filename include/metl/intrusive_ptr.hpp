@@ -11,32 +11,42 @@
 
 namespace metl {
 
+/// @brief Tag type selecting the adopt-reference intrusive_ptr constructor.
 struct adopt_ref_t {
   explicit constexpr adopt_ref_t(int) noexcept {}
 };
 
+/// @brief Tag type selecting the retain-reference intrusive_ptr constructor.
 struct retain_ref_t {
   explicit constexpr retain_ref_t(int) noexcept {}
 };
 
+/// @brief Tag: take ownership of an existing strong reference (no add-ref).
 inline constexpr adopt_ref_t adopt_ref{0};
+/// @brief Tag: acquire a new strong reference (add-ref on construction).
 inline constexpr retain_ref_t retain_ref{0};
 
+/// @brief Selects a non-atomic or atomic (thread-safe) reference counter.
 enum class refcount_kind { non_atomic, atomic };
 
-// CRTP base providing reference counting and ADL hooks for intrusive_ptr.
-//
-// Embedded note: heap allocation is OFF. When the reference count reaches
-// zero, this base only invokes the derived destructor. Memory deallocation
-// is the user's responsibility (typically through metl::object_pool or
-// static storage). Users may also override the ADL hooks
-// intrusive_ptr_add_ref / intrusive_ptr_release for their own types and
-// bypass this CRTP base entirely.
+/// @brief CRTP base adding an embedded reference count and intrusive_ptr hooks.
+///
+/// Derive as `class T : public intrusive_ref_counter<T>` to make T usable with
+/// intrusive_ptr. The friend hooks intrusive_ptr_add_ref / intrusive_ptr_release
+/// maintain the count; when it reaches zero only the derived destructor runs —
+/// memory deallocation is the user's responsibility (object pool, static
+/// storage, etc.). No heap allocation is performed.
+/// @tparam Derived The most-derived type (CRTP self-type).
+/// @tparam Kind Non-atomic (default) or atomic for thread-safe counting.
+/// @warning On release, the object is destroyed through `Derived`; a
+///          static_assert requires Derived to be `final` or to have a virtual
+///          destructor so the correct most-derived object is destroyed.
 template <typename Derived, refcount_kind Kind = refcount_kind::non_atomic>
 class intrusive_ref_counter {
  public:
   static constexpr refcount_kind kind = Kind;
 
+  /// @brief Returns the current strong reference count.
   METL_NODISCARD std::size_t use_count() const noexcept {
     if constexpr (Kind == refcount_kind::atomic) {
       return refcount_.load(std::memory_order_acquire);
@@ -104,29 +114,46 @@ class intrusive_ref_counter {
 // to itself). The attribute lets it be passed/returned in a register and
 // destroyed by the callee, matching a raw pointer's calling convention, without
 // changing observable behavior. No-op on toolchains lacking the attribute.
+/// @brief Owning smart pointer for types carrying their own reference count.
+///
+/// Manages the strong reference count through the ADL hooks
+/// intrusive_ptr_add_ref / intrusive_ptr_release (supplied by
+/// intrusive_ref_counter or user-defined). Copy shares ownership (add-ref); move
+/// transfers it. No separate control block and no heap allocation of its own.
+/// @tparam T Pointee type providing the intrusive ref-count hooks.
+/// @warning The pointee must supply the intrusive_ptr_add_ref /
+///          intrusive_ptr_release hooks, or use will fail to compile.
 template <typename T>
 class METL_ATTRIBUTE_TRIVIAL_ABI intrusive_ptr {
  public:
   using element_type = T;
   using pointer = T*;
 
+  /// @brief Constructs an empty (null) pointer.
   constexpr intrusive_ptr() noexcept : ptr_(nullptr) {}
+  /// @brief Constructs an empty (null) pointer.
   constexpr intrusive_ptr(std::nullptr_t) noexcept : ptr_(nullptr) {}
 
+  /// @brief Adopts an existing strong reference without incrementing the count.
+  /// @param ptr Raw pointer whose reference is transferred to this object.
   intrusive_ptr(pointer ptr, adopt_ref_t) noexcept : ptr_(ptr) {}
 
+  /// @brief Retains a new strong reference, incrementing the count.
+  /// @param ptr Raw pointer to share ownership of (may be null).
   intrusive_ptr(pointer ptr, retain_ref_t) : ptr_(ptr) {
     if (ptr_ != nullptr) {
       intrusive_ptr_add_ref(ptr_);
     }
   }
 
+  /// @brief Copy constructor; shares ownership by incrementing the count.
   intrusive_ptr(const intrusive_ptr& other) : ptr_(other.ptr_) {
     if (ptr_ != nullptr) {
       intrusive_ptr_add_ref(ptr_);
     }
   }
 
+  /// @brief Move constructor; transfers ownership and nulls the source.
   intrusive_ptr(intrusive_ptr&& other) noexcept : ptr_(other.ptr_) { other.ptr_ = nullptr; }
 
   // Converting copy constructor: intrusive_ptr<U> -> intrusive_ptr<T>
@@ -142,8 +169,10 @@ class METL_ATTRIBUTE_TRIVIAL_ABI intrusive_ptr {
   template <typename U, typename = std::enable_if_t<std::is_convertible_v<U*, T*> && !std::is_same_v<U, T>>>
   intrusive_ptr(intrusive_ptr<U>&& other) noexcept : ptr_(other.detach()) {}
 
+  /// @brief Destructor; releases the held reference if any.
   ~intrusive_ptr() { reset(); }
 
+  /// @brief Copy assignment; releases the current reference and shares `other`.
   intrusive_ptr& operator=(const intrusive_ptr& other) {
     if (this == &other) {
       return *this;
@@ -157,6 +186,7 @@ class METL_ATTRIBUTE_TRIVIAL_ABI intrusive_ptr {
     return *this;
   }
 
+  /// @brief Move assignment; releases the current reference and takes `other`.
   intrusive_ptr& operator=(intrusive_ptr&& other) noexcept {
     if (this == &other) {
       return *this;
@@ -168,19 +198,28 @@ class METL_ATTRIBUTE_TRIVIAL_ABI intrusive_ptr {
     return *this;
   }
 
+  /// @brief Releases the held reference, becoming empty.
   intrusive_ptr& operator=(std::nullptr_t) noexcept {
     reset();
     return *this;
   }
 
+  /// @brief Returns the raw pointer without affecting the reference count.
   METL_NODISCARD pointer get() const noexcept { return ptr_; }
 
+  /// @brief Dereferences the managed object.
+  /// @pre The pointer must be non-null.
   METL_NODISCARD T& operator*() const noexcept { return *ptr_; }
+  /// @brief Member access on the managed object.
+  /// @pre The pointer must be non-null.
   METL_NODISCARD pointer operator->() const noexcept { return ptr_; }
 
+  /// @brief Tests whether a non-null object is held.
   METL_NODISCARD constexpr explicit operator bool() const noexcept { return ptr_ != nullptr; }
+  /// @brief Tests whether a non-null object is held.
   METL_NODISCARD constexpr bool has_value() const noexcept { return ptr_ != nullptr; }
 
+  /// @brief Releases the held reference (decrementing the count) and nulls this.
   void reset() noexcept {
     if (ptr_ != nullptr) {
       intrusive_ptr_release(ptr_);
@@ -188,14 +227,16 @@ class METL_ATTRIBUTE_TRIVIAL_ABI intrusive_ptr {
     }
   }
 
-  // Release ownership without decrementing the reference count. Returns the
-  // raw pointer; the caller now owns the strong reference.
+  /// @brief Releases ownership without decrementing the reference count.
+  /// @return The raw pointer; the caller now owns the strong reference and must
+  ///         eventually release it.
   METL_NODISCARD pointer detach() noexcept {
     pointer result = ptr_;
     ptr_ = nullptr;
     return result;
   }
 
+  /// @brief Swaps the managed pointers of two intrusive_ptr objects.
   void swap(intrusive_ptr& other) noexcept {
     pointer temp = ptr_;
     ptr_ = other.ptr_;
@@ -366,6 +407,7 @@ METL_NODISCARD inline bool operator>=(std::nullptr_t, const intrusive_ptr<T>& rh
 // swap
 // ---------------------------------------------------------------------------
 
+/// @brief ADL swap for two intrusive_ptr objects.
 template <typename T>
 inline void swap(intrusive_ptr<T>& lhs, intrusive_ptr<T>& rhs) noexcept {
   lhs.swap(rhs);

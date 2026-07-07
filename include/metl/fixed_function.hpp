@@ -416,11 +416,22 @@ constexpr moveonly_ops<false, R, Args...> moveonly_ops_for_t<F, false, R, Args..
 // fixed_function
 // ============================================================================
 
+/// @brief Owning, type-erased callable stored in a fixed inline buffer.
+///
+/// Like std::function but with no heap allocation: the callable is copied into
+/// an inline buffer of `Capacity` bytes (aligned to std::max_align_t). Copyable
+/// and movable. Specialized for both `R(Args...)` and `R(Args...) noexcept`.
+/// @tparam Signature The call signature, e.g. `int(float)` or `void() noexcept`.
+/// @tparam Capacity Inline storage size in bytes (default 32).
+/// @warning A callable larger than `Capacity` cannot be stored: `try_assign`
+///          returns false, while the converting constructor / `assign` assert.
+///          Alignment stricter than std::max_align_t fails a static_assert.
 template <typename Signature, std::size_t Capacity = 32>
 class fixed_function;  // primary template, undefined.
 
 // ---- non-noexcept signature -------------------------------------------------
 
+/// @brief fixed_function specialization for a non-noexcept `R(Args...)` signature.
 template <typename R, typename... Args, std::size_t Capacity>
 class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<false, Capacity, R, Args...> {
   using base = detail::fixed_function_impl<false, Capacity, R, Args...>;
@@ -431,11 +442,17 @@ class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<
   using base::reset;
   using base::swap;
 
+  /// @brief Constructs an empty fixed_function.
   constexpr fixed_function() noexcept = default;
+  /// @brief Constructs an empty fixed_function.
   constexpr fixed_function(std::nullptr_t) noexcept : base(nullptr) {}
 
+  /// @brief Constructs from a function pointer.
+  /// @pre `function` is non-null and fits in `Capacity` (else asserts).
   fixed_function(R (*function)(Args...)) : base() { assign(function); }
 
+  /// @brief Constructs from any compatible copy-constructible callable.
+  /// @pre The decayed callable fits within `Capacity` bytes (else asserts).
   template <typename F,
             typename Decayed = typename std::decay<F>::type,
             typename = typename std::enable_if<!std::is_same<Decayed, fixed_function>::value &&
@@ -471,27 +488,37 @@ class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<
     return *this;
   }
 
+  /// @brief Invokes the stored callable.
+  /// @pre A target must be stored (has_value() is true); else asserts.
   R operator()(Args... args) const {
     METL_ASSERT(this->ops_ != nullptr);
     return this->ops_->invoke(this->storage_ptr(), std::forward<Args>(args)...);
   }
 
+  /// @brief Stores a function pointer if it fits.
+  /// @return true on success; false if the callable exceeds `Capacity`.
   bool try_assign(R (*function)(Args...)) {
     METL_ASSERT(function != nullptr);
     return this->try_assign_callable(function);
   }
 
+  /// @brief Stores any compatible callable if it fits.
+  /// @return true on success; false if the callable exceeds `Capacity`.
   template <typename F>
   bool try_assign(F&& function) {
     return this->try_assign_callable(std::forward<F>(function));
   }
 
+  /// @brief Stores a function pointer.
+  /// @pre The callable fits within `Capacity` (else asserts).
   void assign(R (*function)(Args...)) {
     const bool assigned = try_assign(function);
     METL_ASSERT(assigned);
     (void)assigned;
   }
 
+  /// @brief Stores any compatible callable.
+  /// @pre The callable fits within `Capacity` (else asserts).
   template <typename F>
   void assign(F&& function) {
     const bool assigned = try_assign(std::forward<F>(function));
@@ -502,6 +529,8 @@ class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<
 
 // ---- noexcept signature -----------------------------------------------------
 
+/// @brief fixed_function specialization for a `R(Args...) noexcept` signature.
+/// @note Requires a noexcept-invocable callable (enforced by static_assert).
 template <typename R, typename... Args, std::size_t Capacity>
 class fixed_function<R(Args...) noexcept, Capacity>
     : public detail::fixed_function_impl<true, Capacity, R, Args...> {
@@ -516,8 +545,12 @@ class fixed_function<R(Args...) noexcept, Capacity>
   constexpr fixed_function() noexcept = default;
   constexpr fixed_function(std::nullptr_t) noexcept : base(nullptr) {}
 
+  /// @brief Constructs from a noexcept function pointer.
+  /// @pre `function` is non-null and fits in `Capacity` (else asserts).
   fixed_function(R (*function)(Args...) noexcept) : base() { assign(function); }
 
+  /// @brief Constructs from any compatible noexcept-invocable callable.
+  /// @pre The decayed callable fits within `Capacity` bytes (else asserts).
   template <typename F,
             typename Decayed = typename std::decay<F>::type,
             typename = typename std::enable_if<
@@ -553,27 +586,37 @@ class fixed_function<R(Args...) noexcept, Capacity>
     return *this;
   }
 
+  /// @brief Invokes the stored callable.
+  /// @pre A target must be stored (has_value() is true); else asserts.
   R operator()(Args... args) const noexcept {
     METL_ASSERT(this->ops_ != nullptr);
     return this->ops_->invoke(this->storage_ptr(), std::forward<Args>(args)...);
   }
 
+  /// @brief Stores a noexcept function pointer if it fits.
+  /// @return true on success; false if the callable exceeds `Capacity`.
   bool try_assign(R (*function)(Args...) noexcept) {
     METL_ASSERT(function != nullptr);
     return this->try_assign_callable(function);
   }
 
+  /// @brief Stores any compatible callable if it fits.
+  /// @return true on success; false if the callable exceeds `Capacity`.
   template <typename F>
   bool try_assign(F&& function) {
     return this->try_assign_callable(std::forward<F>(function));
   }
 
+  /// @brief Stores a noexcept function pointer.
+  /// @pre The callable fits within `Capacity` (else asserts).
   void assign(R (*function)(Args...) noexcept) {
     const bool assigned = try_assign(function);
     METL_ASSERT(assigned);
     (void)assigned;
   }
 
+  /// @brief Stores any compatible callable.
+  /// @pre The callable fits within `Capacity` (else asserts).
   template <typename F>
   void assign(F&& function) {
     const bool assigned = try_assign(std::forward<F>(function));
@@ -584,6 +627,7 @@ class fixed_function<R(Args...) noexcept, Capacity>
 
 // ---- nullptr comparison / swap (fixed_function) -----------------------------
 
+/// @brief Equality against nullptr: true when empty.
 template <typename Sig, std::size_t Cap>
 METL_NODISCARD inline bool operator==(const fixed_function<Sig, Cap>& f, std::nullptr_t) noexcept {
   return !f;
@@ -601,6 +645,7 @@ METL_NODISCARD inline bool operator!=(std::nullptr_t, const fixed_function<Sig, 
   return static_cast<bool>(f);
 }
 
+/// @brief ADL swap for two fixed_function objects.
 template <typename Sig, std::size_t Cap>
 inline void swap(fixed_function<Sig, Cap>& lhs, fixed_function<Sig, Cap>& rhs) noexcept {
   lhs.swap(rhs);
@@ -610,11 +655,21 @@ inline void swap(fixed_function<Sig, Cap>& lhs, fixed_function<Sig, Cap>& rhs) n
 // fixed_any_invocable
 // ============================================================================
 
+/// @brief Move-only owning callable stored in a fixed inline buffer.
+///
+/// Like fixed_function but accepts non-copyable callables; it is move-only. The
+/// callable is stored in an inline buffer of `Capacity` bytes with no heap
+/// allocation. Specialized for both `R(Args...)` and `R(Args...) noexcept`.
+/// @tparam Signature The call signature, e.g. `int(float)` or `void() noexcept`.
+/// @tparam Capacity Inline storage size in bytes (default 32).
+/// @warning A callable larger than `Capacity` cannot be stored: `try_assign`
+///          returns false, while the converting constructor / `assign` assert.
 template <typename Signature, std::size_t Capacity = 32>
 class fixed_any_invocable;  // primary template, undefined.
 
 // ---- non-noexcept signature -------------------------------------------------
 
+/// @brief fixed_any_invocable specialization for a `R(Args...)` signature.
 template <typename R, typename... Args, std::size_t Capacity>
 class fixed_any_invocable<R(Args...), Capacity>
     : public detail::fixed_any_invocable_impl<false, Capacity, R, Args...> {
@@ -629,8 +684,12 @@ class fixed_any_invocable<R(Args...), Capacity>
   constexpr fixed_any_invocable() noexcept = default;
   constexpr fixed_any_invocable(std::nullptr_t) noexcept : base(nullptr) {}
 
+  /// @brief Constructs from a function pointer.
+  /// @pre `function` is non-null and fits in `Capacity` (else asserts).
   fixed_any_invocable(R (*function)(Args...)) : base() { assign(function); }
 
+  /// @brief Constructs from any compatible move-constructible callable.
+  /// @pre The decayed callable fits within `Capacity` bytes (else asserts).
   template <typename F,
             typename Decayed = typename std::decay<F>::type,
             typename = typename std::enable_if<!std::is_same<Decayed, fixed_any_invocable>::value &&
@@ -666,27 +725,37 @@ class fixed_any_invocable<R(Args...), Capacity>
     return *this;
   }
 
+  /// @brief Invokes the stored callable.
+  /// @pre A target must be stored (has_value() is true); else asserts.
   R operator()(Args... args) const {
     METL_ASSERT(this->ops_ != nullptr);
     return this->ops_->invoke(this->storage_ptr(), std::forward<Args>(args)...);
   }
 
+  /// @brief Stores a function pointer if it fits.
+  /// @return true on success; false if the callable exceeds `Capacity`.
   bool try_assign(R (*function)(Args...)) {
     METL_ASSERT(function != nullptr);
     return this->try_assign_callable(function);
   }
 
+  /// @brief Stores any compatible callable if it fits.
+  /// @return true on success; false if the callable exceeds `Capacity`.
   template <typename F>
   bool try_assign(F&& function) {
     return this->try_assign_callable(std::forward<F>(function));
   }
 
+  /// @brief Stores a function pointer.
+  /// @pre The callable fits within `Capacity` (else asserts).
   void assign(R (*function)(Args...)) {
     const bool assigned = try_assign(function);
     METL_ASSERT(assigned);
     (void)assigned;
   }
 
+  /// @brief Stores any compatible callable.
+  /// @pre The callable fits within `Capacity` (else asserts).
   template <typename F>
   void assign(F&& function) {
     const bool assigned = try_assign(std::forward<F>(function));
@@ -697,6 +766,8 @@ class fixed_any_invocable<R(Args...), Capacity>
 
 // ---- noexcept signature -----------------------------------------------------
 
+/// @brief fixed_any_invocable specialization for a `R(Args...) noexcept` signature.
+/// @note Requires a noexcept-invocable callable (enforced by static_assert).
 template <typename R, typename... Args, std::size_t Capacity>
 class fixed_any_invocable<R(Args...) noexcept, Capacity>
     : public detail::fixed_any_invocable_impl<true, Capacity, R, Args...> {
@@ -711,8 +782,12 @@ class fixed_any_invocable<R(Args...) noexcept, Capacity>
   constexpr fixed_any_invocable() noexcept = default;
   constexpr fixed_any_invocable(std::nullptr_t) noexcept : base(nullptr) {}
 
+  /// @brief Constructs from a noexcept function pointer.
+  /// @pre `function` is non-null and fits in `Capacity` (else asserts).
   fixed_any_invocable(R (*function)(Args...) noexcept) : base() { assign(function); }
 
+  /// @brief Constructs from any compatible noexcept-invocable, movable callable.
+  /// @pre The decayed callable fits within `Capacity` bytes (else asserts).
   template <
       typename F,
       typename Decayed = typename std::decay<F>::type,
@@ -750,27 +825,37 @@ class fixed_any_invocable<R(Args...) noexcept, Capacity>
     return *this;
   }
 
+  /// @brief Invokes the stored callable.
+  /// @pre A target must be stored (has_value() is true); else asserts.
   R operator()(Args... args) const noexcept {
     METL_ASSERT(this->ops_ != nullptr);
     return this->ops_->invoke(this->storage_ptr(), std::forward<Args>(args)...);
   }
 
+  /// @brief Stores a noexcept function pointer if it fits.
+  /// @return true on success; false if the callable exceeds `Capacity`.
   bool try_assign(R (*function)(Args...) noexcept) {
     METL_ASSERT(function != nullptr);
     return this->try_assign_callable(function);
   }
 
+  /// @brief Stores any compatible callable if it fits.
+  /// @return true on success; false if the callable exceeds `Capacity`.
   template <typename F>
   bool try_assign(F&& function) {
     return this->try_assign_callable(std::forward<F>(function));
   }
 
+  /// @brief Stores a noexcept function pointer.
+  /// @pre The callable fits within `Capacity` (else asserts).
   void assign(R (*function)(Args...) noexcept) {
     const bool assigned = try_assign(function);
     METL_ASSERT(assigned);
     (void)assigned;
   }
 
+  /// @brief Stores any compatible callable.
+  /// @pre The callable fits within `Capacity` (else asserts).
   template <typename F>
   void assign(F&& function) {
     const bool assigned = try_assign(std::forward<F>(function));
@@ -781,6 +866,7 @@ class fixed_any_invocable<R(Args...) noexcept, Capacity>
 
 // ---- nullptr comparison / swap (fixed_any_invocable) ------------------------
 
+/// @brief Equality against nullptr: true when empty.
 template <typename Sig, std::size_t Cap>
 METL_NODISCARD inline bool operator==(const fixed_any_invocable<Sig, Cap>& f, std::nullptr_t) noexcept {
   return !f;
@@ -798,6 +884,7 @@ METL_NODISCARD inline bool operator!=(std::nullptr_t, const fixed_any_invocable<
   return static_cast<bool>(f);
 }
 
+/// @brief ADL swap for two fixed_any_invocable objects.
 template <typename Sig, std::size_t Cap>
 inline void swap(fixed_any_invocable<Sig, Cap>& lhs, fixed_any_invocable<Sig, Cap>& rhs) noexcept {
   lhs.swap(rhs);

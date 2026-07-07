@@ -28,13 +28,25 @@ inline T* function_ref_addressof(T& arg) noexcept {
 template <typename>
 class function_ref;
 
+/// @brief Lightweight non-owning reference to any callable, à la std::function_ref.
+///
+/// Stores only a pointer to the callable (or function pointer) plus a thunk;
+/// never allocates and never copies the target. Modeled on P0792.
+/// @warning Non-owning: the referenced callable must outlive the function_ref.
+/// @warning Rvalue callables are rejected — the rvalue-binding constructor is
+///          deleted to prevent dangling references to temporaries. Bind only to
+///          lvalues that outlive the function_ref. Function pointers are exempt.
 template <typename R, typename... Args>
 class function_ref<R(Args...)> {
  public:
+  /// @brief Constructs an empty function_ref referencing nothing.
   constexpr function_ref() noexcept : object_(nullptr), function_(nullptr), callback_(nullptr) {}
+  /// @brief Constructs an empty function_ref from nullptr.
   constexpr function_ref(std::nullptr_t) noexcept
       : object_(nullptr), function_(nullptr), callback_(nullptr) {}
 
+  /// @brief Binds a free-function pointer.
+  /// @param function Non-null function pointer to reference.
   constexpr function_ref(R (*function)(Args...)) noexcept
       : object_(nullptr), function_(function), callback_(&invoke_function) {
     METL_ASSERT(function != nullptr);
@@ -51,6 +63,9 @@ class function_ref<R(Args...)> {
             typename = typename std::enable_if<!std::is_same<Decayed, function_ref>::value>::type,
             typename = typename std::enable_if<!std::is_pointer<Decayed>::value>::type,
             typename = typename std::enable_if<std::is_invocable_r<R, Referenced&, Args...>::value>::type>
+  /// @brief Binds an lvalue callable (const or non-const), preserving cv-qualification.
+  /// @param function Lvalue callable to reference; must outlive this function_ref.
+  /// @warning Only lvalues bind here; rvalues select the deleted overload below.
   // METL_LIFETIME_BOUND: function_ref stores a pointer to `function`; the bound
   // callable must outlive this function_ref. clang diagnoses obvious dangling
   // (a callable that dies before the function_ref) at the call site. This
@@ -61,6 +76,9 @@ class function_ref<R(Args...)> {
         function_(nullptr),
         callback_(&invoke_object<Referenced>) {}
 
+  /// @brief Deleted rvalue-binding overload.
+  /// @warning Rejects temporaries to prevent dangling references (P0792). Bind
+  ///          only to lvalues that outlive the function_ref.
   // Reject rvalue callables: function_ref would store a pointer to a temporary
   // destroyed at the end of the full-expression (a dangling reference). This
   // mirrors std::function_ref (P0792), which deletes rvalue binding. Function
@@ -72,9 +90,14 @@ class function_ref<R(Args...)> {
             typename = typename std::enable_if<!std::is_pointer<Decayed>::value>::type>
   function_ref(F&& function) = delete;
 
+  /// @brief Tests whether a callable is referenced.
   METL_NODISCARD constexpr explicit operator bool() const noexcept { return callback_ != nullptr; }
+  /// @brief Tests whether a callable is referenced.
   METL_NODISCARD constexpr bool has_value() const noexcept { return callback_ != nullptr; }
 
+  /// @brief Invokes the referenced callable.
+  /// @pre A callable must be bound (has_value() is true); invoking an empty
+  ///      function_ref asserts.
   R operator()(Args... args) const {
     METL_ASSERT(callback_ != nullptr);
     return callback_(object_, function_, std::forward<Args>(args)...);
