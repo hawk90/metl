@@ -349,6 +349,88 @@ jobs:
           echo "endian test passed on big-endian target"
 
   # ---------------------------------------------------------------------------
+  # newlib-nano link — links metl against a real bare-metal libc (compile+link,
+  # no run). Guaranteed-green baseline / fallback for the picolibc+QEMU run
+  # below: proves the smoke program links against newlib-nano + nosys syscall
+  # stubs on Cortex-M.
+  # ---------------------------------------------------------------------------
+  newlib-link:
+    name: newlib-link / cortex-m3
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install ARM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi
+
+      - name: Link the smoke program against newlib-nano (nosys)
+        run: |
+          set -euo pipefail
+          arm-none-eabi-g++ -std=c++17 -mcpu=cortex-m3 -mthumb -Os \
+            -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti \
+            --specs=nano.specs --specs=nosys.specs -Wl,--gc-sections \
+            -Iinclude tests/embedded/semihost_smoke.cpp -o smoke_newlib.elf
+
+      - name: Report code size
+        run: arm-none-eabi-size smoke_newlib.elf
+
+  # ---------------------------------------------------------------------------
+  # picolibc + QEMU semihosting — the one job that goes beyond compile/link:
+  # links the smoke program against picolibc for a Cortex-M (mps2-an385) with
+  # semihosting and RUNS it under qemu-system-arm, asserting the success
+  # sentinel. This proves metl links AND runs on a real embedded libc.
+  #
+  # picolibc + libstdc++ linking can be version-sensitive; if this job needs
+  # iteration, the newlib-link job above is the guaranteed-green libc-link
+  # proof (see docs/AUDIT.md task #7).
+  # ---------------------------------------------------------------------------
+  picolibc-qemu:
+    name: picolibc-qemu / mps2-an385
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install ARM toolchain + picolibc + QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi picolibc-arm-none-eabi \
+            qemu-system-arm
+
+      - name: Link the smoke program against picolibc (semihosting)
+        run: |
+          set -euo pipefail
+          arm-none-eabi-g++ --specs=picolibc.specs --oslib=semihost \
+            -std=c++17 -mcpu=cortex-m3 -mthumb -Os \
+            -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti \
+            -Wl,--gc-sections \
+            -T tests/embedded/mps2-an385.ld \
+            -Iinclude tests/embedded/semihost_smoke.cpp -o smoke_picolibc.elf
+
+      - name: Report code size
+        run: arm-none-eabi-size smoke_picolibc.elf
+
+      - name: Run under qemu-system-arm (semihosting) and assert success
+        run: |
+          set -euo pipefail
+          out="$(timeout 60 qemu-system-arm \
+            -semihosting-config enable=on \
+            -monitor none -serial none -nographic \
+            -machine mps2-an385,accel=tcg \
+            -kernel smoke_picolibc.elf)"
+          echo "----- qemu output -----"
+          echo "${out}"
+          echo "-----------------------"
+          echo "${out}" | grep -q METL_SEMIHOST_PASS
+
+  # ---------------------------------------------------------------------------
   # Header hygiene — per-header self-containment + umbrella completeness
   # ---------------------------------------------------------------------------
   header-checks:
