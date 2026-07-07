@@ -70,6 +70,7 @@ class protothread {
 #define METL_PT_WAIT_UNTIL(cond) \
   do {                           \
     this->pt_line_ = __LINE__;   \
+    [[fallthrough]];             \
     case __LINE__:               \
       if (!(cond)) {             \
         return false;            \
