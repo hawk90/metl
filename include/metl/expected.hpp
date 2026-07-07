@@ -338,16 +338,9 @@ class expected {
       using std::swap;
       swap(*error_ptr(), *other.error_ptr());
     } else if (has_value_ && !other.has_value_) {
-      // *this holds value, other holds error.
-      E tmp(static_cast<E&&>(*other.error_ptr()));
-      other.error_ptr()->~E();
-      ::new (other.storage_.value_storage.addr()) T(static_cast<T&&>(*value_ptr()));
-      value_ptr()->~T();
-      ::new (storage_.error_storage.addr()) E(static_cast<E&&>(tmp));
-      has_value_ = false;
-      other.has_value_ = true;
+      swap_value_error(*this, other);
     } else {
-      other.swap(*this);
+      swap_value_error(other, *this);
     }
   }
 
@@ -548,10 +541,8 @@ class expected {
       *value_ptr() = std::forward<U>(value);
       return;
     }
-
-    destroy_active();
-    construct_value(std::forward<U>(value));
-    has_value_ = true;
+    // Currently holds an error; switch to the value state exception-safely.
+    reinit_as_value(std::forward<U>(value));
   }
 
   template <typename G>
@@ -560,10 +551,110 @@ class expected {
       *error_ptr() = std::forward<G>(error);
       return;
     }
+    // Currently holds a value; switch to the error state exception-safely.
+    reinit_as_error(std::forward<G>(error));
+  }
 
-    destroy_active();
-    construct_error(std::forward<G>(error));
+  // Cross-state reinitialization (std::expected's "reinit-expected" pattern).
+  // Precondition: currently in the error state; switch to the value state.
+  // Guarantees a throwing T constructor never destroys the error while leaving
+  // has_value_ unchanged (which would double-destroy the error on ~expected).
+  template <typename... Args>
+  void reinit_as_value(Args&&... args) {
+    if constexpr (std::is_nothrow_constructible<T, Args&&...>::value) {
+      error_ptr()->~E();
+      construct_value(std::forward<Args>(args)...);
+    } else if constexpr (std::is_nothrow_move_constructible<T>::value) {
+      // Build the new value first (may throw; error stays intact), then commit.
+      T tmp(std::forward<Args>(args)...);
+      error_ptr()->~E();
+      construct_value(static_cast<T&&>(tmp));
+    } else {
+#if METL_NO_EXCEPTIONS
+      error_ptr()->~E();
+      construct_value(std::forward<Args>(args)...);
+#else
+      E backup(static_cast<E&&>(*error_ptr()));
+      error_ptr()->~E();
+      try {
+        construct_value(std::forward<Args>(args)...);
+      } catch (...) {
+        construct_error(static_cast<E&&>(backup));  // restore the error state
+        throw;
+      }
+#endif
+    }
+    has_value_ = true;
+  }
+
+  // Precondition: currently in the value state; switch to the error state.
+  template <typename... Args>
+  void reinit_as_error(Args&&... args) {
+    if constexpr (std::is_nothrow_constructible<E, Args&&...>::value) {
+      value_ptr()->~T();
+      construct_error(std::forward<Args>(args)...);
+    } else if constexpr (std::is_nothrow_move_constructible<E>::value) {
+      E tmp(std::forward<Args>(args)...);
+      value_ptr()->~T();
+      construct_error(static_cast<E&&>(tmp));
+    } else {
+#if METL_NO_EXCEPTIONS
+      value_ptr()->~T();
+      construct_error(std::forward<Args>(args)...);
+#else
+      T backup(static_cast<T&&>(*value_ptr()));
+      value_ptr()->~T();
+      try {
+        construct_error(std::forward<Args>(args)...);
+      } catch (...) {
+        construct_value(static_cast<T&&>(backup));  // restore the value state
+        throw;
+      }
+#endif
+    }
     has_value_ = false;
+  }
+
+  // Exception-safe cross-state swap: `v` holds a value, `e` holds an error.
+  // On return `v` holds the error and `e` holds the value. If a move-construct
+  // throws, both operands are rolled back to their original active member so
+  // neither is left with a destroyed member under a stale discriminant.
+  static void swap_value_error(expected& v,
+                               expected& e) noexcept(std::is_nothrow_move_constructible<T>::value &&
+                                                     std::is_nothrow_move_constructible<E>::value) {
+    if constexpr (std::is_nothrow_move_constructible<E>::value) {
+      E tmp(static_cast<E&&>(*e.error_ptr()));
+      e.error_ptr()->~E();
+#if !METL_NO_EXCEPTIONS
+      try {
+#endif
+        ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(*v.value_ptr()));
+#if !METL_NO_EXCEPTIONS
+      } catch (...) {
+        ::new (e.storage_.error_storage.addr()) E(static_cast<E&&>(tmp));  // restore e
+        throw;
+      }
+#endif
+      v.value_ptr()->~T();
+      ::new (v.storage_.error_storage.addr()) E(static_cast<E&&>(tmp));
+    } else {
+      T tmp(static_cast<T&&>(*v.value_ptr()));
+      v.value_ptr()->~T();
+#if !METL_NO_EXCEPTIONS
+      try {
+#endif
+        ::new (v.storage_.error_storage.addr()) E(static_cast<E&&>(*e.error_ptr()));
+#if !METL_NO_EXCEPTIONS
+      } catch (...) {
+        ::new (v.storage_.value_storage.addr()) T(static_cast<T&&>(tmp));  // restore v
+        throw;
+      }
+#endif
+      e.error_ptr()->~E();
+      ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(tmp));
+    }
+    v.has_value_ = false;
+    e.has_value_ = true;
   }
 
   union storage_union {
