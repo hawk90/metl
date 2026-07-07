@@ -19,14 +19,22 @@
 namespace metl {
 namespace coro {
 
-// Type-erased poll function: returns true if the task still wants to run.
+/// @brief Type-erased poll function. @return true if the task still wants to run.
 using poll_fn = bool (*)(void* task) noexcept;
 
+/// @brief One attached task: a type-erased pointer and its poll trampoline.
 struct task_slot {
-  void* task;
-  poll_fn poll;
+  void* task;    ///< Non-owning pointer to the task object.
+  poll_fn poll;  ///< Trampoline that drives one step of the task.
 };
 
+/// @brief Fixed-capacity, single-threaded cooperative round-robin scheduler.
+///
+/// Non-owning: holds raw task pointers; the caller keeps tasks alive while
+/// attached. Each `run_once()` polls every attached task exactly once in
+/// attachment order and removes completed tasks in place. This is a cooperative
+/// run loop, so attached task polls must be non-blocking.
+/// @tparam Capacity Maximum number of simultaneously attached tasks.
 template <std::size_t Capacity>
 class scheduler {
  public:
@@ -36,22 +44,29 @@ class scheduler {
   scheduler(const scheduler&) = delete;
   scheduler& operator=(const scheduler&) = delete;
 
-  // Attach a protothread-derived task. The type must expose `bool run() noexcept`.
+  /// @brief Attach a protothread-derived task exposing `bool run() noexcept`.
+  /// @param t The task; must outlive its attachment.
+  /// @return true if attached, false if the scheduler is full.
   template <typename Protothread>
   METL_NODISCARD bool try_attach_protothread(Protothread& t) noexcept {
     return try_attach_impl(static_cast<void*>(&t), &protothread_poll<Protothread>);
   }
 
-  // Attach a stepper-derived task.
+  /// @brief Attach a `stepper`-derived task.
+  /// @param s The task; must outlive its attachment.
+  /// @return true if attached, false if the scheduler is full.
   METL_NODISCARD bool try_attach_stepper(stepper& s) noexcept {
     return try_attach_impl(static_cast<void*>(&s), &stepper_poll);
   }
 
-  // Generic attach for any callable `bool(*)(void*) noexcept`.
+  /// @brief Generic attach for any `bool(*)(void*) noexcept` poll function.
+  /// @param task Task pointer passed back to `fn`. @param fn The poll trampoline.
+  /// @return true if attached, false if the scheduler is full.
   METL_NODISCARD bool try_attach(void* task, poll_fn fn) noexcept { return try_attach_impl(task, fn); }
 
-  // Detach (linear search; O(N)). Returns true if removed. Safe to call from
-  // within a task's own poll (see run_once for the reentrancy contract).
+  /// @brief Detach a task by pointer (linear search, O(N)).
+  /// @param task The task to remove. @return true if it was attached and removed.
+  /// @note Safe to call from within a task's own poll (see `run_once`).
   bool detach(void* task) noexcept {
     for (size_type i = 0; i < tasks_.size(); ++i) {
       if (tasks_[i].task == task) {
@@ -62,7 +77,8 @@ class scheduler {
     return false;
   }
 
-  // Is a task currently attached? O(N) linear search.
+  /// @brief Whether a task is currently attached (O(N) linear search).
+  /// @param task The task to look up. @return true if attached.
   METL_NODISCARD bool is_attached(void* task) const noexcept {
     for (size_type i = 0; i < tasks_.size(); ++i) {
       if (tasks_[i].task == task) {
@@ -72,16 +88,21 @@ class scheduler {
     return false;
   }
 
-  // Single round: poll every task once. Returns the count of tasks that
-  // yielded (still want to run). Completed tasks are removed in place.
+  /// @brief Poll every attached task once in attachment order.
+  /// @return The number of tasks that yielded (still want to run). Completed
+  ///         tasks are removed in place. Task polls may attach/detach reentrantly.
   size_type run_once() noexcept;
 
-  // Drain: repeatedly run until no task yields. Bounded by `max_rounds` to
-  // guarantee termination. Returns total rounds executed.
+  /// @brief Repeatedly `run_once()` until no task yields or `max_rounds` hit.
+  /// @param max_rounds Upper bound on rounds, guaranteeing termination.
+  /// @return The total number of rounds executed.
   size_type run_until_idle(size_type max_rounds = 1024) noexcept;
 
+  /// @brief Number of currently attached tasks.
   METL_NODISCARD size_type task_count() const noexcept { return tasks_.size(); }
+  /// @brief Whether no tasks are attached. @return true if empty.
   METL_NODISCARD bool empty() const noexcept { return tasks_.empty(); }
+  /// @brief The maximum task capacity. @return `Capacity`.
   METL_NODISCARD static constexpr size_type capacity() noexcept { return Capacity; }
 
  private:

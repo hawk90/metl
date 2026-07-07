@@ -14,12 +14,20 @@
 namespace metl {
 namespace coro {
 
+/// @brief Outcome of one `stepper::step()` call.
 enum class step_result : unsigned char {
-  yield,  // not done, call again later
-  done,   // finished successfully
-  error,  // finished with error (user-defined semantics)
+  yield,  ///< Not done; call again later.
+  done,   ///< Finished successfully.
+  error,  ///< Finished with error (user-defined semantics).
 };
 
+/// @brief Explicit-state stackless cooperative task (C++17, no `<coroutine>`).
+///
+/// Unlike `protothread`, there is no macro magic: the derived class implements
+/// `step()` as an explicit state machine returning a `step_result`. The wrapper
+/// `poll()` tracks the terminal state so a scheduler can shed finished tasks.
+/// Intended for a single-threaded cooperative run loop; `step()` must be
+/// non-blocking. noexcept, no heap, no exceptions, no RTTI.
 class stepper {
  public:
   stepper() noexcept = default;
@@ -29,13 +37,17 @@ class stepper {
   stepper& operator=(stepper&&) noexcept = default;
   virtual ~stepper() = default;
 
-  // Run one step. Returns yield (not done), done (finished), or error.
+  /// @brief Run one step of the task's state machine.
+  /// @return `yield` (more work), `done` (finished), or `error` (failed).
   METL_NODISCARD virtual step_result step() noexcept = 0;
 
+  /// @brief Whether the task has finished (successfully or with error).
   METL_NODISCARD bool is_done() const noexcept { return done_; }
+  /// @brief Whether the task finished with an error.
   METL_NODISCARD bool is_error() const noexcept { return error_; }
 
-  // Drive `step()` once and update flags. Returns true if more work remains.
+  /// @brief Drive `step()` once and update the done/error flags.
+  /// @return true if more work remains; false once the task is finished.
   bool poll() noexcept {
     if (done_ || error_) {
       return false;
@@ -53,6 +65,7 @@ class stepper {
     return true;
   }
 
+  /// @brief Clear the done/error flags and reset derived state via `on_reset()`.
   void reset() noexcept {
     done_ = false;
     error_ = false;
@@ -60,7 +73,7 @@ class stepper {
   }
 
  protected:
-  // Override to reset derived state. Default = noop.
+  /// @brief Hook to reset derived state on `reset()`. Default is a no-op.
   virtual void on_reset() noexcept {}
 
  private:
