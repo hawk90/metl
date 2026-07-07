@@ -17,8 +17,11 @@
 //   expressions that evaluate to the same bool as `expr`; only the generated
 //   branch layout differs. Do not place side effects in `expr` and assume they
 //   are elided — they are not; the expression is evaluated exactly once.
+/// @brief Branch hint: the boolean `expr` is likely true. Value-equal to `expr`;
+///        only branch layout changes. Keep `expr` side-effect free.
 #if METL_HAS_BUILTIN(__builtin_expect) || METL_COMPILER_GCC || METL_COMPILER_CLANG
 #define METL_PREDICT_TRUE(expr) (__builtin_expect(static_cast<bool>(expr), true))
+/// @brief Branch hint: the boolean `expr` is likely false. Value-equal to `expr`.
 #define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
 #else
 #define METL_PREDICT_TRUE(expr) (static_cast<bool>(expr))
@@ -29,6 +32,8 @@
 //   Tell the optimizer it may assume `cond` holds. Reaching this macro with a
 //   false `cond` is undefined behavior, so use it only for facts you can prove.
 //   `cond` may be evaluated; keep it side-effect free.
+/// @brief Tell the optimizer it may assume `cond` holds. Reaching this with a
+///        false `cond` is undefined behavior; keep `cond` side-effect free.
 #if METL_COMPILER_MSVC
 #define METL_ASSUME(cond) __assume(cond)
 #elif METL_HAS_BUILTIN(__builtin_assume)
@@ -42,6 +47,8 @@
 // METL_CACHELINE_SIZE — the target's assumed hardware cache-line size in bytes.
 //   Used to pad/align hot data so independent fields land on distinct lines and
 //   avoid false sharing. Overridable by defining METL_CACHELINE_SIZE upfront.
+/// @brief Assumed hardware cache-line size in bytes for the target. Used to pad
+///        or align hot data to avoid false sharing. Overridable by predefining it.
 #ifndef METL_CACHELINE_SIZE
 #if defined(__powerpc64__) || defined(__PPC64__) || defined(__ppc64__)
 #define METL_CACHELINE_SIZE 128
@@ -54,6 +61,7 @@
 
 // METL_CACHELINE_ALIGNED — align a variable/member to a full cache line. Uses
 // standard `alignas`, so it is portable to every C++17 compiler.
+/// @brief Align a variable/member to a full cache line (portable `alignas`).
 #ifndef METL_CACHELINE_ALIGNED
 #define METL_CACHELINE_ALIGNED alignas(METL_CACHELINE_SIZE)
 #endif

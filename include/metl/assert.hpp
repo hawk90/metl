@@ -6,7 +6,17 @@
 
 namespace metl {
 
+/// @brief User assert-handler callback type.
+///
+/// Invoked with the failed expression text, source file, and line. Even if the
+/// handler returns, control never continues past the failed assert: the library
+/// calls `std::abort()` immediately afterward (see `set_assert_handler`).
 using assert_handler_t = void (*)(const char* expression, const char* file, int line) noexcept;
+
+/// @brief User panic-handler callback type.
+///
+/// Invoked with a message, source file, and line. Like the assert handler, a
+/// returning handler does not resume control flow: `std::abort()` follows.
 using panic_handler_t = void (*)(const char* message, const char* file, int line) noexcept;
 
 namespace detail {
@@ -50,18 +60,36 @@ inline panic_handler_t& panic_handler_storage() noexcept {
 
 }  // namespace detail
 
+/// @brief Install a custom assert handler, returning the previous one.
+/// @param handler New handler; if null, the default (`std::abort`) is restored.
+/// @return The previously installed handler.
+/// @warning The failed-assert path is `[[noreturn]]`: after your handler runs
+///          (or if it tries to return) the library calls `std::abort()`. Control
+///          can NEVER continue past a failed assert. This is a deliberate
+///          UB-safety guarantee.
 inline assert_handler_t set_assert_handler(assert_handler_t handler) noexcept {
   assert_handler_t previous = detail::assert_handler_storage();
   detail::assert_handler_storage() = handler != nullptr ? handler : &detail::default_assert_handler;
   return previous;
 }
 
+/// @brief Install a custom panic handler, returning the previous one.
+/// @param handler New handler; if null, the default (`std::abort`) is restored.
+/// @return The previously installed handler.
+/// @warning As with asserts, the panic path always aborts: a returning handler
+///          does not resume control flow.
 inline panic_handler_t set_panic_handler(panic_handler_t handler) noexcept {
   panic_handler_t previous = detail::panic_handler_storage();
   detail::panic_handler_storage() = handler != nullptr ? handler : &detail::default_panic_handler;
   return previous;
 }
 
+/// @brief Abort the program with a message, invoking any installed panic handler.
+/// @param message Human-readable failure description.
+/// @param file Source file (typically `__FILE__`).
+/// @param line Source line (typically `__LINE__`).
+/// @warning `[[noreturn]]`: ALWAYS aborts via `std::abort()` after the handler
+///          runs. Control never returns, even if a user handler tries to return.
 [[noreturn]] inline void panic(const char* message, const char* file, int line) noexcept {
   detail::panic_failed(message, file, line);
 }
