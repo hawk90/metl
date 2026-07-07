@@ -23,20 +23,26 @@ metl has no UI, so "usability" = **API clarity & contract honesty**:
   Default handler aborts (safe), but a user-installed *returning* handler turns every
   checked precondition library-wide into fall-through UB. **Fix (highest leverage): mark
   the handler type `[[noreturn]]` or `std::abort()`/`__builtin_unreachable()` at call sites.**
+  ✅ **DONE** — `detail::assertion_failed`/`detail::panic_failed`/`panic` are now
+  `[[noreturn]]` and unconditionally `std::abort()` after invoking the customization-point
+  handler, so control can never continue past a failed assert even with a returning handler.
 - **② TSAN CI exercises zero concurrency** (`.github/workflows/ci.yml:94`) — no test spawns
   a thread, examples default OFF. `spsc_queue`/`atomic_ref`/`static_message_queue` ordering
   is never validated; a regression would pass green.
+  ✅ **DONE** — added `tests/spsc_queue_threaded_test.cpp`, a bounded/deterministic
+  producer-consumer + atomic_ref stress test that builds and runs in every config
+  (including the TSAN job).
 
 | Sev | Issue | Location |
 |---|---|---|
-| HIGH | `function_ref` non-`explicit` ctor binds rvalue temporaries → dangling (P0792 deletes this) | `function_ref.hpp:37` |
+| HIGH ✅ DONE | `function_ref` non-`explicit` ctor binds rvalue temporaries → dangling (P0792 deletes this) — now lvalue-only ctor + deleted rvalue overload | `function_ref.hpp:37` |
 | HIGH | `scheduler::run_once` not reentrancy-safe: a task detaching during `poll` shifts the vector → stale index OOB | `coro/scheduler.hpp:103` |
 | HIGH (cond.) | `static_unordered_map::emplace` doesn't check existing key → duplicate double-constructs + `++size_` twice | `static_unordered_map.hpp:374` |
 | HIGH (cond.) | full-table `emplace`/`operator[]` reach `construct_at(npos,…)` wild OOB if handler returns | `static_unordered_map.hpp:527` |
 | MED | `variant`/`expected` assignment destroys active member then constructs w/o rollback → double-destroy if ctor throws | `expected.hpp:545,342`, `variant.hpp:396,297` |
 | MED | `variant` comparisons use `get<T>` by type → fail to compile for duplicate alt types | `variant.hpp:649` |
 | MED | `flat_map/set::operator[]`/`at` are **positional** index accessors, not key lookups (opposite of `std::map`) | `flat_map.hpp:113` |
-| MED | `fixed_string(const char*)` silently yields empty string on overflow (discards `assign` failure); non-`explicit` | `fixed_string.hpp:25` |
+| MED ✅ DONE (overflow) | `fixed_string(const char*)` silently yields empty string on overflow (discards `assign` failure); non-`explicit` — now asserts on overflow (still non-`explicit`) | `fixed_string.hpp:25` |
 | MED | `mmio_ptr(uintptr_t)` constexpr ctor always `reinterpret_cast`s → IFNDR; no alignment enforcement (UB) | `mmio.hpp:47,21` |
 | MED | `arena_allocator`/`static_allocator` size math can integer-overflow **before** the bounds check → OOB | `arena_allocator.hpp:101`, `static_allocator.hpp:27` |
 | MED | `fnv1a_hash` hashes raw object representation (padding/pointers) → breaks hash/equality invariant | `hash.hpp:107` |
@@ -50,9 +56,9 @@ metl has no UI, so "usability" = **API clarity & contract honesty**:
 ## Section B — Backlog
 
 **P0 — harness correctness (gates everything)**
-1. Test assertion/reporting layer — tests signal only via exit codes; failures don't say *where*. Add header-only `CHECK`/`CHECK_EQ` with `file:line: expected … got …`.
-2. Real multi-threaded tests for concurrency types, gated into the TSAN job (fact ②).
-3. Per-header self-containment compile check + umbrella-completeness check in CI.
+1. ✅ **DONE** — Test assertion/reporting layer — tests signal only via exit codes; failures don't say *where*. Added header-only `tests/metl_check.hpp` with `CHECK`/`CHECK_EQ` printing `file:line: CHECK failed: …`; `fixed_vector_test` and `optional_test` migrated as a demonstration.
+2. ✅ **DONE** — Real multi-threaded tests for concurrency types, gated into the TSAN job (fact ②). Added `tests/spsc_queue_threaded_test.cpp` (spsc_queue + atomic_ref).
+3. ✅ **DONE** — Per-header self-containment compile check + umbrella-completeness check in CI. Added the `metl_header_self_contained` target + `cmake/CheckUmbrella.cmake` CTest guard and a `header-checks` CI job.
 
 **P1 — CI/quality**
 4. Promote clang-tidy from advisory (`ci.yml:186 continue-on-error`) to blocking.
@@ -61,7 +67,7 @@ metl has no UI, so "usability" = **API clarity & contract honesty**:
 7. Per-symbol API docs (Doxygen) — especially the non-standard contracts above.
 
 **P2 — API correctness/ergonomics**
-8. Make the assert handler `[[noreturn]]`-safe (fact ①) — collapses the conditional-UB class.
+8. ✅ **DONE** — Make the assert handler `[[noreturn]]`-safe (fact ①) — collapses the conditional-UB class.
 9. Reconcile `std::`-divergences: `at()` asserts not throws; `flat_map::operator[]` positional; `value()`/`get()` assert. Rename/document.
 10. Fix the concrete High/Med bugs above.
 11. Missing utilities: `fixed_bitset`, documented iterator-invalidation contracts, `expected` monadic ops, `try_value()` recoverable paths, compile-time `static_string_map`.

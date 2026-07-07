@@ -5,7 +5,43 @@ All notable changes to METL are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] / [0.1.0-alpha1]
+## [Unreleased]
+
+### Fixed
+
+- **assert:** the failed-assert and panic paths are now provably `[[noreturn]]`.
+  After invoking the (customizable) handler, `detail::assertion_failed`,
+  `detail::panic_failed`, and `panic` unconditionally `std::abort()`, so a
+  user-installed handler that incorrectly returns can no longer fall through
+  past a failed precondition into undefined behavior. The customization point is
+  unchanged (handlers still receive expression/file/line).
+- **function_ref:** rvalue callables are rejected instead of silently binding to
+  a temporary that dangles at the end of the full-expression. Following
+  `std::function_ref` (P0792), the callable constructor is lvalue-only and the
+  rvalue overload is deleted; lvalue callables and function pointers are
+  unaffected.
+- **fixed_string:** the `const char*` constructor now asserts on overflow rather
+  than silently producing an empty string. `assign()` remains the recoverable,
+  non-asserting path (returns `false` and leaves the string unchanged).
+
+### Testing
+
+- Added `tests/metl_check.hpp` providing `CHECK` / `CHECK_EQ`, which report
+  `file:line` and the offending values on failure instead of only an exit code.
+  `fixed_vector_test` and `optional_test` migrated as a demonstration.
+- Added `tests/spsc_queue_threaded_test.cpp`, a bounded, deterministic
+  multi-threaded producer/consumer test for `spsc_queue` and a concurrent
+  `atomic_ref` counter, so the ThreadSanitizer CI job validates real
+  concurrency.
+
+### Build
+
+- Added per-header self-containment and umbrella-completeness checks: the
+  `metl_header_self_contained` target compiles one translation unit per public
+  header, `cmake/CheckUmbrella.cmake` verifies `metl.hpp` includes every other
+  header, both registered with CTest, plus a `header-checks` CI job.
+
+## [0.1.0-alpha1]
 
 Initial pre-alpha snapshot. The library is feature-incomplete and the public
 API is subject to change before the 1.0 release.
