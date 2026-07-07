@@ -27,12 +27,19 @@ inline panic_handler_t& panic_handler_storage() noexcept {
   return handler;
 }
 
-inline void assertion_failed(const char* expression, const char* file, int line) noexcept {
+[[noreturn]] inline void assertion_failed(const char* expression, const char* file, int line) noexcept {
   assert_handler_storage()(expression, file, line);
+  // The customization point allows a user-installed handler that (incorrectly)
+  // returns. Guarantee that control never continues past a failed assertion:
+  // otherwise every checked precondition in the library would fall through into
+  // undefined behavior. std::abort() makes the assert path provably [[noreturn]].
+  std::abort();
 }
 
-inline void panic_failed(const char* message, const char* file, int line) noexcept {
+[[noreturn]] inline void panic_failed(const char* message, const char* file, int line) noexcept {
   panic_handler_storage()(message, file, line);
+  // As above: a returning panic handler must not resume normal control flow.
+  std::abort();
 }
 
 }  // namespace detail
@@ -49,7 +56,7 @@ inline panic_handler_t set_panic_handler(panic_handler_t handler) noexcept {
   return previous;
 }
 
-inline void panic(const char* message, const char* file, int line) noexcept {
+[[noreturn]] inline void panic(const char* message, const char* file, int line) noexcept {
   detail::panic_failed(message, file, line);
 }
 
