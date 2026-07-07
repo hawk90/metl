@@ -150,6 +150,17 @@ if(METL_BUILD_TESTS)
     static_unordered_map static_unordered_set
     type_traits
     variant
+    # Focused correctness regression tests (Section A audit fixes).
+    coro_scheduler_reentrancy
+    static_unordered_map_emplace
+    variant_regression
+    expected_regression
+    mmio_regression
+    allocator_overflow
+    fixed_function_const
+    fsm_reentrancy
+    hash_unique_repr
+    intrusive_ptr_contract
   )
 
   foreach(_t IN LISTS _metl_tests)

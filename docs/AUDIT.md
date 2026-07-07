@@ -36,20 +36,20 @@ metl has no UI, so "usability" = **API clarity & contract honesty**:
 | Sev | Issue | Location |
 |---|---|---|
 | HIGH ✅ DONE | `function_ref` non-`explicit` ctor binds rvalue temporaries → dangling (P0792 deletes this) — now lvalue-only ctor + deleted rvalue overload | `function_ref.hpp:37` |
-| HIGH | `scheduler::run_once` not reentrancy-safe: a task detaching during `poll` shifts the vector → stale index OOB | `coro/scheduler.hpp:103` |
-| HIGH (cond.) | `static_unordered_map::emplace` doesn't check existing key → duplicate double-constructs + `++size_` twice | `static_unordered_map.hpp:374` |
-| HIGH (cond.) | full-table `emplace`/`operator[]` reach `construct_at(npos,…)` wild OOB if handler returns | `static_unordered_map.hpp:527` |
-| MED | `variant`/`expected` assignment destroys active member then constructs w/o rollback → double-destroy if ctor throws | `expected.hpp:545,342`, `variant.hpp:396,297` |
-| MED | `variant` comparisons use `get<T>` by type → fail to compile for duplicate alt types | `variant.hpp:649` |
-| MED | `flat_map/set::operator[]`/`at` are **positional** index accessors, not key lookups (opposite of `std::map`) | `flat_map.hpp:113` |
+| HIGH ✅ DONE | `scheduler::run_once` not reentrancy-safe: a task detaching during `poll` shifts the vector → stale index OOB — now snapshots the attached set and skips detached tasks (`is_attached`) | `coro/scheduler.hpp:103` |
+| HIGH ✅ DONE | `static_unordered_map::emplace` doesn't check existing key → duplicate double-constructs + `++size_` twice — now finds-existing-first (no-op, no overwrite) | `static_unordered_map.hpp:374` |
+| HIGH ✅ DONE | full-table `emplace`/`operator[]` reach `construct_at(npos,…)` wild OOB if handler returns — `construct_at` now hard-guards `index < bucket_count` | `static_unordered_map.hpp:527` |
+| MED ✅ DONE | `variant`/`expected` assignment destroys active member then constructs w/o rollback → double-destroy if ctor throws — now exception-safe (valueless window / reinit-into-temp / swap rollback) | `expected.hpp:545,342`, `variant.hpp:396,297` |
+| MED ✅ DONE | `variant` comparisons use `get<T>` by type → fail to compile for duplicate alt types — now compare by index | `variant.hpp:649` |
+| MED ✅ DONE (documented) | `flat_map/set::operator[]`/`at` are **positional** index accessors, not key lookups (opposite of `std::map`) — documented + `nth()` alias added; signatures unchanged (no break) | `flat_map.hpp:113` |
 | MED ✅ DONE (overflow) | `fixed_string(const char*)` silently yields empty string on overflow (discards `assign` failure); non-`explicit` — now asserts on overflow (still non-`explicit`) | `fixed_string.hpp:25` |
-| MED | `mmio_ptr(uintptr_t)` constexpr ctor always `reinterpret_cast`s → IFNDR; no alignment enforcement (UB) | `mmio.hpp:47,21` |
-| MED | `arena_allocator`/`static_allocator` size math can integer-overflow **before** the bounds check → OOB | `arena_allocator.hpp:101`, `static_allocator.hpp:27` |
-| MED | `fnv1a_hash` hashes raw object representation (padding/pointers) → breaks hash/equality invariant | `hash.hpp:107` |
-| MED | `fixed_function::operator()` is `const` but `const_cast`s storage → UB mutating a const instance | `fixed_function.hpp:267` |
-| MED | `intrusive_ptr` destroys via CRTP base cast → non-virtual base of deeper hierarchy = UB/leak | `intrusive_ptr.hpp:85` |
-| MED | `static_message_queue` filed under "Concurrency" but uses plain non-atomic indices — single-threaded only | `static_message_queue.hpp:158` |
-| MED | `fsm::dispatch` updates state *after* action → reentrant dispatch re-fires same transition | `fsm.hpp:61` |
+| MED ✅ DONE | `mmio_ptr(uintptr_t)` constexpr ctor always `reinterpret_cast`s → IFNDR; no alignment enforcement (UB) — dropped `constexpr`, added alignment static_assert (register) + runtime assert (ptr) | `mmio.hpp:47,21` |
+| MED ✅ DONE | `arena_allocator`/`static_allocator` size math can integer-overflow **before** the bounds check → OOB — now overflow-safe (subtractive checks / division guard) | `arena_allocator.hpp:101`, `static_allocator.hpp:27` |
+| MED ✅ DONE | `fnv1a_hash` hashes raw object representation (padding/pointers) → breaks hash/equality invariant — now `static_assert(has_unique_object_representations)` | `hash.hpp:107` |
+| MED ✅ DONE | `fixed_function::operator()` is `const` but `const_cast`s storage → UB mutating a const instance — storage is now `mutable` (well-defined) | `fixed_function.hpp:267` |
+| MED ✅ DONE | `intrusive_ptr` destroys via CRTP base cast → non-virtual base of deeper hierarchy = UB/leak — now `static_assert(final || has_virtual_destructor)` | `intrusive_ptr.hpp:85` |
+| MED ✅ DONE (documented) | `static_message_queue` filed under "Concurrency" but uses plain non-atomic indices — single-threaded only — documented as single-threaded/non-ISR-safe FIFO | `static_message_queue.hpp:158` |
+| MED ✅ DONE | `fsm::dispatch` updates state *after* action → reentrant dispatch re-fires same transition — now commits state before the action | `fsm.hpp:61` |
 | LOW | Pervasive non-functional `constexpr` labels (placement-new/launder not constant-evaluable in C++17) | optional/expected/variant/fixed_vector/flat_map |
 | — | **Clean:** `spsc_queue` fences correct, `intrusive_ptr` refcount ordering correct, hash probes bounded (no infinite loop), bit/bitfield/crc all correct | — |
 

@@ -55,6 +55,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **fixed_string:** the `const char*` constructor now asserts on overflow rather
   than silently producing an empty string. `assign()` remains the recoverable,
   non-asserting path (returns `false` and leaves the string unchanged).
+- **coro/scheduler:** `run_once()` is now reentrancy-safe. It snapshots the set
+  of tasks attached at entry and polls exactly that set, skipping any task a
+  prior poll detached. A task that `detach()`es (itself or another task) or
+  attaches a task from within its `poll()` can no longer shift the underlying
+  vector out from under the cached index/size (previously a stale/out-of-bounds
+  read). Added `is_attached()`.
+- **static_unordered_map:** `emplace(key, value)` now finds an existing key
+  first. A duplicate-key `emplace` is a no-op returning the existing element
+  (std::unordered_map semantics: it does NOT overwrite), instead of
+  double-constructing over the live element and incrementing `size_` twice.
+  `construct_at` also hard-guards its index so a full-table insert can never
+  reach an out-of-bounds `construct_at(npos, …)`.
+- **variant / expected:** cross- and same-state assignment (and
+  `expected::swap`) are now exception-safe. A throwing copy/move constructor can
+  no longer leave a destroyed member paired with an unchanged discriminant
+  (which double-destroyed on the next destructor). `variant` marks itself
+  valueless across a throwing same-index reconstruct; `expected` uses the
+  std::expected "reinit" pattern (construct into a temporary / restore the old
+  member on throw).
+- **variant:** comparison operators now compare the active alternative *by
+  index* rather than by `get<T>`, so they compile and work for a `variant` with
+  duplicate alternative types.
+- **mmio:** `mmio_register<T, Address>` static_asserts `Address` is aligned to
+  `alignof(T)`, and `mmio_ptr<T>(uintptr_t)` asserts alignment at runtime; a
+  misaligned volatile access is undefined behavior. The `mmio_ptr(uintptr_t)`
+  constructor is no longer `constexpr` — its only path is an integer→pointer
+  `reinterpret_cast`, so a `constexpr` qualifier there was ill-formed (IFNDR).
+- **arena_allocator / static_allocator:** size math is now overflow-safe. A huge
+  byte/element request that would wrap `size_type` before the bounds check is
+  rejected (`nullptr`) instead of overrunning the buffer.
+- **hash:** `fnv1a_hash`'s default (raw-object-representation) overload is now
+  constrained via `static_assert` to types with
+  `has_unique_object_representations`, so it can't silently break the
+  hash/equality invariant for padded types, pointers, or floating point.
+- **fixed_function / fixed_any_invocable:** the type-erased callable is stored in
+  a `mutable` buffer, so the `const` `operator()` invoking a mutable target is
+  well-defined rather than mutating a `const` subobject through `const_cast`.
+- **intrusive_ptr:** `intrusive_ref_counter<Derived>` now `static_assert`s that
+  `Derived` is `final` or has a virtual destructor, since reference-count
+  release destroys the object through `Derived`. This makes the "Derived must be
+  the most-derived type" contract explicit and rejects the silently-sliced
+  deeper-non-virtual-hierarchy case.
+- **fsm:** `dispatch()` commits the new state *before* running the transition
+  action, so an action that reentrantly dispatches observes the new state and
+  can no longer re-fire the transition in progress.
+
+### Changed
+
+- **flat_map / flat_set:** documented that `operator[]` and `at()` are
+  **positional** (index into sorted order), NOT key lookups — the opposite of
+  `std::map`/`std::set`. Added an explicit `nth()` positional accessor as a
+  self-documenting alias; key access remains via `find()` / `contains()` /
+  `lower_bound()`. Signatures are unchanged (no API break).
+- **static_message_queue:** documented that it is a single-threaded FIFO with
+  plain (non-atomic) indices — NOT concurrent and NOT ISR-safe. Use
+  `spsc_queue` for interrupt↔main-loop hand-off.
 
 ### Testing
 
@@ -65,6 +121,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   multi-threaded producer/consumer test for `spsc_queue` and a concurrent
   `atomic_ref` counter, so the ThreadSanitizer CI job validates real
   concurrency.
+- Added focused correctness regression tests (all using `CHECK`/`CHECK_EQ`) for
+  the Section A fixes: `coro_scheduler_reentrancy`, `static_unordered_map_emplace`,
+  `variant_regression`, `expected_regression`, `mmio_regression`,
+  `allocator_overflow`, `fixed_function_const`, `fsm_reentrancy`,
+  `hash_unique_repr`, and `intrusive_ptr_contract`. Several exercise the fixed
+  paths under ASan/UBSan (memory safety) and throwing-constructor rollback.
 
 ### Build
 
