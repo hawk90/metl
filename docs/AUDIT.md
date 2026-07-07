@@ -53,6 +53,42 @@ metl has no UI, so "usability" = **API clarity & contract honesty**:
 | LOW | Pervasive non-functional `constexpr` labels (placement-new/launder not constant-evaluable in C++17) | optional/expected/variant/fixed_vector/flat_map |
 | — | **Clean:** `spsc_queue` fences correct, `intrusive_ptr` refcount ordering correct, hash probes bounded (no infinite loop), bit/bitfield/crc all correct | — |
 
+## Section C — Hardening & codegen (abseil-derived techniques applied)
+
+Portable, empty-fallback macro layers modeled on abseil, plus their
+applications. All gated on `__has_cpp_attribute`/`__has_attribute`/`__has_*` so
+they are honored or no-ops — never a build break — and gcc/MSVC-clean by
+construction.
+
+- ✅ **Attribute layer** `metl/attributes.hpp` (abseil `attributes.h`) —
+  consolidates `METL_NODISCARD`; adds `METL_NORETURN`, `METL_ALWAYS_INLINE`,
+  `METL_MAYBE_UNUSED`, `METL_DEPRECATED`, `METL_LIFETIME_BOUND`,
+  `METL_CONST_INIT`, `METL_ATTRIBUTE_TRIVIAL_ABI`.
+- ✅ **Optimization layer** `metl/optimization.hpp` (abseil `optimization.h`) —
+  `METL_PREDICT_TRUE/FALSE`, `METL_ASSUME`, `METL_CACHELINE_SIZE`,
+  `METL_CACHELINE_ALIGNED`.
+- ✅ **Feature detection** in `compiler.hpp` (abseil `config.h`) —
+  `METL_HAVE_BUILTIN/FEATURE/INCLUDE`.
+- ✅ **`METL_LIFETIME_BOUND`** on `function_ref` (callable) and `span`
+  (container/array) constructors — clang diagnoses a view outliving its
+  referent, complementing the deleted rvalue-binding overloads.
+- ✅ **`METL_CONST_INIT`** on the assert/panic handler storage — makes constant
+  initialization explicit; guards against a future static-init-order hazard.
+- ✅ **`METL_ATTRIBUTE_TRIVIAL_ABI`** on `intrusive_ptr` — register-passed and
+  callee-destroyed like a raw pointer; behavior unchanged (verified under
+  ASan/UBSan).
+- ✅ **`METL_PREDICT_FALSE`** on the failed-`METL_ASSERT` branch;
+  **`METL_CACHELINE_ALIGNED`** replaces the hand-rolled `alignas(64)` in
+  `spsc_queue` (identical layout).
+- ✅ **`METL_DASSERT`** — debug-only DCHECK alongside the always-on, hardened
+  `METL_ASSERT`. Existing `METL_ASSERT` sites are unchanged (never downgraded).
+- ✅ **ASan tail poisoning for `fixed_vector`** (à la `absl::InlinedVector`) —
+  the unused-capacity tail `[size(), capacity())` is poisoned so OOB past
+  `size()` is trapped; unpoison-during-mutation / re-poison-tail-on-exit, and the
+  destructor unpoisons everything so no stale poison outlives the storage. Gated
+  on ASan; a `constexpr`-safe no-op otherwise. Covered by
+  `tests/fixed_vector_asan_test.cpp` (boundary asserts + a forked OOB death test).
+
 ## Section B — Backlog
 
 **P0 — harness correctness (gates everything)**

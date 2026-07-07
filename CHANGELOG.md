@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Portable attribute layer (`metl/attributes.hpp`, abseil `attributes.h`
+  style):** `__has_cpp_attribute`/`__has_attribute`-gated macros with empty
+  fallbacks, so applying one is always safe (honored or a no-op). Consolidates
+  `METL_NODISCARD` and adds `METL_NORETURN`, `METL_ALWAYS_INLINE`,
+  `METL_MAYBE_UNUSED`, `METL_DEPRECATED(msg)`, `METL_LIFETIME_BOUND`
+  (`[[clang::lifetimebound]]`), `METL_CONST_INIT`
+  (`constinit` / `[[clang::require_constant_initialization]]`), and
+  `METL_ATTRIBUTE_TRIVIAL_ABI` (`[[clang::trivial_abi]]`). `compiler.hpp`
+  includes it so every current include site keeps `METL_NODISCARD`.
+- **Optimization hints (`metl/optimization.hpp`, abseil `optimization.h`
+  style):** `METL_PREDICT_TRUE`/`METL_PREDICT_FALSE` (`__builtin_expect`,
+  identity fallback), `METL_ASSUME(cond)`, `METL_CACHELINE_SIZE`, and
+  `METL_CACHELINE_ALIGNED` (portable `alignas`).
+- **Feature detection (`compiler.hpp`, abseil `config.h` style):**
+  `METL_HAVE_BUILTIN(x)`, `METL_HAVE_FEATURE(x)`, `METL_HAVE_INCLUDE(x)` wrappers
+  with safe `0` fallbacks so they are always valid in `#if`.
+- **`METL_DASSERT`** — a debug-only assertion (DCHECK) alongside the always-on,
+  hardened `METL_ASSERT`. Active when `!NDEBUG` or `METL_DEBUG`; otherwise
+  evaluates its expression only in an unevaluated context (no side effects, no
+  unused warnings). `METL_ASSERT` is never downgraded to `METL_DASSERT`.
+
+### Changed
+
+- **function_ref / span:** the callable/container/array constructors mark the
+  bound referent `METL_LIFETIME_BOUND`, so clang (`-Wdangling`) diagnoses a
+  view that would outlive its referent at the call site. This complements the
+  existing deleted rvalue-binding overloads; valid lvalue usage is unaffected.
+- **assert:** the global assert/panic handler storage is now `METL_CONST_INIT`,
+  making its constant initialization explicit and static-init-order-safe (and
+  rejecting any future change to dynamic initialization).
+- **intrusive_ptr:** applies `METL_ATTRIBUTE_TRIVIAL_ABI` so the single-owner
+  pointer is passed/returned in a register and destroyed by the callee, matching
+  a raw pointer's calling convention. Observable behavior is unchanged (verified
+  under ASan/UBSan).
+- **spsc_queue:** the per-role cache-line padding now uses
+  `METL_CACHELINE_ALIGNED` / `METL_CACHELINE_SIZE` instead of a hand-rolled
+  `alignas(64)` (identical layout).
+- **METL_ASSERT:** the failed-check branch is marked `METL_PREDICT_FALSE` so the
+  success path stays the straight-line case (behavior unchanged).
+
 ### Documentation
 
 - Added `docs/COOKBOOK.md` — task-oriented recipes (fixed-capacity vector,
@@ -127,6 +169,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `allocator_overflow`, `fixed_function_const`, `fsm_reentrancy`,
   `hash_unique_repr`, and `intrusive_ptr_contract`. Several exercise the fixed
   paths under ASan/UBSan (memory safety) and throwing-constructor rollback.
+- Added `tests/fixed_vector_asan_test.cpp`. Under AddressSanitizer it asserts
+  the poison boundaries are exact (live elements addressable, tail poisoned, the
+  boundary tracking `push_back`/`pop_back`) and that a real read into the
+  poisoned tail is trapped (a forked child performs the OOB and is killed). It is
+  a trivial pass in non-ASan configurations.
 
 ### Build
 
@@ -134,6 +181,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `metl_header_self_contained` target compiles one translation unit per public
   header, `cmake/CheckUmbrella.cmake` verifies `metl.hpp` includes every other
   header, both registered with CTest, plus a `header-checks` CI job.
+- **fixed_vector:** under AddressSanitizer, the unused-capacity tail
+  `[size(), capacity())` of the inline buffer is poisoned (à la
+  `absl::InlinedVector`) so an out-of-bounds access past `size()` is trapped even
+  though the whole buffer is one object. Mutating operations unpoison the buffer
+  while they rearrange elements and re-poison the tail on exit; the destructor
+  unpoisons everything so no stale poison outlives the storage. Fully gated on
+  ASan detection — a no-op (and still `constexpr`-constructible) otherwise.
+- New public headers `metl/attributes.hpp` and `metl/optimization.hpp` added to
+  the umbrella, the installed header set, and the self-containment checks. The
+  Doxyfile `PREDEFINED` list strips the new attribute macros.
 
 ## [0.1.0-alpha1]
 
