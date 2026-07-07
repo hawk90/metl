@@ -370,13 +370,24 @@ class static_unordered_map {
     return true;
   }
 
+  // Like std::unordered_map::emplace: if the key already exists this is a no-op
+  // and returns a reference to the existing element (it does NOT overwrite).
+  // Otherwise the element is inserted. Asserts (precondition) that the map is
+  // not full when the key is absent.
   template <typename K, typename V>
   reference emplace(K&& key, V&& value) {
+    // Find-existing first so a duplicate key never double-constructs over a
+    // live element (which would also increment size_ twice).
+    const size_type existing = find_existing_index(key);
+    if (existing != npos) {
+      return *slot_value(existing);
+    }
+
+    METL_ASSERT(size_ < Capacity);
     size_type index = npos;
     const bool available = locate_insert_index(key, &index);
     METL_ASSERT(available);
     METL_ASSERT(states_[index] != slot_state::occupied);
-    METL_ASSERT(size_ < Capacity);
     construct_at(index, std::forward<K>(key), std::forward<V>(value));
     return *slot_value(index);
   }
@@ -526,6 +537,12 @@ class static_unordered_map {
 
   template <typename K, typename V>
   void construct_at(size_type index, K&& key, V&& value) {
+    // Hard guard against the full-table path: locate_insert_index returns
+    // false (leaving index == npos) only when the table is full. The callers
+    // assert on that precondition, but assert this unconditionally too so a
+    // user-disabled METL_ASSERT can never turn a full-table insert into a wild
+    // out-of-bounds construct_at(npos, ...).
+    METL_ASSERT(index < bucket_count);
     ::new (storage_[index].addr()) value_type{std::forward<K>(key), std::forward<V>(value)};
     states_[index] = slot_state::occupied;
     ++size_;
