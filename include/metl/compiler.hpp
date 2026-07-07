@@ -146,13 +146,15 @@
 
 namespace metl {
 
+/// Identifies the compiler that built the translation unit.
 enum class compiler_id {
-  unknown = 0,
-  clang = 1,
-  gcc = 2,
-  msvc = 3,
+  unknown = 0,  ///< Compiler not recognized by the detection macros.
+  clang = 1,    ///< LLVM/Clang.
+  gcc = 2,      ///< GNU GCC.
+  msvc = 3,     ///< Microsoft Visual C++.
 };
 
+/// The compiler that built this translation unit (compile-time constant).
 inline constexpr compiler_id active_compiler =
 #if METL_COMPILER_CLANG
     compiler_id::clang;
@@ -164,11 +166,17 @@ inline constexpr compiler_id active_compiler =
     compiler_id::unknown;
 #endif
 
+/// The active `__cplusplus` standard value (e.g. 201703L for C++17).
 inline constexpr long cxx_standard = METL_CXX_STANDARD;
+/// True when the active compiler is Clang.
 inline constexpr bool is_clang = METL_COMPILER_CLANG != 0;
+/// True when the active compiler is GCC.
 inline constexpr bool is_gcc = METL_COMPILER_GCC != 0;
+/// True when the active compiler is MSVC.
 inline constexpr bool is_msvc = METL_COMPILER_MSVC != 0;
+/// True when the `[[nodiscard]]` attribute is available.
 inline constexpr bool has_nodiscard = METL_HAS_CPP_ATTRIBUTE(nodiscard) >= 201603L;
+/// True when the `[[fallthrough]]` attribute is available.
 inline constexpr bool has_fallthrough = METL_HAS_CPP_ATTRIBUTE(fallthrough) >= 201603L;
 
 }  // namespace metl

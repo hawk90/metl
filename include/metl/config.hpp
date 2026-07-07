@@ -54,8 +54,11 @@
 
 namespace metl {
 
+/// Major version component of the library.
 inline constexpr int version_major = 0;
+/// Minor version component of the library.
 inline constexpr int version_minor = 1;
+/// Patch version component of the library.
 inline constexpr int version_patch = 0;
 
 }  // namespace metl

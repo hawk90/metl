@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file
+/// @brief Object-lifetime helpers: `metl::detail::construct_at` / `destroy_at`
+///        and the `METL_CONSTEXPR20` marker. Public-facing detail utilities.
+
 // Internal object-lifetime helpers: metl::detail::construct_at / destroy_at.
 //
 // Placement-new and an explicit `->~T()` are NEVER usable in constant
@@ -30,6 +34,7 @@
     defined(__cpp_constexpr) && __cpp_constexpr >= 201907L
 #include <memory>  // std::construct_at, constexpr std::destroy_at
 #define METL_DETAIL_CONSTEXPR_LIFETIME 1
+/// @brief `constexpr` when the C++20 constexpr-lifetime path is active, else empty.
 #define METL_CONSTEXPR20 constexpr
 #else
 #define METL_DETAIL_CONSTEXPR_LIFETIME 0
@@ -41,11 +46,14 @@ namespace detail {
 
 #if METL_DETAIL_CONSTEXPR_LIFETIME
 
+/// @brief Construct a `T` in-place at `location` from `args`.
+/// @return Pointer to the newly constructed object (`location`).
 template <typename T, typename... Args>
 constexpr T* construct_at(T* location, Args&&... args) {
   return std::construct_at(location, std::forward<Args>(args)...);
 }
 
+/// @brief Destroy the `T` object at `location`.
 template <typename T>
 constexpr void destroy_at(T* location) noexcept {
   std::destroy_at(location);

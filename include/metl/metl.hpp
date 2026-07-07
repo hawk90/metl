@@ -1,8 +1,12 @@
 #pragma once
 
-// Umbrella header — pulls in the entire METL public API.
-// Every standalone-compilable header in <metl/> is included here, so
-// `#include <metl/metl.hpp>` is equivalent to including the whole library.
+/// @file
+/// @brief Umbrella header — pulls in the entire METL public API.
+///
+/// Every standalone-compilable header in `<metl/>` is included here, so
+/// `#include <metl/metl.hpp>` is equivalent to including the whole library.
+/// METL is a zero-dependency, header-only, no-heap C++17 library of
+/// fixed-capacity containers and embedded-systems utilities.
 
 #include "metl/arena_allocator.hpp"
 #include "metl/assert.hpp"
