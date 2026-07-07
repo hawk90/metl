@@ -110,6 +110,12 @@ class flat_map {
     return comp_;
   }
 
+  // DIVERGENCE FROM std::map: operator[] and at() here are POSITIONAL, not
+  // key-based. They take a 0-based index into the sorted sequence and return
+  // the element at that position (asserting the index is in range). They do
+  // NOT look up by key and do NOT insert. For key-based access use find()
+  // (returns mapped_type*/nullptr) or lower_bound()/equal_range(). nth() is an
+  // explicit, self-documenting alias for this positional access.
   METL_NODISCARD reference operator[](size_type index) noexcept {
     METL_ASSERT(index < size_);
     return data()[index];
@@ -120,12 +126,26 @@ class flat_map {
     return data()[index];
   }
 
+  // Positional accessor (see operator[]). Asserts the index is in range; unlike
+  // std::map::at it does not throw and is not key-based.
   METL_NODISCARD reference at(size_type index) noexcept {
     METL_ASSERT(index < size_);
     return data()[index];
   }
 
   METL_NODISCARD const_reference at(size_type index) const noexcept {
+    METL_ASSERT(index < size_);
+    return data()[index];
+  }
+
+  // Explicit positional accessor: the element at 0-based `index` in sorted
+  // order. Alias for operator[]/at; named to make positional intent obvious.
+  METL_NODISCARD reference nth(size_type index) noexcept {
+    METL_ASSERT(index < size_);
+    return data()[index];
+  }
+
+  METL_NODISCARD const_reference nth(size_type index) const noexcept {
     METL_ASSERT(index < size_);
     return data()[index];
   }

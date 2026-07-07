@@ -11,6 +11,15 @@
 
 namespace metl {
 
+// static_message_queue<T, Capacity>
+//
+// A fixed-capacity, single-threaded FIFO message queue (bounded ring buffer).
+//
+// THREADING: this is NOT a concurrent / lock-free queue. head_/tail_/size_ are
+// plain (non-atomic) indices, so it is single-threaded only and is NOT safe to
+// use across an ISR/thread boundary. For single-producer/single-consumer
+// hand-off between an interrupt and the main loop, use metl::spsc_queue, which
+// provides the necessary atomics and memory ordering.
 template <typename T, std::size_t Capacity>
 class static_message_queue {
  public:

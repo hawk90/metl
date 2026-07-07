@@ -110,6 +110,11 @@ class flat_set {
     return comp_;
   }
 
+  // DIVERGENCE FROM std::set: operator[] and at() here are POSITIONAL. They
+  // take a 0-based index into the sorted sequence and return the element at
+  // that position (asserting the index is in range); they are NOT key lookups.
+  // For membership/lookup use find()/contains()/lower_bound(). nth() is an
+  // explicit, self-documenting alias for this positional access.
   METL_NODISCARD reference operator[](size_type index) noexcept {
     METL_ASSERT(index < size_);
     return data()[index];
@@ -120,12 +125,26 @@ class flat_set {
     return data()[index];
   }
 
+  // Positional accessor (see operator[]). Asserts the index is in range; unlike
+  // std::set it does not throw and is not key-based.
   METL_NODISCARD reference at(size_type index) noexcept {
     METL_ASSERT(index < size_);
     return data()[index];
   }
 
   METL_NODISCARD const_reference at(size_type index) const noexcept {
+    METL_ASSERT(index < size_);
+    return data()[index];
+  }
+
+  // Explicit positional accessor: the element at 0-based `index` in sorted
+  // order. Alias for operator[]/at; named to make positional intent obvious.
+  METL_NODISCARD reference nth(size_type index) noexcept {
+    METL_ASSERT(index < size_);
+    return data()[index];
+  }
+
+  METL_NODISCARD const_reference nth(size_type index) const noexcept {
     METL_ASSERT(index < size_);
     return data()[index];
   }
