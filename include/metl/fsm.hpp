@@ -59,14 +59,19 @@ class fsm {
     }
 
     const State previous = current_state_;
+    const State next = transition->to;
     invoke_hook(exit_hooks_, previous);
 
+    // Commit the state transition BEFORE running the action. If the action
+    // reentrantly calls dispatch(), it must observe the new state; otherwise it
+    // would still see `previous` and could re-fire this very transition.
+    current_state_ = next;
+
     if (transition->action) {
-      transition->action(previous, event, transition->to);
+      transition->action(previous, event, next);
     }
 
-    current_state_ = transition->to;
-    invoke_hook(entry_hooks_, current_state_);
+    invoke_hook(entry_hooks_, next);
     return true;
   }
 
