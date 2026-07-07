@@ -31,7 +31,11 @@ using active_fnv = fnv_constants<sizeof(std::size_t)>;
 
 }  // namespace detail
 
-// FNV-1a hash over a contiguous unsigned char buffer. constexpr-friendly.
+/// @brief FNV-1a hash over a contiguous unsigned char buffer.
+/// @param data Pointer to the first byte to hash.
+/// @param len Number of bytes to consume from `data`.
+/// @return The FNV-1a hash; width follows `std::size_t`, seeded from the matching FNV offset basis.
+/// @note constexpr and heap-free; the FNV prime/offset are selected from `sizeof(std::size_t)`.
 METL_NODISCARD constexpr std::size_t fnv1a(const unsigned char* data, std::size_t len) noexcept {
   std::size_t hash = detail::active_fnv::offset;
   for (std::size_t i = 0; i < len; ++i) {
@@ -41,11 +45,13 @@ METL_NODISCARD constexpr std::size_t fnv1a(const unsigned char* data, std::size_
   return hash;
 }
 
-// FNV-1a hash over a buffer of bytes. The template parameter T is only used
-// to allow callers to pass typed pointers; the bytes are consumed byte-by-byte
-// regardless of T. Not constexpr-evaluable for non-byte T (requires
-// reinterpret_cast), but `constexpr` qualified so it composes in constant
-// contexts when T happens to be a byte type.
+/// @brief FNV-1a hash over a typed buffer, consumed byte-by-byte.
+/// @tparam T Element type of the pointer; only used for the caller's convenience.
+/// @param data Pointer to the first element; its object representation is hashed.
+/// @param len Number of `T` elements to hash.
+/// @return The FNV-1a hash of the underlying bytes.
+/// @note Not constexpr-evaluable for non-byte `T` (uses reinterpret_cast), but constexpr-qualified so
+///       it composes in constant contexts when `T` is a byte type. Heap-free.
 template <typename T>
 METL_NODISCARD constexpr std::size_t fnv1a(const T* data, std::size_t len) noexcept {
   std::size_t hash = detail::active_fnv::offset;
@@ -57,9 +63,11 @@ METL_NODISCARD constexpr std::size_t fnv1a(const T* data, std::size_t len) noexc
   return hash;
 }
 
-// Boost-style hash combiner. Mixes `value` into `seed` and returns
-// the resulting hash. The magic constant is 2^32 / phi for 32-bit
-// size_t and is the well-known boost::hash_combine recipe.
+/// @brief Boost-style hash combiner mixing `value` into `seed`.
+/// @param seed The running hash accumulator.
+/// @param value The hash value to fold in.
+/// @return The combined hash. Uses the well-known boost::hash_combine recipe (2^32 / phi constant).
+/// @note constexpr and heap-free.
 METL_NODISCARD inline constexpr std::size_t hash_combine(std::size_t seed, std::size_t value) noexcept {
   seed ^= value + static_cast<std::size_t>(0x9e3779b9) + (seed << 6) + (seed >> 2);
   return seed;
@@ -79,15 +87,18 @@ inline std::size_t hash_combine_all_impl(std::size_t seed, const T& value, const
 
 }  // namespace detail
 
-// Hashes a heterogeneous pack of values by chaining std::hash<T> and
-// hash_combine. Returns 0 for an empty pack.
+/// @brief Hashes a heterogeneous pack of values by chaining `std::hash<T>` and `hash_combine`.
+/// @tparam Ts Types of the values to hash; each must have a valid `std::hash` specialization.
+/// @param values The values to combine into a single hash.
+/// @return The combined hash, or 0 for an empty pack.
 template <typename... Ts>
 METL_NODISCARD inline std::size_t hash_combine_all(const Ts&... values) {
   return detail::hash_combine_all_impl(static_cast<std::size_t>(0), values...);
 }
 
-// Identity hash for use with integer-keyed open-addressed tables.
-// The caller is responsible for ensuring keys have good distribution.
+/// @brief Identity hash for integer-keyed open-addressed tables.
+/// @note Transparent (`is_transparent`). Returns the value cast to `std::size_t` unchanged; the caller
+///       is responsible for ensuring keys have good distribution.
 struct identity_hash {
   using is_transparent = void;
 
@@ -97,10 +108,12 @@ struct identity_hash {
   }
 };
 
-// Transparent FNV-1a-based hash usable with metl::flat_set / metl::flat_map
-// look-up by anything convertible to a contiguous byte range. The default
-// overload hashes the object representation; specialize for non-trivial
-// types as needed.
+/// @brief Transparent FNV-1a hash for use with `metl::flat_set` / `metl::flat_map`.
+/// @warning The default overload hashes the raw object representation and static_asserts on
+///          `std::has_unique_object_representations<T>`: the type must have a unique object
+///          representation (no padding, no pointers/references, no ambiguous bit patterns such as
+///          floating point) or it will not compile. Provide a specialized hash for other types.
+/// @note A dedicated `const char*` overload hashes the NUL-terminated string contents.
 struct fnv1a_hash {
   using is_transparent = void;
 

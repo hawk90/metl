@@ -7,9 +7,16 @@
 
 namespace metl {
 
+/// @brief Byte-order enumeration with `native` bound to the target's endianness.
+/// @note The native byte order is detected at compile time from `__BYTE_ORDER__` and a chain of
+///       secondary compiler macros. If none resolve, the header hard-errors with `#error` rather than
+///       guessing, so an undetectable target fails to compile instead of miscompiling conversions.
 enum class endian {
+  /// Little-endian byte order.
   little = 0,
+  /// Big-endian byte order.
   big = 1,
+// The `native` enumerator (defined below) equals `little` or `big` per the detected target order.
 // Byte-order detection. The authoritative signal on GCC/Clang is
 // __BYTE_ORDER__, which every supported cross target (arm-none-eabi,
 // riscv*-elf, powerpc64) defines correctly, so a big-endian toolchain is
@@ -63,12 +70,20 @@ constexpr unsigned_like_t<T> byteswap_unsigned(unsigned_like_t<T> value) noexcep
 
 }  // namespace detail
 
+/// @brief Reverses the byte order of an integral value.
+/// @tparam T An integral type.
+/// @param value The value whose bytes are reversed.
+/// @return `value` with its bytes in reverse order (unchanged for single-byte types). constexpr.
 template <typename T, detail::enable_if_integral_t<T> = 0>
 METL_NODISCARD constexpr T byteswap(T value) noexcept {
   using unsigned_type = detail::unsigned_like_t<T>;
   return static_cast<T>(detail::byteswap_unsigned<T>(static_cast<unsigned_type>(value)));
 }
 
+/// @brief Converts a host-order integral value to little-endian byte order.
+/// @tparam T An integral type.
+/// @param value The value in native byte order.
+/// @return The value in little-endian order; a no-op on little-endian targets. constexpr.
 template <typename T, detail::enable_if_integral_t<T> = 0>
 METL_NODISCARD constexpr T to_little_endian(T value) noexcept {
   if constexpr (sizeof(T) == 1 || endian::native == endian::little) {
@@ -78,6 +93,10 @@ METL_NODISCARD constexpr T to_little_endian(T value) noexcept {
   }
 }
 
+/// @brief Converts a host-order integral value to big-endian byte order.
+/// @tparam T An integral type.
+/// @param value The value in native byte order.
+/// @return The value in big-endian order; a no-op on big-endian targets. constexpr.
 template <typename T, detail::enable_if_integral_t<T> = 0>
 METL_NODISCARD constexpr T to_big_endian(T value) noexcept {
   if constexpr (sizeof(T) == 1 || endian::native == endian::big) {
@@ -87,11 +106,19 @@ METL_NODISCARD constexpr T to_big_endian(T value) noexcept {
   }
 }
 
+/// @brief Converts a little-endian integral value to host byte order.
+/// @tparam T An integral type.
+/// @param value The value in little-endian order.
+/// @return The value in native byte order; a no-op on little-endian targets. constexpr.
 template <typename T, detail::enable_if_integral_t<T> = 0>
 METL_NODISCARD constexpr T from_little_endian(T value) noexcept {
   return to_little_endian(value);
 }
 
+/// @brief Converts a big-endian integral value to host byte order.
+/// @tparam T An integral type.
+/// @param value The value in big-endian order.
+/// @return The value in native byte order; a no-op on big-endian targets. constexpr.
 template <typename T, detail::enable_if_integral_t<T> = 0>
 METL_NODISCARD constexpr T from_big_endian(T value) noexcept {
   return to_big_endian(value);
