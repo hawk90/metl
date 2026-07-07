@@ -92,6 +92,8 @@ metl_cc_library(
 if(METL_BUILD_TESTS)
   enable_testing()
 
+  find_package(Threads REQUIRED)
+
   metl_cc_library(
     NAME metl_test_options
     DEPS metl::metl
@@ -163,6 +165,18 @@ if(METL_BUILD_TESTS)
       LABELS "metl"
     )
   endforeach()
+
+  # -------------------------------------------------------------------------
+  # Multi-threaded concurrency test (needs a threading runtime). Built and run
+  # in every configuration, including the TSAN sanitizer job where it actually
+  # validates spsc_queue / atomic_ref memory ordering.
+  # -------------------------------------------------------------------------
+  metl_cc_test(
+    NAME metl_spsc_queue_threaded_test
+    SRCS tests/spsc_queue_threaded_test.cpp
+    DEPS metl::metl_test_options Threads::Threads
+    LABELS "metl"
+  )
 
   # -------------------------------------------------------------------------
   # Header hygiene checks
