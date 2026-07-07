@@ -63,6 +63,15 @@ Core types
   `storage_for<T>`.
 - [`hash`](include/metl/hash.hpp) — FNV-1a hashing and `hash_combine`.
 
+Error handling without exceptions — worked example:
+[`examples/error_handling.cpp`](examples/error_handling.cpp)
+(`expected` + `optional` + `variant`).
+
+> Contract note: `optional::value()`, `expected::value()`, and `get<T>()`
+> **assert** (abort) on the empty / wrong-alternative case — there is no
+> `bad_*_access` exception. Check `has_value()` / `holds_alternative<>()` first,
+> or use `value_or` / `get_if` / `find`.
+
 Containers
 
 - [`fixed_vector`](include/metl/fixed_vector.hpp),
@@ -76,11 +85,21 @@ Containers
 - [`static_unordered_map`](include/metl/static_unordered_map.hpp),
   [`static_unordered_set`](include/metl/static_unordered_set.hpp).
 
+Worked example: [`examples/containers.cpp`](examples/containers.cpp)
+(`fixed_vector` + `flat_map` + `ring_buffer`).
+
+> Contract notes: `at()` **asserts** on out-of-range (it does not throw).
+> `flat_map::operator[]` / `at()` are **positional** index accessors over the
+> sorted storage — the *opposite* of `std::map`. Look up by key with
+> `find` / `contains` / `try_emplace` instead.
+
 Function objects
 
 - [`fixed_function`](include/metl/fixed_function.hpp) — SBO function with
   `noexcept` signature and `fixed_any_invocable`.
-- [`function_ref`](include/metl/function_ref.hpp) — non-owning callable.
+- [`function_ref`](include/metl/function_ref.hpp) — non-owning callable
+  (**lvalue callables only** — rvalue temporaries are rejected to avoid
+  dangling).
 - [`delegate`](include/metl/delegate.hpp),
   [`event_dispatcher`](include/metl/event_dispatcher.hpp).
 
@@ -92,11 +111,25 @@ Memory
   [`static_allocator`](include/metl/static_allocator.hpp).
 - [`object_pool`](include/metl/object_pool.hpp).
 
+Worked example: [`examples/allocators.cpp`](examples/allocators.cpp)
+(`monotonic_buffer` per-tick scratch + `arena_allocator` LIFO mark/rewind).
+
 Concurrency
 
 - [`spsc_queue`](include/metl/spsc_queue.hpp).
 - [`static_message_queue`](include/metl/static_message_queue.hpp).
 - [`atomic_ref`](include/metl/atomic_ref.hpp).
+
+Worked example: [`examples/spsc_isr.cpp`](examples/spsc_isr.cpp)
+(ISR-to-main-loop `spsc_queue` pattern).
+
+Coroutines / cooperative tasks
+
+- [`coro/protothread`](include/metl/coro/protothread.hpp),
+  [`coro/stepper`](include/metl/coro/stepper.hpp),
+  [`coro/scheduler`](include/metl/coro/scheduler.hpp).
+
+Worked example: [`examples/coroutine_task.cpp`](examples/coroutine_task.cpp).
 
 Utility
 
@@ -109,11 +142,57 @@ Utility
   [`crc16`](include/metl/crc16.hpp),
   [`crc32`](include/metl/crc32.hpp).
 
+Worked example (`fsm`): [`examples/blinky_fsm.cpp`](examples/blinky_fsm.cpp).
+
 Embedded
 
 - [`mmio`](include/metl/mmio.hpp),
   [`bitfield`](include/metl/bitfield.hpp),
   [`register_access`](include/metl/register_access.hpp).
+
+Worked example: [`examples/mmio_peripheral.cpp`](examples/mmio_peripheral.cpp)
+(a fake memory-mapped UART).
+
+## Documentation
+
+- **[Cookbook](docs/COOKBOOK.md)** — task-oriented recipes (fixed-capacity
+  vector, error handling without exceptions, ISR↔main-loop SPSC queue,
+  memory-mapped registers, a small FSM, …). Every snippet mirrors a compiled
+  example.
+- **[Examples](examples/)** — self-contained, `main()`-returning-0 programs,
+  each compiled under `-Wall -Wextra -Werror -std=c++17` and run in CI:
+
+  | Example | Modules |
+  | --- | --- |
+  | [`containers.cpp`](examples/containers.cpp) | `fixed_vector`, `flat_map`, `ring_buffer` |
+  | [`allocators.cpp`](examples/allocators.cpp) | `arena_allocator`, `monotonic_buffer` |
+  | [`spsc_isr.cpp`](examples/spsc_isr.cpp) | `spsc_queue` (ISR pattern) |
+  | [`mmio_peripheral.cpp`](examples/mmio_peripheral.cpp) | `mmio`, `register_access`, `bitfield` |
+  | [`error_handling.cpp`](examples/error_handling.cpp) | `expected`, `optional`, `variant` |
+  | [`coroutine_task.cpp`](examples/coroutine_task.cpp) | `coro/protothread` |
+  | [`blinky_fsm.cpp`](examples/blinky_fsm.cpp) | `fsm`, `mmio`, `delegate` |
+  | [`can_frame_parser.cpp`](examples/can_frame_parser.cpp) | `bitfield`, `crc16`, `span`, `expected` |
+  | [`sensor_pipeline.cpp`](examples/sensor_pipeline.cpp) | `spsc_queue`→`ring_buffer`→`fixed_vector` (threaded) |
+
+  Build and run them with:
+
+  ```sh
+  cmake -B build -S . -DMETL_BUILD_EXAMPLES=ON
+  cmake --build build -j
+  ctest --test-dir build -R metl_example --output-on-failure
+  ```
+
+- **API reference (Doxygen)** — generate HTML from the public headers:
+
+  ```sh
+  cmake -B build -S .
+  cmake --build build --target docs   # requires doxygen; output in build/docs/html
+  ```
+
+- **Non-standard contracts** — a few types deliberately diverge from `std::`
+  (asserting accessors, positional `flat_map` indexing, lvalue-only
+  `function_ref`). See the
+  [contracts table in the Cookbook](docs/COOKBOOK.md#non-standard-contracts-you-must-know).
 
 ## Build & test
 

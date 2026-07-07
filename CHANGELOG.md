@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- Added `docs/COOKBOOK.md` — task-oriented recipes (fixed-capacity vector,
+  key/value lookup with `flat_map`, bounded FIFO, error handling without
+  exceptions, per-tick scratch allocators, ISR↔main-loop SPSC queue,
+  memory-mapped register access, a small FSM, cooperative protothreads). Each
+  snippet mirrors a compiled example. Includes an explicit table of the
+  non-standard contracts (`at()`/`value()`/`get()` assert instead of throwing;
+  `flat_map::operator[]`/`at` are **positional**, not key lookups; the assert
+  path is provably `[[noreturn]]`; `function_ref` rejects rvalue callables).
+- Added a `docs/Doxyfile.in`, a CMake `docs` target (`cmake --build build
+  --target docs`), and a `docs` CI job that generates HTML API docs from
+  `include/metl` and fails on malformed doc comments (undocumented symbols are
+  tolerated for now).
+- README: linked each module family to its worked example, added a
+  "Documentation" section (Cookbook + examples table + Doxygen instructions),
+  and called out the non-standard contracts inline.
+
+### Examples
+
+- Added one focused, CI-compiled example per module family, each a
+  self-contained `main()` returning 0 with in-program self-checks and built
+  under `-Wall -Wextra -Werror -std=c++17`:
+  `containers.cpp` (`fixed_vector` + `flat_map` + `ring_buffer`),
+  `allocators.cpp` (`arena_allocator` + `monotonic_buffer`),
+  `spsc_isr.cpp` (`spsc_queue` ISR↔main-loop pattern),
+  `mmio_peripheral.cpp` (`mmio` + `register_access` + `bitfield` driving a fake
+  peripheral), `error_handling.cpp` (`expected` + `optional` + `variant`), and
+  `coroutine_task.cpp` (`coro/protothread`).
+- All examples (new and pre-existing) are now wired into the examples CMake as
+  CTest smoke tests and built + run by a new `examples` CI job.
+
 ### Fixed
 
 - **assert:** the failed-assert and panic paths are now provably `[[noreturn]]`.

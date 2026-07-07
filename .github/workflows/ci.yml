@@ -276,6 +276,81 @@ jobs:
             | xargs clang-format --dry-run --Werror
 
   # ---------------------------------------------------------------------------
+  # Examples — build every example under -Wall -Wextra -Werror and run them.
+  # Each example self-checks and returns non-zero on a broken invariant.
+  # ---------------------------------------------------------------------------
+  examples:
+    name: examples / ${{ matrix.compiler.cc }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - { cc: gcc, cxx: g++ }
+          - { cc: clang, cxx: clang++ }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang
+
+      - name: Configure (examples on, warnings as errors)
+        env:
+          CC: ${{ matrix.compiler.cc }}
+          CXX: ${{ matrix.compiler.cxx }}
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DMETL_BUILD_TESTS=OFF \
+            -DMETL_INSTALL=OFF \
+            -DMETL_BUILD_EXAMPLES=ON \
+            -DMETL_WARNINGS_AS_ERRORS=ON
+
+      - name: Build examples
+        run: cmake --build build -j
+
+      - name: Run examples
+        run: ctest --test-dir build -R metl_example --output-on-failure
+
+  # ---------------------------------------------------------------------------
+  # Docs — generate Doxygen API docs; fail on malformed doc comments.
+  # (Undocumented symbols are tolerated: WARN_IF_UNDOCUMENTED=NO in the
+  # Doxyfile. Any real Doxygen warning fails the build via WARN_AS_ERROR.)
+  # This job is independent and does not gate the build/test/format jobs.
+  # ---------------------------------------------------------------------------
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Doxygen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen
+
+      - name: Configure
+        run: cmake -B build -S . -DMETL_BUILD_TESTS=OFF -DMETL_INSTALL=OFF
+
+      - name: Generate API docs (fails on Doxygen warnings)
+        run: cmake --build build --target docs
+
+      - name: Upload generated HTML docs
+        uses: actions/upload-artifact@v4
+        with:
+          name: metl-api-docs
+          path: build/docs/html
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
   # Install check — build, install, consume via find_package(metl)
   # ---------------------------------------------------------------------------
   install-check:

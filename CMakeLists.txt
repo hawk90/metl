@@ -257,7 +257,47 @@ endif()
 # Examples
 # ---------------------------------------------------------------------------
 if(METL_BUILD_EXAMPLES)
+  # Examples register themselves as CTest smoke tests. enable_testing() is
+  # idempotent and safe even when METL_BUILD_TESTS already called it.
+  enable_testing()
   add_subdirectory(examples)
+endif()
+
+# ---------------------------------------------------------------------------
+# Documentation  (Doxygen)
+# ---------------------------------------------------------------------------
+# `cmake --build build --target docs` generates HTML API docs into
+# build/docs/html from the public headers. Optional: only wired up when Doxygen
+# is found, so it never blocks a normal build. The CI `docs` job runs it with
+# WARN_AS_ERROR so malformed doc comments fail.
+option(METL_BUILD_DOCS "Add the Doxygen `docs` target when Doxygen is available" ON)
+if(METL_BUILD_DOCS)
+  find_package(Doxygen QUIET)
+  if(DOXYGEN_FOUND)
+    set(METL_DOXYGEN_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/docs")
+    # API reference is generated from the public headers only. Prose docs
+    # (README / COOKBOOK) use GitHub-flavored intra-page anchor links that
+    # Doxygen would (correctly) reject as unresolved \ref targets, so they are
+    # intentionally not fed to Doxygen.
+    set(METL_DOXYGEN_INPUT "${CMAKE_CURRENT_SOURCE_DIR}/include/metl")
+    set(METL_DOXYGEN_STRIP "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    set(_doxyfile_in "${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile.in")
+    set(_doxyfile "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile")
+    configure_file(${_doxyfile_in} ${_doxyfile} @ONLY)
+
+    add_custom_target(docs
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${METL_DOXYGEN_OUTPUT_DIR}
+      COMMAND ${DOXYGEN_EXECUTABLE} ${_doxyfile}
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+      COMMENT "Generating METL API documentation with Doxygen"
+      VERBATIM)
+  else()
+    add_custom_target(docs
+      COMMAND ${CMAKE_COMMAND} -E echo
+              "Doxygen not found — install doxygen to build the API docs."
+      COMMAND ${CMAKE_COMMAND} -E false
+      COMMENT "Doxygen not available")
+  endif()
 endif()
 
 # ---------------------------------------------------------------------------

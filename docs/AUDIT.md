@@ -64,7 +64,20 @@ metl has no UI, so "usability" = **API clarity & contract honesty**:
 4. Promote clang-tidy from advisory (`ci.yml:186 continue-on-error`) to blocking.
 5. Code coverage gate (the `try_*`/full-container branches are easy to leave uncovered).
 6. Real google/benchmark benchmarks or remove the dead `metl_cc_benchmark` stub + README claim.
-7. Per-symbol API docs (Doxygen) — especially the non-standard contracts above.
+7. 🟡 **IN PROGRESS** — Per-symbol API docs (Doxygen) — especially the
+   non-standard contracts above. Landed: a `docs/Doxyfile.in` + CMake `docs`
+   target + a `docs` CI job (generates HTML from `include/metl`, fails on
+   malformed doc comments; undocumented is tolerated for now). Added
+   `docs/COOKBOOK.md` (task-oriented recipes) and a set of CI-compiled,
+   CTest-run examples covering every module family
+   (`examples/{containers,allocators,spsc_isr,mmio_peripheral,error_handling,coroutine_task}.cpp`
+   plus the pre-existing `blinky_fsm`/`can_frame_parser`/`sensor_pipeline`),
+   each built under `-Wall -Wextra -Werror -std=c++17`. The non-standard
+   contracts (`at()`/`value()`/`get()` assert; `flat_map` positional indexing;
+   `[[noreturn]]` assert path; `function_ref` rvalue rejection) are now
+   surfaced in the README module map and the Cookbook contracts table.
+   **Deferred:** writing per-symbol `///` doc comments in the headers
+   themselves.
 
 **P2 — API correctness/ergonomics**
 8. ✅ **DONE** — Make the assert handler `[[noreturn]]`-safe (fact ①) — collapses the conditional-UB class.
