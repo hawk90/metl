@@ -23,6 +23,8 @@ option(METL_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer for tests" OFF)
 option(METL_ENABLE_TSAN "Enable ThreadSanitizer for tests" OFF)
 option(METL_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
 option(METL_INSTALL "Generate install targets" ON)
+option(METL_BUILD_FUZZERS
+       "Build the libFuzzer harnesses (Clang only; links -fsanitize=fuzzer,address,undefined)" OFF)
 
 # ---------------------------------------------------------------------------
 # Public library  (umbrella header-only target)
@@ -266,6 +268,23 @@ if(METL_BUILD_EMBEDDED_SMOKE)
   target_link_libraries(metl_embedded_smoke PRIVATE metl::metl)
   target_compile_features(metl_embedded_smoke PRIVATE cxx_std_17)
   set_target_properties(metl_embedded_smoke PROPERTIES METL_KIND embedded_smoke)
+endif()
+
+# ---------------------------------------------------------------------------
+# Fuzzers (libFuzzer harnesses — Clang only, opt-in)
+# ---------------------------------------------------------------------------
+# libFuzzer + -fsanitize=fuzzer is a Clang feature; GCC has no equivalent, so
+# the harnesses are only wired up under Clang. A non-clang configure (or the
+# default option-off configure) never sees these targets, keeping the default
+# host/arm/sanitizer builds untouched.
+if(METL_BUILD_FUZZERS)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_subdirectory(fuzz)
+  else()
+    message(WARNING
+            "METL_BUILD_FUZZERS is ON but the compiler is not Clang "
+            "(${CMAKE_CXX_COMPILER_ID}); libFuzzer harnesses are skipped.")
+  endif()
 endif()
 
 # ---------------------------------------------------------------------------
