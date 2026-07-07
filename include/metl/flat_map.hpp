@@ -418,6 +418,11 @@ class flat_map {
   }
 
   Compare comp_;
+  // NOTE: entries live in laundered aligned storage, which is not
+  // constant-evaluable, so the constexpr labels here are effective only outside
+  // constant evaluation. Genuine constexpr (cf. metl::optional via
+  // metl/detail/construct.hpp) would require a union-of-value_type rewrite;
+  // deferred (see docs/AUDIT.md Section A).
   storage_for<value_type> storage_[Capacity == 0 ? 1 : Capacity];
   size_type size_;
 };

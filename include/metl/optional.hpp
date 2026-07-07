@@ -2,12 +2,12 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/construct.hpp"
 #include "metl/in_place.hpp"
 #include "metl/type_traits.hpp"
 
 #include <cstddef>
 #include <functional>
-#include <new>
 #include <type_traits>
 #include <utility>
 
@@ -54,7 +54,7 @@ class optional {
     }
   }
 
-  ~optional() { reset(); }
+  METL_CONSTEXPR20 ~optional() { reset(); }
 
   // ---- Assignment -----------------------------------------------------------
 
@@ -141,7 +141,7 @@ class optional {
     return *data();
   }
 
-  METL_NODISCARD const T& value() const& noexcept {
+  METL_NODISCARD constexpr const T& value() const& noexcept {
     METL_ASSERT(has_value_);
     return *data();
   }
@@ -151,7 +151,7 @@ class optional {
     return static_cast<T&&>(*data());
   }
 
-  METL_NODISCARD const T&& value() const&& noexcept {
+  METL_NODISCARD constexpr const T&& value() const&& noexcept {
     METL_ASSERT(has_value_);
     return static_cast<const T&&>(*data());
   }
@@ -185,12 +185,12 @@ class optional {
     return *data();
   }
 
-  void reset() noexcept {
+  METL_CONSTEXPR20 void reset() noexcept {
     if (!has_value_) {
       return;
     }
 
-    data()->~T();
+    detail::destroy_at(data());
     has_value_ = false;
   }
 
@@ -304,12 +304,29 @@ class optional {
   }
 
  private:
-  T* data() noexcept { return storage_.ptr(); }
-  const T* data() const noexcept { return storage_.ptr(); }
+  // Union storage (rather than an aligned byte buffer accessed through
+  // std::launder) so the active member can be named directly — a prerequisite
+  // for genuine constexpr use: launder/reinterpret_cast are never
+  // constant-evaluable, whereas a union's active member is. Same size/alignment
+  // as the previous storage_for<T>.
+  struct empty_byte {};
+  union storage_union {
+    empty_byte empty_;
+    T value_;
+
+    constexpr storage_union() noexcept : empty_{} {}
+    // T's lifetime is managed explicitly by optional; the union itself does
+    // nothing on destruction (constexpr in C++20 so optional can be a literal
+    // type).
+    METL_CONSTEXPR20 ~storage_union() {}
+  };
+
+  METL_CONSTEXPR20 T* data() noexcept { return &storage_.value_; }
+  constexpr const T* data() const noexcept { return &storage_.value_; }
 
   template <typename... Args>
-  void construct(Args&&... args) {
-    ::new (storage_.addr()) T(std::forward<Args>(args)...);
+  METL_CONSTEXPR20 void construct(Args&&... args) {
+    detail::construct_at(&storage_.value_, std::forward<Args>(args)...);
     has_value_ = true;
   }
 
@@ -323,7 +340,7 @@ class optional {
     construct(std::forward<U>(value));
   }
 
-  storage_for<T> storage_;
+  storage_union storage_;
   bool has_value_;
 };
 

@@ -432,6 +432,11 @@ class variant {
     index_ = backup.index_;
   }
 
+  // NOTE: alternatives live in laundered aligned storage, which is not
+  // constant-evaluable, so the constexpr labels here are effective only outside
+  // constant evaluation. Genuine constexpr (cf. metl::optional via
+  // metl/detail/construct.hpp) would require a recursive union rewrite;
+  // deferred (see docs/AUDIT.md Section A).
   storage_type storage_;
   std::size_t index_;
 };

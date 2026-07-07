@@ -32,6 +32,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **optional — genuine `constexpr` on C++20:** `metl::optional` now stores its
+  value in a union (the active member is named directly, no `std::launder`) and
+  routes its object lifetime through the new `metl::detail::construct_at` /
+  `destroy_at` helpers (`metl/detail/construct.hpp`), which forward to
+  `std::construct_at` / `std::destroy_at` (constant-evaluable since C++20) and
+  fall back to placement-new / explicit destruction on C++17. As a result
+  `constexpr metl::optional<int> o{42}; static_assert(*o == 42);` is a real
+  constant expression on a C++20 toolchain. On C++17 behavior, size, and
+  alignment are unchanged. The `const`-qualified `value()` overloads are now
+  `constexpr` too. The remaining laundered-storage types
+  (`expected`/`variant`/`fixed_vector`/`flat_map`/`flat_set`) carry an honest
+  source note that their `constexpr` labels are effective only outside constant
+  evaluation; a genuine conversion is deferred (see `docs/AUDIT.md`).
 - **function_ref / span:** the callable/container/array constructors mark the
   bound referent `METL_LIFETIME_BOUND`, so clang (`-Wdangling`) diagnoses a
   view that would outlive its referent at the call site. This complements the
@@ -164,6 +177,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Testing
 
+- Added `tests/optional_constexpr_test.cpp`, which proves `metl::optional` is
+  constant-evaluable on C++20 (`static_assert`s guarded by
+  `#if __cplusplus >= 202002L`, a no-op on the C++17 matrix) and runs a runtime
+  smoke everywhere.
 - Added `tests/metl_check.hpp` providing `CHECK` / `CHECK_EQ`, which report
   `file:line` and the offending values on failure instead of only an exit code.
   `fixed_vector_test` and `optional_test` migrated as a demonstration.

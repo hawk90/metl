@@ -50,8 +50,42 @@ metl has no UI, so "usability" = **API clarity & contract honesty**:
 | MED ✅ DONE | `intrusive_ptr` destroys via CRTP base cast → non-virtual base of deeper hierarchy = UB/leak — now `static_assert(final || has_virtual_destructor)` | `intrusive_ptr.hpp:85` |
 | MED ✅ DONE (documented) | `static_message_queue` filed under "Concurrency" but uses plain non-atomic indices — single-threaded only — documented as single-threaded/non-ISR-safe FIFO | `static_message_queue.hpp:158` |
 | MED ✅ DONE | `fsm::dispatch` updates state *after* action → reentrant dispatch re-fires same transition — now commits state before the action | `fsm.hpp:61` |
-| LOW | Pervasive non-functional `constexpr` labels (placement-new/launder not constant-evaluable in C++17) | optional/expected/variant/fixed_vector/flat_map |
+| LOW ✅ DONE (optional) / documented (rest) | Pervasive non-functional `constexpr` labels (placement-new/launder not constant-evaluable in C++17) — `optional` is now GENUINELY constexpr on C++20 via a union + `metl/detail/construct.hpp` (`construct_at`/`destroy_at`, constexpr since C++20; placement-new fallback on C++17, behavior unchanged); the remaining laundered-storage types carry an honest source note + are deferred (see below) | optional/expected/variant/fixed_vector/flat_map |
 | — | **Clean:** `spsc_queue` fences correct, `intrusive_ptr` refcount ordering correct, hash probes bounded (no infinite loop), bit/bitfield/crc all correct | — |
+
+### `constexpr` honesty (Section A LOW)
+
+Placement-`new` and `std::launder`/`reinterpret_cast` are **never** usable in
+constant evaluation (C++17 *or* C++20), so a `constexpr` label on a
+constructor/accessor that routes through them is non-functional — the type
+cannot actually be constant-initialized. `std::construct_at`/`std::destroy_at`,
+by contrast, are `constexpr` since C++20.
+
+- **New helper** `metl/detail/construct.hpp` — `metl::detail::construct_at` /
+  `destroy_at` forward to the `std::` facilities (constant-evaluable) under
+  C++20 and fall back to placement-new / explicit destructor on C++17
+  (byte-for-byte the previous behavior). `METL_CONSTEXPR20` expands to
+  `constexpr` only when that C++20 path is active. Wired into the umbrella and
+  the self-containment checks.
+- **`optional` is now genuinely constexpr on C++20** — its storage is a union
+  (active member named directly, no launder) and its lifetime runs through the
+  helper. `constexpr metl::optional<int> o{42}; static_assert(*o == 42);` is a
+  real constant expression on a C++20 toolchain; on C++17 the code is unchanged
+  (same size/alignment, same placement-new path). Proven by
+  `tests/optional_constexpr_test.cpp`, whose `static_assert`s are compiled only
+  under `#if __cplusplus >= 202002L` (a no-op on the C++17 CI matrix) while its
+  runtime smoke runs everywhere. The `const`-qualified `value()` overloads were
+  also made `constexpr` (they were previously unlabeled).
+- **`expected` / `variant` / `fixed_vector` / `flat_map` / `flat_set` —
+  documented, deferred.** Each carries an inline source note that its
+  laundered-storage `constexpr` labels are effective only outside constant
+  evaluation. A genuine conversion needs a union-of-alternatives rewrite that
+  also has to reconcile with delicate paths (`expected`'s exception-safe
+  reinit/swap, `variant`'s recursive union + visitation, `fixed_vector`'s ASan
+  tail-poisoning, `flat_map`/`flat_set` built atop that). That was judged too
+  risky to land reliably-green across the full cross/sanitizer matrix in this
+  pass (no local gcc to validate C++17 codegen), so it is deferred rather than
+  half-done. The helper is in place to make each migration mechanical later.
 
 ## Section C — Hardening & codegen (abseil-derived techniques applied)
 

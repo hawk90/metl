@@ -417,6 +417,12 @@ class fixed_vector {
   constexpr void asan_unpoison_all_() noexcept {}
 #endif
 
+  // NOTE: elements live in an aligned byte buffer accessed through
+  // std::launder, which is not constant-evaluable, so the constexpr labels
+  // here are effective only outside constant evaluation. Genuine constexpr
+  // (as done for metl::optional via metl/detail/construct.hpp) would require a
+  // union-of-T storage rewrite that also has to reconcile with the ASan
+  // tail-poisoning above; deferred (see docs/AUDIT.md Section A).
   storage_for<T> storage_[Capacity == 0 ? 1 : Capacity];
   size_type size_;
 };

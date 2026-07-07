@@ -43,6 +43,7 @@ set(_metl_headers
   include/metl/crc32.hpp
   include/metl/crc8.hpp
   include/metl/delegate.hpp
+  include/metl/detail/construct.hpp
   include/metl/endian.hpp
   include/metl/event_dispatcher.hpp
   include/metl/expected.hpp
@@ -146,7 +147,7 @@ if(METL_BUILD_TESTS)
     intrusive_ptr
     lookup_table
     mmio monotonic_buffer
-    object_pool optional
+    object_pool optional optional_constexpr
     register_access ring_buffer
     scope_exit span spsc_queue static_allocator static_message_queue
     static_unordered_map static_unordered_set

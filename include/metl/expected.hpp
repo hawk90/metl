@@ -657,6 +657,12 @@ class expected {
     e.has_value_ = true;
   }
 
+  // NOTE: value/error live in laundered aligned storage, which is not
+  // constant-evaluable, so the constexpr labels here are effective only outside
+  // constant evaluation. Genuine constexpr (cf. metl::optional via
+  // metl/detail/construct.hpp) would require a union-of-{T,E} rewrite that also
+  // preserves the exception-safe reinit/swap paths; deferred (see
+  // docs/AUDIT.md Section A).
   union storage_union {
     storage_union() {}
     ~storage_union() {}
