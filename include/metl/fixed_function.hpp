@@ -266,11 +266,14 @@ class fixed_function_impl {
   const void* storage_ptr_const() const noexcept { return static_cast<const void*>(&storage_[0]); }
   void* storage_ptr() const noexcept {
     // Used for invoke(); the called function receives non-const access to the
-    // type-erased payload (mirrors std::function semantics for mutable lambdas).
+    // type-erased payload (mirrors std::function, whose operator() is const but
+    // may call a mutable target). `storage_` is `mutable`, so obtaining a
+    // non-const pointer to it from a const fixed_function is well-defined — even
+    // for a const fixed_function, storage_ is not a const subobject.
     return const_cast<void*>(static_cast<const void*>(&storage_[0]));
   }
 
-  alignas(std::max_align_t) unsigned char storage_[Capacity];
+  alignas(std::max_align_t) mutable unsigned char storage_[Capacity];
   const ops_type* ops_;
 };
 
@@ -383,9 +386,12 @@ class fixed_any_invocable_impl {
   }
 
   void* storage_ptr() noexcept { return static_cast<void*>(&storage_[0]); }
+  // `storage_` is `mutable`, so the const overload (used by the const
+  // operator()) yields legitimate non-const access without UB — see the
+  // fixed_function_impl overload for the full rationale.
   void* storage_ptr() const noexcept { return const_cast<void*>(static_cast<const void*>(&storage_[0])); }
 
-  alignas(std::max_align_t) unsigned char storage_[Capacity];
+  alignas(std::max_align_t) mutable unsigned char storage_[Capacity];
   const ops_type* ops_;
 };
 
