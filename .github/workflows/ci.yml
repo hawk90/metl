@@ -25,7 +25,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        build_type: [Debug, Release]
+        build_type: [Debug, Release, MinSizeRel]
         compiler:
           - { cc: gcc, cxx: g++ }
           - { cc: clang, cxx: clang++ }
@@ -77,6 +77,38 @@ jobs:
           name: host-test-logs-${{ matrix.os }}-${{ matrix.compiler.cc || 'msvc' }}-${{ matrix.build_type }}
           path: build/Testing/Temporary/LastTest.log
           if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # LTO / IPO — link-time optimization must stay clean
+  # ---------------------------------------------------------------------------
+  lto:
+    name: lto
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang
+
+      - name: Configure (Release + IPO)
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+            -DMETL_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build -j --output-on-failure
 
   # ---------------------------------------------------------------------------
   # Sanitizers (Linux + Clang, Debug, warnings-as-errors)
