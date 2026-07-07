@@ -65,14 +65,14 @@ unexpected(E) -> unexpected<E>;
 
 // Comparisons.
 template <typename E1, typename E2>
-constexpr auto operator==(const unexpected<E1>& lhs, const unexpected<E2>& rhs)
-    -> decltype(lhs.error() == rhs.error(), bool()) {
+constexpr auto operator==(const unexpected<E1>& lhs,
+                          const unexpected<E2>& rhs) -> decltype(lhs.error() == rhs.error(), bool()) {
   return lhs.error() == rhs.error();
 }
 
 template <typename E1, typename E2>
-constexpr auto operator!=(const unexpected<E1>& lhs, const unexpected<E2>& rhs)
-    -> decltype(lhs.error() != rhs.error(), bool()) {
+constexpr auto operator!=(const unexpected<E1>& lhs,
+                          const unexpected<E2>& rhs) -> decltype(lhs.error() != rhs.error(), bool()) {
   return lhs.error() != rhs.error();
 }
 
@@ -1015,8 +1015,8 @@ constexpr auto operator!=(const expected<T1, E1>& lhs, const expected<T2, E2>& r
 
 // expected<void, E1> vs expected<void, E2>.
 template <typename E1, typename E2>
-constexpr auto operator==(const expected<void, E1>& lhs, const expected<void, E2>& rhs)
-    -> decltype(lhs.error() == rhs.error(), bool()) {
+constexpr auto operator==(const expected<void, E1>& lhs,
+                          const expected<void, E2>& rhs) -> decltype(lhs.error() == rhs.error(), bool()) {
   if (lhs.has_value() != rhs.has_value()) {
     return false;
   }
@@ -1024,8 +1024,8 @@ constexpr auto operator==(const expected<void, E1>& lhs, const expected<void, E2
 }
 
 template <typename E1, typename E2>
-constexpr auto operator!=(const expected<void, E1>& lhs, const expected<void, E2>& rhs)
-    -> decltype(lhs.error() == rhs.error(), bool()) {
+constexpr auto operator!=(const expected<void, E1>& lhs,
+                          const expected<void, E2>& rhs) -> decltype(lhs.error() == rhs.error(), bool()) {
   return !(lhs == rhs);
 }
 
@@ -1052,26 +1052,26 @@ constexpr auto operator!=(const U& lhs, const expected<T, E>& rhs) -> decltype(l
 
 // expected vs unexpected.
 template <typename T, typename E, typename E2>
-constexpr auto operator==(const expected<T, E>& lhs, const unexpected<E2>& rhs)
-    -> decltype(lhs.error() == rhs.error(), bool()) {
+constexpr auto operator==(const expected<T, E>& lhs,
+                          const unexpected<E2>& rhs) -> decltype(lhs.error() == rhs.error(), bool()) {
   return !lhs.has_value() && (lhs.error() == rhs.error());
 }
 
 template <typename T, typename E, typename E2>
-constexpr auto operator==(const unexpected<E2>& lhs, const expected<T, E>& rhs)
-    -> decltype(lhs.error() == rhs.error(), bool()) {
+constexpr auto operator==(const unexpected<E2>& lhs,
+                          const expected<T, E>& rhs) -> decltype(lhs.error() == rhs.error(), bool()) {
   return !rhs.has_value() && (lhs.error() == rhs.error());
 }
 
 template <typename T, typename E, typename E2>
-constexpr auto operator!=(const expected<T, E>& lhs, const unexpected<E2>& rhs)
-    -> decltype(lhs.error() != rhs.error(), bool()) {
+constexpr auto operator!=(const expected<T, E>& lhs,
+                          const unexpected<E2>& rhs) -> decltype(lhs.error() != rhs.error(), bool()) {
   return lhs.has_value() || (lhs.error() != rhs.error());
 }
 
 template <typename T, typename E, typename E2>
-constexpr auto operator!=(const unexpected<E2>& lhs, const expected<T, E>& rhs)
-    -> decltype(lhs.error() != rhs.error(), bool()) {
+constexpr auto operator!=(const unexpected<E2>& lhs,
+                          const expected<T, E>& rhs) -> decltype(lhs.error() != rhs.error(), bool()) {
   return rhs.has_value() || (lhs.error() != rhs.error());
 }
 
