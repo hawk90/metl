@@ -307,6 +307,48 @@ jobs:
             -fsyntax-only tests/embedded_smoke.cpp
 
   # ---------------------------------------------------------------------------
+  # Big-endian build — exercises endian.hpp on a real big-endian target.
+  #
+  # metl's byte-order logic is otherwise only ever compiled little-endian.
+  # powerpc64-linux-gnu is a big-endian target whose GCC correctly defines
+  # __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__, so endian::native must resolve to
+  # big. We (a) syntax-check every public header big-endian and (b) build and
+  # RUN the endian test under qemu-user, whose byte-representation assertions
+  # fail loudly if endian::native were mis-detected.
+  # ---------------------------------------------------------------------------
+  big-endian:
+    name: big-endian / powerpc64
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install big-endian toolchain + qemu-user
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-powerpc64-linux-gnu qemu-user-static
+
+      - name: Syntax-check every public header (big-endian frontend)
+        run: |
+          set -euo pipefail
+          powerpc64-linux-gnu-g++ -std=c++17 -Wall -Wextra \
+            -Iinclude -fsyntax-only tests/embedded_smoke.cpp
+
+      - name: Build the endian test (big-endian, static)
+        run: |
+          set -euo pipefail
+          powerpc64-linux-gnu-g++ -std=c++17 -O2 -Wall -Wextra -static \
+            -Iinclude tests/endian_test.cpp -o endian_test_be
+
+      - name: Run the endian test under qemu (big-endian)
+        run: |
+          set -euo pipefail
+          qemu-ppc64-static ./endian_test_be
+          echo "endian test passed on big-endian target"
+
+  # ---------------------------------------------------------------------------
   # Header hygiene — per-header self-containment + umbrella completeness
   # ---------------------------------------------------------------------------
   header-checks:
