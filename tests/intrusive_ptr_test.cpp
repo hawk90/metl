@@ -49,7 +49,7 @@ void intrusive_ptr_release(node* object) {
 // CRTP refcounted types backed by aligned static storage (no heap).
 // ---------------------------------------------------------------------------
 
-struct non_atomic_obj : metl::intrusive_ref_counter<non_atomic_obj, metl::refcount_kind::non_atomic> {
+struct non_atomic_obj final : metl::intrusive_ref_counter<non_atomic_obj, metl::refcount_kind::non_atomic> {
   explicit non_atomic_obj(int v) : value(v) {}
   ~non_atomic_obj() { ++destruction_count; }
   int value;
@@ -58,7 +58,7 @@ struct non_atomic_obj : metl::intrusive_ref_counter<non_atomic_obj, metl::refcou
 
 int non_atomic_obj::destruction_count = 0;
 
-struct atomic_obj : metl::intrusive_ref_counter<atomic_obj, metl::refcount_kind::atomic> {
+struct atomic_obj final : metl::intrusive_ref_counter<atomic_obj, metl::refcount_kind::atomic> {
   explicit atomic_obj(int v) : value(v) {}
   ~atomic_obj() { ++destruction_count; }
   int value;

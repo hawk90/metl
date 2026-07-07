@@ -61,7 +61,7 @@ namespace {
 
 // ---- Helpers --------------------------------------------------------------
 
-struct dummy_refcounted : metl::intrusive_ref_counter<dummy_refcounted> {};
+struct dummy_refcounted final : metl::intrusive_ref_counter<dummy_refcounted> {};
 
 enum class smoke_state : std::uint8_t { off, on };
 enum class smoke_event : std::uint8_t { toggle };
