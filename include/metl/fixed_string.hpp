@@ -22,7 +22,15 @@ class fixed_string {
 
   constexpr fixed_string() noexcept : storage_{}, size_(0) { storage_[0] = '\0'; }
 
-  fixed_string(const char* text) : storage_{}, size_(0) { (void)assign(text); }
+  // Precondition: text fits in Capacity. On overflow this asserts (the default
+  // handler aborts) rather than silently truncating to an empty string. Callers
+  // needing a recoverable, non-asserting path should default-construct and call
+  // assign(), which reports overflow via its bool result.
+  fixed_string(const char* text) : storage_{}, size_(0) {
+    const bool assigned = assign(text);
+    METL_ASSERT(assigned);
+    (void)assigned;
+  }
 
   METL_NODISCARD constexpr iterator begin() noexcept { return storage_; }
   METL_NODISCARD constexpr const_iterator begin() const noexcept { return storage_; }

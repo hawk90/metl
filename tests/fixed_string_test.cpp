@@ -57,5 +57,23 @@ int main() {
     return 13;
   }
 
+  // Constructing from a string that fits is fine (exact-capacity boundary).
+  metl::fixed_string<5> exact("abcde");
+  if (exact.size() != 5 || exact.back() != 'e') {
+    return 14;
+  }
+
+  // assign() is the recoverable, non-asserting overflow path: it reports
+  // failure via its bool result and leaves the string unchanged rather than
+  // silently truncating. (The const char* constructor instead asserts on
+  // overflow, which cannot be exercised in-process without aborting.)
+  metl::fixed_string<3> small;
+  if (small.assign("toolong")) {
+    return 15;
+  }
+  if (!small.empty()) {
+    return 16;
+  }
+
   return 0;
 }
