@@ -176,6 +176,26 @@ link+run job. Existing jobs are unchanged.
   sample, and README "Zephyr" docs are structurally verifiable independent of the
   CI run.
 
+- 🟡 **ESP-IDF component / Xtensa (ESP32)** (`esp-idf` CI job) — metl is now
+  packaged as a header-only ESP-IDF component (`components/metl/CMakeLists.txt`
+  calls `idf_component_register(INCLUDE_DIRS ...)` with no `SRCS`; interface-only,
+  nothing compiled into the image) plus an `idf_component.yml` manifest for the
+  IDF Component Manager. A sample under `samples/esp-idf/metl_hello/` wires the
+  in-tree `components/` dir via `EXTRA_COMPONENT_DIRS`, its `main` component does
+  `REQUIRES metl`, and `main.cpp` exercises `fixed_vector`/`expected`/`span` in
+  `app_main()`. CI uses the official `espressif/esp-idf-ci-action@v1` to
+  `idf.py build` inside the pinned `espressif/idf:v5.3.3` Docker image for a
+  **matrix of `esp32` (Xtensa) and `esp32c3` (RISC-V)**. The **Xtensa** target is
+  the key new coverage — a compiler frontend/target no other job touches (ARM,
+  RISC-V-elf, x86, PPC64). ESP-IDF compiles `.cpp` as C++ by default (default std
+  is newer than C++17; exceptions and RTTI OFF by default — exactly metl's
+  contract), so no extra `CONFIG` is needed for metl's C++17 surface.
+  **May need CI iteration** (this can't be run on macOS locally): candidate
+  points are the pinned IDF Docker tag (`v5.3.3`; `release-v5.3` / `v5.3` are
+  moving alternatives) and the target list. Non-blocking (`continue-on-error`),
+  same pattern as `zephyr`. The component shim, manifest, sample, and README
+  "ESP-IDF (ESP32)" docs are structurally verifiable independent of the CI run.
+
 ### Code-size visibility (arm-cross)
 
 The `arm-cross` job now additionally builds the embedded smoke library in

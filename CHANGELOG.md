@@ -36,6 +36,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `qemu_cortex_m3` / `native_sim`. A new `zephyr` CI job builds the sample in
   the official Zephyr CI Docker image and runs it under QEMU via twister,
   asserting a success sentinel. See the README "Zephyr" section.
+- **ESP-IDF component support (ESP32).** metl is now consumable as a header-only
+  [ESP-IDF component](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/build-system.html):
+  `components/metl/CMakeLists.txt` registers metl's `include/` via
+  `idf_component_register(INCLUDE_DIRS ...)` with no `SRCS` (interface-only —
+  nothing compiled into the image), and `components/metl/idf_component.yml` is a
+  manifest for the IDF Component Manager. A consumer declares `REQUIRES metl` to
+  get `<metl/...>` on its include path. A runnable sample lives under
+  `samples/esp-idf/metl_hello/` (top-level `CMakeLists.txt` wiring
+  `EXTRA_COMPONENT_DIRS` → this repo's `components/`, `main/CMakeLists.txt`
+  with `REQUIRES metl`, and `main/main.cpp`) exercising `fixed_vector` +
+  `expected` + `span` in `app_main()`. A new **non-blocking** `esp-idf` CI job
+  (`continue-on-error: true`, matching the `zephyr` pattern) uses the official
+  `espressif/esp-idf-ci-action` to `idf.py build` the sample for **`esp32`
+  (Xtensa)** and **`esp32c3` (RISC-V)** in the pinned `espressif/idf:v5.3.3`
+  Docker image — the Xtensa target adds a compiler frontend not covered by any
+  other job. Provisional (non-blocking) until the Docker build wiring is
+  validated green. See the README "ESP-IDF (ESP32)" and "Platform support
+  matrix" sections.
+- **Platform support matrix (README).** New "Platform support matrix" section
+  enumerating CI-verified coverage (host gcc/clang/MSVC × Debug/Release/
+  MinSizeRel/LTO, ASan/UBSan/TSan, ARM Cortex-M gcc+clang, RISC-V rv64, Xtensa
+  ESP32 [provisional], PowerPC64 big-endian run, newlib-nano link, picolibc +
+  QEMU run, Zephyr module [provisional], ESP-IDF component [provisional]) versus
+  documented-only toolchains that are not automatically verified (IAR EWARM —
+  proprietary, no free public CI; ARM Compiler 6 — LLVM-based, partially proxied
+  by the `arm-cross-clang` job).
 - **Portable attribute layer (`metl/attributes.hpp`, abseil `attributes.h`
   style):** `__has_cpp_attribute`/`__has_attribute`-gated macros with empty
   fallbacks, so applying one is always safe (honored or a no-op). Consolidates

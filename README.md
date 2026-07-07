@@ -276,6 +276,52 @@ int main(void) {
 > also work for headers that don't pull in `<functional>` — see the comments in
 > [`samples/zephyr/metl_hello/prj.conf`](samples/zephyr/metl_hello/prj.conf).
 
+## ESP-IDF (ESP32)
+
+METL ships as a header-only
+[ESP-IDF component](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/build-system.html).
+A component shim (`components/metl/CMakeLists.txt`) registers METL's `include/`
+directory via `idf_component_register(INCLUDE_DIRS ...)` with no sources
+(header-only), and an `idf_component.yml` manifest makes it consumable by the
+IDF Component Manager. Any component that declares `REQUIRES metl` can then
+`#include <metl/...>`.
+
+Build the bundled sample
+([`samples/esp-idf/metl_hello`](samples/esp-idf/metl_hello)) — its top-level
+`CMakeLists.txt` adds this repo's `components/` directory via
+`EXTRA_COMPONENT_DIRS`, and `main/` declares `REQUIRES metl`:
+
+```sh
+# From an ESP-IDF environment (idf.py on PATH, IDF_PATH set):
+cd samples/esp-idf/metl_hello
+idf.py set-target esp32       # or esp32c3 (RISC-V), esp32s3, ...
+idf.py build
+```
+
+Application code just includes the headers; ESP-IDF compiles `.cpp` as C++17 by
+default and calls `app_main()` (which needs C linkage):
+
+```cpp
+#include <cstdio>
+#include <metl/fixed_vector.hpp>
+#include <metl/expected.hpp>
+
+extern "C" void app_main(void) {
+    metl::fixed_vector<int, 8> v;
+    v.push_back(42);
+    std::printf("metl on ESP-IDF: %d\n", v[0]);
+}
+```
+
+To consume METL from your own IDF project without vendoring it, point
+`EXTRA_COMPONENT_DIRS` at this checkout's `components/` directory, or add a local
+`path:` dependency on `components/metl` in your `main/idf_component.yml`.
+
+> Provisional: the component + sample are structurally complete and follow
+> ESP-IDF conventions, but the `esp-idf` CI job (which builds the sample for
+> `esp32`/`esp32c3` in the official Espressif Docker image) is non-blocking
+> while its IDF-version / target wiring is tuned — see the CI notes below.
+
 ## Compatibility matrix
 
 | Toolchain         | Minimum version |
@@ -291,6 +337,54 @@ Tested targets:
 - Cortex-A class
 - RISC-V (32-bit and 64-bit)
 - x86-64 host (Linux, macOS, Windows)
+
+## Platform support matrix
+
+What CI actually exercises versus what is supported-but-not-automatically-verified.
+"CI-verified" means a job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+builds (and, where noted, runs) METL on that platform on every push/PR.
+
+### CI-verified
+
+| Area | Platform / config | What CI does | Job |
+| --- | --- | --- | --- |
+| Host | Linux / macOS / Windows × gcc / clang / MSVC × Debug / Release / MinSizeRel | build + `ctest` | `host-test` |
+| Host hardening | Release **+ `-Werror`** (clang) | build + `ctest` (NDEBUG warning gate) | `release-werror` |
+| Host LTO | Release + IPO/LTO | build + `ctest` | `lto` |
+| Sanitizers | Linux / clang — ASan+UBSan, TSan (Debug, `-Werror`) | build + `ctest` (incl. threaded tests) | `sanitizers` |
+| ARM Cortex-M (gcc) | Cortex-M0/M3/M4/M7, freestanding | cross-compile + code size | `arm-cross` |
+| ARM Cortex-M (clang) | cortex-m4, `arm-none-eabi` target | second frontend, `-fsyntax-only` | `arm-cross-clang` |
+| RISC-V | rv64 (linux-gnu g++) | freestanding `-fsyntax-only` | `riscv-cross` |
+| Xtensa (ESP32) | ESP-IDF component, `esp32` target | `idf.py build` (Docker) — **provisional** | `esp-idf` |
+| RISC-V (ESP32-C3) | ESP-IDF component, `esp32c3` target | `idf.py build` (Docker) — **provisional** | `esp-idf` |
+| Big-endian | powerpc64 (BE) | build headers + build & **run** endian test under qemu-user | `big-endian` |
+| Bare-metal libc (link) | Cortex-M3 + newlib-nano (nosys) | compile + **link** + size | `newlib-link` |
+| Bare-metal libc (run) | Cortex-M3 + picolibc, mps2-an385 | link + **run** under qemu-system-arm (semihosting) | `picolibc-qemu` |
+| Zephyr RTOS | qemu_cortex_m3 module build + run | `west build` + twister **run** (QEMU) — **provisional** | `zephyr` |
+| Header hygiene | per-header self-containment + umbrella completeness | `-fsyntax-only` per header + `ctest` | `header-checks` |
+| Install / consume | `find_package(metl)` downstream | install + build + **run** a consumer | `install-check` |
+| Examples | every `examples/*.cpp`, `-Wall -Wextra -Werror` | build + **run** (self-checking) | `examples` |
+
+Cross-cutting frontends covered by the above: **GCC**, **Clang**, and **MSVC** on
+host; **arm-none-eabi-gcc** and **clang** (bare-metal ARM); **RISC-V** (rv64 and
+ESP32-C3); **Xtensa** (ESP32); **PowerPC64** big-endian. Build types: Debug,
+Release, MinSizeRel (`-Os`), plus LTO. Runtime configs: no-exceptions, no-RTTI,
+freestanding, newlib-nano and picolibc libcs.
+
+> **Provisional** jobs (`esp-idf`, `zephyr`) are `continue-on-error: true`:
+> their component/module wiring is real and correct-by-construction, but the
+> Docker/RTOS build automation is still being tuned, so they do not gate the
+> pipeline yet.
+
+### Documented-only (not CI-verified)
+
+METL is written to be portable to these toolchains, but there is no free public
+CI that automatically verifies them. They are supported on a best-effort basis:
+
+| Toolchain | Status | Notes |
+| --- | --- | --- |
+| **IAR EWARM** | Not CI-verified | Proprietary; no free public CI runner exists. METL avoids GNU-only extensions and compiles under `-Wpedantic` specifically to maximize compatibility with strict/commercial compilers, but IAR is **not** automatically exercised — treat it as supported-by-design, verify locally. |
+| **ARM Compiler 6 (armclang)** | Partially proxied | Arm Compiler 6 is LLVM/Clang-based, so the `arm-cross-clang` job (clang → `arm-none-eabi`) covers the same frontend family; the exact armclang driver/CMSIS toolchain is not run in CI. |
 
 ## Design principles
 
@@ -313,8 +407,11 @@ metl/
 ├── tests/
 ├── examples/
 ├── samples/
-│   └── zephyr/         # Zephyr sample app (metl_hello)
+│   ├── zephyr/         # Zephyr sample app (metl_hello)
+│   └── esp-idf/        # ESP-IDF sample app (metl_hello)
 ├── zephyr/             # Zephyr module manifest + CMake/Kconfig shim
+├── components/
+│   └── metl/           # ESP-IDF component shim (idf_component_register + manifest)
 ├── docs/
 └── .github/
 ```
