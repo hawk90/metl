@@ -11,28 +11,49 @@
 
 namespace metl {
 
+/// @brief Fixed-capacity LIFO arena allocator with rewind and object destruction.
+///
+/// Backed by an inline byte buffer of @c Capacity bytes; performs NO dynamic heap
+/// allocation. Each allocation records enough metadata to unwind in LIFO order via
+/// `mark`/`rewind`, running destructors for objects created through `try_emplace`.
+///
+/// @tparam Capacity Backing storage size in bytes.
+/// @warning NOT thread-safe: all operations mutate a shared offset without
+///          synchronization. Use from a single thread and never from an ISR.
 template <std::size_t Capacity>
 class arena_allocator {
  public:
   using size_type = std::size_t;
 
+  /// @brief Opaque savepoint capturing the arena offset for a later `rewind`.
   struct mark_type {
     size_type offset;
   };
 
+  /// @brief Construct an empty arena with all storage available.
   constexpr arena_allocator() noexcept : offset_(0), storage_{} {}
 
+  /// @brief Capture the current allocation position for a later `rewind`.
+  /// @return A savepoint referring to the current top of the arena.
   METL_NODISCARD mark_type mark() const noexcept { return mark_type{offset_}; }
 
-  // Public raw allocator. Every successful allocation pushes a record so
-  // rewind() can always walk back through allocations in LIFO order. Raw
-  // allocations carry destroy=nullptr, so rewind only unwinds offsets for
-  // them. This guarantees rewind safety even when raw allocate() is
-  // interleaved with try_emplace<T>().
+  /// @brief Allocate a raw, uninitialized, aligned block from the arena.
+  ///
+  /// Every successful allocation pushes a record so `rewind` can always walk back
+  /// through allocations in LIFO order. Raw allocations carry no destructor, so
+  /// rewind only unwinds offsets for them. This keeps rewind safe even when raw
+  /// `allocate` is interleaved with `try_emplace`.
+  ///
+  /// @param bytes Number of bytes to allocate; a request of 0 returns null.
+  /// @param alignment Required alignment; must not exceed max alignment.
+  /// @return Pointer to the block, or null if the arena lacks space (no throw).
   METL_NODISCARD void* allocate(size_type bytes, size_type alignment = alignof(std::max_align_t)) noexcept {
     return allocate_impl(bytes, alignment, nullptr);
   }
 
+  /// @brief Construct a @c T in the arena, registering its destructor for `rewind`.
+  /// @tparam T Object type to construct; its alignment must not exceed max alignment.
+  /// @return Pointer to the constructed object, or null if the arena is out of space.
   template <typename T, typename... Args>
   METL_NODISCARD T* try_emplace(Args&&... args) {
     static_assert(alignof(T) <= alignof(std::max_align_t),
@@ -46,6 +67,10 @@ class arena_allocator {
     return new (memory) T(std::forward<Args>(args)...);
   }
 
+  /// @brief Like `try_emplace`, but asserts that the allocation succeeds.
+  /// @tparam T Object type to construct.
+  /// @return Pointer to the constructed object (never null on success).
+  /// @pre The arena must have enough space to hold a @c T.
   template <typename T, typename... Args>
   METL_NODISCARD T* emplace(Args&&... args) {
     T* object = try_emplace<T>(std::forward<Args>(args)...);
@@ -53,6 +78,13 @@ class arena_allocator {
     return object;
   }
 
+  /// @brief Roll the arena back to a savepoint, destroying objects created after it.
+  ///
+  /// Walks allocation records in LIFO order, running the destructor of each object
+  /// created via `try_emplace`/`emplace` before releasing its space.
+  ///
+  /// @param target A savepoint previously returned by `mark`.
+  /// @pre @c target must refer to a position at or below the current top.
   void rewind(mark_type target) noexcept {
     METL_ASSERT(target.offset <= offset_);
     while (offset_ > target.offset) {
@@ -64,11 +96,16 @@ class arena_allocator {
     }
   }
 
+  /// @brief Destroy all objects and release all storage back to empty.
   void reset() noexcept { rewind(mark_type{0}); }
 
+  /// @brief Total backing capacity in bytes.
   METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
+  /// @brief Bytes currently consumed (payloads, padding, and records).
   METL_NODISCARD constexpr size_type used() const noexcept { return offset_; }
+  /// @brief Bytes still available for allocation.
   METL_NODISCARD constexpr size_type remaining() const noexcept { return Capacity - offset_; }
+  /// @brief True if no allocations are currently live.
   METL_NODISCARD constexpr bool empty() const noexcept { return offset_ == 0; }
 
  private:
