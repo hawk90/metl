@@ -158,6 +158,14 @@ link+run job. Existing jobs are unchanged.
     package availability). If it proves fragile, `newlib-link` remains the green
     libc-link proof and picolibc+QEMU can be deferred.
 
+### Code-size visibility (arm-cross)
+
+The `arm-cross` job now additionally builds the embedded smoke library in
+`MinSizeRel` (`-Os`, NDEBUG) and prints `arm-none-eabi-size` for each Cortex-M
+CPU, so the optimized binary size shows up in the CI log on every build. It is
+informational (no hard threshold yet) — the baseline to watch for size
+regressions. The existing default-build size step is unchanged.
+
 ### `endian.hpp` hardening (byte-order detection)
 
 The big-endian job confirmed the *primary* detection path is already correct: every

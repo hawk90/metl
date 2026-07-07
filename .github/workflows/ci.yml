@@ -252,6 +252,27 @@ jobs:
       - name: Report code size
         run: arm-none-eabi-size build-arm/libmetl_embedded_smoke.a
 
+      # Explicit MinSizeRel (-Os, NDEBUG) build so per-build binary size is
+      # visible in the log. Informational only — no hard threshold yet; this is
+      # the number to watch for size regressions over time.
+      - name: Configure (MinSizeRel, -Os)
+        run: |
+          cmake -B build-arm-minsizerel -S . \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake \
+            -DMETL_ARM_CPU=${{ matrix.cpu }} \
+            -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DMETL_BUILD_TESTS=OFF \
+            -DMETL_BUILD_EMBEDDED_SMOKE=ON \
+            -DMETL_INSTALL=OFF
+
+      - name: Build (MinSizeRel)
+        run: cmake --build build-arm-minsizerel -j
+
+      - name: Report MinSizeRel code size (informational)
+        run: |
+          echo "== MinSizeRel (-Os, NDEBUG) size — ${{ matrix.cpu }} =="
+          arm-none-eabi-size build-arm-minsizerel/libmetl_embedded_smoke.a
+
       - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v5

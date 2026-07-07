@@ -218,6 +218,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Build
 
+- **arm-cross code-size visibility** — the `arm-cross` job now also does an
+  explicit `MinSizeRel` (`-Os`, NDEBUG) build of the embedded smoke library and
+  prints `arm-none-eabi-size` for each Cortex-M target, so per-build binary size
+  is visible in the log. Informational only (no hard threshold yet) — the number
+  to watch for size regressions.
 - **`release-werror` CI job** — builds and tests in `Release`
   (`-DCMAKE_BUILD_TYPE=Release -DMETL_WARNINGS_AS_ERRORS=ON`) with both gcc and
   clang, gating warning hygiene on the optimized/NDEBUG surface that the
