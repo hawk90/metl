@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-symbol Doxygen API documentation across all public headers.** Every
+  public class/struct in `include/metl/` (plus `coro/` and the public-facing
+  `detail/construct.hpp`) now carries a `///` brief and a short contract note
+  (fixed capacity, no heap allocation, thread-safety where relevant); key
+  members and free functions document `@param`/`@tparam`/`@return`/`@pre` where
+  non-obvious. The non-standard, easy-to-trip contracts are surfaced with
+  `@warning`/`@note` at the symbols themselves: `at()`/`value()`/`error()` and
+  `variant` `get<>()`/`visit()` **assert (abort by default), they do not throw**
+  the corresponding `std::` exceptions; `flat_map`/`flat_set`
+  `operator[]`/`at()` are **positional index accessors, not key lookup** (use
+  `find()`/`nth()`); `function_ref` **rejects rvalue callables** (dangling
+  prevention); the failed-assert/`panic` path is **`[[noreturn]]`** even with a
+  user handler; `static_message_queue` is **single-threaded / not ISR-safe**
+  (use `spsc_queue`); fixed-capacity overflow asserts while the `try_*` variants
+  return `false`. Additive only — no API, signature, or behavior change; the
+  strict `docs` job (`WARN_AS_ERROR=FAIL_ON_WARNINGS`) builds clean.
 - **Zephyr module support.** metl is now consumable as a header-only
   [Zephyr module](https://docs.zephyrproject.org/latest/develop/modules.html):
   `zephyr/module.yml` (manifest) plus a minimal `zephyr/CMakeLists.txt` +

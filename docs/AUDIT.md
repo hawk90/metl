@@ -237,20 +237,29 @@ Surveyed the heavy standard headers pulled in by public headers (`<functional>`,
 4. Promote clang-tidy from advisory (`ci.yml:186 continue-on-error`) to blocking.
 5. Code coverage gate (the `try_*`/full-container branches are easy to leave uncovered).
 6. Real google/benchmark benchmarks or remove the dead `metl_cc_benchmark` stub + README claim.
-7. 🟡 **IN PROGRESS** — Per-symbol API docs (Doxygen) — especially the
-   non-standard contracts above. Landed: a `docs/Doxyfile.in` + CMake `docs`
-   target + a `docs` CI job (generates HTML from `include/metl`, fails on
-   malformed doc comments; undocumented is tolerated for now). Added
-   `docs/COOKBOOK.md` (task-oriented recipes) and a set of CI-compiled,
-   CTest-run examples covering every module family
+7. ✅ **DONE** — Per-symbol API docs (Doxygen) — especially the
+   non-standard contracts above. Landed earlier: a `docs/Doxyfile.in` + CMake
+   `docs` target + a `docs` CI job (generates HTML from `include/metl`, fails on
+   malformed doc comments via `WARN_AS_ERROR=FAIL_ON_WARNINGS`; undocumented is
+   tolerated). Added `docs/COOKBOOK.md` (task-oriented recipes) and a set of
+   CI-compiled, CTest-run examples covering every module family
    (`examples/{containers,allocators,spsc_isr,mmio_peripheral,error_handling,coroutine_task}.cpp`
    plus the pre-existing `blinky_fsm`/`can_frame_parser`/`sensor_pipeline`),
-   each built under `-Wall -Wextra -Werror -std=c++17`. The non-standard
-   contracts (`at()`/`value()`/`get()` assert; `flat_map` positional indexing;
-   `[[noreturn]]` assert path; `function_ref` rvalue rejection) are now
-   surfaced in the README module map and the Cookbook contracts table.
-   **Deferred:** writing per-symbol `///` doc comments in the headers
-   themselves.
+   each built under `-Wall -Wextra -Werror -std=c++17`. **Now complete:**
+   per-symbol `///` Doxygen comments are written across all ~50 public headers
+   (`include/metl/`, plus `coro/` and the public-facing `detail/construct.hpp`).
+   Every public class/struct has a brief + a capacity/no-heap/thread-safety
+   contract note, and key members/free functions carry
+   `@param`/`@tparam`/`@return`/`@pre` where non-obvious. The non-standard
+   contracts are surfaced at the symbols themselves with `@warning`/`@note`:
+   `at()`/`value()`/`error()`/variant `get<>()` assert (abort) and do NOT throw;
+   `flat_map`/`flat_set` `operator[]`/`at` are positional (not key lookup) →
+   `find()`/`nth()`; `function_ref` rejects rvalue callables; the assert/panic
+   path is `[[noreturn]]` even with a user handler; `static_message_queue` is
+   single-threaded/non-ISR-safe → `spsc_queue`; fixed capacity overflow asserts
+   while `try_*` returns false. Verified: `docs` target builds clean under
+   `WARN_AS_ERROR`, clang-format 18.1.8 stays clean, and Debug ctest is
+   unchanged (60/60) — the change is additive documentation only.
 
 **P2 — API correctness/ergonomics**
 8. ✅ **DONE** — Make the assert handler `[[noreturn]]`-safe (fact ①) — collapses the conditional-UB class.
