@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`METL_HARDENING` runtime-check levels + always-on `METL_HARDEN` floor.** A
+  consumer-controllable hardening knob modeled on libc++'s
+  `_LIBCPP_HARDENING_MODE` and Abseil's `ABSL_HARDENING_ASSERT`:
+  `METL_HARDENING` ∈ `NONE` (0) / `FAST` (1) / `DEBUG` (2), defaulting to `DEBUG`
+  for debug builds (`METL_DEBUG` or `!NDEBUG`) and `FAST` for release, overridable
+  via `-DMETL_HARDENING=<0|1|2>` independent of the consumer's own `NDEBUG`.
+  **metl stays checked-by-default**: ordinary preconditions (`METL_ASSERT` —
+  bounds, non-empty, capacity, allocator overflow) remain on in release and are
+  compiled out only at `NONE`; `NONE` is an explicit opt-in for maximum
+  performance, not the default. The new **`METL_HARDEN`** macro is a security
+  floor that is *never* stripped (even at `NONE`) — reserved for defense-in-depth
+  guards whose failure would be a wild out-of-bounds write. `METL_DASSERT`
+  remains the debug-only tier for genuinely expensive checks. **ODR note:**
+  `METL_HARDENING` must be uniform across all TUs of a program (same constraint as
+  `NDEBUG`/`_LIBCPP_HARDENING_MODE`); documented at `config.hpp`. See
+  `docs/AUDIT.md` Section E.
+- **`metl_cc_test(... INCLUDES ...)`** — the Bazel-style test rule now accepts an
+  `INCLUDES` attribute (mirroring `metl_cc_library`), used to put the shared
+  `tests/metl_check.hpp` helper on every test's include path after the test-suite
+  reorganization.
+- **New regression / hardening tests.** `variant_selfassign`
+  (converting-assign self-aliasing + in-place assignment), `arena_throwing_ctor`
+  (exception-safety of the destructor record), `object_pool_foreign_ptr`
+  (unrelated-pointer membership test), `harden_floor_none` (a forked death test
+  proving `METL_HARDEN` still aborts at `METL_HARDENING_NONE`), and
+  `hardening_{none,fast,debug}` (each pins a level and checks which of
+  `METL_ASSERT`/`METL_DASSERT`/`METL_HARDEN` fire).
 - **Fuzzing harnesses (libFuzzer, ASan+UBSan) + a blocking CI fuzz-smoke job.**
   Five `LLVMFuzzerTestOneInput` harnesses under `fuzz/`
   (`fuzz_fixed_string`, `fuzz_flat_map`, `fuzz_static_unordered_map`,
@@ -120,6 +147,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Test suite grouped into subdirectories.** `tests/*_test.cpp` moved into
+  `tests/{containers,memory,sync,vocab,bits,control,core}/` for navigation; the
+  freestanding `embedded_smoke.cpp` moved under `tests/embedded/`. Registration
+  stays an explicit list (not a glob) to match the Bazel-style `metl_cc_*` rules —
+  sources are enumerated, reviewable, and reproducible. No test was dropped
+  (`git mv` preserves history).
 - **optional — genuine `constexpr` on C++20:** `metl::optional` now stores its
   value in a union (the active member is named directly, no `std::launder`) and
   routes its object lifetime through the new `metl::detail::construct_at` /
@@ -194,6 +227,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **variant:** the converting `operator=(T&&)` now assigns in place when the
+  active alternative already holds the target type, instead of always routing
+  through `emplace()` (which `reset()`-destroyed the active alternative before
+  reading the source). Fixes a use-after-destruction for a self-aliasing
+  assignment such as `v = get<T>(v)`. Distinct from the earlier copy/move-assign
+  exception-safety fix.
+- **atomic_ref:** added `static_assert(std::atomic<T>::is_always_lock_free)`. A
+  non-lock-free `std::atomic<T>` embeds a lock and has a larger `sizeof`/different
+  layout than `T`, so the reinterpret-based backport would read/write past the
+  referenced object; the lock-free property was computed but never enforced.
+- **arena_allocator:** `try_emplace` now constructs the object *before*
+  registering its destructor record. The previous order left a record pointing at
+  unconstructed storage if `T`'s constructor threw, so a later `rewind`/`reset`
+  ran `~T()` on raw memory. Also hard-guards a power-of-two `alignment`.
+- **object_pool:** `contains`/`index_of` no longer apply relational operators
+  (`<`, `>=`) to an unrelated caller-supplied pointer (UB); the containment test
+  now compares integer addresses (`uintptr_t`), with no `<functional>` dependency.
+- **static_unordered_map / static_unordered_set / arena_allocator:** the
+  defense-in-depth guards that prevent a full-table insert (or a bad alignment)
+  from becoming a wild out-of-bounds write now use the always-on `METL_HARDEN`
+  instead of `METL_ASSERT`, so the security floor holds even at
+  `METL_HARDENING_NONE`.
 - **endian:** `endian::native` no longer silently assumes little-endian when the
   byte order can't be detected. `__BYTE_ORDER__` (defined by every supported GCC/Clang
   cross target, big-endian included) remains the authoritative signal; a chain of

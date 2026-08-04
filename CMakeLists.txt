@@ -132,53 +132,53 @@ if(METL_BUILD_TESTS)
   endif()
 
   # -------------------------------------------------------------------------
-  # Test suite  (Bazel-style — one rule per test)
+  # Test suite  (Bazel-style — one rule per test, srcs listed explicitly)
   # -------------------------------------------------------------------------
+  # Tests are grouped into subdirectories purely for navigation; each entry is
+  # `<subdir>/<name>` mapping to tests/<subdir>/<name>_test.cpp with target
+  # metl_<name>_test. Kept an explicit list (not a glob) to match the Bazel-style
+  # rules — srcs are enumerated, reviewable, and reproducible. The shared
+  # tests/metl_check.hpp helper is put on every test's include path via INCLUDES.
+  # (The threaded test needs Threads::Threads and is wired separately below.)
   set(_metl_tests
-    smoke
-    arena_allocator assert atomic_ref
-    bit bitfield
-    compiler
-    coro_protothread coro_scheduler coro_stepper
-    crc16 crc32 crc8
-    delegate
-    endian event_dispatcher expected
-    fixed_deque fixed_function fixed_queue fixed_stack fixed_string fixed_vector
-    flat_map flat_set fsm function_ref
-    hash
-    intrusive_ptr
-    lookup_table
-    mmio monotonic_buffer
-    object_pool optional optional_constexpr
-    register_access ring_buffer
-    scope_exit span spsc_queue static_allocator static_message_queue
-    static_unordered_map static_unordered_set
-    type_traits
-    variant
-    # Focused correctness regression tests (Section A audit fixes).
-    coro_scheduler_reentrancy
-    static_unordered_map_emplace
-    variant_regression
-    expected_regression
-    mmio_regression
-    allocator_overflow
-    fixed_function_const
-    fsm_reentrancy
-    hash_unique_repr
-    intrusive_ptr_contract
-    fixed_vector_asan
+    # containers/
+    containers/fixed_vector containers/fixed_vector_asan containers/fixed_string
+    containers/fixed_deque containers/fixed_queue containers/fixed_stack
+    containers/ring_buffer containers/flat_map containers/flat_set
+    containers/static_unordered_map containers/static_unordered_set
+    containers/static_unordered_map_emplace containers/lookup_table
+    # memory/
+    memory/arena_allocator memory/static_allocator memory/monotonic_buffer
+    memory/object_pool memory/allocator_overflow
+    memory/arena_throwing_ctor memory/object_pool_foreign_ptr
+    # sync/
+    sync/spsc_queue sync/static_message_queue sync/atomic_ref
+    # vocab/
+    vocab/optional vocab/optional_constexpr vocab/expected vocab/expected_regression
+    vocab/variant vocab/variant_regression vocab/span vocab/function_ref
+    vocab/fixed_function vocab/fixed_function_const vocab/delegate
+    vocab/intrusive_ptr vocab/intrusive_ptr_contract vocab/scope_exit vocab/type_traits
+    vocab/variant_selfassign
+    # bits/
+    bits/bit bits/bitfield bits/crc8 bits/crc16 bits/crc32 bits/hash
+    bits/hash_unique_repr bits/endian bits/mmio bits/mmio_regression bits/register_access
+    # control/
+    control/fsm control/fsm_reentrancy control/event_dispatcher
+    control/coro_protothread control/coro_scheduler control/coro_scheduler_reentrancy
+    control/coro_stepper
+    # core/  (assert/compiler + the METL_HARDENING level checks + smoke)
+    core/assert core/compiler core/smoke
+    core/hardening_none core/hardening_fast core/hardening_debug
+    core/harden_floor_none
   )
 
   foreach(_t IN LISTS _metl_tests)
-    if(_t STREQUAL "smoke")
-      set(_src tests/smoke.cpp)
-    else()
-      set(_src tests/${_t}_test.cpp)
-    endif()
+    get_filename_component(_name "${_t}" NAME)  # strip subdir → e.g. fixed_vector
     metl_cc_test(
-      NAME metl_${_t}_test
-      SRCS ${_src}
+      NAME metl_${_name}_test
+      SRCS tests/${_t}_test.cpp
       DEPS metl::metl_test_options
+      INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/tests
       LABELS "metl"
     )
   endforeach()
@@ -190,8 +190,9 @@ if(METL_BUILD_TESTS)
   # -------------------------------------------------------------------------
   metl_cc_test(
     NAME metl_spsc_queue_threaded_test
-    SRCS tests/spsc_queue_threaded_test.cpp
+    SRCS tests/sync/spsc_queue_threaded_test.cpp
     DEPS metl::metl_test_options Threads::Threads
+    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/tests
     LABELS "metl"
   )
 
@@ -257,14 +258,14 @@ endif()
 # ---------------------------------------------------------------------------
 # Embedded smoke (freestanding compile check)
 # ---------------------------------------------------------------------------
-# Builds tests/embedded_smoke.cpp as a STATIC library so the cross toolchain
+# Builds tests/embedded/embedded_smoke.cpp as a STATIC library so the cross toolchain
 # only verifies that every public header instantiates cleanly under freestanding
 # ARM (Cortex-M). Intentionally not registered with ctest -- this is a
 # compile-only check, never executed. Gated by its own option so it activates
 # only with the ARM toolchain (or any other freestanding build the user opts
 # into).
 if(METL_BUILD_EMBEDDED_SMOKE)
-  add_library(metl_embedded_smoke STATIC tests/embedded_smoke.cpp)
+  add_library(metl_embedded_smoke STATIC tests/embedded/embedded_smoke.cpp)
   target_link_libraries(metl_embedded_smoke PRIVATE metl::metl)
   target_compile_features(metl_embedded_smoke PRIVATE cxx_std_17)
   set_target_properties(metl_embedded_smoke PROPERTIES METL_KIND embedded_smoke)

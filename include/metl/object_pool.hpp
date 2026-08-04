@@ -5,6 +5,7 @@
 #include "metl/type_traits.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <new>
 #include <type_traits>
 #include <utility>
@@ -118,9 +119,16 @@ class object_pool {
       return Capacity;
     }
 
+    // `object` may be an arbitrary caller-supplied pointer that does not point
+    // into `storage_`. Relational operators (`<`, `>=`) on pointers from
+    // different objects are UB, so compare on integer addresses instead — on the
+    // flat-memory targets this library serves that is exactly the intended
+    // containment test, with no <functional>/std::less dependency.
     const_pointer begin = slot_ptr(0);
-    const_pointer end = begin + Capacity;
-    if (object < begin || object >= end) {
+    const auto addr = reinterpret_cast<std::uintptr_t>(object);
+    const auto lo = reinterpret_cast<std::uintptr_t>(begin);
+    const auto hi = reinterpret_cast<std::uintptr_t>(begin + Capacity);
+    if (addr < lo || addr >= hi) {
       return Capacity;
     }
 

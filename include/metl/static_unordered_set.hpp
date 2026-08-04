@@ -507,6 +507,11 @@ class static_unordered_set {
 
   template <typename K>
   void construct_at(size_type index, K&& key) {
+    // Always-on hard guard mirroring static_unordered_map: locate_insert_index
+    // leaves index == npos only on a full table, and this must never escalate
+    // into a wild out-of-bounds construct_at even at METL_HARDENING_NONE or with
+    // a user-disabled METL_ASSERT.
+    METL_HARDEN(index < bucket_count);
     ::new (storage_[index].addr()) value_type(std::forward<K>(key));
     states_[index] = slot_state::occupied;
     ++size_;

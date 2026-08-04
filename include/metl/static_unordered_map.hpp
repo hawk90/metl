@@ -583,10 +583,11 @@ class static_unordered_map {
   void construct_at(size_type index, K&& key, V&& value) {
     // Hard guard against the full-table path: locate_insert_index returns
     // false (leaving index == npos) only when the table is full. The callers
-    // assert on that precondition, but assert this unconditionally too so a
-    // user-disabled METL_ASSERT can never turn a full-table insert into a wild
-    // out-of-bounds construct_at(npos, ...).
-    METL_ASSERT(index < bucket_count);
+    // assert on that precondition, but guard this with the always-on METL_HARDEN
+    // (never stripped, even at METL_HARDENING_NONE) so neither a low hardening
+    // level nor a user-disabled METL_ASSERT can turn a full-table insert into a
+    // wild out-of-bounds construct_at(npos, ...).
+    METL_HARDEN(index < bucket_count);
     ::new (storage_[index].addr()) value_type{std::forward<K>(key), std::forward<V>(value)};
     states_[index] = slot_state::occupied;
     ++size_;

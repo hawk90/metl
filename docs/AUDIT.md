@@ -324,3 +324,106 @@ OSS-Fuzz-compatible so upstream google/oss-fuzz registration is a drop-in
 follow-up. `SECURITY.md` documents the disclosure policy. Chosen over an
 immediate OSS-Fuzz PR because it lands entirely in-repo (nothing to merge
 upstream, no project-approval latency) while staying registration-ready.
+
+## Section E — Assert hardening levels & follow-up anti-patterns (2026-08-04)
+
+A second anti-pattern pass, focused on two themes the 2026-07-07 audit left open:
+(1) the always-on assert posture, and (2) a handful of standard-UB / correctness
+smells distinct from Section A. **Necessity is judged against this project's
+actual characteristics** — flat-memory embedded targets, `METL_NO_EXCEPTIONS` the
+common config, UBSan-clean CI — not against a language-lawyer ideal. Pedantic-UB
+items that cannot fail on any real target and are not sanitizer-flagged are marked
+optional/deferred rather than treated as bugs.
+
+### E.1 — Runtime-check posture: `METL_HARDENING` levels (supersedes "never downgraded")
+
+Context: the 2026-07-07 pass added `METL_DASSERT` but **deliberately kept every
+existing `METL_ASSERT` site always-on** (Section C: "Existing METL_ASSERT sites are
+unchanged (never downgraded)"). A census showed **182 `METL_ASSERT` vs 2
+`METL_DASSERT`** across 25 headers — there was no way to trade the always-on
+checking for release performance, and no defense-in-depth floor below it.
+
+**Decision — a hardening-level knob, but CHECKED-BY-DEFAULT.** metl's identity
+(Design Principles: *"no silent surprises"*, *"every precondition asserts by
+default"*) is to be safer than the STL, so we do **not** flip hot-path accessors
+to unchecked-in-release. Making `operator[]`/`front`/`back` UB in release would be
+a *silent behavior change* (still compiles, now corrupts) — the most dangerous
+kind of break, and one that contradicts the stated contract. Performance is an
+explicit opt-in instead. Model: libc++ `_LIBCPP_HARDENING_MODE` + Abseil's
+`ABSL_HARDENING_ASSERT`.
+
+- `METL_HARDENING` ∈ { `NONE` (0), `FAST` (1), `DEBUG` (2) }. Default: `DEBUG`
+  when `METL_DEBUG || !NDEBUG`, else `FAST`. Consumer-overridable via
+  `-DMETL_HARDENING=…`, independent of the consumer's own `NDEBUG`.
+- **`METL_ASSERT`** — the default precondition check (bounds, non-empty, capacity,
+  allocator overflow). Active at `>= FAST`, so **it stays on in release by
+  default**; stripped only at `NONE`. Essentially every precondition uses this.
+- **`METL_DASSERT`** — active only at `DEBUG`. Reserved for checks too *expensive*
+  to ship (e.g. an O(n) invariant scan), NOT for ordinary accessor bounds. Kept
+  deliberately rare (the original 2 sites; the accessor triage was reverted).
+- **`METL_HARDEN`** — always on, never stripped (§E.3). The memory-safety floor.
+
+So the three levels are: `NONE` (strip preconditions, keep the `METL_HARDEN`
+floor) / `FAST` (all preconditions on — release default) / `DEBUG` (+ expensive
+DCHECKs). No accessor became unchecked-by-default; the value is the `NONE`
+opt-out, the `METL_HARDEN` floor, and a consumer-controllable level.
+
+**ODR consistency (load-bearing):** `METL_HARDENING` changes the bodies of
+inline/template functions (which checks compile in), so it MUST be uniform across
+every TU linked into a program — mixing levels (a Debug TU + a Release TU) is an
+ODR violation (UB). Same constraint as `NDEBUG` / `_LIBCPP_HARDENING_MODE`;
+documented at `config.hpp`. Debug ctest keeps every check on, so 60/60 is
+unchanged.
+
+### E.2 — Follow-up correctness findings (distinct from Section A)
+
+| Sev | Necessity (this project) | Issue | Location | Status |
+|---|---|---|---|---|
+| MED | **Required** — layout corruption on any target | `atomic_ref` reinterprets `T` as `std::atomic<T>` with no lock-free guard; a *locking* atomic has a larger `sizeof`/different layout → R/W past the referenced object. `is_always_lock_free` was computed but never enforced | `atomic_ref.hpp:41` | ✅ `static_assert(is_always_lock_free)` |
+| MED | **Required** — use-after-destruction on any target | converting `variant::operator=(T&&)` routes through `emplace<Decayed>` unconditionally → `reset()` destroys the active alternative *before* reading an aliasing RHS (`v = get<T>(v)`). Distinct from Section A's copy/move-assign exception-safety fix | `variant.hpp:338` | ✅ in-place assign when the active index already matches |
+| LOW | **Marginal** — throwing-ctor only; unreachable under `METL_NO_EXCEPTIONS` | `arena_allocator::try_emplace` commits the destroy record *before* running `T`'s ctor → a throwing ctor leaves a record over unconstructed storage; a later `rewind` runs `~T()` on it | `arena_allocator.hpp:62` | ✅ construct first, patch `destroy` after; + power-of-two `alignment` assert |
+| LOW | **Optional** — benign on flat memory, not UBSan-flagged | `object_pool::index_of` uses relational `<`/`>=` on an unrelated caller pointer (UB); switched to `uintptr_t` comparison — exact containment test on flat targets, no `<functional>` dependency | `object_pool.hpp:116` | ✅ `uintptr_t` range test |
+| LOW | **Deferred** — no real-target failure, high-risk core rewrite | `fixed_vector`/`flat_map`/`flat_set` form a contiguous `data()` over an array of per-element `storage_for<T>`; `data()+i` (i>0) is cross-object pointer arithmetic. A real fix needs a union-of-`T[N]` storage rewrite — the same reason Section A deferred the `constexpr` conversion of these types | `fixed_vector.hpp:138`, `flat_map.hpp:387`, `flat_set.hpp:373` | ⏸ deferred (documented) |
+
+**Explicitly not defects on this project** (deliberate / documented): the
+`[[nodiscard]]` gaps and `noexcept`-on-throwing-`T` smells are being addressed as
+cheap compile-time `static_assert` guards under E.1's static_assert-promotion
+(e.g. MMIO `sizeof(T)` ≤ bus width, nothrow-move on queue element types), not as
+runtime changes; and `METL_ASSERT`-guarded preconditions (e.g. `flat_map::emplace`
+on a duplicate key) **abort in release too** under the default level, so they are
+a documented precondition, not "silent corruption" — the corruption story only
+holds if a consumer redefines `METL_ASSERT` to a no-op.
+
+### E.3 — Strippability hazards the hardening model itself introduces
+
+Making `METL_ASSERT` compile out at `METL_HARDENING_NONE` is safe **only** where
+the check is a caller precondition (violation = caller's fault, UB acceptable).
+A follow-up scan of every assert site found a small set of **defense-in-depth
+guards the library relies on to never corrupt memory even on misuse** — written
+as `METL_ASSERT`, so they silently vanish at `NONE`, regressing a guarantee the
+2026-07-07 pass deliberately added (Section A row: `construct_at` "hard-guards
+`index < bucket_count`"). These need an always-on tier.
+
+**New macro `METL_HARDEN(expr)`** — always on, independent of `METL_HARDENING`
+(the old always-on `METL_ASSERT` semantics). Reserved for the wild-OOB-**write** /
+memory-safety floor. Mirrors Abseil's `ABSL_HARDENING_ASSERT`. Consequence:
+`NONE` is "strip **preconditions**", not "strip everything" — a curated security
+floor survives, which suits a library with a `SECURITY.md`/fuzzing/bug-bounty
+posture.
+
+| Sev | Site | Hazard at `NONE` | Fix |
+|---|---|---|---|
+| HIGH | `static_unordered_set.hpp:405` `emplace`/`construct_at` | full table → `index == npos` → wild placement-new + state write + `++size_` (OOB **write**). The set lacks the map's guard entirely | add non-strippable `METL_HARDEN(index < bucket_count)` |
+| HIGH | `static_unordered_map.hpp:589` `construct_at` | the existing bounds guard is itself `METL_ASSERT` → false at `NONE`; the code comment claiming it defends a user-disabled assert is now untrue | change that one guard to `METL_HARDEN` |
+| MED | `arena_allocator.hpp:149` `allocate_impl` | non-power-of-two `alignment` (runtime `allocate()` path) → silent offset corruption → later OOB allocation | `METL_HARDEN` / `panic` on the runtime path |
+| MED | `flat_map.hpp:344` / `flat_set.hpp:343` `emplace` | full container → `return data()[Capacity]` one-past-end reference (OOB **read**/dangling) | branch on `inserted` / non-strippable capacity guard |
+| LOW | `atomic_ref.hpp:63` ctor | misaligned pointer → torn/UB atomic access rather than abort (acceptable precondition) | document that `NONE` removes the alignment guarantee |
+
+**Verified non-issues** (so they are not re-flagged): no side-effect-in-assert
+anywhere — every mutating call (`try_emplace_back`, `try_assign`, `try_insert_at`,
+`locate_insert_index`, …) is hoisted onto the line *above* its assert, and assert
+arguments are pure comparisons; no unused-variable `-Werror` breaks — every
+assert-only bool has a following `(void)var;` or is `return`ed, and the stripped
+macro `(void)sizeof((expr) ? 1 : 0)` still textually references the operand; and
+`assert.hpp`'s `assertion_failed`/`panic` machinery is referenced only inside the
+active (`>= FAST`) macro branch, so nothing dangles when `METL_ASSERT` is a no-op.
