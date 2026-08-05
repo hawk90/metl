@@ -343,6 +343,7 @@ class static_unordered_map {
     }
 
     destroy_at(index, slot_state::tombstone);
+    reclaim_if_needed();
     return true;
   }
 
@@ -463,6 +464,7 @@ class static_unordered_map {
     }
 
     destroy_at(index, slot_state::tombstone);
+    reclaim_if_needed();
     return true;
   }
 
@@ -475,6 +477,7 @@ class static_unordered_map {
         states_[i] = slot_state::empty;
       }
     }
+    tombstones_ = 0;
   }
 
  private:
@@ -482,6 +485,7 @@ class static_unordered_map {
     for (size_type i = 0; i < bucket_count; ++i) {
       states_[i] = slot_state::empty;
     }
+    tombstones_ = 0;
   }
 
   value_type* slot_value(size_type index) noexcept { return storage_[index].ptr(); }
@@ -558,6 +562,11 @@ class static_unordered_map {
     // level nor a user-disabled METL_ASSERT can turn a full-table insert into a
     // wild out-of-bounds construct_at(npos, ...).
     METL_HARDEN(index < bucket_count);
+    if (states_[index] == slot_state::tombstone) {
+      // Reusing a tombstone slot reclaims it: keep the tombstone count accurate
+      // so the reclamation threshold reflects only live tombstones.
+      --tombstones_;
+    }
     ::new (storage_[index].addr()) value_type{std::forward<K>(key), std::forward<V>(value)};
     states_[index] = slot_state::occupied;
     ++size_;
@@ -567,11 +576,86 @@ class static_unordered_map {
     slot_value(index)->~value_type();
     states_[index] = next_state;
     --size_;
+    if (next_state == slot_state::tombstone) {
+      ++tombstones_;
+    }
+  }
+
+  /// @brief Rebuild the table in place, clearing every tombstone, so lookups stay bounded.
+  ///
+  /// Open addressing turns each erase into a tombstone that negative probes must still scan.
+  /// Under sustained insert/erase churn these accumulate; once no @c empty slot remains, a
+  /// missing-key lookup degrades to a full-table O(bucket_count) scan. This compacts every live
+  /// element back to a gap-free probe run and marks all other slots empty, in place and heap-free
+  /// (only two @c value_type temporaries on the stack), without changing @c size_.
+  ///
+  /// Live keys are re-placed through the SAME @c bucket_index() (identical avalanche mix), so the
+  /// distribution is unchanged. Because the load factor is <= 50% (bucket_count >= 2*Capacity) an
+  /// empty/unplaced slot always terminates each probe walk, so the inner loops cannot spin.
+  void rehash_in_place() noexcept {
+    if (Capacity == 0) {
+      return;
+    }
+
+    // Phase 1: turn real tombstones into empty and mark every live element as
+    // "unplaced" by reusing the tombstone state as a transient marker. During
+    // the rebuild no genuine tombstones exist, so this reuse is unambiguous.
+    for (size_type i = 0; i < bucket_count; ++i) {
+      states_[i] = (states_[i] == slot_state::occupied) ? slot_state::tombstone : slot_state::empty;
+    }
+    tombstones_ = 0;
+
+    // Phase 2: place each unplaced element at the first slot in its probe run
+    // that is not already occupied, cascading through any element it displaces.
+    storage_for<value_type> carry;
+    for (size_type i = 0; i < bucket_count; ++i) {
+      if (states_[i] != slot_state::tombstone) {
+        continue;
+      }
+
+      ::new (carry.addr()) value_type(static_cast<value_type&&>(*slot_value(i)));
+      slot_value(i)->~value_type();
+      states_[i] = slot_state::empty;
+
+      for (;;) {
+        size_type target = bucket_index(carry.ptr()->key);
+        while (states_[target] == slot_state::occupied) {
+          target = (target + 1) & (bucket_count - 1);
+        }
+
+        if (states_[target] == slot_state::empty) {
+          ::new (storage_[target].addr()) value_type(static_cast<value_type&&>(carry.ref()));
+          carry.ptr()->~value_type();
+          states_[target] = slot_state::occupied;
+          break;
+        }
+
+        // states_[target] is an unplaced element: settle carry here and continue
+        // placing the element it displaced.
+        storage_for<value_type> displaced;
+        ::new (displaced.addr()) value_type(static_cast<value_type&&>(*slot_value(target)));
+        slot_value(target)->~value_type();
+        ::new (storage_[target].addr()) value_type(static_cast<value_type&&>(carry.ref()));
+        carry.ptr()->~value_type();
+        states_[target] = slot_state::occupied;
+        ::new (carry.addr()) value_type(static_cast<value_type&&>(displaced.ref()));
+        displaced.ptr()->~value_type();
+      }
+    }
+  }
+
+  /// @brief Trigger an in-place rebuild once tombstones cross ~1/8 of the table.
+  /// Bounds the tombstone density so negative lookups always terminate at an empty slot.
+  void reclaim_if_needed() noexcept {
+    if (tombstones_ > bucket_count / 8) {
+      rehash_in_place();
+    }
   }
 
   storage_for<value_type> storage_[bucket_count];
   slot_state states_[bucket_count];
   size_type size_;
+  size_type tombstones_;
   Hash hasher_;
   KeyEqual key_equal_;
 };

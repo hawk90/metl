@@ -288,5 +288,58 @@ int main() {
     }
   }
 
+  // 19: churn stress — sustained erase+insert of ever-new keys must keep the map
+  // correct while in-place tombstone reclamation rebuilds the table underneath.
+  // An identity hash (mixed to the same bucket) maximizes probe clustering and
+  // tombstone density, so this exercises repeated rehash_in_place() triggers.
+  {
+    struct identity_hash {
+      std::size_t operator()(int v) const noexcept { return static_cast<std::size_t>(v); }
+    };
+    constexpr int window = 32;  // Capacity == 32, bucket_count == 64
+    metl::static_unordered_map<int, int, window, identity_hash> m;
+
+    for (int k = 0; k < window; ++k) {
+      if (!m.try_emplace(k, k * 7)) {
+        return 19;
+      }
+    }
+
+    int base = 0;
+    for (int round = 0; round < 5000; ++round) {
+      const int evicted = base;
+      const int inserted = base + window;
+
+      if (!m.erase(evicted)) {
+        return 19;
+      }
+      if (!m.try_emplace(inserted, inserted * 7)) {
+        return 19;
+      }
+      ++base;
+
+      // Size is stable and the just-evicted key is gone.
+      if (m.size() != static_cast<std::size_t>(window) || m.contains(evicted)) {
+        return 19;
+      }
+      // A key never inserted must remain absent (bounded negative lookup).
+      if (m.find(base + window) != nullptr) {
+        return 19;
+      }
+    }
+
+    // Every currently-live key [base, base + window) must be findable with its value.
+    for (int k = base; k < base + window; ++k) {
+      const int* v = m.find(k);
+      if (v == nullptr || *v != k * 7) {
+        return 19;
+      }
+    }
+    // And no straggler outside the live window survives.
+    if (m.contains(base - 1) || m.contains(base + window)) {
+      return 19;
+    }
+  }
+
   return 0;
 }
