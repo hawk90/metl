@@ -108,6 +108,35 @@ constexpr unexpected<typename std::decay<E>::type> make_unexpected(E&& error) {
 // expected<T, E>
 // =============================================================================
 
+template <typename T, typename E>
+class expected;
+
+namespace detail {
+
+/// @brief Detects whether `R` is a specialization of `metl::expected`.
+/// @note Callers should strip cv/ref (e.g. via `remove_cvref_t`) before probing.
+template <typename R>
+struct is_metl_expected : false_type {};
+
+template <typename T, typename E>
+struct is_metl_expected<expected<T, E>> : true_type {};
+
+/// @brief True if `R` is a `metl::expected` whose error type is exactly `E`.
+template <typename R, typename E>
+struct is_metl_expected_with_error : false_type {};
+
+template <typename U, typename E>
+struct is_metl_expected_with_error<expected<U, E>, E> : true_type {};
+
+/// @brief True if `R` is a `metl::expected` whose value type is exactly `T`.
+template <typename R, typename T>
+struct is_metl_expected_with_value : false_type {};
+
+template <typename T, typename G>
+struct is_metl_expected_with_value<expected<T, G>, T> : true_type {};
+
+}  // namespace detail
+
 /// @brief A fixed-storage value-or-error result type (in-place, no heap).
 ///
 /// Holds either a value `T` or an error `E` in an internal union; it never
@@ -458,6 +487,8 @@ class expected {
   template <typename F>
   METL_NODISCARD constexpr auto and_then(F&& f) & {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(**this))>>;
+    static_assert(detail::is_metl_expected_with_error<result_t, E>::value,
+                  "expected::and_then(F): F must return a metl::expected with the same error type E");
     if (has_value_) {
       return std::forward<F>(f)(**this);
     }
@@ -467,6 +498,8 @@ class expected {
   template <typename F>
   METL_NODISCARD constexpr auto and_then(F&& f) const& {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(**this))>>;
+    static_assert(detail::is_metl_expected_with_error<result_t, E>::value,
+                  "expected::and_then(F): F must return a metl::expected with the same error type E");
     if (has_value_) {
       return std::forward<F>(f)(**this);
     }
@@ -477,6 +510,8 @@ class expected {
   METL_NODISCARD constexpr auto and_then(F&& f) && {
     using result_t =
         std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<T&&>(**this)))>>;
+    static_assert(detail::is_metl_expected_with_error<result_t, E>::value,
+                  "expected::and_then(F): F must return a metl::expected with the same error type E");
     if (has_value_) {
       return std::forward<F>(f)(static_cast<T&&>(**this));
     }
@@ -487,6 +522,8 @@ class expected {
   METL_NODISCARD constexpr auto and_then(F&& f) const&& {
     using result_t = std::remove_cv_t<
         std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<const T&&>(**this)))>>;
+    static_assert(detail::is_metl_expected_with_error<result_t, E>::value,
+                  "expected::and_then(F): F must return a metl::expected with the same error type E");
     if (has_value_) {
       return std::forward<F>(f)(static_cast<const T&&>(**this));
     }
@@ -540,6 +577,8 @@ class expected {
   template <typename F>
   METL_NODISCARD constexpr auto or_else(F&& f) & {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(*error_ptr()))>>;
+    static_assert(detail::is_metl_expected_with_value<result_t, T>::value,
+                  "expected::or_else(F): F must return a metl::expected with the same value type T");
     if (has_value_) {
       return result_t(in_place, *value_ptr());
     }
@@ -549,6 +588,8 @@ class expected {
   template <typename F>
   METL_NODISCARD constexpr auto or_else(F&& f) const& {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(*error_ptr()))>>;
+    static_assert(detail::is_metl_expected_with_value<result_t, T>::value,
+                  "expected::or_else(F): F must return a metl::expected with the same value type T");
     if (has_value_) {
       return result_t(in_place, *value_ptr());
     }
@@ -559,6 +600,8 @@ class expected {
   METL_NODISCARD constexpr auto or_else(F&& f) && {
     using result_t = std::remove_cv_t<
         std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<E&&>(*error_ptr())))>>;
+    static_assert(detail::is_metl_expected_with_value<result_t, T>::value,
+                  "expected::or_else(F): F must return a metl::expected with the same value type T");
     if (has_value_) {
       return result_t(in_place, static_cast<T&&>(*value_ptr()));
     }
@@ -569,6 +612,8 @@ class expected {
   METL_NODISCARD constexpr auto or_else(F&& f) const&& {
     using result_t = std::remove_cv_t<
         std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<const E&&>(*error_ptr())))>>;
+    static_assert(detail::is_metl_expected_with_value<result_t, T>::value,
+                  "expected::or_else(F): F must return a metl::expected with the same value type T");
     if (has_value_) {
       return result_t(in_place, static_cast<const T&&>(*value_ptr()));
     }
@@ -1050,6 +1095,8 @@ class expected<void, E> {
   template <typename F>
   METL_NODISCARD constexpr auto and_then(F&& f) & {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
+    static_assert(detail::is_metl_expected_with_error<result_t, E>::value,
+                  "expected<void, E>::and_then(F): F must return a metl::expected<U, E>");
     if (has_value_) {
       return std::forward<F>(f)();
     }
@@ -1059,6 +1106,8 @@ class expected<void, E> {
   template <typename F>
   METL_NODISCARD constexpr auto and_then(F&& f) const& {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
+    static_assert(detail::is_metl_expected_with_error<result_t, E>::value,
+                  "expected<void, E>::and_then(F): F must return a metl::expected<U, E>");
     if (has_value_) {
       return std::forward<F>(f)();
     }
@@ -1068,6 +1117,8 @@ class expected<void, E> {
   template <typename F>
   METL_NODISCARD constexpr auto and_then(F&& f) && {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
+    static_assert(detail::is_metl_expected_with_error<result_t, E>::value,
+                  "expected<void, E>::and_then(F): F must return a metl::expected<U, E>");
     if (has_value_) {
       return std::forward<F>(f)();
     }
@@ -1077,6 +1128,8 @@ class expected<void, E> {
   template <typename F>
   METL_NODISCARD constexpr auto and_then(F&& f) const&& {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
+    static_assert(detail::is_metl_expected_with_error<result_t, E>::value,
+                  "expected<void, E>::and_then(F): F must return a metl::expected<U, E>");
     if (has_value_) {
       return std::forward<F>(f)();
     }
@@ -1160,6 +1213,8 @@ class expected<void, E> {
   template <typename F>
   METL_NODISCARD constexpr auto or_else(F&& f) & {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(*error_ptr()))>>;
+    static_assert(detail::is_metl_expected_with_value<result_t, void>::value,
+                  "expected<void, E>::or_else(F): F must return a metl::expected<void, G>");
     if (has_value_) {
       return result_t();
     }
@@ -1169,6 +1224,8 @@ class expected<void, E> {
   template <typename F>
   METL_NODISCARD constexpr auto or_else(F&& f) const& {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(*error_ptr()))>>;
+    static_assert(detail::is_metl_expected_with_value<result_t, void>::value,
+                  "expected<void, E>::or_else(F): F must return a metl::expected<void, G>");
     if (has_value_) {
       return result_t();
     }
@@ -1179,6 +1236,8 @@ class expected<void, E> {
   METL_NODISCARD constexpr auto or_else(F&& f) && {
     using result_t = std::remove_cv_t<
         std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<E&&>(*error_ptr())))>>;
+    static_assert(detail::is_metl_expected_with_value<result_t, void>::value,
+                  "expected<void, E>::or_else(F): F must return a metl::expected<void, G>");
     if (has_value_) {
       return result_t();
     }
@@ -1189,6 +1248,8 @@ class expected<void, E> {
   METL_NODISCARD constexpr auto or_else(F&& f) const&& {
     using result_t = std::remove_cv_t<
         std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<const E&&>(*error_ptr())))>>;
+    static_assert(detail::is_metl_expected_with_value<result_t, void>::value,
+                  "expected<void, E>::or_else(F): F must return a metl::expected<void, G>");
     if (has_value_) {
       return result_t();
     }

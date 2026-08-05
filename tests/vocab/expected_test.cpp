@@ -160,6 +160,12 @@ int main() {
     if (r2 || r2.error() != 42) {
       return 22;
     }
+
+    // and_then may change the value type while keeping the same error type E.
+    auto r3 = e.and_then([](int v) { return metl::expected<long, int>(v + 100L); });
+    if (!r3 || *r3 != 110L) {
+      return 25;
+    }
   }
 
   // ------- Monadic: transform ---------------------------------------------
