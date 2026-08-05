@@ -13,6 +13,22 @@
 
 namespace metl {
 
+template <typename T>
+class optional;
+
+namespace detail {
+
+/// @brief Detects whether `T` is a specialization of `metl::optional`.
+/// @note Callers should strip cv/ref (e.g. via `remove_cvref_t`) before probing,
+/// since only the bare specialization matches.
+template <typename T>
+struct is_metl_optional : false_type {};
+
+template <typename U>
+struct is_metl_optional<optional<U>> : true_type {};
+
+}  // namespace detail
+
 /// @brief A fixed-storage nullable value wrapper (in-place, no heap).
 ///
 /// Stores an optional `T` inside the object itself using an internal union; it
@@ -287,6 +303,8 @@ class optional {
   template <typename F>
   METL_NODISCARD constexpr auto and_then(F&& f) & {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(**this))>>;
+    static_assert(detail::is_metl_optional<result_t>::value,
+                  "optional::and_then(F): F must return a metl::optional");
     if (has_value_) {
       return std::forward<F>(f)(**this);
     }
@@ -296,6 +314,8 @@ class optional {
   template <typename F>
   METL_NODISCARD constexpr auto and_then(F&& f) const& {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(**this))>>;
+    static_assert(detail::is_metl_optional<result_t>::value,
+                  "optional::and_then(F): F must return a metl::optional");
     if (has_value_) {
       return std::forward<F>(f)(**this);
     }
@@ -306,6 +326,8 @@ class optional {
   METL_NODISCARD constexpr auto and_then(F&& f) && {
     using result_t =
         std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<T&&>(**this)))>>;
+    static_assert(detail::is_metl_optional<result_t>::value,
+                  "optional::and_then(F): F must return a metl::optional");
     if (has_value_) {
       return std::forward<F>(f)(static_cast<T&&>(**this));
     }
@@ -316,6 +338,8 @@ class optional {
   METL_NODISCARD constexpr auto and_then(F&& f) const&& {
     using result_t = std::remove_cv_t<
         std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<const T&&>(**this)))>>;
+    static_assert(detail::is_metl_optional<result_t>::value,
+                  "optional::and_then(F): F must return a metl::optional");
     if (has_value_) {
       return std::forward<F>(f)(static_cast<const T&&>(**this));
     }
@@ -367,6 +391,9 @@ class optional {
   /// @param f Callable returning an optional; called only when empty.
   template <typename F>
   METL_NODISCARD constexpr optional or_else(F&& f) const& {
+    using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
+    static_assert(detail::is_metl_optional<result_t>::value,
+                  "optional::or_else(F): F must return a metl::optional");
     if (has_value_) {
       return *this;
     }
@@ -375,6 +402,9 @@ class optional {
 
   template <typename F>
   METL_NODISCARD constexpr optional or_else(F&& f) && {
+    using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
+    static_assert(detail::is_metl_optional<result_t>::value,
+                  "optional::or_else(F): F must return a metl::optional");
     if (has_value_) {
       return optional(static_cast<T&&>(**this));
     }

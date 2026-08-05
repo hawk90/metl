@@ -198,6 +198,12 @@ int main() {
     auto r4 = ca.and_then(doubler);
     CHECK(r4.has_value());
     CHECK_EQ(*r4, 6);
+
+    // and_then may change the contained value type (still a metl::optional).
+    auto to_long = [](int x) -> metl::optional<long> { return metl::optional<long>(x + 100L); };
+    auto r5 = metl::optional<int>(1).and_then(to_long);
+    CHECK(r5.has_value());
+    CHECK_EQ(*r5, 101L);
   }
 
   // ---- monadic transform --------------------------------------------------
