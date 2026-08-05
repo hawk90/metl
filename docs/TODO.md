@@ -81,8 +81,11 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   test → `volatile`/restructure), `-Wterminate` (expected swap), `-Waddress`
   (lookup_table_test), `-Wnull-dereference` (metl_check); then re-enable gcc in the
   release-werror matrix.
-- [ ] Get the provisional **Zephyr** (#15) and **ESP-IDF** (#17) CI jobs to green
-  (west workspace / IDF image + target tuning), then drop `continue-on-error`.
+- [x] **Zephyr** (#15) CI green — SDK wiring fixed (`ZEPHYR_SDK_INSTALL_DIR`); the
+  `west build` structural gate is now blocking, only the QEMU twister run keeps a
+  step-level `continue-on-error`.
+- [ ] Get the provisional **ESP-IDF** (#17) CI job to green (IDF image + target
+  tuning), then drop its `continue-on-error`.
 
 ### 📚 Library breadth (features)
 - [ ] Finish C++20-constexpr conversion of `expected` / `variant` / `fixed_vector` /

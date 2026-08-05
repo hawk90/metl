@@ -60,13 +60,9 @@
 // has a safe fallback so `#if METL_HAVE_*(x)` is always well-formed, even on
 // toolchains lacking the underlying `__has_*` operator.
 
-// METL_HAVE_BUILTIN(x) — is compiler builtin `x` available? (spelled like
-// __has_builtin; kept as a config-style alias of METL_HAS_BUILTIN.)
-#if defined(__has_builtin)
-#define METL_HAVE_BUILTIN(x) __has_builtin(x)
-#else
-#define METL_HAVE_BUILTIN(x) 0
-#endif
+// (Builtin availability is spelled METL_HAS_BUILTIN, defined above alongside
+// METL_HAS_CPP_ATTRIBUTE / METL_HAS_ATTRIBUTE; there is no separate
+// METL_HAVE_BUILTIN — it was a byte-for-byte duplicate.)
 
 // METL_HAVE_FEATURE(x) — is clang language/sanitizer feature `x` enabled?
 // Defined to 0 on compilers without __has_feature (e.g. gcc, msvc).
