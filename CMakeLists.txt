@@ -48,6 +48,7 @@ set(_metl_headers
   include/metl/detail/construct.hpp
   include/metl/detail/crc.hpp
   include/metl/detail/transparent.hpp
+  include/metl/detail/ring_core.hpp
   include/metl/endian.hpp
   include/metl/event_dispatcher.hpp
   include/metl/expected.hpp
