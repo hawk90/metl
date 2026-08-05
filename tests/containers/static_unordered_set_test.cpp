@@ -222,5 +222,38 @@ int main() {
     }
   }
 
+  // 17: strided / power-of-two-aligned keys must all be findable under the default
+  // (identity) hasher. Before mixing, multiples of bucket_count all land in bucket 0;
+  // the guard is that insert and lookup apply the SAME mix, so every inserted key
+  // remains retrievable regardless of distribution.
+  {
+    metl::static_unordered_set<int, 64> s;  // bucket_count == 128
+    constexpr int stride = 128;
+    for (int i = 0; i < 64; ++i) {
+      if (!s.try_emplace(i * stride)) {
+        return 17;
+      }
+    }
+    if (s.size() != 64 || !s.full()) {
+      return 17;
+    }
+    for (int i = 0; i < 64; ++i) {
+      if (!s.contains(i * stride)) {
+        return 17;
+      }
+    }
+    // A key that was never inserted must not be found.
+    if (s.contains(64 * stride)) {
+      return 17;
+    }
+    // Erase then reinsert to exercise tombstone-aware probing on the mixed buckets.
+    if (!s.erase(10 * stride) || s.contains(10 * stride)) {
+      return 17;
+    }
+    if (!s.try_emplace(10 * stride) || !s.contains(10 * stride)) {
+      return 17;
+    }
+  }
+
   return 0;
 }

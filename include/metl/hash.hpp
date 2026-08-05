@@ -51,6 +51,52 @@ struct hash_combine_constants<4> {
 
 using active_hash_combine = hash_combine_constants<sizeof(std::size_t)>;
 
+// Avalanche finalizer constants selected at compile time based on size_t width.
+// Open-addressed tables here mask the LOW bits of the hash (`hash & (bucket_count - 1)`)
+// to pick a bucket. With an identity/low-entropy hasher that discards all high-bit
+// entropy, so strided or aligned keys collide heavily. These finalizers fold high-bit
+// entropy down into the low bits before masking. The 32-bit variant under-mixes when
+// applied to a 64-bit value, hence the width select.
+template <std::size_t Width>
+struct hash_mix_constants;
+
+template <>
+struct hash_mix_constants<8> {
+  // splitmix64 finalizer.
+  static constexpr std::size_t m1 = static_cast<std::size_t>(0xbf58476d1ce4e5b9ULL);
+  static constexpr std::size_t m2 = static_cast<std::size_t>(0x94d049bb133111ebULL);
+  static constexpr unsigned s1 = 30;
+  static constexpr unsigned s2 = 27;
+  static constexpr unsigned s3 = 31;
+};
+
+template <>
+struct hash_mix_constants<4> {
+  // murmur3 fmix32 finalizer.
+  static constexpr std::size_t m1 = static_cast<std::size_t>(0x85ebca6bUL);
+  static constexpr std::size_t m2 = static_cast<std::size_t>(0xc2b2ae35UL);
+  static constexpr unsigned s1 = 16;
+  static constexpr unsigned s2 = 13;
+  static constexpr unsigned s3 = 16;
+};
+
+using active_hash_mix = hash_mix_constants<sizeof(std::size_t)>;
+
+/// @brief Avalanche/finalizer mix of a hash value before it is masked to a bucket index.
+/// @param x The raw hash (e.g. `std::hash<Key>{}(key)`).
+/// @return A mixed hash whose low bits depend on all input bits, so power-of-two tables that mask
+///         the low bits still see high-bit entropy. Constants/shifts are width-selected from
+///         `sizeof(std::size_t)` (splitmix64 for 64-bit, murmur3 fmix32 for 32-bit).
+/// @note constexpr and heap-free. This is a bijection, so distinct hashes stay distinct.
+METL_NODISCARD constexpr std::size_t hash_mix(std::size_t x) noexcept {
+  x ^= x >> active_hash_mix::s1;
+  x *= active_hash_mix::m1;
+  x ^= x >> active_hash_mix::s2;
+  x *= active_hash_mix::m2;
+  x ^= x >> active_hash_mix::s3;
+  return x;
+}
+
 }  // namespace detail
 
 /// @brief FNV-1a hash over a contiguous unsigned char buffer.
