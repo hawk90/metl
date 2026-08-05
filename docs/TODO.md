@@ -64,6 +64,19 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [ ] **Release automation** — tag → GitHub Release with changelog + a **single-header
   amalgamation** artifact (great for a header-only lib).
 - [ ] ccache caching; dedupe repeated checkout+apt via a composite action.
+- [ ] **(CI anti-pattern review 2026-08-05, deferred)** Collapse the five
+  near-identical freestanding cross jobs (riscv-cross / arm-cross-clang /
+  big-endian / newlib-link / picolibc-qemu) into one matrix or a composite
+  `freestanding-syntax-check` action so the shared flag string lives once.
+- [ ] **(security)** Pin third-party actions to a full commit SHA (not a mutable
+  tag): `espressif/esp-idf-ci-action@v1`, `google/clusterfuzzlite/actions/*@v1`
+  (the latter is handed `GITHUB_TOKEN`). First-party `actions/*` via Dependabot.
+- [ ] **(caching)** Cache apt/pipx and the zephyr `west update` tree (re-cloned
+  uncached every run, dominating the 60-min zephyr budget).
+- [x] Root-cause fixes DONE 2026-08-05: hard-coded test-source paths → single
+  `env:` source of truth; workflow-level `defaults.run.shell: bash`; fuzz-smoke
+  harness list derived from built binaries; `.pre-commit-config.yaml` pins
+  clang-format 18.1.8 so local == CI.
 - [ ] **gcc Release + `-Werror` hardening** (#14): fix `-Wclobbered` (setjmp assert
   test → `volatile`/restructure), `-Wterminate` (expected swap), `-Waddress`
   (lookup_table_test), `-Wnull-dereference` (metl_check); then re-enable gcc in the

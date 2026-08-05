@@ -59,12 +59,24 @@ class arena_allocator {
     static_assert(alignof(T) <= alignof(std::max_align_t),
                   "type alignment exceeds arena_allocator maximum alignment");
 
-    void* memory = allocate_impl(sizeof(T), alignof(T), &destroy_object<T>);
+    // Reserve the slot WITHOUT registering the destructor yet. If we committed
+    // the destroy record up front and T's constructor then threw, `rewind`/
+    // `reset` would later invoke ~T() on never-constructed storage (UB). Only
+    // after construction succeeds do we patch the record's destroy pointer in.
+    void* memory = allocate_impl(sizeof(T), alignof(T), nullptr);
     if (memory == nullptr) {
       return nullptr;
     }
 
-    return new (memory) T(std::forward<Args>(args)...);
+    T* object = new (memory) T(std::forward<Args>(args)...);
+
+    // Construction succeeded: register the destructor on the just-stored record
+    // (its end offset is the current `offset_`). A throwing constructor never
+    // reaches here, so no record ever points at unconstructed storage.
+    allocation_record record = load_record(offset_);
+    record.destroy = &destroy_object<T>;
+    store_record(offset_, record);
+    return object;
   }
 
   /// @brief Like `try_emplace`, but asserts that the allocation succeeds.
@@ -130,6 +142,13 @@ class arena_allocator {
     if (bytes == 0) {
       return nullptr;
     }
+
+    // `align_up`'s bitmask arithmetic is only correct for a power-of-two
+    // alignment; a non-power-of-two `alignment` (only reachable via the runtime
+    // `allocate(bytes, alignment)` overload) would silently corrupt the offset
+    // and hand back overlapping/out-of-bounds allocations. Always-on hard guard
+    // so this memory-safety floor survives METL_HARDENING_NONE.
+    METL_HARDEN(alignment != 0 && (alignment & (alignment - 1)) == 0);
 
     const std::uintptr_t base = reinterpret_cast<std::uintptr_t>(&storage_[0]);
     const std::uintptr_t current = base + offset_;

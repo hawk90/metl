@@ -13,6 +13,22 @@ concurrency:
 permissions:
   contents: read
 
+# Single source of truth for the freestanding/embedded test sources that several
+# cross jobs compile DIRECTLY (outside CMake). A tests/ move updates one place
+# here instead of silently breaking N hard-coded compiler invocations.
+env:
+  METL_SMOKE_SRC: tests/embedded/embedded_smoke.cpp
+  METL_SEMIHOST_SRC: tests/embedded/semihost_smoke.cpp
+  METL_LINKER_SCRIPT: tests/embedded/mps2-an385.ld
+  METL_ENDIAN_TEST: tests/bits/endian_test.cpp
+
+# Force bash for every run step so `set -o pipefail` and other bashisms work even
+# inside container: jobs, where GitHub Actions otherwise falls back to dash and
+# fails with "Illegal option -o pipefail" before any build runs.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   # ---------------------------------------------------------------------------
   # Preflight fast-gate — every other job `needs:` this, so a compile/test break
@@ -347,7 +363,7 @@ jobs:
         run: |
           set -euo pipefail
           riscv64-linux-gnu-g++ -std=c++17 -ffreestanding -fno-exceptions -fno-rtti \
-            -Wall -Wextra -Iinclude -fsyntax-only tests/embedded_smoke.cpp
+            -Wall -Wextra -Iinclude -fsyntax-only "$METL_SMOKE_SRC"
 
   # ---------------------------------------------------------------------------
   # ARM cross-compile with Clang (second frontend, compile-only)
@@ -390,7 +406,7 @@ jobs:
             -std=c++17 -ffreestanding -fno-exceptions -fno-rtti \
             -Wall -Wextra \
             "${ISYS[@]}" -Iinclude \
-            -fsyntax-only tests/embedded_smoke.cpp
+            -fsyntax-only "$METL_SMOKE_SRC"
 
   # ---------------------------------------------------------------------------
   # Big-endian build — exercises endian.hpp on a real big-endian target.
@@ -421,13 +437,13 @@ jobs:
         run: |
           set -euo pipefail
           powerpc64-linux-gnu-g++ -std=c++17 -Wall -Wextra \
-            -Iinclude -fsyntax-only tests/embedded_smoke.cpp
+            -Iinclude -fsyntax-only "$METL_SMOKE_SRC"
 
       - name: Build the endian test (big-endian, static)
         run: |
           set -euo pipefail
           powerpc64-linux-gnu-g++ -std=c++17 -O2 -Wall -Wextra -static \
-            -Iinclude tests/endian_test.cpp -o endian_test_be
+            -Iinclude "$METL_ENDIAN_TEST" -o endian_test_be
 
       - name: Run the endian test under qemu (big-endian)
         run: |
@@ -462,7 +478,7 @@ jobs:
           arm-none-eabi-g++ -std=c++17 -mcpu=cortex-m3 -mthumb -Os \
             -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti \
             --specs=nano.specs --specs=nosys.specs -Wl,--gc-sections \
-            -Iinclude tests/embedded/semihost_smoke.cpp -o smoke_newlib.elf
+            -Iinclude "$METL_SEMIHOST_SRC" -o smoke_newlib.elf
 
       - name: Report code size
         run: arm-none-eabi-size smoke_newlib.elf
@@ -500,8 +516,8 @@ jobs:
             -std=c++17 -mcpu=cortex-m3 -mthumb -Os \
             -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti \
             -Wl,--gc-sections \
-            -T tests/embedded/mps2-an385.ld \
-            -Iinclude tests/embedded/semihost_smoke.cpp -o smoke_picolibc.elf
+            -T "$METL_LINKER_SCRIPT" \
+            -Iinclude "$METL_SEMIHOST_SRC" -o smoke_picolibc.elf
 
       - name: Report code size
         run: arm-none-eabi-size smoke_picolibc.elf
@@ -669,10 +685,21 @@ jobs:
           UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1:abort_on_error=1"
         run: |
           set -euo pipefail
-          for t in fuzz_fixed_string fuzz_flat_map fuzz_static_unordered_map \
-                   fuzz_allocators fuzz_crc; do
+          # Derive the harness list from the built binaries so a newly added
+          # fuzzer is picked up automatically — never silently skipped by this
+          # blocking gate (the list previously duplicated fuzz/CMakeLists.txt and
+          # .clusterfuzzlite/build.sh, a false-green risk).
+          shopt -s nullglob
+          bins=(build-fuzz/fuzz/metl_fuzz_*)
+          if [ "${#bins[@]}" -eq 0 ]; then
+            echo "::error::no fuzz binaries were built (expected build-fuzz/fuzz/metl_fuzz_*)"
+            exit 1
+          fi
+          for bin in "${bins[@]}"; do
+            t="$(basename "$bin")"; t="${t#metl_}"   # metl_fuzz_crc -> fuzz_crc
             echo "::group::${t}"
-            ./build-fuzz/fuzz/metl_${t} \
+            mkdir -p "fuzz/corpus/${t}"
+            "$bin" \
               -max_total_time=25 -runs=2000000 -timeout=10 -rss_limit_mb=2048 \
               "fuzz/corpus/${t}"
             echo "::endgroup::"
@@ -889,6 +916,24 @@ jobs:
         uses: actions/checkout@v5
         with:
           path: metl
+
+      - name: Locate the Zephyr SDK
+        # The image registers the SDK's CMake package under the image user's HOME,
+        # but GitHub Actions overrides HOME to /github/home inside the container,
+        # so find_package(Zephyr-sdk) misses it. Point ZEPHYR_SDK_INSTALL_DIR at
+        # the SDK directory explicitly instead of relying on the package registry.
+        run: |
+          set -euo pipefail
+          sdk="$(ls -d /opt/toolchains/zephyr-sdk-* 2>/dev/null | sort -V | tail -1 || true)"
+          if [ -z "$sdk" ]; then
+            sdk="$(find /opt /root /usr/local -maxdepth 4 -type d -name 'zephyr-sdk-*' 2>/dev/null | sort -V | tail -1 || true)"
+          fi
+          if [ -z "$sdk" ]; then
+            echo "::warning::Zephyr SDK not found in image; find_package(Zephyr-sdk) may still fail"
+          else
+            echo "Found Zephyr SDK: $sdk"
+            echo "ZEPHYR_SDK_INSTALL_DIR=$sdk" >> "$GITHUB_ENV"
+          fi
 
       - name: Initialize a throwaway upstream Zephyr workspace
         run: |

@@ -337,7 +337,15 @@ class variant {
             typename = typename std::enable_if<(detail::count_of_type<Decayed, Ts...>::value == 1)>::type>
   variant& operator=(T&& value) noexcept(std::is_nothrow_constructible<Decayed, T&&>::value &&
                                          std::is_nothrow_assignable<Decayed&, T&&>::value) {
-    emplace<Decayed>(std::forward<T>(value));
+    // When the active alternative already holds `Decayed`, assign in place.
+    // Routing unconditionally through emplace() would reset() (destroy the
+    // active alternative) *before* reading `value`; if `value` aliases that
+    // alternative (e.g. `v = get<Decayed>(v)`), that is a use-after-destruction.
+    if (index_ == detail::index_of_type<Decayed, Ts...>::value) {
+      *std::launder(static_cast<Decayed*>(raw_addr())) = std::forward<T>(value);
+    } else {
+      emplace<Decayed>(std::forward<T>(value));
+    }
     return *this;
   }
 
