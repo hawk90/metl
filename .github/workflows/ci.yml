@@ -336,77 +336,72 @@ jobs:
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
-  # RISC-V freestanding compile check (rv64, syntax-only)
+  # Freestanding cross-frontend syntax checks (compile-only, no codegen/link).
   #
-  # Ubuntu's bare-metal gcc-riscv64-unknown-elf ships no libstdc++ (<cstdlib>
-  # missing), so a full CMake cross-build isn't possible. Instead we use the
-  # Linux-GNU RISC-V g++ (full libstdc++) for a freestanding -fsyntax-only pass
-  # over the public headers — same approach as arm-cross-clang: validates that
-  # metl is portable to the RISC-V frontend without codegen/link.
+  # These jobs share an identical shape — checkout, apt-install a cross
+  # toolchain, run ONE `-fsyntax-only` pass of the embedded smoke source over
+  # the public headers — so they are collapsed into a single matrix. The only
+  # per-target differences (compiler binary, target/arch flags, apt packages)
+  # are expressed as matrix `include:` entries. Each entry's `name` is set as
+  # the job `name`, which GitHub uses verbatim as the status-check name, so the
+  # required checks "riscv-cross / rv64" and "arm-cross-clang / cortex-m4" are
+  # preserved exactly despite the underlying job key changing.
+  #
+  # Targets:
+  #   * riscv-cross / rv64      — Ubuntu's bare-metal gcc-riscv64-unknown-elf
+  #     ships no libstdc++, so a full CMake cross-build isn't possible; instead
+  #     the Linux-GNU RISC-V g++ (full libstdc++) does a freestanding
+  #     -fsyntax-only pass, proving metl is portable to the RISC-V frontend.
+  #   * arm-cross-clang / cortex-m4 — validates portability to a *different*
+  #     compiler frontend (Clang) targeting bare-metal ARM. Clang has no
+  #     freestanding C++ stdlib of its own, so it reuses gcc-arm-none-eabi's
+  #     freestanding libstdc++ headers (search paths queried from the GCC driver
+  #     and handed to clang as -isystem).
   # ---------------------------------------------------------------------------
-  riscv-cross:
-    name: riscv-cross / rv64
+  cross-syntax:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     needs: preflight
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: riscv-cross / rv64
+            apt_pkgs: g++-riscv64-linux-gnu
+            compile_cmd: |
+              set -euo pipefail
+              riscv64-linux-gnu-g++ -std=c++17 -ffreestanding -fno-exceptions -fno-rtti \
+                -Wall -Wextra -Iinclude -fsyntax-only "$METL_SMOKE_SRC"
+          - name: arm-cross-clang / cortex-m4
+            apt_pkgs: clang gcc-arm-none-eabi
+            compile_cmd: |
+              set -euo pipefail
+              arm_flags="-mcpu=cortex-m4 -mthumb -mfloat-abi=soft"
+              # Query the freestanding C++ header search paths from the GCC driver
+              # so clang uses the same target standard library.
+              mapfile -t GXX_INCS < <(arm-none-eabi-g++ ${arm_flags} -E -x c++ -v /dev/null 2>&1 | awk '/#include <...> search starts here:/{f=1;next} /End of search list/{f=0} f{sub(/^[ \t]+/,"");print}')
+              ISYS=()
+              for d in "${GXX_INCS[@]}"; do ISYS+=(-isystem "$d"); done
+              echo "Using GCC target include dirs:"
+              printf '  %s\n' "${GXX_INCS[@]}"
+              clang++ --target=arm-none-eabi ${arm_flags} \
+                -std=c++17 -ffreestanding -fno-exceptions -fno-rtti \
+                -Wall -Wextra \
+                "${ISYS[@]}" -Iinclude \
+                -fsyntax-only "$METL_SMOKE_SRC"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install RISC-V (Linux-GNU) toolchain
+      - name: Install cross toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++-riscv64-linux-gnu
+          sudo apt-get install -y ${{ matrix.apt_pkgs }}
 
-      - name: g++ -fsyntax-only over the public headers (rv64, freestanding)
-        run: |
-          set -euo pipefail
-          riscv64-linux-gnu-g++ -std=c++17 -ffreestanding -fno-exceptions -fno-rtti \
-            -Wall -Wextra -Iinclude -fsyntax-only "$METL_SMOKE_SRC"
-
-  # ---------------------------------------------------------------------------
-  # ARM cross-compile with Clang (second frontend, compile-only)
-  #
-  # Validates that the public headers are portable to a *different* compiler
-  # frontend targeting bare-metal ARM. Clang cross-compiles for the
-  # arm-none-eabi target but has no freestanding C++ standard library of its
-  # own, so it reuses the freestanding libstdc++ headers shipped with
-  # gcc-arm-none-eabi (their search paths are queried from the GCC driver and
-  # handed to clang as -isystem). -fsyntax-only: parse + semantic check only,
-  # no codegen, no link, no run.
-  # ---------------------------------------------------------------------------
-  arm-cross-clang:
-    name: arm-cross-clang / cortex-m4
-    runs-on: ubuntu-latest
-    needs: preflight
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install toolchains
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang gcc-arm-none-eabi
-
-      - name: Clang -fsyntax-only over the public headers (arm-none-eabi target)
-        run: |
-          set -euo pipefail
-          arm_flags="-mcpu=cortex-m4 -mthumb -mfloat-abi=soft"
-          # Query the freestanding C++ header search paths from the GCC driver
-          # so clang uses the same target standard library.
-          mapfile -t GXX_INCS < <(arm-none-eabi-g++ ${arm_flags} -E -x c++ -v /dev/null 2>&1 | awk '/#include <...> search starts here:/{f=1;next} /End of search list/{f=0} f{sub(/^[ \t]+/,"");print}')
-          ISYS=()
-          for d in "${GXX_INCS[@]}"; do ISYS+=(-isystem "$d"); done
-          echo "Using GCC target include dirs:"
-          printf '  %s\n' "${GXX_INCS[@]}"
-          clang++ --target=arm-none-eabi ${arm_flags} \
-            -std=c++17 -ffreestanding -fno-exceptions -fno-rtti \
-            -Wall -Wextra \
-            "${ISYS[@]}" -Iinclude \
-            -fsyntax-only "$METL_SMOKE_SRC"
+      - name: Syntax-only compile over the public headers
+        run: ${{ matrix.compile_cmd }}
 
   # ---------------------------------------------------------------------------
   # Big-endian build — exercises endian.hpp on a real big-endian target.
