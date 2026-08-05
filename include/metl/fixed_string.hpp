@@ -2,6 +2,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/hash.hpp"
 #include "metl/span.hpp"
 
 #include <cstddef>
@@ -257,4 +258,76 @@ class fixed_string {
   size_type size_;
 };
 
+/// Returns true if both strings have equal length and characters.
+///
+/// Cross-capacity overload: compares by byte content, NOT by capacity, so a
+/// `fixed_string<N1>` and a `fixed_string<M>` holding the same characters
+/// compare equal. (The same-capacity case is served by the in-class friend
+/// operator, which is a better match and wins overload resolution.)
+template <std::size_t N1, std::size_t N2>
+inline bool operator==(const fixed_string<N1>& lhs, const fixed_string<N2>& rhs) noexcept {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  for (std::size_t i = 0; i < lhs.size(); ++i) {
+    if (lhs[i] != rhs[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// Returns true if the strings differ in length or any character.
+template <std::size_t N1, std::size_t N2>
+inline bool operator!=(const fixed_string<N1>& lhs, const fixed_string<N2>& rhs) noexcept {
+  return !(lhs == rhs);
+}
+
+/// Lexicographically compares two strings by byte content (not capacity).
+template <std::size_t N1, std::size_t N2>
+inline bool operator<(const fixed_string<N1>& lhs, const fixed_string<N2>& rhs) noexcept {
+  const std::size_t n = (lhs.size() < rhs.size()) ? lhs.size() : rhs.size();
+  for (std::size_t i = 0; i < n; ++i) {
+    if (lhs[i] < rhs[i]) {
+      return true;
+    }
+    if (rhs[i] < lhs[i]) {
+      return false;
+    }
+  }
+  return lhs.size() < rhs.size();
+}
+
+/// Lexicographically compares two strings by byte content (not capacity).
+template <std::size_t N1, std::size_t N2>
+inline bool operator>(const fixed_string<N1>& lhs, const fixed_string<N2>& rhs) noexcept {
+  return rhs < lhs;
+}
+
+/// Lexicographically compares two strings by byte content (not capacity).
+template <std::size_t N1, std::size_t N2>
+inline bool operator<=(const fixed_string<N1>& lhs, const fixed_string<N2>& rhs) noexcept {
+  return !(rhs < lhs);
+}
+
+/// Lexicographically compares two strings by byte content (not capacity).
+template <std::size_t N1, std::size_t N2>
+inline bool operator>=(const fixed_string<N1>& lhs, const fixed_string<N2>& rhs) noexcept {
+  return !(lhs < rhs);
+}
+
 }  // namespace metl
+
+namespace std {
+
+/// @brief std::hash specialization hashing the string's byte content
+/// (length-aware) via metl::fnv1a, so equal-content strings hash equally
+/// regardless of capacity and fixed_string works as a hash/flat-map key.
+template <std::size_t Capacity>
+struct hash<::metl::fixed_string<Capacity>> {
+  size_t operator()(const ::metl::fixed_string<Capacity>& s) const noexcept {
+    return ::metl::fnv1a(reinterpret_cast<const unsigned char*>(s.data()), s.size());
+  }
+};
+
+}  // namespace std
