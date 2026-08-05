@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cstddef>
 #include <new>
+#include <type_traits>
 #include <utility>
 
 namespace metl {
@@ -30,6 +31,19 @@ template <typename T, std::size_t Capacity>
 class spsc_queue {
   static_assert(Capacity >= 2, "spsc_queue Capacity must be at least 2");
   static_assert((Capacity & (Capacity - 1)) == 0, "Capacity must be power of two");
+
+  // metl is a NO-EXCEPTION library. try_push/try_emplace, try_pop, and the destructor are all
+  // marked noexcept while running T's move ctor (try_emplace), move-assign (try_pop) and destructor
+  // (try_pop / ~spsc_queue). If any of those threw, the exception would escape a noexcept boundary
+  // and call std::terminate at RUNTIME. Requiring nothrow here turns that latent runtime terminate
+  // into a clear COMPILE-TIME error. (Copy is intentionally not required: it is only reachable via
+  // the copy overload of try_push(const T&) and constraining it would reject nothrow-movable types.)
+  static_assert(std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_assignable_v<T> &&
+                    std::is_nothrow_destructible_v<T>,
+                "metl::spsc_queue requires T to be nothrow move-constructible, nothrow "
+                "move-assignable, and nothrow destructible: metl is a no-exception library and its "
+                "noexcept push/pop/destroy paths would std::terminate if T's move ctor, move "
+                "assignment, or destructor threw.");
 
  public:
   using value_type = T;
