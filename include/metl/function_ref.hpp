@@ -40,15 +40,13 @@ template <typename R, typename... Args>
 class function_ref<R(Args...)> {
  public:
   /// @brief Constructs an empty function_ref referencing nothing.
-  constexpr function_ref() noexcept : object_(nullptr), function_(nullptr), callback_(nullptr) {}
+  constexpr function_ref() noexcept : storage_(), callback_(nullptr) {}
   /// @brief Constructs an empty function_ref from nullptr.
-  constexpr function_ref(std::nullptr_t) noexcept
-      : object_(nullptr), function_(nullptr), callback_(nullptr) {}
+  constexpr function_ref(std::nullptr_t) noexcept : storage_(), callback_(nullptr) {}
 
   /// @brief Binds a free-function pointer.
   /// @param function Non-null function pointer to reference.
-  constexpr function_ref(R (*function)(Args...)) noexcept
-      : object_(nullptr), function_(function), callback_(&invoke_function) {
+  constexpr function_ref(R (*function)(Args...)) noexcept : storage_(function), callback_(&invoke_function) {
     METL_ASSERT(function != nullptr);
   }
 
@@ -72,8 +70,7 @@ class function_ref<R(Args...)> {
   // complements the deleted rvalue-binding overload below, which already
   // rejects temporaries outright.
   function_ref(F&& function METL_LIFETIME_BOUND) noexcept
-      : object_(const_cast<void*>(static_cast<const void*>(detail::function_ref_addressof(function)))),
-        function_(nullptr),
+      : storage_(const_cast<void*>(static_cast<const void*>(detail::function_ref_addressof(function)))),
         callback_(&invoke_object<Referenced>) {}
 
   /// @brief Deleted rvalue-binding overload.
@@ -100,27 +97,44 @@ class function_ref<R(Args...)> {
   ///      function_ref asserts.
   R operator()(Args... args) const {
     METL_ASSERT(callback_ != nullptr);
-    return callback_(object_, function_, std::forward<Args>(args)...);
+    return callback_(storage_, std::forward<Args>(args)...);
   }
 
  private:
-  using callback_type = R (*)(void*, R (*)(Args...), Args&&...);
+  // Two-pointer layout à la std::function_ref (P0792): a single word holding
+  // EITHER the bound object's address OR a free-function pointer, plus the
+  // thunk. The thunk selects the active union member per binding kind, so the
+  // two cases never share storage and no dead slot is threaded through calls.
+  //
+  // A union (not a shared `void*`) is required: casting between an object
+  // `void*` and a function-pointer type is not portable. The active member is
+  // always read back through the SAME member it was written through
+  // (invoke_function reads `function`, invoke_object reads `object`), so this
+  // is well-defined — no cross-member type punning.
+  union storage {
+    void* object;
+    R (*function)(Args...);
+    constexpr storage() noexcept : object(nullptr) {}
+    constexpr explicit storage(void* obj) noexcept : object(obj) {}
+    constexpr explicit storage(R (*fn)(Args...)) noexcept : function(fn) {}
+  };
 
-  static R invoke_function(void*, R (*function)(Args...), Args&&... args) {
-    METL_ASSERT(function != nullptr);
-    return function(std::forward<Args>(args)...);
+  using callback_type = R (*)(storage, Args&&...);
+
+  static R invoke_function(storage bound, Args&&... args) {
+    METL_ASSERT(bound.function != nullptr);
+    return bound.function(std::forward<Args>(args)...);
   }
 
   // Referenced carries cv-qualification, so a const callable dispatches to its
   // const operator() and a non-const callable to its non-const operator().
   template <typename Referenced>
-  static R invoke_object(void* object, R (*)(Args...), Args&&... args) {
-    auto* function = static_cast<Referenced*>(object);
+  static R invoke_object(storage bound, Args&&... args) {
+    auto* function = static_cast<Referenced*>(bound.object);
     return (*function)(std::forward<Args>(args)...);
   }
 
-  void* object_;
-  R (*function_)(Args...);
+  storage storage_;
   callback_type callback_;
 };
 

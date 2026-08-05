@@ -35,6 +35,13 @@ static_assert(!std::is_constructible<metl::function_ref<int(int)>, accumulator>:
 static_assert(!std::is_constructible<metl::function_ref<int(int)>, multiplier>::value,
               "function_ref must reject rvalue callables (would dangle)");
 
+// Two-pointer layout (P0792 std::function_ref): a union of {object pointer,
+// free-function pointer} plus the thunk — no redundant third pointer.
+static_assert(sizeof(metl::function_ref<int(int)>) <= 2 * sizeof(void*),
+              "function_ref must fit in two pointers");
+static_assert(sizeof(metl::function_ref<int(int, int)>) <= 2 * sizeof(void*),
+              "function_ref must fit in two pointers");
+
 }  // namespace
 
 int main() {
