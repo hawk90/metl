@@ -3,6 +3,7 @@
 #include "metl/bit.hpp"
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/hash.hpp"
 #include "metl/type_traits.hpp"
 
 #include <cstddef>
@@ -521,7 +522,9 @@ class static_unordered_map {
 
   template <typename K>
   size_type bucket_index(const K& key) const noexcept {
-    return static_cast<size_type>(hasher_(key)) & (bucket_count - 1);
+    // Finalize/avalanche the hash so high-entropy bits reach the low bits that the mask keeps.
+    // insert and lookup both route through here, so they always agree on the bucket.
+    return static_cast<size_type>(detail::hash_mix(hasher_(key))) & (bucket_count - 1);
   }
 
   template <typename K>
