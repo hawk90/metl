@@ -46,6 +46,7 @@ set(_metl_headers
   include/metl/crc8.hpp
   include/metl/delegate.hpp
   include/metl/detail/construct.hpp
+  include/metl/detail/crc.hpp
   include/metl/endian.hpp
   include/metl/event_dispatcher.hpp
   include/metl/expected.hpp
