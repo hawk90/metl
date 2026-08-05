@@ -10,8 +10,9 @@
 #include <metl/static_unordered_map.hpp>
 
 #if defined(__unix__) || defined(__APPLE__)
-#include <sys/wait.h>
 #include <unistd.h>
+
+#include <sys/wait.h>
 #define METL_HARDEN_TEST_HAVE_FORK 1
 #else
 #define METL_HARDEN_TEST_HAVE_FORK 0

@@ -233,10 +233,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reading the source). Fixes a use-after-destruction for a self-aliasing
   assignment such as `v = get<T>(v)`. Distinct from the earlier copy/move-assign
   exception-safety fix.
-- **atomic_ref:** added `static_assert(std::atomic<T>::is_always_lock_free)`. A
-  non-lock-free `std::atomic<T>` embeds a lock and has a larger `sizeof`/different
-  layout than `T`, so the reinterpret-based backport would read/write past the
-  referenced object; the lock-free property was computed but never enforced.
+- **atomic_ref:** added `static_assert(sizeof(std::atomic<T>) == sizeof(T))` so
+  the reinterpret-based backport can never read/write past the referenced object.
+  (Requiring size-compatibility, not lock-freedom: `std::atomic_ref` works on
+  non-lock-free `T` via an external lock pool, and a stricter lock-free assert
+  broke size-compatible-but-not-lock-free targets such as Cortex-M0.) Alignment is
+  still enforced at construction; `is_always_lock_free` remains exposed.
 - **arena_allocator:** `try_emplace` now constructs the object *before*
   registering its destructor record. The previous order left a record pointing at
   unconstructed storage if `T`'s constructor threw, so a later `rewind`/`reset`

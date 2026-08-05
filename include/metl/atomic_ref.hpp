@@ -41,12 +41,17 @@ class atomic_ref {
   static_assert(std::is_trivially_copyable_v<T>, "atomic_ref requires a trivially copyable type");
   static_assert(sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 || sizeof(T) == 8,
                 "atomic_ref supports 1/2/4/8 byte types");
-  // A non-lock-free std::atomic<T> embeds a lock, so it has a larger sizeof and a
-  // different layout than T. Reinterpreting the referenced T object as such an
-  // atomic would read/write memory past the object. Only the lock-free case is
-  // layout-compatible, which is the only case std::atomic_ref is defined for.
-  static_assert(std::atomic<T>::is_always_lock_free,
-                "atomic_ref requires T to be always lock-free on this platform");
+  // The backport reinterprets the referenced T as std::atomic<T>, so the two must
+  // be layout-compatible in size — otherwise an atomic op would read/write past
+  // the object. Standard libraries keep sizeof(atomic<T>) == sizeof(T) even for
+  // NON-lock-free T (the lock lives in an external address-keyed pool, not in the
+  // object), which is exactly why std::atomic_ref works on non-lock-free types
+  // too; so we require size-compatibility, not lock-freedom. Any stricter
+  // alignment std::atomic<T> demands is enforced at construction via
+  // required_alignment. (is_always_lock_free is still exposed below for callers
+  // that want to branch on it — e.g. avoiding a lock-pool hop on Cortex-M0.)
+  static_assert(sizeof(std::atomic<T>) == sizeof(T),
+                "atomic_ref requires std::atomic<T> to be the same size as T");
 
  public:
   using value_type = T;

@@ -14,9 +14,7 @@ struct Tracked {
   inline static int dtors = 0;
   inline static int copy_assigns = 0;
   inline static int move_assigns = 0;
-  static void reset_counts() {
-    ctors = dtors = copy_assigns = move_assigns = 0;
-  }
+  static void reset_counts() { ctors = dtors = copy_assigns = move_assigns = 0; }
 
   int value;
 
@@ -49,7 +47,7 @@ int main() {
     const int ctors_before = Tracked::ctors;
     v = Tracked{2};  // active alternative is already Tracked → in-place assign
     CHECK_EQ(metl::get<Tracked>(v).value, 2);
-    CHECK(Tracked::move_assigns >= 1);          // in-place assignment happened
+    CHECK(Tracked::move_assigns >= 1);  // in-place assignment happened
     // No new alternative object was constructed for the active slot (only the
     // RHS temporary, which is not the active alternative).
     CHECK_EQ(Tracked::ctors, ctors_before + 1);  // just the RHS temporary
