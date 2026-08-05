@@ -153,6 +153,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stays an explicit list (not a glob) to match the Bazel-style `metl_cc_*` rules —
   sources are enumerated, reviewable, and reproducible. No test was dropped
   (`git mv` preserves history).
+- **CI robustness (follow-up to the reorg).** The freestanding cross jobs that
+  compile test sources directly (outside CMake) now reference them through a
+  single `env:` source of truth instead of hard-coded paths; a workflow-level
+  `defaults.run.shell: bash` fixes container jobs where dash rejected
+  `set -o pipefail`; the blocking `fuzz-smoke` gate derives its harness list from
+  the built binaries (no longer a hand-maintained list that could silently skip a
+  new fuzzer); and a `.pre-commit-config.yaml` pins clang-format 18.1.8 so local
+  formatting matches CI. Deeper CI cleanups (cross-job matrix dedup, caching,
+  action SHA pinning) are tracked in `docs/TODO.md`.
 - **optional — genuine `constexpr` on C++20:** `metl::optional` now stores its
   value in a union (the active member is named directly, no `std::launder`) and
   routes its object lifetime through the new `metl::detail::construct_at` /
