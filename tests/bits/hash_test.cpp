@@ -80,6 +80,22 @@ int main() {
     return 13;
   }
 
+  // hash_combine diffuses across the full width of size_t: folding a sequence of
+  // values must set bits throughout the word, including the most-significant byte.
+  // The 32-bit mixing recipe under-mixes a 64-bit seed and leaves the top bits sparse.
+  {
+    std::size_t acc = 0;
+    std::size_t bit_union = 0;
+    for (std::size_t i = 0; i < 256; ++i) {
+      acc = metl::hash_combine(acc, i);
+      bit_union |= acc;
+    }
+    constexpr std::size_t high_bits = static_cast<std::size_t>(0xffu) << (sizeof(std::size_t) * 8 - 8);
+    if ((bit_union & high_bits) == 0) {
+      return 14;
+    }
+  }
+
   // fnv1a of an unsigned char buffer is usable at compile time.
   constexpr unsigned char ce_buf[3] = {1, 2, 3};
   constexpr std::size_t ce_hash = metl::fnv1a(ce_buf, 3);
