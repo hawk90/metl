@@ -2,6 +2,7 @@
 
 #include "metl/compiler.hpp"
 
+#include <type_traits>
 #include <utility>
 
 namespace metl {
@@ -16,6 +17,9 @@ namespace metl {
 ///          noexcept; a static_assert enforces this where F is invoked.
 template <typename F>
 class scope_exit {
+  static_assert(noexcept(std::declval<F&>()()),
+                "metl::scope_exit requires the stored callable to be noexcept");
+
  public:
   /// @brief Construct an armed guard owning a copy/move of the callable.
   /// @param func Callable to invoke at scope exit.
@@ -25,7 +29,8 @@ class scope_exit {
   explicit scope_exit(G&& func) noexcept : func_(std::forward<G>(func)), active_(true) {}
 
   /// @brief Move constructor; transfers the armed state and disarms the source.
-  scope_exit(scope_exit&& other) noexcept : func_(std::move(other.func_)), active_(other.active_) {
+  scope_exit(scope_exit&& other) noexcept(std::is_nothrow_move_constructible<F>::value)
+      : func_(std::move(other.func_)), active_(other.active_) {
     other.active_ = false;
   }
 
@@ -35,8 +40,6 @@ class scope_exit {
 
   /// @brief Invokes the stored callable if the guard is still armed.
   ~scope_exit() noexcept {
-    static_assert(noexcept(std::declval<F&>()()),
-                  "metl::scope_exit requires the stored callable to be noexcept");
     if (active_) {
       func_();
     }
