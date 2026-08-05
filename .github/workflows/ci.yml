@@ -917,6 +917,24 @@ jobs:
         with:
           path: metl
 
+      - name: Locate the Zephyr SDK
+        # The image registers the SDK's CMake package under the image user's HOME,
+        # but GitHub Actions overrides HOME to /github/home inside the container,
+        # so find_package(Zephyr-sdk) misses it. Point ZEPHYR_SDK_INSTALL_DIR at
+        # the SDK directory explicitly instead of relying on the package registry.
+        run: |
+          set -euo pipefail
+          sdk="$(ls -d /opt/toolchains/zephyr-sdk-* 2>/dev/null | sort -V | tail -1 || true)"
+          if [ -z "$sdk" ]; then
+            sdk="$(find /opt /root /usr/local -maxdepth 4 -type d -name 'zephyr-sdk-*' 2>/dev/null | sort -V | tail -1 || true)"
+          fi
+          if [ -z "$sdk" ]; then
+            echo "::warning::Zephyr SDK not found in image; find_package(Zephyr-sdk) may still fail"
+          else
+            echo "Found Zephyr SDK: $sdk"
+            echo "ZEPHYR_SDK_INSTALL_DIR=$sdk" >> "$GITHUB_ENV"
+          fi
+
       - name: Initialize a throwaway upstream Zephyr workspace
         run: |
           set -euo pipefail
