@@ -1,3 +1,6 @@
+#include <functional>
+#include <unordered_map>
+
 #include <metl/fixed_string.hpp>
 
 int main() {
@@ -73,6 +76,53 @@ int main() {
   }
   if (!small.empty()) {
     return 16;
+  }
+
+  // Cross-capacity comparison: content is compared, not capacity. Equal
+  // content in differing-capacity strings compares equal.
+  metl::fixed_string<8> abc8("abc");
+  metl::fixed_string<16> abc16("abc");
+  if (!(abc8 == abc16) || abc8 != abc16) {
+    return 17;
+  }
+  if (abc8 < abc16 || abc16 < abc8 || !(abc8 <= abc16) || !(abc8 >= abc16)) {
+    return 18;
+  }
+
+  // Lexicographic ordering by byte content across capacities: "abc" < "abd".
+  metl::fixed_string<16> abd16("abd");
+  if (!(abc8 < abd16) || !(abc8 <= abd16) || abc8 >= abd16 || abc8 == abd16) {
+    return 19;
+  }
+  if (!(abd16 > abc8) || !(abd16 >= abc8) || abd16 <= abc8) {
+    return 20;
+  }
+
+  // Prefix ordering: a proper prefix is less than the longer string.
+  metl::fixed_string<8> ab8("ab");
+  metl::fixed_string<16> abc16b("abc");
+  if (!(ab8 < abc16b) || abc16b < ab8 || ab8 == abc16b) {
+    return 21;
+  }
+
+  // std::hash smoke: equal content -> equal hash (even across capacities),
+  // and fixed_string is usable as a hash-map key type.
+  std::hash<metl::fixed_string<8>> hash8;
+  std::hash<metl::fixed_string<16>> hash16;
+  if (hash8(abc8) != hash16(abc16)) {
+    return 22;
+  }
+  if (hash8(abc8) == hash8(ab8)) {
+    // Distinct content should (overwhelmingly) hash differently; a collision
+    // here for such short inputs indicates a broken hasher.
+    return 23;
+  }
+
+  std::unordered_map<metl::fixed_string<8>, int> keyed;
+  keyed[abc8] = 42;
+  keyed[ab8] = 7;
+  if (keyed.size() != 2 || keyed[metl::fixed_string<8>("abc")] != 42 || keyed[ab8] != 7) {
+    return 24;
   }
 
   return 0;
