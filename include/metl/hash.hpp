@@ -29,6 +29,28 @@ struct fnv_constants<4> {
 
 using active_fnv = fnv_constants<sizeof(std::size_t)>;
 
+// boost::hash_combine constants selected at compile time based on size_t width.
+// The mixing recipe (magic constant and shift amounts) is width-specific: the
+// 32-bit variant under-mixes when applied to a 64-bit seed.
+template <std::size_t Width>
+struct hash_combine_constants;
+
+template <>
+struct hash_combine_constants<8> {
+  static constexpr std::size_t magic = static_cast<std::size_t>(0x9e3779b97f4a7c15ULL);
+  static constexpr unsigned left_shift = 12;
+  static constexpr unsigned right_shift = 4;
+};
+
+template <>
+struct hash_combine_constants<4> {
+  static constexpr std::size_t magic = static_cast<std::size_t>(0x9e3779b9UL);
+  static constexpr unsigned left_shift = 6;
+  static constexpr unsigned right_shift = 2;
+};
+
+using active_hash_combine = hash_combine_constants<sizeof(std::size_t)>;
+
 }  // namespace detail
 
 /// @brief FNV-1a hash over a contiguous unsigned char buffer.
@@ -66,10 +88,12 @@ METL_NODISCARD constexpr std::size_t fnv1a(const T* data, std::size_t len) noexc
 /// @brief Boost-style hash combiner mixing `value` into `seed`.
 /// @param seed The running hash accumulator.
 /// @param value The hash value to fold in.
-/// @return The combined hash. Uses the well-known boost::hash_combine recipe (2^32 / phi constant).
+/// @return The combined hash. Uses the well-known boost::hash_combine recipe; the magic constant and
+///         shift amounts are selected from `sizeof(std::size_t)` so 64-bit seeds get full mixing.
 /// @note constexpr and heap-free.
 METL_NODISCARD inline constexpr std::size_t hash_combine(std::size_t seed, std::size_t value) noexcept {
-  seed ^= value + static_cast<std::size_t>(0x9e3779b9) + (seed << 6) + (seed >> 2);
+  seed ^= value + detail::active_hash_combine::magic + (seed << detail::active_hash_combine::left_shift) +
+          (seed >> detail::active_hash_combine::right_shift);
   return seed;
 }
 
