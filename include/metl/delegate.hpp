@@ -37,7 +37,7 @@ class delegate<R(Args...)> {
   /// @param instance Object whose member is called; must outlive the delegate.
   /// @return A delegate invoking `Method` on `instance`.
   template <typename T, R (T::*Method)(Args...)>
-  METL_NODISCARD static constexpr delegate bind(T& instance) noexcept {
+  METL_NODISCARD static constexpr delegate bind(T& instance METL_LIFETIME_BOUND) noexcept {
     return delegate(static_cast<void*>(&instance), &invoke_method<T, Method>);
   }
 
@@ -45,7 +45,7 @@ class delegate<R(Args...)> {
   /// @param instance Object whose const member is called; must outlive the delegate.
   /// @return A delegate invoking const `Method` on `instance`.
   template <typename T, R (T::*Method)(Args...) const>
-  METL_NODISCARD static constexpr delegate bind(const T& instance) noexcept {
+  METL_NODISCARD static constexpr delegate bind(const T& instance METL_LIFETIME_BOUND) noexcept {
     return delegate(const_cast<void*>(static_cast<const void*>(&instance)), &invoke_const_method<T, Method>);
   }
 

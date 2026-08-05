@@ -132,7 +132,9 @@ class span {
   // METL_LIFETIME_BOUND: the span views `container`'s storage; the container
   // must outlive the span. clang flags obvious dangling (e.g. a span bound to a
   // temporary container).
-  constexpr span(C& container METL_LIFETIME_BOUND) noexcept : storage_(container.data(), container.size()) {
+  constexpr span(C& container METL_LIFETIME_BOUND) noexcept(noexcept(std::declval<C&>().data()) &&
+                                                            noexcept(std::declval<C&>().size()))
+      : storage_(container.data(), container.size()) {
     METL_ASSERT(Extent == dynamic_extent || container.size() == Extent);
   }
 
