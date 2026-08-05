@@ -2,6 +2,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/transparent.hpp"
 #include "metl/type_traits.hpp"
 
 #include <cstddef>
@@ -11,19 +12,6 @@
 #include <utility>
 
 namespace metl {
-
-namespace detail {
-
-template <typename T, typename = void>
-struct flat_set_has_transparent_compare : false_type {};
-
-template <typename T>
-struct flat_set_has_transparent_compare<T, void_t<typename T::is_transparent>> : true_type {};
-
-template <typename T>
-inline constexpr bool flat_set_has_transparent_compare_v = flat_set_has_transparent_compare<T>::value;
-
-}  // namespace detail
 
 /// @brief Fixed-capacity set of unique keys kept sorted in a flat array.
 ///
@@ -235,35 +223,35 @@ class flat_set {
 
   // ---- Heterogeneous lookup overloads (enabled when Compare is transparent) ----
   template <typename K,
-            typename = enable_if_t<detail::flat_set_has_transparent_compare_v<Compare> &&
+            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   METL_NODISCARD iterator lower_bound(const K& key) noexcept {
     return begin() + lower_bound_index(key);
   }
 
   template <typename K,
-            typename = enable_if_t<detail::flat_set_has_transparent_compare_v<Compare> &&
+            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   METL_NODISCARD const_iterator lower_bound(const K& key) const noexcept {
     return begin() + lower_bound_index(key);
   }
 
   template <typename K,
-            typename = enable_if_t<detail::flat_set_has_transparent_compare_v<Compare> &&
+            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   METL_NODISCARD iterator upper_bound(const K& key) noexcept {
     return begin() + upper_bound_index(key);
   }
 
   template <typename K,
-            typename = enable_if_t<detail::flat_set_has_transparent_compare_v<Compare> &&
+            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   METL_NODISCARD const_iterator upper_bound(const K& key) const noexcept {
     return begin() + upper_bound_index(key);
   }
 
   template <typename K,
-            typename = enable_if_t<detail::flat_set_has_transparent_compare_v<Compare> &&
+            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   METL_NODISCARD std::pair<iterator, iterator> equal_range(const K& key) noexcept {
     const size_type lo = lower_bound_index(key);
@@ -272,7 +260,7 @@ class flat_set {
   }
 
   template <typename K,
-            typename = enable_if_t<detail::flat_set_has_transparent_compare_v<Compare> &&
+            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   METL_NODISCARD std::pair<const_iterator, const_iterator> equal_range(const K& key) const noexcept {
     const size_type lo = lower_bound_index(key);
@@ -281,14 +269,14 @@ class flat_set {
   }
 
   template <typename K,
-            typename = enable_if_t<detail::flat_set_has_transparent_compare_v<Compare> &&
+            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   METL_NODISCARD bool contains(const K& key) const noexcept {
     return find(key) != nullptr;
   }
 
   template <typename K,
-            typename = enable_if_t<detail::flat_set_has_transparent_compare_v<Compare> &&
+            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   METL_NODISCARD value_type* find(const K& key) noexcept {
     const size_type index = lower_bound_index(key);
@@ -299,7 +287,7 @@ class flat_set {
   }
 
   template <typename K,
-            typename = enable_if_t<detail::flat_set_has_transparent_compare_v<Compare> &&
+            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   METL_NODISCARD const value_type* find(const K& key) const noexcept {
     const size_type index = lower_bound_index(key);
@@ -310,7 +298,7 @@ class flat_set {
   }
 
   template <typename K,
-            typename = enable_if_t<detail::flat_set_has_transparent_compare_v<Compare> &&
+            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   bool erase(const K& key) noexcept {
     const size_type index = lower_bound_index(key);
