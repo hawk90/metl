@@ -16,7 +16,7 @@ namespace detail {
 // a hypothetical compiler without it) is the standard operator&-defeating cast.
 template <typename T>
 inline T* function_ref_addressof(T& arg) noexcept {
-#if METL_HAVE_BUILTIN(__builtin_addressof) || defined(__GNUC__) || defined(_MSC_VER)
+#if METL_HAS_BUILTIN(__builtin_addressof) || defined(__GNUC__) || defined(_MSC_VER)
   return __builtin_addressof(arg);
 #else
   return reinterpret_cast<T*>(&const_cast<char&>(reinterpret_cast<const volatile char&>(arg)));

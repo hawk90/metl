@@ -97,9 +97,10 @@ using decay_t = typename std::decay<T>::type;
 template <typename T>
 using underlying_type_t = typename std::underlying_type<T>::type;
 
-/// @brief Byte storage type sized and aligned for `T` (alias for `std::aligned_storage`).
+/// @brief Byte storage sized and aligned for `T`. Aliases metl's own
+/// `storage_for<T>` rather than the C++23-deprecated `std::aligned_storage`.
 template <typename T>
-using aligned_storage_t = typename std::aligned_storage<sizeof(T), alignof(T)>::type;
+using aligned_storage_t = storage_for<T>;
 
 /// @brief True if `T` and `U` are the same type.
 template <typename T, typename U>

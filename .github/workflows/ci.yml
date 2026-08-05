@@ -899,11 +899,11 @@ jobs:
     runs-on: ubuntu-22.04
     needs: preflight
     container: ghcr.io/zephyrproject-rtos/ci:v0.27.4
-    # Provisional: metl IS a working Zephyr module (zephyr/module.yml + sample +
-    # docs are real and usable via `west build`). This job automates a west
-    # workspace build+run, whose init/SDK/board wiring still needs tuning, so it
-    # is non-blocking (continue-on-error) until green. Tracked as a backlog item.
-    continue-on-error: true
+    # metl IS a working Zephyr module (zephyr/module.yml + sample + docs). The
+    # structural `west build` gate below is now blocking (it proves the module +
+    # sample compile for qemu_cortex_m3). Only the QEMU twister RUN step keeps a
+    # step-level continue-on-error, since a QEMU/semihosting hiccup there is a
+    # harness flake rather than a metl regression.
     # Zephyr workspace init + build is slow; give it plenty of headroom.
     timeout-minutes: 60
     env:
@@ -956,6 +956,9 @@ jobs:
 
       - name: Build + run on QEMU via twister (assert sentinel)
         working-directory: zephyrproject
+        # Tolerate QEMU/semihosting flakiness here: the structural build above is
+        # the blocking proof; a twister run hiccup should not fail the pipeline.
+        continue-on-error: true
         run: |
           set -euo pipefail
           ./zephyr/scripts/twister -v --inline-logs \

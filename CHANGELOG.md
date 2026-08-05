@@ -147,6 +147,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Anti-pattern cleanup (follow-up).** Removed the duplicate feature-detection
+  macro `METL_HAVE_BUILTIN` (a byte-for-byte copy of `METL_HAS_BUILTIN`); its one
+  use now spells `METL_HAS_BUILTIN`. `metl::aligned_storage_t<T>` now aliases
+  metl's own `storage_for<T>` instead of the C++23-deprecated
+  `std::aligned_storage`. CI: the Zephyr `west build` structural gate is now
+  **blocking** (was entirely non-blocking); only the QEMU twister *run* keeps a
+  step-level `continue-on-error` for harness flakiness.
 - **Test suite grouped into subdirectories.** `tests/*_test.cpp` moved into
   `tests/{containers,memory,sync,vocab,bits,control,core}/` for navigation; the
   freestanding `embedded_smoke.cpp` moved under `tests/embedded/`. Registration
