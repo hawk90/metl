@@ -1,6 +1,7 @@
 #pragma once
 
 #include "metl/compiler.hpp"
+#include "metl/detail/crc.hpp"
 #include "metl/span.hpp"
 
 #include <cstddef>
@@ -26,14 +27,6 @@ constexpr std::uint32_t crc32_update_byte(std::uint32_t crc, std::uint8_t byte) 
   return crc;
 }
 
-constexpr std::size_t c_string_length(const char* text) noexcept {
-  std::size_t length = 0;
-  while (text[length] != '\0') {
-    ++length;
-  }
-  return length;
-}
-
 }  // namespace detail
 
 /// @brief Computes a 32-bit CRC over a byte span (reflected polynomial 0xEDB88320, LSB-first).
@@ -42,11 +35,7 @@ constexpr std::size_t c_string_length(const char* text) noexcept {
 /// @return The CRC-32 checksum. constexpr and heap-free.
 METL_NODISCARD constexpr std::uint32_t crc32(span<const std::uint8_t> bytes,
                                              crc32_params params = {}) noexcept {
-  std::uint32_t crc = params.initial;
-  for (std::size_t i = 0; i < bytes.size(); ++i) {
-    crc = detail::crc32_update_byte(crc, bytes[i]);
-  }
-  return crc ^ params.final_xor;
+  return detail::crc_fold(bytes, params.initial, params.final_xor, detail::crc32_update_byte);
 }
 
 /// @brief Computes a 32-bit CRC over a raw memory buffer.
@@ -65,11 +54,7 @@ METL_NODISCARD constexpr std::uint32_t crc32(const void* data,
 /// @param params Initial and final-XOR values (default: both 0xFFFFFFFF).
 /// @return The CRC-32 checksum. constexpr and heap-free.
 METL_NODISCARD constexpr std::uint32_t crc32(const char* text, crc32_params params = {}) noexcept {
-  std::uint32_t crc = params.initial;
-  for (std::size_t i = 0; text[i] != '\0'; ++i) {
-    crc = detail::crc32_update_byte(crc, static_cast<std::uint8_t>(text[i]));
-  }
-  return crc ^ params.final_xor;
+  return detail::crc_fold(text, params.initial, params.final_xor, detail::crc32_update_byte);
 }
 
 }  // namespace metl

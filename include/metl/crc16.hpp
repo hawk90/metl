@@ -1,6 +1,7 @@
 #pragma once
 
 #include "metl/compiler.hpp"
+#include "metl/detail/crc.hpp"
 #include "metl/span.hpp"
 
 #include <cstddef>
@@ -35,11 +36,7 @@ constexpr std::uint16_t crc16_update_byte(std::uint16_t crc, std::uint8_t byte) 
 /// @return The CRC-16 checksum. constexpr and heap-free.
 METL_NODISCARD constexpr std::uint16_t crc16(span<const std::uint8_t> bytes,
                                              crc16_params params = {}) noexcept {
-  std::uint16_t crc = params.initial;
-  for (std::size_t i = 0; i < bytes.size(); ++i) {
-    crc = detail::crc16_update_byte(crc, bytes[i]);
-  }
-  return static_cast<std::uint16_t>(crc ^ params.final_xor);
+  return detail::crc_fold(bytes, params.initial, params.final_xor, detail::crc16_update_byte);
 }
 
 /// @brief Computes a 16-bit CRC over a raw memory buffer.
@@ -58,11 +55,7 @@ METL_NODISCARD constexpr std::uint16_t crc16(const void* data,
 /// @param params Initial and final-XOR values (default: initial 0xFFFF, final 0x0000).
 /// @return The CRC-16 checksum. constexpr and heap-free.
 METL_NODISCARD constexpr std::uint16_t crc16(const char* text, crc16_params params = {}) noexcept {
-  std::uint16_t crc = params.initial;
-  for (std::size_t i = 0; text[i] != '\0'; ++i) {
-    crc = detail::crc16_update_byte(crc, static_cast<std::uint8_t>(text[i]));
-  }
-  return static_cast<std::uint16_t>(crc ^ params.final_xor);
+  return detail::crc_fold(text, params.initial, params.final_xor, detail::crc16_update_byte);
 }
 
 }  // namespace metl
