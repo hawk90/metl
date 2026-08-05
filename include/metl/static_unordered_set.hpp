@@ -1,8 +1,8 @@
 #pragma once
 
-#include "metl/bit.hpp"
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/transparent.hpp"
 #include "metl/hash.hpp"
 #include "metl/type_traits.hpp"
 
@@ -13,38 +13,6 @@
 #include <utility>
 
 namespace metl {
-
-namespace detail {
-
-// (Reuses the transparent-traits helpers from static_unordered_map.hpp when it is also included.)
-// We re-declare them here as separate names so that this header is self-contained.
-template <typename T, typename = void>
-struct set_has_transparent_key_eq : false_type {};
-
-template <typename T>
-struct set_has_transparent_key_eq<T, void_t<typename T::is_transparent>> : true_type {};
-
-template <typename T>
-inline constexpr bool set_has_transparent_key_eq_v = set_has_transparent_key_eq<T>::value;
-
-template <typename T, typename = void>
-struct set_has_transparent_hash : false_type {};
-
-template <typename T>
-struct set_has_transparent_hash<T, void_t<typename T::is_transparent>> : true_type {};
-
-template <typename T>
-inline constexpr bool set_has_transparent_hash_v = set_has_transparent_hash<T>::value;
-
-template <typename Hash, typename KeyEqual>
-inline constexpr bool set_is_transparent_v =
-    set_has_transparent_key_eq_v<KeyEqual> && set_has_transparent_hash_v<Hash>;
-
-constexpr std::size_t set_compute_bucket_count(std::size_t capacity) noexcept {
-  return capacity == 0 ? 1 : bit_ceil(capacity * 2);
-}
-
-}  // namespace detail
 
 /// @brief Fixed-capacity set of unique keys using open addressing with linear probing.
 ///
@@ -72,7 +40,7 @@ class static_unordered_set {
   /// @brief Number of hash buckets (always a power of two, >= 2*Capacity).
   /// @note Computed from @c Capacity so probing can use `index & (bucket_count - 1)` instead of
   ///       modulo. This is the table size, larger than @c Capacity (the element ceiling).
-  static constexpr size_type bucket_count = detail::set_compute_bucket_count(Capacity);
+  static constexpr size_type bucket_count = detail::compute_bucket_count(Capacity);
   static_assert((bucket_count & (bucket_count - 1)) == 0, "bucket_count must be a power of two");
 
  private:
@@ -306,14 +274,14 @@ class static_unordered_set {
 
   // ---- Heterogeneous lookup overloads ----
   template <typename K,
-            typename = enable_if_t<detail::set_is_transparent_v<Hash, KeyEqual> &&
+            typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   METL_NODISCARD bool contains(const K& key) const noexcept {
     return find_existing_index(key) != npos;
   }
 
   template <typename K,
-            typename = enable_if_t<detail::set_is_transparent_v<Hash, KeyEqual> &&
+            typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   METL_NODISCARD value_type* find(const K& key) noexcept {
     const size_type index = find_existing_index(key);
@@ -321,7 +289,7 @@ class static_unordered_set {
   }
 
   template <typename K,
-            typename = enable_if_t<detail::set_is_transparent_v<Hash, KeyEqual> &&
+            typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   METL_NODISCARD const value_type* find(const K& key) const noexcept {
     const size_type index = find_existing_index(key);
@@ -329,7 +297,7 @@ class static_unordered_set {
   }
 
   template <typename K,
-            typename = enable_if_t<detail::set_is_transparent_v<Hash, KeyEqual> &&
+            typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   METL_NODISCARD iterator find_iterator(const K& key) noexcept {
     const size_type index = find_existing_index(key);
@@ -337,7 +305,7 @@ class static_unordered_set {
   }
 
   template <typename K,
-            typename = enable_if_t<detail::set_is_transparent_v<Hash, KeyEqual> &&
+            typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   METL_NODISCARD const_iterator find_iterator(const K& key) const noexcept {
     const size_type index = find_existing_index(key);
@@ -345,21 +313,21 @@ class static_unordered_set {
   }
 
   template <typename K,
-            typename = enable_if_t<detail::set_is_transparent_v<Hash, KeyEqual> &&
+            typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   METL_NODISCARD iterator find_iter(const K& key) noexcept {
     return find_iterator(key);
   }
 
   template <typename K,
-            typename = enable_if_t<detail::set_is_transparent_v<Hash, KeyEqual> &&
+            typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   METL_NODISCARD const_iterator find_iter(const K& key) const noexcept {
     return find_iterator(key);
   }
 
   template <typename K,
-            typename = enable_if_t<detail::set_is_transparent_v<Hash, KeyEqual> &&
+            typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same<decay_t<K>, key_type>::value>>
   bool erase(const K& key) noexcept {
     const size_type index = find_existing_index(key);

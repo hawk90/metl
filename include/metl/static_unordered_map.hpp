@@ -1,8 +1,8 @@
 #pragma once
 
-#include "metl/bit.hpp"
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/transparent.hpp"
 #include "metl/hash.hpp"
 #include "metl/type_traits.hpp"
 
@@ -13,39 +13,6 @@
 #include <utility>
 
 namespace metl {
-
-namespace detail {
-
-template <typename T, typename = void>
-struct has_transparent_key_eq : false_type {};
-
-template <typename T>
-struct has_transparent_key_eq<T, void_t<typename T::is_transparent>> : true_type {};
-
-template <typename T>
-inline constexpr bool has_transparent_key_eq_v = has_transparent_key_eq<T>::value;
-
-template <typename T, typename = void>
-struct has_transparent_hash : false_type {};
-
-template <typename T>
-struct has_transparent_hash<T, void_t<typename T::is_transparent>> : true_type {};
-
-template <typename T>
-inline constexpr bool has_transparent_hash_v = has_transparent_hash<T>::value;
-
-template <typename Hash, typename KeyEqual>
-inline constexpr bool is_transparent_v = has_transparent_key_eq_v<KeyEqual> && has_transparent_hash_v<Hash>;
-
-// Compute the bucket_count from a user-requested Capacity.
-// For Capacity > 0 we pick the smallest power of two that is >= Capacity * 2 (and >= 2).
-// This keeps load factor <= 50% and enables `hash & (bucket_count - 1)` instead of `% bucket_count`
-// (no hardware divide on ARM Cortex-M).
-constexpr std::size_t compute_bucket_count(std::size_t capacity) noexcept {
-  return capacity == 0 ? 1 : bit_ceil(capacity * 2);
-}
-
-}  // namespace detail
 
 /// @brief Fixed-capacity hash map using open addressing with linear probing.
 ///
