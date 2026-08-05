@@ -24,6 +24,21 @@ namespace metl {
 ///          main loop, use `metl::spsc_queue` instead.
 template <typename T, std::size_t Capacity>
 class static_message_queue {
+  // metl is a NO-EXCEPTION library. The only T operation that runs inside a noexcept context here is
+  // DESTRUCTION: pop(), clear(), pop_front() and ~static_message_queue() are noexcept and destroy T.
+  // A throwing destructor would escape that noexcept boundary and call std::terminate at RUNTIME, so
+  // require nothrow destruction at COMPILE TIME instead.
+  //
+  // Note: construction (try_emplace/emplace/push) and move-assignment (try_pop) are deliberately NOT
+  // required to be nothrow, because those functions are NOT noexcept -- a throwing move/copy there
+  // propagates normally. Likewise the copy ctor/copy-assign run T's copy but are not noexcept, and
+  // the move ctor/move-assign are already conditionally noexcept, so none of them can terminate.
+  // Requiring nothrow move/copy would over-constrain T without preventing any terminate.
+  static_assert(std::is_nothrow_destructible_v<T>,
+                "metl::static_message_queue requires T to be nothrow destructible: metl is a "
+                "no-exception library and its noexcept pop()/clear()/destructor paths would "
+                "std::terminate if T's destructor threw.");
+
  public:
   using value_type = T;
   using size_type = std::size_t;
