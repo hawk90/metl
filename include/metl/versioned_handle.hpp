@@ -1,7 +1,6 @@
 #pragma once
 
 #include "metl/attributes.hpp"
-#include "metl/config.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -89,6 +88,20 @@ class versioned_handle {
   /// The single unsigned integer the handle packs into.
   using packed_type = typename detail::handle_packed_type<index_bits + generation_bits>::type;
 
+  /// Bits the two fields actually occupy. May be narrower than `packed_type`:
+  /// a 16-bit index with an 8-bit generation uses 24 of a 32-bit word.
+  static constexpr std::size_t used_bits = index_bits + generation_bits;
+
+  /// Mask of the used bits. Anything outside it is not part of the handle's
+  /// value, so it is stripped on construction — otherwise two handles with
+  /// identical index and generation could compare unequal because of junk the
+  /// caller happened to pass to `from_packed`.
+  static constexpr packed_type value_mask =
+      used_bits >= sizeof(packed_type) * 8u
+          ? static_cast<packed_type>(~packed_type{0})
+          : static_cast<packed_type>((static_cast<packed_type>(packed_type{1} << used_bits)) -
+                                     packed_type{1});
+
   /// Largest representable slot index.
   static constexpr index_type max_index = static_cast<index_type>(~index_type{0});
   /// Largest representable generation.
@@ -105,9 +118,11 @@ class versioned_handle {
                                         (static_cast<packed_type>(generation) << index_bits))) {}
 
   /// Rebuilds a handle from its packed representation (e.g. after an atomic load).
+  /// @note Bits outside `value_mask` are not part of the handle and are dropped,
+  ///       so equality stays a function of index and generation alone.
   METL_NODISCARD static constexpr versioned_handle from_packed(packed_type packed) noexcept {
     versioned_handle handle;
-    handle.value_ = packed;
+    handle.value_ = static_cast<packed_type>(packed & value_mask);
     return handle;
   }
 

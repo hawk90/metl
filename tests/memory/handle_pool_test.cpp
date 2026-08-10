@@ -101,7 +101,7 @@ int main() {
     CHECK_EQ(pool.get(new_handle)->value, 2);
   }
 
-  // --- clear() destroys everything and staled every handle -------------------
+  // --- clear() destroys everything and stales every handle -------------------
   {
     reset_tracker();
     metl::handle_pool<tracker, 4> pool;

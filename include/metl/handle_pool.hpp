@@ -10,7 +10,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <new>
-#include <type_traits>
 #include <utility>
 
 namespace metl {
@@ -62,9 +61,6 @@ namespace metl {
 /// @see object_pool for the pointer-addressed equivalent.
 template <typename T, std::size_t Capacity, typename GenT = std::uint16_t>
 class handle_pool {
-  static_assert(Capacity > 0, "metl::handle_pool requires a non-zero Capacity");
-  static_assert(Capacity <= 65535u, "metl::handle_pool Capacity must fit a 16-bit slot index (<= 65535)");
-
  public:
   using value_type = T;
   using size_type = std::size_t;
@@ -77,6 +73,14 @@ class handle_pool {
   /// from a differently-parameterised pool is a compile error rather than a
   /// silent index mix-up.
   using handle_type = versioned_handle<handle_pool, index_type, GenT>;
+
+  /// Largest `Capacity` a slot index can address, derived from the handle's own
+  /// index field so the two can never drift apart.
+  static constexpr size_type max_capacity = static_cast<size_type>(handle_type::max_index);
+
+  static_assert(Capacity > 0, "metl::handle_pool requires a non-zero Capacity");
+  static_assert(Capacity <= max_capacity,
+                "metl::handle_pool Capacity must fit the handle's slot index field");
 
   /// Constructs an empty pool with every slot free and generation 1.
   handle_pool() noexcept : free_head_(0), size_(0) {

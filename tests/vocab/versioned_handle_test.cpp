@@ -64,6 +64,24 @@ int main() {
   // would load and store.
   CHECK_EQ(handle::from_packed(packed.packed()), packed);
 
+  // Bits outside the two fields are not part of the value. This matters when
+  // the fields do not fill the word: a 16-bit index with an 8-bit generation
+  // occupies 24 of 32 bits, and junk in the top 8 would otherwise make two
+  // handles with identical index and generation compare unequal.
+  using narrow_generation_handle = metl::versioned_handle<tag_a, std::uint16_t, std::uint8_t>;
+  static_assert(sizeof(narrow_generation_handle) == 4, "16+8 rounds up to a 32-bit word");
+  static_assert(narrow_generation_handle::used_bits == 24, "16+8 uses 24 bits");
+  static_assert(narrow_generation_handle::value_mask == 0x00FFFFFFu, "top byte is not part of the value");
+
+  const narrow_generation_handle clean{0x1234u, 0x56u};
+  const auto with_junk = narrow_generation_handle::from_packed(clean.packed() | 0xFF000000u);
+  CHECK_EQ(with_junk, clean);
+  CHECK_EQ(with_junk.index(), clean.index());
+  CHECK_EQ(with_junk.generation(), clean.generation());
+
+  // A handle whose fields do fill the word keeps every bit.
+  static_assert(handle::value_mask == 0xFFFFFFFFu, "16+16 uses the whole word");
+
   // Equality and ordering.
   CHECK(handle(1, 1) == handle(1, 1));
   CHECK(handle(1, 1) != handle(1, 2));
