@@ -21,6 +21,8 @@ env:
   METL_SEMIHOST_SRC: tests/embedded/semihost_smoke.cpp
   METL_LINKER_SCRIPT: tests/embedded/mps2-an385.ld
   METL_ENDIAN_TEST: tests/bits/endian_test.cpp
+  METL_INVARIANT_PROBE_SRC: tests/embedded/invariant_probe.cpp
+  METL_INVARIANT_CANARY_SRC: tests/embedded/invariant_canary.cpp
 
 # Force bash for every run step so `set -o pipefail` and other bashisms work even
 # inside container: jobs, where GitHub Actions otherwise falls back to dash and
@@ -477,6 +479,82 @@ jobs:
 
       - name: Report code size
         run: arm-none-eabi-size smoke_newlib.elf
+
+  # ---------------------------------------------------------------------------
+  # Invariant gate — proves I1 (no heap), I2 (no exceptions / no RTTI) by
+  # auditing the SYMBOL TABLE of a fully linked bare-metal image. See
+  # docs/SCOPE.md section 7 for the design rationale; the short version:
+  #
+  #   * Symbol audit, not linker poisoning: the "make operator new reference an
+  #     undefined symbol" trick depends on --gc-sections behaviour and differs
+  #     between GNU ld, lld and IAR. Reading the final symbol table is
+  #     linker-agnostic and proves all three properties in one pass.
+  #   * The image is LINKED but never RUN, so no QEMU and no semihosting. A new
+  #     target gets this gate with a cross toolchain alone.
+  #   * --specs=rdimon.specs must NOT be used: its crt0 sets up the heap via the
+  #     SYS_HEAPINFO semihosting call and is linked unconditionally, so heap
+  #     symbols would enter the image with nothing to do with METL. nosys.specs
+  #     is safe because libnosys is an archive — _sbrk only appears if something
+  #     actually references it, which makes it a true positive.
+  #   * -nostartfiles + our own _start: newlib's exit path (__call_exitprocs)
+  #     can reach _malloc_r, which would redden the gate for a libc reason.
+  #   * NO --gc-sections here (unlike the other cross jobs): section GC would
+  #     hide an allocation sitting in a path no caller reaches.
+  #   * The canary is mandatory. A gate that cannot fail is not a gate.
+  # ---------------------------------------------------------------------------
+  invariants:
+    name: invariants / ${{ matrix.cpu }}
+    runs-on: ubuntu-latest
+    needs: preflight
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        cpu: [cortex-m0, cortex-m3, cortex-m4, cortex-m7]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install ARM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi
+
+      - name: Link the invariant probe (newlib-nano, nosys, no crt0)
+        run: |
+          set -euo pipefail
+          arm-none-eabi-g++ -std=c++17 -mcpu=${{ matrix.cpu }} -mthumb -Os \
+            -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti \
+            --specs=nano.specs --specs=nosys.specs -nostartfiles \
+            -Iinclude "$METL_INVARIANT_PROBE_SRC" -o invariant_probe.elf
+
+      - name: Audit the probe's symbol table
+        run: |
+          set -euo pipefail
+          python3 tools/check_invariants.py \
+            --nm arm-none-eabi-nm invariant_probe.elf
+
+      - name: Link the canary (deliberately violates the invariants)
+        run: |
+          set -euo pipefail
+          arm-none-eabi-g++ -std=c++17 -mcpu=${{ matrix.cpu }} -mthumb -Os \
+            -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti \
+            --specs=nano.specs --specs=nosys.specs -nostartfiles \
+            -Iinclude "$METL_INVARIANT_CANARY_SRC" -o invariant_canary.elf
+
+      - name: Canary must FAIL the audit
+        run: |
+          set -uo pipefail
+          if python3 tools/check_invariants.py \
+               --nm arm-none-eabi-nm invariant_canary.elf; then
+            echo "::error::the canary passed the invariant audit — the gate is dead"
+            exit 1
+          fi
+          echo "canary correctly rejected; the audit can fail"
+
+      - name: Report probe size (informational)
+        run: arm-none-eabi-size invariant_probe.elf
 
   # ---------------------------------------------------------------------------
   # picolibc + QEMU semihosting — the one job that goes beyond compile/link:
