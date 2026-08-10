@@ -4,6 +4,22 @@ Thank you for your interest in contributing. METL targets deterministic,
 embedded-oriented systems, so contributions are held to a high standard for
 correctness, predictability, and portability.
 
+## Is my change in scope?
+
+Read [`docs/SCOPE.md`](docs/SCOPE.md) first. The test is not "does it work on an
+MCU?" but whether the change keeps METL's five invariants: no heap, no
+exceptions/RTTI, deterministic (bounded worst-case), header-only C++17, and
+self-contained headers. Keep all five and the topic is in scope whatever it is;
+break one and it is out of scope however embedded it sounds.
+
+Two consequences worth knowing before you start:
+
+- **A tier and its CI job arrive in the same PR.** If your change claims support
+  for a target the CI matrix does not already cover, the job proving it belongs
+  in your PR. No job, no tier.
+- **Experimental work is welcome** under `metl::exp::` / `metl/exp/`, outside the
+  umbrella header and outside the API stability promise.
+
 ## Reporting bugs
 
 File bug reports as GitHub issues. A useful report includes:
@@ -77,6 +93,9 @@ Before requesting review:
       section.
 - [ ] Public API changes are documented in headers and, where appropriate,
       in [`README.md`](README.md).
+- [ ] The [`docs/SCOPE.md`](docs/SCOPE.md) invariant checklist is satisfied —
+      including a stated progress guarantee (wait-free bounded / lock-free /
+      blocking bounded) for anything concurrent, and a CI job for any new tier.
 
 ## Commit messages
 

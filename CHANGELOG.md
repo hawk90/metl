@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`docs/SCOPE.md` — invariant-based scope policy + roadmap.** METL's inclusion
+  test is now stated as five invariants (no heap; no exceptions/RTTI;
+  deterministic, i.e. bounded worst-case; header-only C++17; self-contained
+  headers) rather than a target list: keep all five and a contribution is in
+  scope whatever the topic, break one and it is out however embedded it sounds
+  (a heap-fallback `small_vector` is the canonical permanent rejection). Adds a
+  progress-guarantee vocabulary for the determinism invariant (wait-free bounded
+  / lock-free / blocking bounded; blocking-unbounded is not acceptable), the
+  Tier 0/1/2 definitions with the rule **a tier and its CI job arrive in the same
+  PR**, an experimental area (`metl::exp::` / `metl/exp/`, outside the umbrella
+  and outside the stability promise), and the roadmap.
+- **`invariants` CI job + `tools/check_invariants.py` — machine-checked no-heap /
+  no-exceptions / no-RTTI gate.** Links a stdio-free probe
+  (`tests/embedded/invariant_probe.cpp`) for Cortex-M0/M3/M4/M7 against
+  newlib-nano and audits the resulting image's **symbol table** with `nm`; any
+  `malloc`/`free`/`sbrk`/`operator new`/`__cxa_throw`/`_Unwind_*`/RTTI symbol
+  fails the build. A symbol audit rather than linker poisoning, because the
+  poisoned-`operator new` trick depends on `--gc-sections` behaviour and answers
+  differently under GNU ld, lld and IAR — and because reading the final symbol
+  table proves all three properties in one pass. The image is linked but never
+  executed, so the gate needs no emulator or semihosting (and must not use
+  `--specs=rdimon.specs`, whose crt0 sets up the heap via `SYS_HEAPINFO`).
+  `tests/embedded/invariant_canary.cpp` is a mandatory negative control that must
+  fail the audit — a gate that cannot fail is not a gate.
+  **First finding, worth knowing if you target newlib:** `METL_ASSERT` /
+  `METL_HARDEN` end in `std::abort()` unconditionally, newlib's `abort()` calls
+  `raise()`, and newlib's signal machinery allocates its handler table with
+  `_malloc_r` — so on newlib, any image containing a METL assert transitively
+  links `malloc` and `_sbrk`. This is a property of newlib rather than of METL
+  (the probe's object file references nothing but `abort`), and the fix is the
+  one bare-metal users already apply: supply your own `abort()` alongside `_exit`
+  and the other stubs, as `tests/embedded/invariant_probe.cpp` now does.
+
 - **`METL_HARDENING` runtime-check levels + always-on `METL_HARDEN` floor.** A
   consumer-controllable hardening knob modeled on libc++'s
   `_LIBCPP_HARDENING_MODE` and Abseil's `ABSL_HARDENING_ASSERT`:

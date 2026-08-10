@@ -21,6 +21,8 @@ env:
   METL_SEMIHOST_SRC: tests/embedded/semihost_smoke.cpp
   METL_LINKER_SCRIPT: tests/embedded/mps2-an385.ld
   METL_ENDIAN_TEST: tests/bits/endian_test.cpp
+  METL_INVARIANT_PROBE_SRC: tests/embedded/invariant_probe.cpp
+  METL_INVARIANT_CANARY_SRC: tests/embedded/invariant_canary.cpp
 
 # Force bash for every run step so `set -o pipefail` and other bashisms work even
 # inside container: jobs, where GitHub Actions otherwise falls back to dash and
@@ -477,6 +479,114 @@ jobs:
 
       - name: Report code size
         run: arm-none-eabi-size smoke_newlib.elf
+
+  # ---------------------------------------------------------------------------
+  # Invariant gate — proves I1 (no heap), I2 (no exceptions / no RTTI) by
+  # auditing the SYMBOL TABLE of a fully linked bare-metal image. See
+  # docs/SCOPE.md section 7 for the design rationale; the short version:
+  #
+  #   * Symbol audit, not linker poisoning: the "make operator new reference an
+  #     undefined symbol" trick depends on --gc-sections behaviour and differs
+  #     between GNU ld, lld and IAR. Reading the final symbol table is
+  #     linker-agnostic and proves all three properties in one pass.
+  #   * The image is LINKED but never RUN, so no QEMU and no semihosting. A new
+  #     target gets this gate with a cross toolchain alone.
+  #   * --specs=rdimon.specs must NOT be used: its crt0 sets up the heap via the
+  #     SYS_HEAPINFO semihosting call and is linked unconditionally, so heap
+  #     symbols would enter the image with nothing to do with METL. nosys.specs
+  #     is safe because libnosys is an archive — _sbrk only appears if something
+  #     actually references it, which makes it a true positive.
+  #   * -nostartfiles + our own _start: newlib's exit path (__call_exitprocs)
+  #     can reach _malloc_r, which would redden the gate for a libc reason.
+  #   * NO --gc-sections here (unlike the other cross jobs): section GC would
+  #     hide an allocation sitting in a path no caller reaches.
+  #   * The canary is mandatory. A gate that cannot fail is not a gate.
+  # ---------------------------------------------------------------------------
+  invariants:
+    name: invariants / ${{ matrix.cpu }}
+    runs-on: ubuntu-latest
+    needs: preflight
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        cpu: [cortex-m0, cortex-m3, cortex-m4, cortex-m7]
+
+    # Single source of truth for the link flags, so the probe and its negative
+    # control cannot drift apart. Note the absence of -Wl,--gc-sections, which
+    # the other cross jobs do use: section GC would hide an allocation living in
+    # a path no caller reaches, and this gate wants everything the TU
+    # instantiates to stay in the image.
+    env:
+      METL_LINK_FLAGS: >-
+        -std=c++17 -mcpu=${{ matrix.cpu }} -mthumb -Os
+        -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti
+        --specs=nano.specs --specs=nosys.specs -nostartfiles
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install ARM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi
+
+      - name: Link the invariant probe (newlib-nano, nosys, no crt0)
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2086  # METL_LINK_FLAGS is a deliberate word list
+          arm-none-eabi-g++ $METL_LINK_FLAGS -Wl,-Map=invariant_probe.map \
+            -Iinclude "$METL_INVARIANT_PROBE_SRC" -o invariant_probe.elf
+
+      - name: Audit the probe's symbol table
+        run: |
+          set -uo pipefail
+          if python3 tools/check_invariants.py \
+               --nm arm-none-eabi-nm invariant_probe.elf; then
+            exit 0
+          fi
+          # A bare symbol list answers "what" but not "who pulled it in", and the
+          # answer is usually an archive member two hops away (newlib's abort ->
+          # raise -> signal table -> _malloc_r is the classic one). ld's map file
+          # records exactly that chain, so print it rather than making the next
+          # person re-derive it.
+          echo "----- who pulled the offending archive members in -----"
+          # Only the "Archive member included to satisfy reference by file"
+          # section answers "who pulled it in". Terminating the range on the next
+          # top-level section matters: this job links WITHOUT --gc-sections, so
+          # ld emits no "Discarded input sections" and a naive range would run to
+          # EOF, letting the grep match unrelated addresses in the memory map and
+          # bury the one answer this diagnostic exists to give.
+          awk '/^Archive member included/ {inside = 1}
+               inside && /^(Allocating common symbols|Linker script and memory map|Memory Configuration)/ {inside = 0}
+               inside' invariant_probe.map \
+            | grep -B1 -E '_malloc|_free|_sbrk|_Znw|_Zna|_Unwind|__cxa' || true
+          echo "-------------------------------------------------------"
+          exit 1
+
+      - name: Link the canary (deliberately violates the invariants)
+        run: |
+          set -euo pipefail
+          # Same flags as the probe: the canary only differs in what the code
+          # does, so a flag drift between the two would silently weaken the
+          # negative control.
+          # shellcheck disable=SC2086
+          arm-none-eabi-g++ $METL_LINK_FLAGS \
+            -Iinclude "$METL_INVARIANT_CANARY_SRC" -o invariant_canary.elf
+
+      - name: Canary must FAIL the audit
+        run: |
+          set -uo pipefail
+          if python3 tools/check_invariants.py \
+               --nm arm-none-eabi-nm invariant_canary.elf; then
+            echo "::error::the canary passed the invariant audit — the gate is dead"
+            exit 1
+          fi
+          echo "canary correctly rejected; the audit can fail"
+
+      - name: Report probe size (informational)
+        run: arm-none-eabi-size invariant_probe.elf
 
   # ---------------------------------------------------------------------------
   # picolibc + QEMU semihosting — the one job that goes beyond compile/link:
