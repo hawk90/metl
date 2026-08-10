@@ -33,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--specs=rdimon.specs`, whose crt0 sets up the heap via `SYS_HEAPINFO`).
   `tests/embedded/invariant_canary.cpp` is a mandatory negative control that must
   fail the audit — a gate that cannot fail is not a gate.
+  **First finding, worth knowing if you target newlib:** `METL_ASSERT` /
+  `METL_HARDEN` end in `std::abort()` unconditionally, newlib's `abort()` calls
+  `raise()`, and newlib's signal machinery allocates its handler table with
+  `_malloc_r` — so on newlib, any image containing a METL assert transitively
+  links `malloc` and `_sbrk`. This is a property of newlib rather than of METL
+  (the probe's object file references nothing but `abort`), and the fix is the
+  one bare-metal users already apply: supply your own `abort()` alongside `_exit`
+  and the other stubs, as `tests/embedded/invariant_probe.cpp` now does.
 
 - **`METL_HARDENING` runtime-check levels + always-on `METL_HARDEN` floor.** A
   consumer-controllable hardening knob modeled on libc++'s

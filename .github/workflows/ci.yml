@@ -527,13 +527,27 @@ jobs:
           arm-none-eabi-g++ -std=c++17 -mcpu=${{ matrix.cpu }} -mthumb -Os \
             -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti \
             --specs=nano.specs --specs=nosys.specs -nostartfiles \
+            -Wl,-Map=invariant_probe.map \
             -Iinclude "$METL_INVARIANT_PROBE_SRC" -o invariant_probe.elf
 
       - name: Audit the probe's symbol table
         run: |
-          set -euo pipefail
-          python3 tools/check_invariants.py \
-            --nm arm-none-eabi-nm invariant_probe.elf
+          set -uo pipefail
+          if python3 tools/check_invariants.py \
+               --nm arm-none-eabi-nm invariant_probe.elf; then
+            exit 0
+          fi
+          # A bare symbol list answers "what" but not "who pulled it in", and the
+          # answer is usually an archive member two hops away (newlib's abort ->
+          # raise -> signal table -> _malloc_r is the classic one). ld's map file
+          # records exactly that chain, so print it rather than making the next
+          # person re-derive it.
+          echo "----- who pulled the offending archive members in -----"
+          sed -n '/Archive member included/,/^Discarded input sections/p' \
+            invariant_probe.map \
+            | grep -B1 -E '_malloc|_free|_sbrk|_Znw|_Zna|_Unwind|__cxa' || true
+          echo "-------------------------------------------------------"
+          exit 1
 
       - name: Link the canary (deliberately violates the invariants)
         run: |

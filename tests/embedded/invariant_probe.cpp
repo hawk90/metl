@@ -126,6 +126,28 @@ extern "C" int probe_main(void) {
   return static_cast<int>(g_sink);
 }
 
+// Freestanding abort. NOT cosmetic -- without it this gate can never be green,
+// and the reason is worth knowing:
+//
+//   METL_ASSERT / METL_HARDEN bottom out in std::abort() unconditionally (see
+//   assert.hpp -- even a custom handler is followed by abort() so the path is
+//   provably [[noreturn]]). newlib's abort() calls raise(), and newlib's signal
+//   machinery allocates its handler table with _malloc_r. So on newlib, ANY
+//   image containing a METL assert transitively links malloc and _sbrk.
+//
+// That is a real property of newlib, not of METL: the probe's own object file
+// references nothing but abort(). Supplying abort() is also what a bare-metal
+// user does in practice, alongside _exit and the other syscall stubs. Overriding
+// it here keeps the gate measuring METL rather than newlib's signal
+// implementation -- and the finding itself is recorded in docs/SCOPE.md.
+// No [[noreturn]] here on purpose: <cstdlib> (pulled in by assert.hpp) already
+// declares abort() noreturn, and repeating the attribute on the definition is
+// ill-formed ("attribute does not appear on the first declaration").
+extern "C" void abort(void) {
+  for (;;) {
+  }
+}
+
 // Entry point. Never executed -- see note 2 at the top of this file. The park
 // loop keeps the linker from needing exit(), whose newlib implementation can
 // reach the heap through __call_exitprocs.

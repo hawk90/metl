@@ -221,6 +221,18 @@ be stdio-free and accumulate its results into a `volatile` sink returned from
 `main()`. (picolibc's tinystdio does not allocate, so this trap only springs on
 newlib — but the probe must pass under both.)
 
+**The probe supplies its own `abort()`, and the reason is a real finding.**
+`METL_ASSERT` / `METL_HARDEN` bottom out in `std::abort()` unconditionally —
+even a custom handler is followed by `abort()` so the path is provably
+`[[noreturn]]` (see `assert.hpp`). newlib's `abort()` calls `raise()`, and
+newlib's signal machinery allocates its handler table with `_malloc_r`. So **on
+newlib, any image containing a METL assert transitively links `malloc` and
+`_sbrk`** — which is what the first run of this gate found. The probe's own
+object file references nothing but `abort`, so this is a property of newlib, not
+of METL, and supplying `abort()` is what a bare-metal user does anyway alongside
+`_exit` and the other stubs. Users on newlib who need a provably heap-free image
+must do the same.
+
 **A canary is mandatory.** `tests/embedded/invariant_canary.cpp` deliberately
 links `operator new`, and its ctest entry is `WILL_FAIL TRUE`. A gate that
 cannot fail is not a gate; if the canary starts passing, the audit logic is
