@@ -552,8 +552,15 @@ jobs:
           # records exactly that chain, so print it rather than making the next
           # person re-derive it.
           echo "----- who pulled the offending archive members in -----"
-          sed -n '/Archive member included/,/^Discarded input sections/p' \
-            invariant_probe.map \
+          # Only the "Archive member included to satisfy reference by file"
+          # section answers "who pulled it in". Terminating the range on the next
+          # top-level section matters: this job links WITHOUT --gc-sections, so
+          # ld emits no "Discarded input sections" and a naive range would run to
+          # EOF, letting the grep match unrelated addresses in the memory map and
+          # bury the one answer this diagnostic exists to give.
+          awk '/^Archive member included/ {inside = 1}
+               inside && /^(Allocating common symbols|Linker script and memory map|Memory Configuration)/ {inside = 0}
+               inside' invariant_probe.map \
             | grep -B1 -E '_malloc|_free|_sbrk|_Znw|_Zna|_Unwind|__cxa' || true
           echo "-------------------------------------------------------"
           exit 1
