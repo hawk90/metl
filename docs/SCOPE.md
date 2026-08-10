@@ -246,7 +246,8 @@ semihosting call, and that startup object is linked unconditionally, so heap
 symbols enter the image with nothing to do with METL. `nosys.specs` is fine:
 libnosys is an archive, so `_sbrk` is only pulled in if something references it
 — meaning **`_sbrk` appearing under nosys is a true positive and must never be
-allowlisted**.
+allowlisted**. `check_invariants.py` refuses `--allow _sbrk` outright rather than
+leaving that rule in prose, where it would erode.
 
 | specs | Gate |
 |---|---|

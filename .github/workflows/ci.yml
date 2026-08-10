@@ -512,6 +512,17 @@ jobs:
       matrix:
         cpu: [cortex-m0, cortex-m3, cortex-m4, cortex-m7]
 
+    # Single source of truth for the link flags, so the probe and its negative
+    # control cannot drift apart. Note the absence of -Wl,--gc-sections, which
+    # the other cross jobs do use: section GC would hide an allocation living in
+    # a path no caller reaches, and this gate wants everything the TU
+    # instantiates to stay in the image.
+    env:
+      METL_LINK_FLAGS: >-
+        -std=c++17 -mcpu=${{ matrix.cpu }} -mthumb -Os
+        -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti
+        --specs=nano.specs --specs=nosys.specs -nostartfiles
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -524,10 +535,8 @@ jobs:
       - name: Link the invariant probe (newlib-nano, nosys, no crt0)
         run: |
           set -euo pipefail
-          arm-none-eabi-g++ -std=c++17 -mcpu=${{ matrix.cpu }} -mthumb -Os \
-            -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti \
-            --specs=nano.specs --specs=nosys.specs -nostartfiles \
-            -Wl,-Map=invariant_probe.map \
+          # shellcheck disable=SC2086  # METL_LINK_FLAGS is a deliberate word list
+          arm-none-eabi-g++ $METL_LINK_FLAGS -Wl,-Map=invariant_probe.map \
             -Iinclude "$METL_INVARIANT_PROBE_SRC" -o invariant_probe.elf
 
       - name: Audit the probe's symbol table
@@ -552,9 +561,11 @@ jobs:
       - name: Link the canary (deliberately violates the invariants)
         run: |
           set -euo pipefail
-          arm-none-eabi-g++ -std=c++17 -mcpu=${{ matrix.cpu }} -mthumb -Os \
-            -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti \
-            --specs=nano.specs --specs=nosys.specs -nostartfiles \
+          # Same flags as the probe: the canary only differs in what the code
+          # does, so a flag drift between the two would silently weaken the
+          # negative control.
+          # shellcheck disable=SC2086
+          arm-none-eabi-g++ $METL_LINK_FLAGS \
             -Iinclude "$METL_INVARIANT_CANARY_SRC" -o invariant_canary.elf
 
       - name: Canary must FAIL the audit

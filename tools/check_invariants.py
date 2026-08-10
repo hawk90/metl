@@ -166,6 +166,20 @@ def main() -> int:
 
     rules = compiled(set(args.skip))
     allow = set(args.allow)
+
+    # docs/SCOPE.md says _sbrk must never be allowlisted, because under
+    # nosys.specs libnosys is an archive: _sbrk is only pulled in when something
+    # actually references it, which makes it a true positive every time.
+    # A rule stated only in prose is a rule that erodes, so enforce it here.
+    forbidden_allows = {name for name in allow if name.lstrip("_") in {"sbrk", "brk"}}
+    if forbidden_allows:
+        print(
+            f"error: refusing to allowlist {', '.join(sorted(forbidden_allows))} — "
+            "its presence is always a real heap reference (docs/SCOPE.md §7). "
+            "Find what pulled it in instead.",
+            file=sys.stderr,
+        )
+        return 2
     checked = ", ".join(c for c in sorted(CATEGORIES) if c not in set(args.skip))
 
     total = 0
