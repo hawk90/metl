@@ -126,6 +126,8 @@ Copy into the PR description:
           (wait-free bounded / lock-free / blocking bounded)
 - [ ] I4  header-only, C++17, self-contained
 - [ ] I5  new header added to the umbrella, or explicitly Tier 2 opt-in
+- [ ] new container/allocator exercised in tests/embedded/invariant_probe.cpp
+      (the gate only proves what the probe links)
 - [ ] tier declared (0/1/2); if 1 or 2, the CI job is in THIS PR
 - [ ] single-core ISR safety: lock policy documented or `irq_lock` default
 ```
@@ -232,6 +234,14 @@ object file references nothing but `abort`, so this is a property of newlib, not
 of METL, and supplying `abort()` is what a bare-metal user does anyway alongside
 `_exit` and the other stubs. Users on newlib who need a provably heap-free image
 must do the same.
+
+**The gate proves what the probe links, and nothing more.** The probe exercises
+a hand-picked set of allocation-prone containers rather than every public type
+(`embedded_smoke.cpp` instantiates everything, but is deliberately not linked
+here — see the note above about `__cxa_atexit`). So coverage does not grow by
+itself: adding a container to the probe is one function, and it is on the PR
+checklist in §4 for that reason. A gate whose coverage silently lags the library
+degrades into decoration.
 
 **A canary is mandatory.** `tests/embedded/invariant_canary.cpp` deliberately
 links `operator new`, and its ctest entry is `WILL_FAIL TRUE`. A gate that
