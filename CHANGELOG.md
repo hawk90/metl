@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`metl::versioned_handle` + `metl::handle_pool` — generation-tagged slot
+  handles.** A `versioned_handle` is `{index, generation}` packed into one
+  unsigned integer (32 bits by default: 16-bit index + 16-bit generation),
+  trivially copyable, with every operation wait-free and bounded.
+  `handle_pool<T, Capacity>` is the pool that issues and validates them, and it
+  improves on `object_pool` in two ways that fall straight out of dropping the
+  raw pointer: **use-after-free is detected rather than undefined** (a stale
+  handle resolves to `nullptr`, and a double destroy returns `false`), and
+  **allocation is O(1)** via an intrusive index free-list where
+  `object_pool::try_emplace` linearly scans. Handles are tagged with the pool
+  type, so mixing handles between pools is a compile error.
+  *Why a handle and not a tagged pointer:* alignment tagging yields ~3 bits,
+  which is a flag and not a counter; upper-bit packing yields ~16 but assumes the
+  top of a pointer belongs to software, which is decreasingly true (AArch64 PAC
+  signs the upper bits, MTE claims 56–59, x86-64 LA57 leaves seven, Intel LAM /
+  AMD UAI give them hardware semantics, HWASAN uses the top byte). A handle
+  assumes nothing about pointer representation, carries a full-width generation
+  counter, and is small enough that the atomic form fits a single-word CAS on a
+  32-bit MCU. Documented limit: generations repeat after `2^(8*sizeof(GenT))-1`
+  destroy cycles on the same slot (65535 with the default counter); widen `GenT`
+  when handles are held for unbounded periods.
+  The atomic form is a follow-up — it requires a single-word CAS, which
+  Cortex-M0 lacks, making it Tier 1 under `docs/SCOPE.md` and therefore due to
+  arrive with its own capability trait and CI job.
+
 - **`docs/SCOPE.md` — invariant-based scope policy + roadmap.** METL's inclusion
   test is now stated as five invariants (no heap; no exceptions/RTTI;
   deterministic, i.e. bounded worst-case; header-only C++17; self-contained

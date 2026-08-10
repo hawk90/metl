@@ -37,6 +37,7 @@
 #include "metl/flat_set.hpp"
 #include "metl/fsm.hpp"
 #include "metl/function_ref.hpp"
+#include "metl/handle_pool.hpp"
 #include "metl/hash.hpp"
 #include "metl/in_place.hpp"
 #include "metl/intrusive_ptr.hpp"
@@ -58,6 +59,7 @@
 #include "metl/type_traits.hpp"
 #include "metl/variant.hpp"
 #include "metl/version.hpp"
+#include "metl/versioned_handle.hpp"
 
 // Cooperative coroutine-style tasks (C++17 macro/state-machine based; no
 // <coroutine> support or extra compiler flags required).

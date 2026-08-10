@@ -62,6 +62,7 @@ set(_metl_headers
   include/metl/flat_set.hpp
   include/metl/fsm.hpp
   include/metl/function_ref.hpp
+  include/metl/handle_pool.hpp
   include/metl/hash.hpp
   include/metl/in_place.hpp
   include/metl/intrusive_ptr.hpp
@@ -84,6 +85,7 @@ set(_metl_headers
   include/metl/type_traits.hpp
   include/metl/variant.hpp
   include/metl/version.hpp
+  include/metl/versioned_handle.hpp
 )
 
 metl_cc_library(
@@ -154,6 +156,7 @@ if(METL_BUILD_TESTS)
     memory/arena_allocator memory/static_allocator memory/monotonic_buffer
     memory/object_pool memory/allocator_overflow
     memory/arena_throwing_ctor memory/object_pool_foreign_ptr
+    memory/handle_pool
     # sync/
     sync/spsc_queue sync/static_message_queue sync/atomic_ref
     # vocab/
@@ -161,7 +164,7 @@ if(METL_BUILD_TESTS)
     vocab/variant vocab/variant_regression vocab/span vocab/function_ref
     vocab/fixed_function vocab/fixed_function_const vocab/delegate
     vocab/intrusive_ptr vocab/intrusive_ptr_contract vocab/scope_exit vocab/type_traits
-    vocab/variant_selfassign
+    vocab/variant_selfassign vocab/versioned_handle
     # bits/
     bits/bit bits/bitfield bits/crc8 bits/crc16 bits/crc32 bits/hash
     bits/hash_unique_repr bits/endian bits/mmio bits/mmio_regression bits/register_access
