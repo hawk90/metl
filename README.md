@@ -110,6 +110,11 @@ Memory
   [`monotonic_buffer`](include/metl/monotonic_buffer.hpp),
   [`static_allocator`](include/metl/static_allocator.hpp).
 - [`object_pool`](include/metl/object_pool.hpp).
+- [`handle_pool`](include/metl/handle_pool.hpp) +
+  [`versioned_handle`](include/metl/versioned_handle.hpp) — slot pool addressed
+  by a 32-bit `{index, generation}` handle instead of a pointer: O(1)
+  allocation, and use-after-free is *detected* (a stale handle resolves to
+  `nullptr`) rather than undefined.
 
 Worked example: [`examples/allocators.cpp`](examples/allocators.cpp)
 (`monotonic_buffer` per-tick scratch + `arena_allocator` LIFO mark/rewind).

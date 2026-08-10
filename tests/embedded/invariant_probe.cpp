@@ -35,6 +35,7 @@
 
 #include <metl/crc32.hpp>
 #include <metl/fixed_vector.hpp>
+#include <metl/handle_pool.hpp>
 #include <metl/object_pool.hpp>
 #include <metl/span.hpp>
 #include <metl/spsc_queue.hpp>
@@ -95,6 +96,21 @@ void exercise_object_pool() noexcept {
   }
 }
 
+void exercise_handle_pool() noexcept {
+  metl::handle_pool<std::uint32_t, 4> pool;
+  metl::handle_pool<std::uint32_t, 4>::handle_type handles[4];
+  for (std::size_t i = 0; i < 4; ++i) {
+    handles[i] = pool.try_emplace(static_cast<std::uint32_t>(i));
+    sink(handles[i].valid() ? 1u : 0u);
+  }
+  sink(pool.try_emplace(4u).valid() ? 1u : 0u);  // full: must not allocate
+  for (std::size_t i = 0; i < 4; ++i) {
+    sink(pool.destroy(handles[i]) ? 1u : 0u);
+    // Stale handle: resolves to nullptr rather than a recycled slot.
+    sink(pool.get(handles[i]) == nullptr ? 1u : 0u);
+  }
+}
+
 void exercise_unordered_map() noexcept {
   metl::static_unordered_map<std::uint32_t, std::uint32_t, 8> map;
   for (std::uint32_t i = 0; i < 8; ++i) {
@@ -121,6 +137,7 @@ extern "C" int probe_main(void) {
   exercise_spsc_queue();
   exercise_message_queue();
   exercise_object_pool();
+  exercise_handle_pool();
   exercise_unordered_map();
   exercise_crc();
   return static_cast<int>(g_sink);

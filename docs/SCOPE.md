@@ -145,7 +145,8 @@ Ordered by (value / cost), not by novelty.
 | `cpu_relax()` / `wait_for_event()` | Split deliberately: on Cortex-M `yield` is effectively a no-op; the real idiom is `WFE`/`SEV`. One name for two semantics would be a lie. |
 | `METL_LIKELY` / `METL_ASSUME` / `prefetch()` / `compiler_barrier()` | C++17 has no `[[likely]]`, so these are macros. |
 | `cacheline_padded<T>` | Own `constexpr` size — `std::hardware_*_interference_size` carries a libstdc++ ABI warning. |
-| `versioned_handle` / `atomic_handle` | See §6. Solves object_pool ABA **and** use-after-free at once. |
+| `versioned_handle` + `handle_pool` | **Landed.** See §6. `handle_pool` is O(1) where `object_pool` scans, and a stale handle resolves to `nullptr` instead of a recycled slot. |
+| `atomic_handle` | Follow-up. The value type is Tier 0, but the atomic form needs a single-word CAS — which Cortex-M0 lacks — so it is Tier 1 and arrives with its capability trait and CI job. |
 | lock policy (`irq_lock` / `spin_lock` / `null_lock`) | Retrofit onto existing concurrency types. |
 | `tagged_ptr<T, Bits>` | Alignment-derived bits only. Portable, harmless. |
 | spsc_queue cached-index | Producer caches the consumer index and refreshes only on empty — kills cache-line ping-pong. Works unchanged on Cortex-M0. |

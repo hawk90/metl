@@ -31,6 +31,7 @@
 #include "metl/flat_set.hpp"
 #include "metl/fsm.hpp"
 #include "metl/function_ref.hpp"
+#include "metl/handle_pool.hpp"
 #include "metl/hash.hpp"
 #include "metl/in_place.hpp"
 #include "metl/intrusive_ptr.hpp"
@@ -52,6 +53,7 @@
 #include "metl/type_traits.hpp"
 #include "metl/variant.hpp"
 #include "metl/version.hpp"
+#include "metl/versioned_handle.hpp"
 
 #include <array>
 #include <cstddef>
@@ -160,6 +162,11 @@ int _smoke_fref_fn(int x) noexcept {
   return x;
 }
 [[maybe_unused]] metl::function_ref<int(int)> _fref{&_smoke_fref_fn};
+
+// handle_pool.hpp / versioned_handle.hpp -- generation-tagged slot pool.
+[[maybe_unused]] metl::handle_pool<int, 4> _hpool;
+static_assert(sizeof(metl::handle_pool<int, 4>::handle_type) == 4,
+              "handle must stay a single 32-bit word on freestanding targets");
 
 // hash.hpp
 [[maybe_unused]] metl::fnv1a_hash _hash_fnv;
