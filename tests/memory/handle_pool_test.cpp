@@ -154,6 +154,24 @@ int main() {
     CHECK(pool.full());
   }
 
+  // --- Zero capacity is a valid degenerate pool ------------------------------
+  // Every other fixed-capacity METL container accepts Capacity == 0, so this one
+  // does too rather than rejecting it at compile time.
+  {
+    metl::handle_pool<int, 0> pool;
+    CHECK(pool.empty());
+    CHECK(pool.full());
+    CHECK_EQ(pool.capacity(), std::size_t{0});
+    CHECK_EQ(pool.available(), std::size_t{0});
+
+    const auto handle = pool.try_emplace(1);
+    CHECK(!handle.valid());
+    CHECK_EQ(pool.get(handle), static_cast<int*>(nullptr));
+    CHECK(!pool.contains(handle));
+    CHECK(!pool.destroy(handle));
+    pool.clear();
+  }
+
   // --- Generation wraparound skips 0 -----------------------------------------
   // With an 8-bit counter the whole cycle is short enough to walk exhaustively.
   // Generation 0 is the null marker, so a slot must never land on it -- if it

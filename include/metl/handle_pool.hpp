@@ -78,7 +78,6 @@ class handle_pool {
   /// index field so the two can never drift apart.
   static constexpr size_type max_capacity = static_cast<size_type>(handle_type::max_index);
 
-  static_assert(Capacity > 0, "metl::handle_pool requires a non-zero Capacity");
   static_assert(Capacity <= max_capacity,
                 "metl::handle_pool Capacity must fit the handle's slot index field");
 
@@ -224,10 +223,15 @@ class handle_pool {
     --size_;
   }
 
-  storage_type storage_[Capacity];
-  index_type next_[Capacity];
-  generation_type generation_[Capacity];
-  bool active_[Capacity];
+  // `Capacity == 0 ? 1 : Capacity` throughout: a zero-capacity pool is a valid
+  // degenerate case (every other fixed-capacity METL container accepts one), and
+  // a zero-length array is not. Every operation still behaves correctly --
+  // try_emplace returns a null handle because free_head_ (0) is already >=
+  // Capacity, and nothing ever indexes the padding element.
+  storage_type storage_[Capacity == 0 ? 1 : Capacity];
+  index_type next_[Capacity == 0 ? 1 : Capacity];
+  generation_type generation_[Capacity == 0 ? 1 : Capacity];
+  bool active_[Capacity == 0 ? 1 : Capacity];
   size_type free_head_;
   size_type size_;
 };
