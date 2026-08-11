@@ -49,7 +49,7 @@ class spsc_queue {
   using value_type = T;
   using size_type = std::size_t;
 
-  spsc_queue() noexcept : head_(0), tail_(0) {}
+  spsc_queue() noexcept : head_(0), cached_tail_(0), tail_(0), cached_head_(0) {}
 
   ~spsc_queue() {
     // Single-threaded at destruction: drain any remaining elements.
@@ -86,10 +86,17 @@ class spsc_queue {
   METL_NODISCARD bool try_emplace(Args&&... args) noexcept {
     const std::size_t tail = tail_.load(std::memory_order_relaxed);
     const std::size_t next = tail + 1;
-    // Acquire so we observe any destructor by the consumer at this slot.
-    const std::size_t head = head_.load(std::memory_order_acquire);
-    if (next - head > Capacity) {
-      return false;
+    // Fast path: decide from the producer's own cached copy of the consumer
+    // index, which lives on the producer's cache line. Only when that copy says
+    // "full" do we reload head_ and pull in the consumer's line. The cached
+    // value is always <= the true head, so it can only ever be pessimistic --
+    // it reports full when there may be room, never room when there is none.
+    if (next - cached_head_ > Capacity) {
+      // Acquire so we observe any destructor run by the consumer at this slot.
+      cached_head_ = head_.load(std::memory_order_acquire);
+      if (next - cached_head_ > Capacity) {
+        return false;
+      }
     }
     ::new (slot(tail).addr()) T(std::forward<Args>(args)...);
     tail_.store(next, std::memory_order_release);
@@ -103,10 +110,17 @@ class spsc_queue {
   ///       tail so the element published by the producer is fully visible.
   METL_NODISCARD bool try_pop(T& out) noexcept {
     const std::size_t head = head_.load(std::memory_order_relaxed);
-    // Acquire so we observe the constructed element written by the producer.
-    const std::size_t tail = tail_.load(std::memory_order_acquire);
-    if (head == tail) {
-      return false;
+    // Mirror of the producer fast path: consult the consumer's cached copy of
+    // the producer index first, and reload tail_ only when it says "empty".
+    // Every slot below cached_tail_ was published by a release store that the
+    // acquire load below already synchronised with, so consuming them without
+    // re-acquiring is safe.
+    if (head == cached_tail_) {
+      // Acquire so we observe the constructed element written by the producer.
+      cached_tail_ = tail_.load(std::memory_order_acquire);
+      if (head == cached_tail_) {
+        return false;
+      }
     }
     T* p = slot(head).ptr();
     out = std::move(*p);
@@ -141,10 +155,17 @@ class spsc_queue {
  private:
   storage_for<T>& slot(std::size_t index) noexcept { return slots_[index & (Capacity - 1)]; }
 
-  // Producer index, consumer index and the ring storage each occupy their own
+  // Producer state, consumer state and the ring storage each occupy their own
   // cache line so the two roles never contend on a shared line (false sharing).
+  //
+  // Each side's cached copy of the OTHER side's index deliberately shares a line
+  // with the index that side owns: cached_tail_ is read and written only by the
+  // consumer, so it belongs next to head_. Putting it anywhere else would
+  // reintroduce exactly the cross-line traffic the cache is there to avoid.
   METL_CACHELINE_ALIGNED std::atomic<std::size_t> head_;
+  std::size_t cached_tail_;
   METL_CACHELINE_ALIGNED std::atomic<std::size_t> tail_;
+  std::size_t cached_head_;
   METL_CACHELINE_ALIGNED storage_for<T> slots_[Capacity];
 };
 
