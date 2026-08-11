@@ -55,6 +55,7 @@
 #include "metl/variant.hpp"
 #include "metl/version.hpp"
 #include "metl/versioned_handle.hpp"
+#include "metl/wait.hpp"
 
 #include <array>
 #include <cstddef>
@@ -265,6 +266,13 @@ inline auto _smoke_make_scope_exit() noexcept {
 // type_traits.hpp
 [[maybe_unused]] metl::storage_for<int> _storage_int{};
 static_assert(sizeof(metl::storage_for<int>) >= sizeof(int), "type_traits.hpp storage_for");
+
+// wait.hpp -- take pointers so the freestanding build emits the bodies and the
+// inline asm is actually assembled for the target (a hint that fails to
+// assemble on Cortex-M would otherwise go unnoticed).
+[[maybe_unused]] const auto _cpu_relax_ptr = &metl::cpu_relax;
+[[maybe_unused]] const auto _wait_for_event_ptr = &metl::wait_for_event;
+[[maybe_unused]] const auto _send_event_ptr = &metl::send_event;
 
 // variant.hpp
 [[maybe_unused]] metl::variant<int, char> _variant{0};

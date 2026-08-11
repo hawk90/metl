@@ -61,6 +61,7 @@
 #include "metl/variant.hpp"
 #include "metl/version.hpp"
 #include "metl/versioned_handle.hpp"
+#include "metl/wait.hpp"
 
 // Cooperative coroutine-style tasks (C++17 macro/state-machine based; no
 // <coroutine> support or extra compiler flags required).

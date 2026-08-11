@@ -85,6 +85,7 @@ set(_metl_headers
   include/metl/static_unordered_set.hpp
   include/metl/type_traits.hpp
   include/metl/variant.hpp
+  include/metl/wait.hpp
   include/metl/version.hpp
   include/metl/versioned_handle.hpp
 )
@@ -159,7 +160,7 @@ if(METL_BUILD_TESTS)
     memory/arena_throwing_ctor memory/object_pool_foreign_ptr
     memory/handle_pool
     # sync/
-    sync/spsc_queue sync/static_message_queue sync/atomic_ref sync/atomic_handle
+    sync/spsc_queue sync/static_message_queue sync/atomic_ref sync/atomic_handle sync/wait
     # vocab/
     vocab/optional vocab/optional_constexpr vocab/expected vocab/expected_regression
     vocab/variant vocab/variant_regression vocab/span vocab/function_ref

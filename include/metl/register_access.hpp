@@ -48,4 +48,21 @@ METL_FORCE_INLINE void barrier_release() noexcept {
   std::atomic_thread_fence(std::memory_order_release);
 }
 
+/// @brief Compiler-only barrier: stops the OPTIMIZER reordering across this
+///        point, and emits no instruction.
+///
+/// The counterpart to the three barriers above, which emit real fences. Use this
+/// when the ordering that matters is between a single core and something it
+/// shares state with without a second observer on the bus — an ISR on the same
+/// core, or a signal handler. Those cannot see a reordering the hardware does
+/// not perform, but they absolutely can see one the compiler performs.
+///
+/// @warning NOT sufficient between cores, or between a core and a DMA engine or
+///          peripheral: no instruction is emitted, so nothing constrains the
+///          hardware. Use `barrier_full()`/`barrier_acquire()`/`barrier_release()`
+///          there.
+METL_FORCE_INLINE void compiler_barrier() noexcept {
+  std::atomic_signal_fence(std::memory_order_seq_cst);
+}
+
 }  // namespace metl
