@@ -147,7 +147,7 @@ Ordered by (value / cost), not by novelty.
 | `METL_PREFETCH` / `compiler_barrier()` | **Landed.** Branch hints (`METL_PREDICT_TRUE/FALSE`) and `METL_ASSUME` already existed in `optimization.hpp`; only the prefetch hint and the compiler-only barrier were missing. |
 | cache-line isolation | **Already present.** `optimization.hpp` has `METL_CACHELINE_SIZE`/`METL_CACHELINE_ALIGNED` with its own `constexpr` size (`std::hardware_*_interference_size` carries a libstdc++ ABI warning), and `spsc_queue` already puts `head_`, `tail_` and the ring on separate lines. No `cacheline_padded<T>` wrapper was needed. |
 | `versioned_handle` + `handle_pool` | **Landed.** See §6. `handle_pool` is O(1) where `object_pool` scans, and a stale handle resolves to `nullptr` instead of a recycled slot. |
-| lock policy (`irq_lock` / `spin_lock` / `null_lock`) | Retrofit onto existing concurrency types. |
+| lock policy (`irq_lock` / `null_lock`) + `guarded<T, Lock>` | **Landed**, but *not* retrofitted onto existing types — see below. `spin_lock` deliberately omitted. |
 | `tagged_ptr<T, Bits>` | Alignment-derived bits only. Portable, harmless. |
 | spsc_queue cached-index | **Landed.** Each side caches the other's index and reloads only when its copy says full/empty. Measured 1.7×–4.9× throughput (median ~2.4×) on a 2-thread benchmark, and **zero size cost** — the cached copies fit in padding the cache-line alignment already created. |
 
@@ -171,7 +171,38 @@ free-list · bounded hazard domain · compile-time SIMD.
 
 ---
 
-## 6. Why handles, not tagged pointers
+## 6. Why `guarded<T, Lock>`, not a lock policy on every container
+
+The roadmap originally said "retrofit a lock policy onto the existing
+concurrency types". That was rejected on implementation, for a reason worth
+recording:
+
+**A container that locks each operation cannot make a compound operation
+atomic.** `if (!q.full()) q.push(x)` is still a race when both calls lock
+individually. Per-operation locking therefore buys the *appearance* of thread
+safety, at the price of a hidden cost in every call and a doubled API surface on
+every container. It is why the standard library, Abseil and Folly all leave
+containers unsynchronised and offer a wrapper (`folly::Synchronized`) instead.
+
+`guarded<T, Lock>` is that wrapper: it owns the value and hands it out only
+inside a critical section, so one lock can span exactly as many operations as the
+invariant requires. It has no `get()` — an escape hatch would make it decorative.
+
+`irq_lock` masks interrupts by **saving and restoring PRIMASK**, never by
+blanket-enabling: an `unlock()` that simply enabled interrupts would re-enable
+them inside a caller's own critical section that had deliberately disabled them.
+The state travels with the guard rather than the lock, so sections nest and the
+policy costs zero bytes.
+
+**No `spin_lock`.** On a single-core target a spinlock between an ISR and the
+main loop always deadlocks, and single- versus multi-core is not detectable at
+compile time — so unlike every other capability here, misuse could not be turned
+into a compile error. A primitive whose misuse is both easy and silent is not
+worth the convenience.
+
+---
+
+## 7. Why handles, not tagged pointers
 
 Worth writing down because it is the template for translating a technique
 rather than importing it.
@@ -209,7 +240,7 @@ fails; this is what it looks like when it succeeds.
 
 ---
 
-## 7. How the invariant gate works
+## 8. How the invariant gate works
 
 `tools/check_invariants.py` reads the **symbol table of a fully linked image**
 (`nm`) and fails if forbidden symbols are present. It does not run the binary.

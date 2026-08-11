@@ -122,6 +122,11 @@ Worked example: [`examples/allocators.cpp`](examples/allocators.cpp)
 Concurrency
 
 - [`spsc_queue`](include/metl/spsc_queue.hpp).
+- [`guarded<T, Lock>`](include/metl/lock.hpp) with `irq_lock` / `null_lock` —
+  an explicit critical section that can span a compound operation, rather than a
+  per-operation lock inside each container. `irq_lock` saves and restores
+  `PRIMASK`, which is the only correct lock between an ISR and the main loop on a
+  single-core MCU.
 - [`wait.hpp`](include/metl/wait.hpp) — `cpu_relax()` (spin hint: `PAUSE`/`YIELD`)
   and `wait_for_event()`/`send_event()` (ARM `WFE`/`SEV`) kept deliberately
   separate: on Cortex-M a `cpu_relax()` spin burns the same current as a busy

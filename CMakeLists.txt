@@ -67,6 +67,7 @@ set(_metl_headers
   include/metl/hash.hpp
   include/metl/in_place.hpp
   include/metl/intrusive_ptr.hpp
+  include/metl/lock.hpp
   include/metl/lookup_table.hpp
   include/metl/metl.hpp
   include/metl/mmio.hpp
@@ -161,7 +162,7 @@ if(METL_BUILD_TESTS)
     memory/handle_pool
     # sync/
     sync/spsc_queue sync/static_message_queue sync/atomic_ref sync/atomic_handle sync/wait
-    sync/spsc_queue_cached_index
+    sync/spsc_queue_cached_index sync/lock
     # vocab/
     vocab/optional vocab/optional_constexpr vocab/expected vocab/expected_regression
     vocab/variant vocab/variant_regression vocab/span vocab/function_ref
