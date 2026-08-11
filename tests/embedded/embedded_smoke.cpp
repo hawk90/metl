@@ -9,6 +9,7 @@
 // ---- Every public header ---------------------------------------------------
 #include "metl/arena_allocator.hpp"
 #include "metl/assert.hpp"
+#include "metl/atomic_handle.hpp"
 #include "metl/atomic_ref.hpp"
 #include "metl/bit.hpp"
 #include "metl/bitfield.hpp"
@@ -87,6 +88,19 @@ alignas(std::atomic<std::uint32_t>) std::uint32_t g_smoke_atomic_storage{};
 // assert.hpp -- function-level. Take a pointer to ensure the symbol is used.
 [[maybe_unused]] const auto _assert_handler_ptr = &metl::set_assert_handler;
 [[maybe_unused]] const auto _panic_handler_ptr = &metl::set_panic_handler;
+
+// atomic_handle.hpp -- Tier 1: instantiable only where the target has a
+// single-word CAS, so the instantiation is selected by the capability trait
+// rather than by an #if (a constexpr variable template is invisible to the
+// preprocessor). Cortex-M0 compiles the empty primary template.
+template <bool Enabled>
+struct smoke_atomic_handle {};
+template <>
+struct smoke_atomic_handle<true> {
+  metl::atomic_handle<metl::versioned_handle<struct smoke_handle_tag>> cell;
+};
+[[maybe_unused]] smoke_atomic_handle<
+    metl::has_lock_free_handle_atomic_v<metl::versioned_handle<struct smoke_handle_tag>>> _atomic_handle;
 
 // atomic_ref.hpp
 [[maybe_unused]] metl::atomic_ref<std::uint32_t> _atomic_ref(g_smoke_atomic_storage);

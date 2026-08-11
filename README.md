@@ -122,6 +122,11 @@ Worked example: [`examples/allocators.cpp`](examples/allocators.cpp)
 Concurrency
 
 - [`spsc_queue`](include/metl/spsc_queue.hpp).
+- [`atomic_handle`](include/metl/atomic_handle.hpp) — lock-free atomic cell for a
+  `versioned_handle`; the generation counter lives in the same word as the index,
+  so a plain 32-bit CAS is ABA-safe with no double-width CAS and no pointer-bit
+  stuffing. Requires a hardware CAS (ARMv7-M and up); on Cortex-M0 the
+  `static_assert` fires rather than degrading silently.
 - [`static_message_queue`](include/metl/static_message_queue.hpp).
 - [`atomic_ref`](include/metl/atomic_ref.hpp).
 

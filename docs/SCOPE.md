@@ -88,6 +88,7 @@ Examples and their gates:
 
 | Feature | Requires | Fallback |
 |---|---|---|
+| `atomic_handle` | lock-free single-word CAS (ARMv7-M+) | **none** — `static_assert` fires; mask interrupts instead. Job: `handle-atomics` |
 | bounded MPMC queue | CAS (ARMv7-M+, RV32A) | `irq_lock` on Cortex-M0 |
 | `atomic<bitfield<...>>` | `is_always_lock_free` | `static_assert` failure |
 | double-width CAS free-list | `cmpxchg16b` / LSE `CASP`, 64-bit, `-mcx16` | Tier 0 handle free-list |
@@ -146,15 +147,18 @@ Ordered by (value / cost), not by novelty.
 | `METL_LIKELY` / `METL_ASSUME` / `prefetch()` / `compiler_barrier()` | C++17 has no `[[likely]]`, so these are macros. |
 | `cacheline_padded<T>` | Own `constexpr` size — `std::hardware_*_interference_size` carries a libstdc++ ABI warning. |
 | `versioned_handle` + `handle_pool` | **Landed.** See §6. `handle_pool` is O(1) where `object_pool` scans, and a stale handle resolves to `nullptr` instead of a recycled slot. |
-| `atomic_handle` | Follow-up. The value type is Tier 0, but the atomic form needs a single-word CAS — which Cortex-M0 lacks — so it is Tier 1 and arrives with its capability trait and CI job. |
 | lock policy (`irq_lock` / `spin_lock` / `null_lock`) | Retrofit onto existing concurrency types. |
 | `tagged_ptr<T, Bits>` | Alignment-derived bits only. Portable, harmless. |
 | spsc_queue cached-index | Producer caches the consumer index and refreshes only on empty — kills cache-line ping-pong. Works unchanged on Cortex-M0. |
 
 ### Yellow — needs a capability trait + its own CI job (Tier 1)
 
-bounded MPMC queue · `atomic<bitfield<...>>` · double-width CAS free-list ·
-bounded hazard domain · compile-time SIMD.
+**Landed:** `atomic_handle` — capability trait `has_lock_free_handle_atomic_v`,
+gated by `static_assert`, proved by the `handle-atomics` job which asserts the
+expected answer per target *and* that the opposite expectation fails to compile.
+
+**Open:** bounded MPMC queue · `atomic<bitfield<...>>` · double-width CAS
+free-list · bounded hazard domain · compile-time SIMD.
 
 ### Red — possible but a bad trade, or permanently out
 

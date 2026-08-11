@@ -23,6 +23,7 @@ env:
   METL_ENDIAN_TEST: tests/bits/endian_test.cpp
   METL_INVARIANT_PROBE_SRC: tests/embedded/invariant_probe.cpp
   METL_INVARIANT_CANARY_SRC: tests/embedded/invariant_canary.cpp
+  METL_ATOMIC_HANDLE_CAP_SRC: tests/embedded/atomic_handle_capability.cpp
 
 # Force bash for every run step so `set -o pipefail` and other bashisms work even
 # inside container: jobs, where GitHub Actions otherwise falls back to dash and
@@ -587,6 +588,71 @@ jobs:
 
       - name: Report probe size (informational)
         run: arm-none-eabi-size invariant_probe.elf
+
+  # ---------------------------------------------------------------------------
+  # Tier 1 capability gate for metl::atomic_handle (docs/SCOPE.md §3: a tier and
+  # its CI job arrive in the same PR).
+  #
+  # atomic_handle needs a lock-free single-word CAS. ARMv7-M and up have
+  # LDREX/STREX; ARMv6-M (Cortex-M0/M0+) has no CAS, and GCC lowers atomic
+  # read-modify-write there to libatomic calls. The matrix declares the expected
+  # answer per target and the probe asserts it, so a toolchain change that moves
+  # a target across that line fails HERE rather than silently changing METL's
+  # progress guarantees.
+  #
+  # Both halves are required. Compiling only the supported targets would pass
+  # just as happily if the capability trait were hardcoded true, so each job also
+  # proves the OPPOSITE expectation does NOT compile -- the same reasoning as the
+  # invariant canary.
+  # ---------------------------------------------------------------------------
+  handle-atomics:
+    name: handle-atomics / ${{ matrix.cpu }}
+    runs-on: ubuntu-latest
+    needs: preflight
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { cpu: cortex-m0, lock_free: 0, opposite: 1 }  # ARMv6-M: no CAS
+          - { cpu: cortex-m3, lock_free: 1, opposite: 0 }  # ARMv7-M: LDREX/STREX
+          - { cpu: cortex-m4, lock_free: 1, opposite: 0 }
+          - { cpu: cortex-m7, lock_free: 1, opposite: 0 }
+
+    env:
+      METL_CAP_FLAGS: >-
+        -std=c++17 -mcpu=${{ matrix.cpu }} -mthumb -Os
+        -fno-exceptions -fno-rtti -Wall -Wextra -Werror
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install ARM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi
+
+      - name: Capability must match what the matrix declares
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2086  # METL_CAP_FLAGS is a deliberate word list
+          arm-none-eabi-g++ $METL_CAP_FLAGS \
+            -DMETL_EXPECT_LOCK_FREE_HANDLE=${{ matrix.lock_free }} \
+            -Iinclude -c "$METL_ATOMIC_HANDLE_CAP_SRC" -o capability.o
+          echo "${{ matrix.cpu }}: lock-free handle atomics = ${{ matrix.lock_free }}, as declared"
+
+      - name: The opposite expectation must NOT compile
+        run: |
+          set -uo pipefail
+          # shellcheck disable=SC2086
+          if arm-none-eabi-g++ $METL_CAP_FLAGS \
+               -DMETL_EXPECT_LOCK_FREE_HANDLE=${{ matrix.opposite }} \
+               -Iinclude -c "$METL_ATOMIC_HANDLE_CAP_SRC" -o opposite.o 2>/dev/null; then
+            echo "::error::the capability assertion did not fire for ${{ matrix.cpu }} — the gate is dead"
+            exit 1
+          fi
+          echo "capability assertion correctly rejected the wrong expectation"
 
   # ---------------------------------------------------------------------------
   # picolibc + QEMU semihosting — the one job that goes beyond compile/link:
