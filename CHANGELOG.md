@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`metl/lock.hpp` — `irq_lock`, `null_lock`, `scoped_lock`, `guarded<T, Lock>`.**
+  The roadmap called for retrofitting a lock policy onto the existing concurrency
+  types; that was rejected on implementation and the reasoning is recorded in
+  `docs/SCOPE.md` §6. **A container that locks each operation cannot make a
+  compound operation atomic** — `if (!q.full()) q.push(x)` is still a race when
+  both calls lock individually — so per-operation locking buys the *appearance*
+  of thread safety at the price of a hidden cost in every call and a doubled API
+  surface on every container. The standard library, Abseil and Folly all leave
+  containers unsynchronised and offer a wrapper instead.
+  `guarded<T, Lock>` is that wrapper: it owns the value and hands it out only
+  inside a critical section, so one lock spans exactly as many operations as the
+  invariant requires. There is no `get()` — an escape hatch would make it
+  decorative. **No existing type changed.**
+  `irq_lock` masks interrupts by **saving and restoring `PRIMASK`**, never by
+  blanket-enabling: an `unlock()` that simply enabled interrupts would re-enable
+  them inside a caller's own critical section that had deliberately disabled
+  them, a classic and hard-to-find embedded bug. The saved state travels with the
+  guard rather than the lock, so critical sections nest and the policy costs zero
+  bytes (`sizeof(guarded<T, Lock>) == sizeof(T)`, pinned by a test and a
+  freestanding `static_assert`). Real on ARM Cortex-M; elsewhere it degrades to a
+  compiler barrier and provides **no** mutual exclusion — check
+  `metl::has_irq_masking` / `METL_HAS_IRQ_MASKING`. The PRIMASK inline asm was
+  verified to assemble on ARMv6-M, ARMv7-M and ARMv7E-M, and the freestanding
+  smoke TU takes its address so `arm-cross` assembles it for real.
+  **No `spin_lock`**, deliberately: on a single-core target a spinlock between an
+  ISR and the main loop always deadlocks, and single- versus multi-core is not
+  detectable at compile time, so — unlike every other capability here — misuse
+  could not be turned into a compile error.
+
 ### Changed
 
 - **`spsc_queue` caches the other side's index (DPDK/Folly-style).** Each side

@@ -42,6 +42,7 @@
 #include "metl/hash.hpp"
 #include "metl/in_place.hpp"
 #include "metl/intrusive_ptr.hpp"
+#include "metl/lock.hpp"
 #include "metl/lookup_table.hpp"
 #include "metl/mmio.hpp"
 #include "metl/monotonic_buffer.hpp"

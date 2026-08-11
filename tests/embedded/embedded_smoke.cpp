@@ -36,6 +36,7 @@
 #include "metl/hash.hpp"
 #include "metl/in_place.hpp"
 #include "metl/intrusive_ptr.hpp"
+#include "metl/lock.hpp"
 #include "metl/lookup_table.hpp"
 #include "metl/metl.hpp"
 #include "metl/mmio.hpp"
@@ -204,6 +205,14 @@ static_assert(metl::fnv1a(static_cast<const unsigned char*>(nullptr), 0) ==
 
 // intrusive_ptr.hpp -- default-constructed null pointer plus ref-counter base.
 [[maybe_unused]] metl::intrusive_ptr<dummy_refcounted> _iptr;
+
+// lock.hpp -- take the addresses so the Cortex-M PRIMASK inline asm is really
+// assembled for the target; a guarded instantiation covers the wrapper.
+[[maybe_unused]] const auto _irq_lock_ptr = &metl::irq_lock::lock;
+[[maybe_unused]] const auto _irq_unlock_ptr = &metl::irq_lock::unlock;
+[[maybe_unused]] metl::guarded<int, metl::irq_lock> _guarded_int;
+static_assert(sizeof(metl::guarded<int, metl::irq_lock>) == sizeof(int),
+              "a stateless lock policy must cost nothing");
 
 // lookup_table.hpp -- a single-entry table.
 constexpr std::array<metl::lookup_entry<int, int>, 1> g_smoke_lookup{{{1, 100}}};
