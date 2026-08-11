@@ -59,9 +59,9 @@
 #include "metl/static_unordered_set.hpp"
 #include "metl/type_traits.hpp"
 #include "metl/variant.hpp"
-#include "metl/wait.hpp"
 #include "metl/version.hpp"
 #include "metl/versioned_handle.hpp"
+#include "metl/wait.hpp"
 
 // Cooperative coroutine-style tasks (C++17 macro/state-machine based; no
 // <coroutine> support or extra compiler flags required).
