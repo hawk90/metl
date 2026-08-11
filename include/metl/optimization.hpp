@@ -44,6 +44,19 @@
 #define METL_ASSUME(cond) (static_cast<void>(0))
 #endif
 
+// METL_PREFETCH(addr) — hint that `addr` will be read soon.
+//   A pure hint: it never faults on a bad address and never changes program
+//   semantics, so passing a null or unmapped pointer is harmless. Collapses to
+//   nothing where the compiler has no prefetch builtin (including MSVC, whose
+//   intrinsic requires a platform header this header will not pull in).
+/// @brief Hint that the cache line containing `addr` will be read soon. Pure
+///        hint: never faults, never changes semantics, may compile to nothing.
+#if METL_HAS_BUILTIN(__builtin_prefetch) || defined(__GNUC__)
+#define METL_PREFETCH(addr) __builtin_prefetch(static_cast<const void*>(addr))
+#else
+#define METL_PREFETCH(addr) (static_cast<void>(0))
+#endif
+
 // METL_CACHELINE_SIZE — the target's assumed hardware cache-line size in bytes.
 //   Used to pad/align hot data so independent fields land on distinct lines and
 //   avoid false sharing. Overridable by defining METL_CACHELINE_SIZE upfront.

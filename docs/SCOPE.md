@@ -143,8 +143,8 @@ Ordered by (value / cost), not by novelty.
 
 | Item | Note |
 |---|---|
-| `cpu_relax()` / `wait_for_event()` | Split deliberately: on Cortex-M `yield` is effectively a no-op; the real idiom is `WFE`/`SEV`. One name for two semantics would be a lie. |
-| `METL_LIKELY` / `METL_ASSUME` / `prefetch()` / `compiler_barrier()` | C++17 has no `[[likely]]`, so these are macros. |
+| `cpu_relax()` / `wait_for_event()` / `send_event()` | **Landed.** Split deliberately: on Cortex-M `yield` is effectively a no-op, so the real idle idiom is `WFE`/`SEV`. One name for two semantics would be a lie. Emission verified per target. |
+| `METL_PREFETCH` / `compiler_barrier()` | **Landed.** Branch hints (`METL_PREDICT_TRUE/FALSE`) and `METL_ASSUME` already existed in `optimization.hpp`; only the prefetch hint and the compiler-only barrier were missing. |
 | `cacheline_padded<T>` | Own `constexpr` size — `std::hardware_*_interference_size` carries a libstdc++ ABI warning. |
 | `versioned_handle` + `handle_pool` | **Landed.** See §6. `handle_pool` is O(1) where `object_pool` scans, and a stale handle resolves to `nullptr` instead of a recycled slot. |
 | lock policy (`irq_lock` / `spin_lock` / `null_lock`) | Retrofit onto existing concurrency types. |

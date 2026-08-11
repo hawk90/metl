@@ -122,6 +122,10 @@ Worked example: [`examples/allocators.cpp`](examples/allocators.cpp)
 Concurrency
 
 - [`spsc_queue`](include/metl/spsc_queue.hpp).
+- [`wait.hpp`](include/metl/wait.hpp) — `cpu_relax()` (spin hint: `PAUSE`/`YIELD`)
+  and `wait_for_event()`/`send_event()` (ARM `WFE`/`SEV`) kept deliberately
+  separate: on Cortex-M a `cpu_relax()` spin burns the same current as a busy
+  loop, so idling needs the event pair.
 - [`atomic_handle`](include/metl/atomic_handle.hpp) — lock-free atomic cell for a
   `versioned_handle`; the generation counter lives in the same word as the index,
   so a plain 32-bit CAS is ABA-safe with no double-width CAS and no pointer-bit

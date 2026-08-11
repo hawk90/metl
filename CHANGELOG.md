@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`metl/wait.hpp` — `cpu_relax()`, `wait_for_event()`, `send_event()`.** Two
+  different things, kept apart on purpose. `cpu_relax()` is a hint *inside a spin
+  loop* (`PAUSE` on x86, `YIELD` on ARM, Zihintpause `PAUSE` on RISC-V, compiler
+  barrier elsewhere); it never sleeps. `wait_for_event()` **stops the core**
+  until an event arrives (ARM `WFE`, woken by an interrupt or another core's
+  `SEV`), which is the real idle idiom on a microcontroller — a Cortex-M spinning
+  on `cpu_relax()` draws the same current as a busy loop, because the `YIELD`
+  ARMv7-M defines as a spin hint is permitted to be, and in practice is, a `NOP`.
+  Giving both behaviours one name would be wrong on every target, so the caller
+  chooses. Instruction emission was verified per target rather than assumed
+  (`yield`/`wfe`/`sev` on ARM, `pause` on x86-64), and the freestanding smoke TU
+  takes their addresses so the inline asm is actually assembled for Cortex-M.
+  Documented limits: `wait_for_event()` must be called in a condition re-checking
+  loop (it can return spuriously, and the event register is sticky), its progress
+  guarantee is *blocking, bounded only if a wakeup is guaranteed*, and it must not
+  be used inside an ISR on a single-core target.
+- **`metl::compiler_barrier()`** in `register_access.hpp`, alongside the existing
+  hardware fences: stops the optimizer reordering across a point while emitting
+  no instruction. The right tool between a core and an ISR or signal handler on
+  that same core; explicitly documented as **not** sufficient across cores or
+  against DMA/peripherals.
+- **`METL_PREFETCH(addr)`** in `optimization.hpp` — a pure hint that never faults
+  (including on a null address, which the test pins) and collapses to nothing
+  where the compiler has no prefetch builtin.
+
 - **`metl::atomic_handle` — lock-free atomic cell for a `versioned_handle`
   (Tier 1).** This is the payoff of packing `{index, generation}` into one word:
   a lock-free free-list needs its head to carry a counter so a compare-exchange
