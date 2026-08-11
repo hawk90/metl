@@ -148,7 +148,7 @@ Ordered by (value / cost), not by novelty.
 | cache-line isolation | **Already present.** `optimization.hpp` has `METL_CACHELINE_SIZE`/`METL_CACHELINE_ALIGNED` with its own `constexpr` size (`std::hardware_*_interference_size` carries a libstdc++ ABI warning), and `spsc_queue` already puts `head_`, `tail_` and the ring on separate lines. No `cacheline_padded<T>` wrapper was needed. |
 | `versioned_handle` + `handle_pool` | **Landed.** See §6. `handle_pool` is O(1) where `object_pool` scans, and a stale handle resolves to `nullptr` instead of a recycled slot. |
 | lock policy (`irq_lock` / `null_lock`) + `guarded<T, Lock>` | **Landed**, but *not* retrofitted onto existing types — see below. `spin_lock` deliberately omitted. |
-| `tagged_ptr<T, Bits>` | Alignment-derived bits only. Portable, harmless. |
+| `tagged_ptr<T, Bits>` | **Not planned.** Alignment-derived tagging is portable and harmless, but it no longer has a job here: the free-list ABA problem that motivated it is solved better by `versioned_handle` (§7), and "a small tag beside a pointer" is already covered by `variant` and `bitfield`. Adding a public type with no user inside the library buys an API-stability commitment and nothing else. Reopen if a concrete caller appears. |
 | spsc_queue cached-index | **Landed.** Each side caches the other's index and reloads only when its copy says full/empty. Measured 1.7×–4.9× throughput (median ~2.4×) on a 2-thread benchmark, and **zero size cost** — the cached copies fit in padding the cache-line alignment already created. |
 
 ### Yellow — needs a capability trait + its own CI job (Tier 1)
