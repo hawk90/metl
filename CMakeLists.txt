@@ -32,6 +32,7 @@ option(METL_BUILD_FUZZERS
 set(_metl_headers
   include/metl/arena_allocator.hpp
   include/metl/assert.hpp
+  include/metl/atomic_handle.hpp
   include/metl/atomic_ref.hpp
   include/metl/attributes.hpp
   include/metl/bit.hpp
@@ -158,7 +159,7 @@ if(METL_BUILD_TESTS)
     memory/arena_throwing_ctor memory/object_pool_foreign_ptr
     memory/handle_pool
     # sync/
-    sync/spsc_queue sync/static_message_queue sync/atomic_ref
+    sync/spsc_queue sync/static_message_queue sync/atomic_ref sync/atomic_handle
     # vocab/
     vocab/optional vocab/optional_constexpr vocab/expected vocab/expected_regression
     vocab/variant vocab/variant_regression vocab/span vocab/function_ref
@@ -197,6 +198,14 @@ if(METL_BUILD_TESTS)
   metl_cc_test(
     NAME metl_spsc_queue_threaded_test
     SRCS tests/sync/spsc_queue_threaded_test.cpp
+    DEPS metl::metl_test_options Threads::Threads
+    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/tests
+    LABELS "metl"
+  )
+
+  metl_cc_test(
+    NAME metl_atomic_handle_threaded_test
+    SRCS tests/sync/atomic_handle_threaded_test.cpp
     DEPS metl::metl_test_options Threads::Threads
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/tests
     LABELS "metl"

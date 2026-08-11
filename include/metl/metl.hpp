@@ -10,6 +10,7 @@
 
 #include "metl/arena_allocator.hpp"
 #include "metl/assert.hpp"
+#include "metl/atomic_handle.hpp"
 #include "metl/atomic_ref.hpp"
 #include "metl/attributes.hpp"
 #include "metl/bit.hpp"

@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`metl::atomic_handle` — lock-free atomic cell for a `versioned_handle`
+  (Tier 1).** This is the payoff of packing `{index, generation}` into one word:
+  a lock-free free-list needs its head to carry a counter so a compare-exchange
+  cannot be fooled by a slot freed and re-allocated in the interim (ABA), and the
+  usual answers are a double-width CAS (64-bit only, `cmpxchg16b`/`CASP`) or
+  stuffing a counter into a pointer's spare bits (breaks under AArch64 PAC/MTE,
+  x86-64 LA57/LAM). A handle needs neither — the counter is already in the word,
+  and the word is 32 bits, so a **plain single-word CAS is ABA-safe on a 32-bit
+  MCU**. Provides `load`/`store`/`exchange`/`compare_exchange_{weak,strong}` with
+  explicit memory orders; each operation is wait-free and bounded, while a
+  caller's retry loop is lock-free (which is why it must not be used for
+  ISR↔main-loop synchronisation on a single core — mask interrupts there).
+  **Capability-gated:** instantiating requires `is_always_lock_free` for the
+  packed type, i.e. a hardware CAS. ARMv7-M and up have `LDREX`/`STREX`; ARMv6-M
+  (Cortex-M0/M0+) has none, so the `static_assert` fires instead of silently
+  degrading to a lock — a lock-free algorithm that quietly becomes lock-based has
+  different progress guarantees, and METL states progress guarantees. Branch on
+  `metl::has_lock_free_handle_atomic_v<Handle>` at compile time. Including the
+  header is safe on every target; only instantiation is gated.
+  The new **`handle-atomics` CI job** keeps that claim honest per
+  `docs/SCOPE.md` §3: for Cortex-M0/M3/M4/M7 it asserts the capability matches
+  what the matrix declares, *and* that the opposite expectation fails to
+  compile — so a toolchain change that moves a target across the line fails the
+  build rather than changing METL's progress guarantees silently.
+
 - **`metl::versioned_handle` + `metl::handle_pool` — generation-tagged slot
   handles.** A `versioned_handle` is `{index, generation}` packed into one
   unsigned integer (32 bits by default: 16-bit index + 16-bit generation),
