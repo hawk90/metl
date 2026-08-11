@@ -112,8 +112,12 @@ class atomic_handle {
   }
 
   /// Atomically compares and, on success, replaces the stored handle.
-  /// @param expected Updated with the observed value on failure, as with
-  ///        `std::atomic::compare_exchange_weak`.
+  /// @param expected Handle the cell is expected to hold; updated with the
+  ///        observed value on failure, as with `std::atomic::compare_exchange_weak`.
+  /// @param desired Handle to store if the comparison succeeds.
+  /// @param success Memory order for a successful exchange.
+  /// @param failure Memory order for a failed exchange.
+  /// @return true if the exchange happened.
   /// @note May fail spuriously; intended for retry loops.
   METL_NODISCARD bool compare_exchange_weak(Handle& expected,
                                             Handle desired,
@@ -127,7 +131,13 @@ class atomic_handle {
     return exchanged;
   }
 
-  /// @copydoc compare_exchange_weak
+  /// Atomically compares and, on success, replaces the stored handle.
+  /// @param expected Handle the cell is expected to hold; updated with the
+  ///        observed value on failure.
+  /// @param desired Handle to store if the comparison succeeds.
+  /// @param success Memory order for a successful exchange.
+  /// @param failure Memory order for a failed exchange.
+  /// @return true if the exchange happened.
   /// @note Does not fail spuriously.
   METL_NODISCARD bool compare_exchange_strong(
       Handle& expected,
