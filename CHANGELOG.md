@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`spsc_queue` caches the other side's index (DPDK/Folly-style).** Each side
+  kept reading the other's atomic index on every operation, so every push touched
+  the consumer's cache line and every pop touched the producer's — the classic
+  ping-pong the cache-line alignment was already trying to avoid. Now the
+  producer decides from a private copy of the consumer index and reloads the real
+  one only when that copy says "full" (and mirror-image for the consumer). The
+  copy is stale-but-conservative, so it can only ever be pessimistic; semantics
+  are unchanged. **Measured 1.7×–4.9× throughput (median ~2.4×)** across six
+  interleaved runs of a two-thread benchmark, and **zero size cost**:
+  `sizeof(spsc_queue<uint32_t, 16>)` is 192 bytes before and after, because the
+  cached copies fit in padding the cache-line alignment had already created — so
+  it is free on an MCU too, not merely harmless. A dedicated regression test
+  covers the refresh paths at the full/empty boundaries and across the ring wrap;
+  it was mutation-checked (dropping either refresh, or an off-by-one in either
+  authoritative check, all fail it).
+
 ### Added
 
 - **`metl/wait.hpp` — `cpu_relax()`, `wait_for_event()`, `send_event()`.** Two
