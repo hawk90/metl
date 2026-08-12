@@ -164,21 +164,39 @@ function(metl_cc_binary)
 endfunction()
 
 # ---------------------------------------------------------------------------
-# metl_cc_benchmark  (placeholder — wires into google/benchmark when present)
+# metl_cc_benchmark
+#
+# Builds against the in-repo harness (bench/metl_bench.hpp), not google/benchmark.
+# That is a deliberate departure from what docs/TODO.md originally called for:
+# google/benchmark would be the first external dependency in a repo that has
+# none, and it would cost CI a network fetch plus a framework build. This project
+# already made the same call once, preferring a hand-rolled tests/metl_check.hpp
+# over gtest.
+#
+# The previous version of this function silently `return()`ed when
+# benchmark::benchmark was absent, which is why it had never built anything. It
+# now always builds; a missing prerequisite is a configure error, not a shrug.
 # ---------------------------------------------------------------------------
 function(metl_cc_benchmark)
   set(options "")
   set(one_value NAME)
-  set(multi_value SRCS DEPS COPTS DEFINES)
+  set(multi_value SRCS DEPS COPTS DEFINES INCLUDES)
   cmake_parse_arguments(ARG "${options}" "${one_value}" "${multi_value}" ${ARGN})
 
-  if(NOT TARGET benchmark::benchmark)
-    message(STATUS "metl_cc_benchmark(${ARG_NAME}) skipped: benchmark::benchmark not found")
-    return()
+  if(NOT ARG_NAME)
+    message(FATAL_ERROR "metl_cc_benchmark: NAME is required")
+  endif()
+  if(NOT ARG_SRCS)
+    message(FATAL_ERROR "metl_cc_benchmark(${ARG_NAME}): SRCS is required")
   endif()
 
   add_executable(${ARG_NAME} ${ARG_SRCS})
-  target_link_libraries(${ARG_NAME} PRIVATE benchmark::benchmark ${ARG_DEPS})
+  target_link_libraries(${ARG_NAME} PRIVATE ${ARG_DEPS})
+  target_compile_features(${ARG_NAME} PRIVATE cxx_std_17)
+
+  if(ARG_INCLUDES)
+    target_include_directories(${ARG_NAME} PRIVATE ${ARG_INCLUDES})
+  endif()
 
   if(ARG_COPTS)
     target_compile_options(${ARG_NAME} PRIVATE ${ARG_COPTS})

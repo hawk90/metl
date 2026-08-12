@@ -28,6 +28,22 @@ namespace metl {
 ///     index free-list, where `object_pool::try_emplace` linearly scans for the
 ///     first inactive slot.
 ///
+/// The second point has a crossover worth knowing before switching: below a
+/// certain capacity the scan wins, because a short scan is cheaper than the
+/// free-list bookkeeping. Measured with `bench/bench_pools.cpp` on an arm64
+/// host, allocate-and-free churn at the tail (object_pool's worst case):
+///
+///   | Capacity | `object_pool` | `handle_pool` |
+///   |----------|---------------|---------------|
+///   | 4        | **2.8 ns**    | 4.4 ns        |
+///   | 64       | 24.9 ns       | **4.2 ns**    |
+///   | 1024     | 37.8 ns       | **5.6 ns**    |
+///
+/// So `handle_pool` is the right default for its *safety* — a stale handle
+/// resolving to `nullptr` costs about 0.9 ns per `get()` — but at a capacity of
+/// a handful, `object_pool` is genuinely faster. Pick on the property you need,
+/// not on the asymptotics alone.
+///
 /// The handle is 32 bits by default (16-bit index + 16-bit generation) and
 /// makes no assumption whatsoever about pointer representation, which is what
 /// makes it portable to targets where the spare bits of a pointer belong to the

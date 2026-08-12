@@ -889,6 +889,55 @@ jobs:
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
+  # Benchmark smoke — build the micro-benchmarks and run each with --quick.
+  #
+  # Deliberately NOT a performance gate. A threshold on a shared GitHub runner
+  # either fires spuriously or is loose enough never to fire; either way it
+  # trains people to ignore it. What this job protects is that the benchmarks
+  # still compile and still run, so they cannot rot the way the previous
+  # google/benchmark stub did (it silently skipped whenever the dependency was
+  # absent, which was always). Real numbers come from running them by hand.
+  # ---------------------------------------------------------------------------
+  bench-smoke:
+    name: bench-smoke
+    runs-on: ubuntu-latest
+    needs: preflight
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang
+
+      - name: Configure (benchmarks on)
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -B build-bench -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMETL_BUILD_BENCHMARKS=ON \
+            -DMETL_BUILD_TESTS=OFF \
+            -DMETL_INSTALL=OFF
+
+      - name: Build
+        run: cmake --build build-bench -j
+
+      - name: Run each benchmark (--quick)
+        run: ctest --test-dir build-bench -L bench --output-on-failure
+
+      - name: Show the numbers (informational only)
+        run: |
+          for b in build-bench/metl_bench_*; do
+            [ -x "$b" ] || continue
+            "$b" --quick
+          done
+
+  # ---------------------------------------------------------------------------
   # Examples — build every example under -Wall -Wextra -Werror and run them.
   # Each example self-checks and returns non-zero on a broken invariant.
   # ---------------------------------------------------------------------------

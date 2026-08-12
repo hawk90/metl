@@ -25,6 +25,7 @@ option(METL_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
 option(METL_INSTALL "Generate install targets" ON)
 option(METL_BUILD_FUZZERS
        "Build the libFuzzer harnesses (Clang only; links -fsanitize=fuzzer,address,undefined)" OFF)
+option(METL_BUILD_BENCHMARKS "Build the micro-benchmarks (host only; always compiled -O2)" OFF)
 
 # ---------------------------------------------------------------------------
 # Public library  (umbrella header-only target)
@@ -296,6 +297,22 @@ endif()
 # the harnesses are only wired up under Clang. A non-clang configure (or the
 # default option-off configure) never sees these targets, keeping the default
 # host/arm/sanitizer builds untouched.
+# ---------------------------------------------------------------------------
+# Benchmarks (host only, opt-in)
+# ---------------------------------------------------------------------------
+# Off by default: they are slow, they are noisy on shared machines, and they are
+# not a correctness signal. The `bench-smoke` CI job turns them on and runs them
+# with --quick purely so they cannot rot.
+if(METL_BUILD_BENCHMARKS)
+  if(CMAKE_CROSSCOMPILING)
+    message(WARNING "METL_BUILD_BENCHMARKS is ON but this is a cross build; benchmarks are host-only and are skipped.")
+  else()
+    enable_testing()
+    find_package(Threads REQUIRED)
+    add_subdirectory(bench)
+  endif()
+endif()
+
 if(METL_BUILD_FUZZERS)
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_subdirectory(fuzz)

@@ -52,9 +52,17 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [ ] Submit to the ESP-IDF Component Registry (component manifest already present).
 
 ### 📊 Quality / claims
-- [ ] **Benchmarks** — replace the dead `metl_cc_benchmark` stub with real
-  google/benchmark micro-benchmarks (push/pop, flat_map lookup, spsc throughput)
-  + a CI job. (Backs the "benchmarks" scaffolding claim.)
+- [x] **Benchmarks** — `metl_cc_benchmark` now builds for real (it used to
+  silently `return()` whenever `benchmark::benchmark` was absent, which was
+  always). Three suites under `bench/` — containers/lookup, object_pool vs
+  handle_pool, spsc throughput — plus a `bench-smoke` CI job.
+  **Deviation:** built on a dependency-free in-repo harness rather than
+  google/benchmark, which would have been this repo's first external dependency
+  and would cost CI a fetch plus a framework build; the same call was already
+  made in choosing `tests/metl_check.hpp` over gtest. The harness reports the
+  median of N repetitions *with the min/max spread*, so noise is visible.
+  Deliberately no performance gate — a threshold on a shared runner either fires
+  spuriously or never fires.
 - [ ] **Coverage** gate (llvm-cov/codecov) — audit gap; cover the `try_*`/full-container
   branches.
 - [ ] Promote **clang-tidy** from advisory to blocking (after fixing findings).
