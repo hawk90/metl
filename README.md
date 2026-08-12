@@ -122,6 +122,10 @@ Worked example: [`examples/allocators.cpp`](examples/allocators.cpp)
 Concurrency
 
 - [`spsc_queue`](include/metl/spsc_queue.hpp).
+- [`mpmc_queue`](include/metl/mpmc_queue.hpp) — bounded lock-free multi-producer /
+  multi-consumer queue (sequence numbers, no double-width CAS). Requires a
+  hardware CAS; **prefer `spsc_queue` when the roles are fixed**, and see the
+  header for measured contention behaviour.
 - [`guarded<T, Lock>`](include/metl/lock.hpp) with `irq_lock` / `null_lock` —
   an explicit critical section that can span a compound operation, rather than a
   per-operation lock inside each container. `irq_lock` saves and restores

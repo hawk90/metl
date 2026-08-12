@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`metl::mpmc_queue` — bounded lock-free multi-producer / multi-consumer queue
+  (Tier 1).** Sequence-number scheme (Vyukov): each slot carries a counter saying
+  whose turn it is, so producers and consumers can distinguish "ready for me"
+  from "someone got there first" with a plain single-word CAS — no double-width
+  CAS, and no ABA window, because the counters only move forward.
+  **Capability-gated** on `std::atomic<std::size_t>::is_always_lock_free`;
+  ARMv6-M (Cortex-M0/M0+) has no CAS, so the `static_assert` fires rather than
+  degrading to a lock. The fallback SCOPE.md promised for that target is now a
+  real type: `guarded<static_message_queue<T, N>, irq_lock>`, from the previous
+  release entry. The capability probe and the `handle-atomics` CI job were
+  extended to cover it — a target where handle atomics were lock-free but
+  `size_t`'s were not would otherwise only surface at a user's build.
+  **Progress guarantee: lock-free, not wait-free** — a thread can lose the
+  compare-exchange arbitrarily often — which under `docs/SCOPE.md` §1 restricts
+  it to multi-core use and rules out ISR↔main-loop sharing on a single core.
+  **It does not scale with thread count; it degrades.** All producers contend on
+  one counter and all consumers on another, so more threads means more contention
+  on a single word, not more parallelism. Measured (arm64 host, one machine):
+  47 Mops/s at 1×1, 6.8 at 2×2, 3.5 at 4×4; uncontended round trip ~7.5 ns
+  against ~5.6 ns for `spsc_queue`. The header says plainly to **prefer
+  `spsc_queue` when the roles are fixed**, and `bench/bench_mpmc.cpp` is there to
+  re-check the claim.
+
 - **Micro-benchmarks (`bench/`) + a `bench-smoke` CI job.** `metl_cc_benchmark`
   had never built anything: it `return()`ed silently whenever
   `benchmark::benchmark` was absent, which was always. It now builds for real,

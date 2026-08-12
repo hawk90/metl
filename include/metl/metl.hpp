@@ -46,6 +46,7 @@
 #include "metl/lookup_table.hpp"
 #include "metl/mmio.hpp"
 #include "metl/monotonic_buffer.hpp"
+#include "metl/mpmc_queue.hpp"
 #include "metl/object_pool.hpp"
 #include "metl/optimization.hpp"
 #include "metl/optional.hpp"

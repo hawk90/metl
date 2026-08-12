@@ -89,7 +89,7 @@ Examples and their gates:
 | Feature | Requires | Fallback |
 |---|---|---|
 | `atomic_handle` | lock-free single-word CAS (ARMv7-M+) | **none** — `static_assert` fires; mask interrupts instead. Job: `handle-atomics` |
-| bounded MPMC queue | CAS (ARMv7-M+, RV32A) | `irq_lock` on Cortex-M0 |
+| bounded MPMC queue | CAS (ARMv7-M+, RV32A) | `guarded<static_message_queue, irq_lock>` on Cortex-M0 — **landed**, so the fallback is a real type, not a promise |
 | `atomic<bitfield<...>>` | `is_always_lock_free` | `static_assert` failure |
 | double-width CAS free-list | `cmpxchg16b` / LSE `CASP`, 64-bit, `-mcx16` | Tier 0 handle free-list |
 | bounded hazard domain | fixed slot count (keeps I1) | — |
@@ -157,8 +157,14 @@ Ordered by (value / cost), not by novelty.
 gated by `static_assert`, proved by the `handle-atomics` job which asserts the
 expected answer per target *and* that the opposite expectation fails to compile.
 
-**Open:** bounded MPMC queue · `atomic<bitfield<...>>` · double-width CAS
-free-list · bounded hazard domain · compile-time SIMD.
+**Landed:** `mpmc_queue` — sequence-number (Vyukov) bounded queue, gated on
+`std::atomic<std::size_t>::is_always_lock_free`, sharing the `handle-atomics`
+capability probe. Documented as *lock-free, not wait-free*, and measured to
+**degrade** with thread count rather than scale, so the header says plainly to
+prefer `spsc_queue` when the roles are fixed.
+
+**Open:** `atomic<bitfield<...>>` · double-width CAS free-list · bounded hazard
+domain · compile-time SIMD.
 
 ### Red — possible but a bad trade, or permanently out
 

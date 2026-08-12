@@ -41,6 +41,7 @@
 #include "metl/metl.hpp"
 #include "metl/mmio.hpp"
 #include "metl/monotonic_buffer.hpp"
+#include "metl/mpmc_queue.hpp"
 #include "metl/object_pool.hpp"
 #include "metl/optional.hpp"
 #include "metl/register_access.hpp"
@@ -227,6 +228,14 @@ static_assert(smoke_mmio_reg::address == 0x4000'1000u, "mmio_register address");
 
 // monotonic_buffer.hpp
 [[maybe_unused]] metl::monotonic_buffer<128> _mbuf;
+
+// mpmc_queue.hpp -- Tier 1, same story as atomic_handle above: selected through
+// the capability rather than instantiated unconditionally, so Cortex-M0 (no CAS)
+// compiles the empty alternative instead of tripping the static_assert.
+struct smoke_no_mpmc {};
+[[maybe_unused]] std::conditional_t<std::atomic<std::size_t>::is_always_lock_free,
+                                    metl::mpmc_queue<int, 4>,
+                                    smoke_no_mpmc> _mpmc;
 
 // object_pool.hpp
 [[maybe_unused]] metl::object_pool<int, 4> _opool;
