@@ -1,7 +1,11 @@
-// Capability probe for metl::atomic_handle — the CI job that keeps its Tier 1
-// claim honest (docs/SCOPE.md §3: a tier and its CI job arrive together).
+// Capability probe for METL's Tier 1 lock-free types — the CI job that keeps
+// their claims honest (docs/SCOPE.md §3: a tier and its CI job arrive together).
 //
-// atomic_handle requires a lock-free single-word CAS. ARMv7-M and up have
+// Covers metl::atomic_handle and metl::mpmc_queue. Both ask the same underlying
+// question — does this target have a lock-free compare-exchange — so they share
+// one probe rather than two near-identical ones.
+//
+// A lock-free CAS is required. ARMv7-M and up have
 // LDREX/STREX; ARMv6-M (Cortex-M0/M0+) has no CAS at all, and GCC lowers atomic
 // read-modify-write there to libatomic calls. The claim being tested is
 // therefore two-sided, and testing only the positive half would be worthless:
@@ -22,6 +26,7 @@
 
 #include <metl/atomic_handle.hpp>
 #include <metl/handle_pool.hpp>
+#include <metl/mpmc_queue.hpp>
 #include <metl/versioned_handle.hpp>
 
 #if !defined(METL_EXPECT_LOCK_FREE_HANDLE)
@@ -48,6 +53,12 @@ static_assert(metl::has_lock_free_handle_atomic_v<pool_handle> == (METL_EXPECT_L
 // instantiation that fails to compile would still be a broken claim.
 metl::atomic_handle<handle> g_cell;
 
+// mpmc_queue gates on the same capability, through its own static_assert on
+// std::atomic<std::size_t>. Instantiating it here proves the two agree — a
+// target where the handle atomics were lock-free but size_t's were not would
+// otherwise only show up at a user's build.
+metl::mpmc_queue<std::uint32_t, 4> g_queue;
+
 static_assert(sizeof(metl::atomic_handle<handle>) == sizeof(handle),
               "the atomic cell must stay a single word");
 static_assert(metl::atomic_handle<handle>::is_always_lock_free, "instantiation implies lock-free");
@@ -56,6 +67,10 @@ static_assert(metl::atomic_handle<handle>::is_always_lock_free, "instantiation i
 // check. Under -Os an unused inline function would vanish; taking its address
 // keeps it.
 void exercise() noexcept {
+  (void)g_queue.try_push(1u);
+  std::uint32_t popped = 0;
+  (void)g_queue.try_pop(popped);
+
   g_cell.store(handle{1, 1});
   handle observed = g_cell.load();
   (void)g_cell.exchange(handle{2, 1});

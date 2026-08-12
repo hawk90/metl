@@ -15,13 +15,14 @@
 
 set(_metl_benchmarks
   bench_containers
+  bench_mpmc
   bench_pools
   bench_spsc
 )
 
 foreach(_b IN LISTS _metl_benchmarks)
   set(_deps metl::metl)
-  if(_b STREQUAL "bench_spsc")
+  if(_b STREQUAL "bench_spsc" OR _b STREQUAL "bench_mpmc")
     list(APPEND _deps Threads::Threads)
   endif()
 
