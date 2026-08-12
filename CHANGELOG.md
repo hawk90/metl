@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Micro-benchmarks (`bench/`) + a `bench-smoke` CI job.** `metl_cc_benchmark`
+  had never built anything: it `return()`ed silently whenever
+  `benchmark::benchmark` was absent, which was always. It now builds for real,
+  and three suites ship with it — containers and lookup paths, `object_pool` vs
+  `handle_pool`, and `spsc_queue` throughput including the two-thread case.
+  **Deviation from `docs/TODO.md`:** built on a dependency-free in-repo harness
+  (`bench/metl_bench.hpp`) rather than google/benchmark, which would have been
+  this repo's first external dependency and would cost CI a network fetch plus a
+  framework build — the same call already made in choosing `tests/metl_check.hpp`
+  over gtest. The harness auto-tunes the iteration count, then reports the
+  **median of N repetitions with the min/max spread**, because a single number
+  from a single run invites conclusions the measurement cannot support.
+  The CI job runs everything with `--quick` and is explicitly **not** a
+  performance gate: a threshold on a shared runner either fires spuriously or is
+  loose enough never to fire.
+  **First finding:** `handle_pool` is not universally faster than `object_pool`.
+  At capacity 4 the linear scan wins (2.8 ns vs 4.4 ns); the gap reverses by
+  capacity 64 (24.9 ns vs 4.2 ns) and widens at 1024 (37.8 ns vs 5.6 ns).
+  Handle resolution — the use-after-free check — costs about 0.9 ns. The table is
+  now in the `handle_pool` header so the choice is made on the property needed
+  rather than on asymptotics alone.
+
 - **`metl/lock.hpp` — `irq_lock`, `null_lock`, `scoped_lock`, `guarded<T, Lock>`.**
   The roadmap called for retrofitting a lock policy onto the existing concurrency
   types; that was rejected on implementation and the reasoning is recorded in
