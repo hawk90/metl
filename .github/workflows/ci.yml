@@ -712,6 +712,53 @@ jobs:
           echo "${out}" | grep -q METL_SEMIHOST_PASS
 
   # ---------------------------------------------------------------------------
+  # Cortex-M conformance — the host test suite, cross-compiled and RUN on an
+  # emulated Cortex-M3.
+  #
+  # This is the job that closes METL's largest gap between claim and proof. The
+  # library's differentiator is that it is provably usable on bare metal, but
+  # until this job the only thing ever executed on an MCU was one smoke program
+  # covering seven headers (picolibc-qemu). Everything else — every container,
+  # every queue, every vocabulary type — was compile-and-link only, with its
+  # behaviour verified exclusively on x86/arm64 hosts.
+  #
+  # Deny-list, not allow-list. A curated set of "embedded-appropriate checks"
+  # would silently miss every type added afterwards, which is the exact failure
+  # mode docs/SCOPE.md §8 records for the invariant probe. Every test runs unless
+  # tools/run_qemu_tests.sh excludes it with a stated reason.
+  #
+  # BLOCKING on purpose, and a timeout counts as a failure. The smoke job
+  # tolerates a timeout because its proof is "the program ran at all"; a
+  # conformance gate that cannot distinguish a hang from a pass is not a gate.
+  # ---------------------------------------------------------------------------
+  qemu-conformance:
+    name: qemu-conformance / cortex-m3
+    runs-on: ubuntu-latest
+    needs: preflight
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install ARM toolchain + picolibc + QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi picolibc-arm-none-eabi \
+            qemu-system-arm
+
+      - name: Cross-compile and run the test suite on Cortex-M3
+        run: tools/run_qemu_tests.sh
+
+      - name: Upload build/run logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: qemu-conformance-logs
+          path: build-qemu-conformance/*.log
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
   # Header hygiene — per-header self-containment + umbrella completeness
   # ---------------------------------------------------------------------------
   header-checks:
