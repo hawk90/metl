@@ -174,6 +174,7 @@ if(METL_BUILD_TESTS)
     # bits/
     bits/bit bits/bitfield bits/crc8 bits/crc16 bits/crc32 bits/hash
     bits/hash_unique_repr bits/endian bits/mmio bits/mmio_regression bits/register_access
+    bits/crc_table_equivalence
     # control/
     control/fsm control/fsm_reentrancy control/event_dispatcher
     control/coro_protothread control/coro_scheduler control/coro_scheduler_reentrancy

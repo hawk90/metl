@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **CRC-8/16/32 now use a nibble table by default (`METL_CRC_TABLE`).** The
+  benchmark added in #26 measured `crc32` at roughly **8 ns per byte** — a
+  bit-at-a-time loop, eight shift-and-conditional-xor steps per byte. Two lookups
+  from a 16-entry table replace them.
+  **Measured, arm64 host:** 1 KiB of `crc32` went 7.68 µs → 4.42 µs, i.e.
+  **1.74×** (less than the 4× the step count suggests — a data-dependent load is
+  worth less against an out-of-order core's shift/xor chain than it is on an
+  in-order MCU, where the win should be larger; that expectation is *not*
+  measured here). Code size: **+64 bytes, exactly the table** — the surrounding
+  code shrank enough to offset the rest (84 → 148 bytes for a `crc32` TU at
+  `-Os`). Per width the table costs 16 bytes (CRC-8), 32 (CRC-16), 64 (CRC-32),
+  and only for widths a program actually uses.
+  Set `-DMETL_CRC_TABLE=0` to restore the previous table-free implementation on a
+  flash-starved target. **Results are byte-for-byte identical either way**, and a
+  new test pins that rather than assuming it: it walks every input byte against a
+  wide spread of starting register values for all three widths, comparing against
+  a bitwise reference held in the test (duplicated deliberately — calling into the
+  library would let a change that broke both paths alike pass). A 256-entry byte
+  table would be faster again but costs 1 KiB for CRC-32 alone, a poor trade on
+  the parts this library targets; not offered until someone has the use case.
+
 ### Added
 
 - **`metl::mpmc_queue` — bounded lock-free multi-producer / multi-consumer queue

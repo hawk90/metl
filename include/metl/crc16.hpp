@@ -1,6 +1,7 @@
 #pragma once
 
 #include "metl/compiler.hpp"
+#include "metl/config.hpp"
 #include "metl/detail/crc.hpp"
 #include "metl/span.hpp"
 
@@ -20,12 +21,16 @@ namespace detail {
 constexpr std::uint16_t crc16_polynomial = 0x1021u;
 
 constexpr std::uint16_t crc16_update_byte(std::uint16_t crc, std::uint8_t byte) noexcept {
+#if METL_CRC_TABLE
+  return crc_update_byte_forward<std::uint16_t, crc16_polynomial>(crc, byte);
+#else
   crc ^= static_cast<std::uint16_t>(byte) << 8u;
   for (int bit = 0; bit < 8; ++bit) {
     crc = (crc & 0x8000u) != 0u ? static_cast<std::uint16_t>((crc << 1u) ^ crc16_polynomial)
                                 : static_cast<std::uint16_t>(crc << 1u);
   }
   return crc;
+#endif
 }
 
 }  // namespace detail
@@ -34,6 +39,8 @@ constexpr std::uint16_t crc16_update_byte(std::uint16_t crc, std::uint8_t byte) 
 /// @param bytes The bytes to checksum.
 /// @param params Initial and final-XOR values (default: initial 0xFFFF, final 0x0000).
 /// @return The CRC-16 checksum. constexpr and heap-free.
+/// @note Uses a 16-entry nibble table by default (32 bytes of flash for this width).
+///       Set `METL_CRC_TABLE=0` for the table-free version; results are identical.
 METL_NODISCARD constexpr std::uint16_t crc16(span<const std::uint8_t> bytes,
                                              crc16_params params = {}) noexcept {
   return detail::crc_fold(bytes, params.initial, params.final_xor, detail::crc16_update_byte);
