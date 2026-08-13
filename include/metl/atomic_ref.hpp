@@ -36,6 +36,15 @@ inline std::atomic<T>* atomic_ref_cast(T* ptr) noexcept {
 /// @warning The referenced object must outlive this reference, and while any
 ///          `atomic_ref` is in use it must not be accessed non-atomically.
 /// @pre The referenced object must be aligned to `required_alignment`.
+///
+/// @warning **On a bare-metal target, an 8-byte `T` may not link.** ARMv7-M has
+///          no 64-bit atomic instruction, so `std::atomic<T>` lowers to
+///          `__atomic_load_8` / `__atomic_store_8`, and bare-metal toolchains
+///          ship no libatomic to satisfy them — the failure is an undefined
+///          reference at link time, not a compile error. This was found by
+///          running the test suite on an emulated Cortex-M3
+///          (`qemu-conformance`). Check `is_always_lock_free` when the target
+///          may be an MCU, or keep `T` to 4 bytes or fewer there.
 template <typename T>
 class atomic_ref {
   static_assert(std::is_trivially_copyable_v<T>, "atomic_ref requires a trivially copyable type");

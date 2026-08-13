@@ -48,14 +48,35 @@ int counting_lock::unlocks = 0;
 int counting_lock::depth = 0;
 int counting_lock::max_depth = 0;
 
+#if METL_HAS_IRQ_MASKING
+// Reads PRIMASK directly, so the check observes the hardware rather than
+// re-reading whatever irq_lock happens to return.
+std::uint32_t read_primask() noexcept {
+  std::uint32_t value = 0;
+  __asm__ __volatile__("mrs %0, primask" : "=r"(value)::"memory");
+  return value;
+}
+#endif
+
 }  // namespace
 
 int main() {
-  // --- the host is documented as having no interrupt masking -------------------
-  // Pinned so the fallback path stays honest: if this ever became true on a
-  // hosted build, irq_lock would be emitting instructions nobody vetted.
+  // --- the capability trait matches the target ---------------------------------
+  // Both directions are pinned. On a host there are no interrupts to mask, so a
+  // true here would mean irq_lock was emitting instructions nobody vetted; on
+  // Cortex-M a false would mean the primitive docs/SCOPE.md calls the correct
+  // ISR-to-main-loop lock had silently degraded to a compiler barrier.
+  //
+  // This assertion used to read `CHECK(!metl::has_irq_masking)` unconditionally,
+  // which passed on the host and was simply wrong about the target. The QEMU
+  // conformance job caught it on its first green run.
+#if METL_HAS_IRQ_MASKING
+  CHECK(metl::has_irq_masking);
+  CHECK_EQ(METL_HAS_IRQ_MASKING, 1);
+#else
   CHECK(!metl::has_irq_masking);
   CHECK_EQ(METL_HAS_IRQ_MASKING, 0);
+#endif
 
   // --- lock policies are stateless --------------------------------------------
   // The saved state travels with the guard, so a guarded object costs exactly
@@ -161,6 +182,62 @@ int main() {
     const std::size_t size = shared.with([](const auto& v) { return v.size(); });
     CHECK_EQ(size, std::size_t{4});
   }
+
+  // --- on a Cortex-M, check what irq_lock actually does to PRIMASK -------------
+  // Runs only on the real (emulated) target, via the qemu-conformance job.
+  //
+  // Scope of this check, stated plainly: it proves the PRIMASK *register* moves
+  // as intended, including that unlock restores rather than blanket-enables. It
+  // does NOT yet prove that an interrupt is actually blocked — for that a real
+  // source (SysTick) has to fire and be observed not running, which is the next
+  // step. Register state is necessary, not sufficient.
+#if METL_HAS_IRQ_MASKING
+  {
+    // Start from a known state: interrupts enabled.
+    __asm__ __volatile__("cpsie i" ::: "memory");
+    CHECK_EQ(read_primask(), std::uint32_t{0});
+
+    const auto state = metl::irq_lock::lock();
+    CHECK_EQ(read_primask(), std::uint32_t{1});  // masked while held
+    metl::irq_lock::unlock(state);
+    CHECK_EQ(read_primask(), std::uint32_t{0});  // and released
+
+    // Nesting: the inner release must not lift the outer mask.
+    {
+      const auto outer = metl::irq_lock::lock();
+      CHECK_EQ(read_primask(), std::uint32_t{1});
+      {
+        const auto inner = metl::irq_lock::lock();
+        CHECK_EQ(read_primask(), std::uint32_t{1});
+        metl::irq_lock::unlock(inner);
+      }
+      CHECK_EQ(read_primask(), std::uint32_t{1});  // still held by the outer
+      metl::irq_lock::unlock(outer);
+      CHECK_EQ(read_primask(), std::uint32_t{0});
+    }
+
+    // The case the save/restore design exists for: entering with interrupts
+    // ALREADY disabled by the caller must leave them disabled on exit. A
+    // blanket `cpsie i` in unlock would silently re-enable them here.
+    {
+      __asm__ __volatile__("cpsid i" ::: "memory");
+      CHECK_EQ(read_primask(), std::uint32_t{1});
+      const auto state_when_disabled = metl::irq_lock::lock();
+      CHECK_EQ(read_primask(), std::uint32_t{1});
+      metl::irq_lock::unlock(state_when_disabled);
+      CHECK_EQ(read_primask(), std::uint32_t{1});  // preserved, not clobbered
+      __asm__ __volatile__("cpsie i" ::: "memory");
+    }
+
+    // guarded<> composes with it: the mask is held for the whole body.
+    {
+      metl::guarded<std::uint32_t, metl::irq_lock> value{0u};
+      const std::uint32_t inside = value.with([](std::uint32_t&) { return read_primask(); });
+      CHECK_EQ(inside, std::uint32_t{1});
+      CHECK_EQ(read_primask(), std::uint32_t{0});
+    }
+  }
+#endif
 
   return metl_test::exit_code();
 }
