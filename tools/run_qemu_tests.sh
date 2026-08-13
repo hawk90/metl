@@ -15,9 +15,17 @@
 # execution by default and skipping one requires saying why.
 #
 # Grading is on the METL_QEMU_EXIT line printed by the --wrap=main shim, not on
-# QEMU's exit status: semihosting SYS_EXIT does not propagate cleanly on every
-# machine + libc combination. A timeout is a FAILURE here, unlike in the smoke
-# job — a conformance gate that cannot tell a hang from a pass is not a gate.
+# QEMU's exit status: semihosting SYS_EXIT does not bring this machine down, so
+# the emulator lingers after the program has finished and printed its result.
+# (The first run of this job proved it by "timing out" on every test, including
+# trivial ones, purely because the grading checked the timeout before the
+# sentinel.) The sentinel therefore decides, and QEMU is killed as soon as it
+# appears.
+#
+# That is still strict, which is the part that matters: a test that genuinely
+# hangs never prints the line, and a crash never reaches it. No sentinel is a
+# failure — a conformance gate that cannot tell a hang from a pass is not a
+# gate.
 #
 # Usage: tools/run_qemu_tests.sh [--cpu cortex-m3] [--keep-going]
 
@@ -25,7 +33,7 @@ set -uo pipefail
 
 CPU="cortex-m3"
 MACHINE="mps2-an385"
-TIMEOUT_SECONDS=60
+TIMEOUT_SECONDS=20
 KEEP_GOING=1
 
 while [ $# -gt 0 ]; do
@@ -92,35 +100,60 @@ for src in "${SOURCES[@]}"; do
 
   if ! arm-none-eabi-g++ "${CFLAGS[@]}" "${src}" "${SHIM}" -o "${elf}" > "${log}" 2>&1; then
     printf '%-52s BUILD-FAIL\n' "${rel}"
+    # Print the diagnostic inline. Hiding it in an artifact means a red build
+    # tells you only that something broke, not what.
+    sed 's/^/      | /' "${log}" | head -20
     BUILD_FAILURES+=("${rel}")
     build_failed=$((build_failed + 1))
     [ "${KEEP_GOING}" -eq 0 ] && break
     continue
   fi
 
-  out="$(timeout "${TIMEOUT_SECONDS}" qemu-system-arm \
+  # Run detached and poll for the sentinel rather than waiting for QEMU to exit.
+  #
+  # On this machine + libc combination semihosting SYS_EXIT does not bring QEMU
+  # down — the smoke job's comment says as much, and the first run of this job
+  # proved it by timing out on every single test including trivial ones. The
+  # program had finished and printed its result; only the emulator lingered.
+  #
+  # So the sentinel decides, and the timeout only matters when the sentinel never
+  # arrives. That is still strict: a test that genuinely hangs never prints the
+  # line, and a crash never reaches it.
+  : > "${log}.run"
+  timeout "${TIMEOUT_SECONDS}" qemu-system-arm \
     -semihosting-config enable=on \
     -monitor none -serial none -nographic \
     -machine "${MACHINE},accel=tcg" \
-    -kernel "${elf}" 2>&1)"
-  qemu_status=$?
-  printf '%s\n' "${out}" >> "${log}"
+    -kernel "${elf}" > "${log}.run" 2>&1 &
+  qemu_pid=$!
 
-  if [ "${qemu_status}" -eq 124 ]; then
-    printf '%-52s TIMEOUT\n' "${rel}"
-    FAILURES+=("${rel} (timeout after ${TIMEOUT_SECONDS}s)")
-    failed=$((failed + 1))
-  elif printf '%s' "${out}" | grep -q '^METL_QEMU_EXIT 0$'; then
+  sentinel=""
+  for _ in $(seq 1 $((TIMEOUT_SECONDS * 10))); do
+    if sentinel="$(grep -m1 -oE '^METL_QEMU_EXIT [0-9]+$' "${log}.run" 2>/dev/null)"; then
+      [ -n "${sentinel}" ] && break
+    fi
+    kill -0 "${qemu_pid}" 2>/dev/null || break
+    sleep 0.1
+  done
+  kill "${qemu_pid}" 2>/dev/null
+  wait "${qemu_pid}" 2>/dev/null
+  sentinel="$(grep -m1 -oE '^METL_QEMU_EXIT [0-9]+$' "${log}.run" 2>/dev/null)"
+  cat "${log}.run" >> "${log}"
+
+  code="${sentinel##* }"
+  if [ "${sentinel}" = "METL_QEMU_EXIT 0" ]; then
     printf '%-52s PASS\n' "${rel}"
     passed=$((passed + 1))
-  elif code="$(printf '%s' "${out}" | sed -n 's/^METL_QEMU_EXIT \([0-9]*\)$/\1/p')" && [ -n "${code}" ]; then
+  elif [ -n "${sentinel}" ]; then
     printf '%-52s FAIL  (exit %s)\n' "${rel}" "${code}"
+    sed 's/^/      | /' "${log}.run" | head -15
     FAILURES+=("${rel} (exit ${code})")
     failed=$((failed + 1))
   else
-    # No sentinel at all: crashed, hung before printing, or never started.
+    # No sentinel: hung inside the test, crashed, or never started.
     printf '%-52s FAIL  (no METL_QEMU_EXIT line)\n' "${rel}"
-    FAILURES+=("${rel} (no exit line — crashed or never reached main's end)")
+    sed 's/^/      | /' "${log}.run" | head -15
+    FAILURES+=("${rel} (no exit line — hung or crashed before main returned)")
     failed=$((failed + 1))
   fi
 
