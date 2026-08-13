@@ -60,6 +60,20 @@ declare -A DENIED=(
   ["core/harden_floor_none_test.cpp"]="forked death test (unistd.h / sys/wait.h)"
   ["containers/fixed_vector_asan_test.cpp"]="forked death test; also assumes ASan"
   ["core/assert_test.cpp"]="setjmp/longjmp around an abort path; host-runtime specific"
+  # These three deliberately `throw` to check what METL does when a USER's type
+  # throws. The freestanding build is -fno-exceptions (METL is a no-exception
+  # library), and enabling exceptions here would need unwind tables this target's
+  # linker script does not provide. Verifying exception-safety on a target that
+  # cannot do exceptions is not a meaningful check; the host build covers it.
+  ["memory/arena_throwing_ctor_test.cpp"]="throws; needs -fexceptions"
+  ["vocab/expected_regression_test.cpp"]="throws; needs -fexceptions"
+  ["vocab/variant_regression_test.cpp"]="throws; needs -fexceptions"
+  # FINDING, not a workaround: metl::atomic_ref<T> for an 8-byte T lowers to
+  # __atomic_load_8/__atomic_store_8 on ARMv7-M, and bare-metal toolchains ship
+  # no libatomic, so it does not link. atomic_ref.hpp documents this now. The
+  # test stays deny-listed until the header either constrains the size on such
+  # targets or the runner links a libatomic.
+  ["sync/atomic_ref_test.cpp"]="atomic_ref<8-byte> needs libatomic on ARMv7-M; see atomic_ref.hpp"
 )
 
 mkdir -p "${BUILD_DIR}"
@@ -69,6 +83,16 @@ CFLAGS=(
   -std=c++17 "-mcpu=${CPU}" -mthumb -Os
   -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti
   -Wl,--gc-sections -Wl,--wrap=main
+  # libstdc++ is prebuilt WITH exceptions, so a few of its members reference the
+  # ARM unwinder even though nothing here can throw (-fno-exceptions). The
+  # unwinder then wants __exidx_start/__exidx_end, which this linker script does
+  # not define. Defining them as an empty range lets that unreachable code link;
+  # it can never run, because unwinding requires a throw.
+  #
+  # Worth recording rather than hiding: the library itself does not drag the
+  # unwinder in -- the `invariants` job fails the build on any _Unwind_* symbol
+  # in the image. This is two TESTS pulling a libstdc++ facility that does.
+  -Wl,--defsym=__exidx_start=0 -Wl,--defsym=__exidx_end=0
   -T "${LINKER_SCRIPT}"
   -I"${REPO_ROOT}/include" -I"${REPO_ROOT}/tests"
 )
