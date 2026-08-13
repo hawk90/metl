@@ -90,9 +90,9 @@ Examples and their gates:
 |---|---|---|
 | `atomic_handle` | lock-free single-word CAS (ARMv7-M+) | **none** — `static_assert` fires; mask interrupts instead. Job: `handle-atomics` |
 | bounded MPMC queue | CAS (ARMv7-M+, RV32A) | `guarded<static_message_queue, irq_lock>` on Cortex-M0 — **landed**, so the fallback is a real type, not a promise |
-| `atomic<bitfield<...>>` | `is_always_lock_free` | `static_assert` failure |
-| double-width CAS free-list | `cmpxchg16b` / LSE `CASP`, 64-bit, `-mcx16` | Tier 0 handle free-list |
-| bounded hazard domain | fixed slot count (keeps I1) | — |
+| ~~`atomic<bitfield<...>>`~~ | — | **Not planned** as a distinct type; compose `std::atomic<Carrier>` with `bitfield` — see §5 |
+| ~~double-width CAS free-list~~ | — | **Not planned** — superseded by `versioned_handle`; see §5 |
+| ~~bounded hazard domain~~ | — | **Not planned** — no caller; see §5 |
 | SIMD (NEON/SSE) accelerated CRC, `flat_map` probe | compile-time ISA selection only | scalar path |
 
 Runtime ISA dispatch is **not** allowed — it breaks I3 (branchy, unbounded in
@@ -163,8 +163,23 @@ capability probe. Documented as *lock-free, not wait-free*, and measured to
 **degrade** with thread count rather than scale, so the header says plainly to
 prefer `spsc_queue` when the roles are fixed.
 
-**Open:** `atomic<bitfield<...>>` · double-width CAS free-list · bounded hazard
-domain · compile-time SIMD.
+**Open:** compile-time SIMD — but see below; it needs a concrete workload before
+it is worth a tier.
+
+**Not planned**, each for a specific reason rather than lack of time:
+
+| Item | Why not |
+|---|---|
+| double-width CAS free-list | Superseded by `versioned_handle` before it was ever built. §7 argues the handle is strictly better *for this job*: a full-width counter instead of the bits a pointer can spare, a plain 32-bit CAS instead of `cmpxchg16b`/`CASP`, and no assumption about pointer representation. Building it now would be building the thing that argument says is unnecessary. |
+| bounded hazard domain | Hazard pointers solve "dereference a pointer another thread may free". METL avoids that shape by design — `handle_pool` re-validates a generation on every access instead, so a stale handle resolves to `nullptr` rather than to freed memory. No caller inside the library. Reopen if a pointer-based lock-free structure is ever added. |
+| `atomic<bitfield<...>>` as a distinct type | `bitfield.hpp` already packs; `std::atomic<Carrier>` already sequences. What is left is a CAS retry loop, which `atomic_handle` already demonstrates for a packed word. A new public type for that is API-stability commitment bought with roughly fifteen lines of composition. Reopen if a caller needs single-field atomic update badly enough to justify the Tier 1 job that would come with it. |
+
+Compile-time SIMD stays open but is demoted. Its headline motivation was CRC, and
+that turned out to be a much duller problem: the implementation was
+bit-at-a-time, and a 16-entry nibble table bought 1.7x with no capability gate,
+no ISA-specific code and no new CI job (see the `METL_CRC_TABLE` entry in the
+changelog). A SIMD CRC would need all three, and would only help large buffers on
+hosts. The `flat_map` probe idea is speculative until a workload asks for it.
 
 ### Red — possible but a bad trade, or permanently out
 
