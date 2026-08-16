@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The test suite now runs on an emulated Cortex-M3 (`qemu-conformance`), and
+  `irq_lock` is verified against a real interrupt.** Until now the only thing
+  executed on an MCU was one smoke program covering 7 of 56 headers; everything
+  else was compile-and-link only. 66 of the 75 host tests now execute on target,
+  with 9 deny-listed for stated reasons (threads, forked death tests, tests that
+  deliberately `throw`, and one finding below). Deny-list rather than a curated
+  runner, so a new test gets target execution by default.
+  `irq_lock` was the sharpest gap: `docs/SCOPE.md` calls it the correct lock
+  between an ISR and the main loop, which is a claim about *behaviour*, and
+  nothing executed it. It now fires a real SysTick interrupt and observes that
+  the handler does **not** run while the lock is held — after first checking that
+  it *does* run when the lock is not held, so the result cannot be satisfied by an
+  interrupt that never fired. Also covered: ticks resume after unlock,
+  `guarded<>` holds the mask across a whole body, and an inner release does not
+  unmask while an outer lock is held (the blanket-`cpsie i` bug the save/restore
+  design exists to prevent).
+  **Finding:** `metl::atomic_ref<T>` with an 8-byte `T` does not **link** on
+  ARMv7-M — it lowers to `__atomic_load_8`/`__atomic_store_8` and bare-metal
+  toolchains ship no libatomic. Not a compile error, an undefined reference, so
+  the header could not have shown it. `atomic_ref.hpp` now warns.
+  **Also corrected:** `lock_test` asserted `!has_irq_masking` unconditionally —
+  true on a host, wrong on Cortex-M. The target run exposed it.
+
 ### Changed
 
 - **CRC-8/16/32 now use a nibble table by default (`METL_CRC_TABLE`).** The

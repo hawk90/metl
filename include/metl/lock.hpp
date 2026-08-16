@@ -92,6 +92,14 @@ struct null_lock {
 /// exit. The *critical section* the caller writes is what must stay bounded;
 /// interrupts are blocked for its whole duration, so keep it short.
 ///
+/// Verified by execution, not by inspection: `tests/sync/irq_masking_test.cpp`
+/// runs on an emulated Cortex-M3 in the `qemu-conformance` job, fires a real
+/// SysTick interrupt, and observes that the handler does not run while this lock
+/// is held — after first checking that it *does* run when the lock is not held,
+/// so the result cannot be satisfied by an interrupt that never fired. It also
+/// covers `guarded<>` holding the mask across a whole body, and an inner release
+/// not unmasking while an outer lock is held.
+///
 /// @warning On targets without interrupt masking (anything that is not an ARM
 ///          Cortex-M) this is a **compiler barrier only** and provides no mutual
 ///          exclusion. Check `metl::has_irq_masking`.
