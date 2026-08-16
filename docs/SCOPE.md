@@ -17,6 +17,7 @@ one and it is out of scope, however embedded it sounds.
 | I1 | **No heap.** No `malloc`/`free`/`operator new`/`sbrk` reachable from any public API. | `invariants` CI job (symbol audit) |
 | I2 | **No exceptions, no RTTI.** No `throw`, no `dynamic_cast`, no `typeid`. | `invariants` CI job + `-fno-exceptions -fno-rtti` builds |
 | I3 | **Deterministic.** Every public operation has a bounded worst-case execution time — no unbounded loops on data, no unbounded retry, no allocation-shaped latency cliffs. | Review + documented progress guarantee |
+| — | *(not an invariant, but the same discipline)* **Claims about hardware behaviour are verified by executing on the hardware.** `qemu-conformance` runs the test suite on an emulated Cortex-M3; `irq_lock` is checked against a real SysTick interrupt rather than by reading its own register back. | `qemu-conformance` CI job |
 | I4 | **Header-only, C++17.** No separately compiled TU required; no C++20+ features in public headers. | `host-test`, `cross-syntax` |
 | I5 | **Self-contained headers.** Every public header compiles standalone; every public header is reachable from the umbrella (or is explicitly opt-in — see §4). | `header-checks` CI job |
 
