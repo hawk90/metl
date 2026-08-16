@@ -24,7 +24,21 @@
 
 #include <metl/lock.hpp>
 
-#if METL_HAS_IRQ_MASKING
+// VTOR (the vector table relocation register) is ARMv7-M and up. Cortex-M0 is
+// ARMv6-M and has none — M0+ may have one, optionally — so an ARMv6-M build
+// cannot install its own table this way and skips the interrupt check.
+//
+// Worth being precise about what that costs: on an ARMv6-M build the masking
+// behaviour is left to lock_test's PRIMASK readback, which is weaker. Writing
+// VTOR anyway would "work" when ARMv6-M code is executed on an ARMv7-M core, and
+// fault on real silicon — a false pass is worse than a skip.
+#if defined(__ARM_ARCH_6M__)
+#define METL_IRQ_TEST_HAS_VTOR 0
+#else
+#define METL_IRQ_TEST_HAS_VTOR 1
+#endif
+
+#if METL_HAS_IRQ_MASKING && METL_IRQ_TEST_HAS_VTOR
 
 namespace {
 
@@ -94,12 +108,14 @@ void start_systick() noexcept {
 
 }  // namespace
 
-#endif  // METL_HAS_IRQ_MASKING
+#endif  // METL_HAS_IRQ_MASKING && METL_IRQ_TEST_HAS_VTOR
 
 int main() {
 #if !METL_HAS_IRQ_MASKING
   // No interrupts to mask on this target; lock_test covers the fallback path.
   std::printf("irq_masking_test: skipped (METL_HAS_IRQ_MASKING == 0)\n");
+#elif !METL_IRQ_TEST_HAS_VTOR
+  std::printf("irq_masking_test: skipped (ARMv6-M has no VTOR; see the note above)\n");
 #else
   install_vector_table();
   __asm__ __volatile__("cpsie i" ::: "memory");

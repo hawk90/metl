@@ -730,12 +730,42 @@ jobs:
   # BLOCKING on purpose, and a timeout counts as a failure. The smoke job
   # tolerates a timeout because its proof is "the program ran at all"; a
   # conformance gate that cannot distinguish a hang from a pass is not a gate.
+  #
+  # The Cortex-M0 entry also asserts the capability gates: mpmc_queue and
+  # atomic_handle MUST fail to compile there, because ARMv6-M has no CAS. If one
+  # of them builds, the gate has silently stopped rejecting and the job fails --
+  # the same reasoning as the invariant canary.
   # ---------------------------------------------------------------------------
   qemu-conformance:
-    name: qemu-conformance / cortex-m3
+    name: qemu-conformance / ${{ matrix.cpu }}
     runs-on: ubuntu-latest
     needs: preflight
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cpu: cortex-m3
+            machine: mps2-an385
+            expect_build_fail: ""
+          - cpu: cortex-m4
+            machine: mps2-an386
+            expect_build_fail: ""
+          - cpu: cortex-m7
+            machine: mps2-an500
+            expect_build_fail: ""
+          # ARMv6-M code executed on the AN385's ARMv7-M core. QEMU has no
+          # Cortex-M0 MPS2 board, and ARMv6-M is a strict subset, so the M0
+          # BUILD runs here — which is what exercises the no-CAS paths, the
+          # capability gates and the libgcc helpers an M0 build pulls in.
+          #
+          # Stated limit: this proves the M0 build runs, not that an M0 core runs
+          # it. Anything where the core differs rather than the instruction set
+          # (unaligned access, absent VTOR) is not covered, which is why
+          # irq_masking_test skips itself on ARMv6-M rather than passing falsely.
+          - cpu: cortex-m0
+            machine: mps2-an385
+            expect_build_fail: "sync/mpmc_queue_test.cpp,sync/atomic_handle_test.cpp"
 
     steps:
       - name: Checkout
@@ -747,14 +777,26 @@ jobs:
           sudo apt-get install -y gcc-arm-none-eabi picolibc-arm-none-eabi \
             qemu-system-arm
 
-      - name: Cross-compile and run the test suite on Cortex-M3
-        run: tools/run_qemu_tests.sh
+      - name: Confirm the machine model exists in this QEMU
+        run: |
+          if ! qemu-system-arm -machine help | grep -qE '^${{ matrix.machine }}\b'; then
+            echo "::error::qemu-system-arm has no machine '${{ matrix.machine }}'"
+            qemu-system-arm -machine help | head -40
+            exit 1
+          fi
+
+      - name: Cross-compile and run the test suite on ${{ matrix.cpu }}
+        run: |
+          tools/run_qemu_tests.sh \
+            --cpu ${{ matrix.cpu }} \
+            --machine ${{ matrix.machine }} \
+            --expect-build-fail '${{ matrix.expect_build_fail }}'
 
       - name: Upload build/run logs on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: qemu-conformance-logs
+          name: qemu-conformance-logs-${{ matrix.cpu }}
           path: build-qemu-conformance/*.log
           if-no-files-found: ignore
 
