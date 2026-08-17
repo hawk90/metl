@@ -43,6 +43,26 @@ enum class refcount_kind { non_atomic, atomic };
 ///          destructor so the correct most-derived object is destroyed.
 template <typename Derived, refcount_kind Kind = refcount_kind::non_atomic>
 class intrusive_ref_counter {
+  // An atomic counter needs a lock-free read-modify-write on std::size_t.
+  // ARMv7-M and up have LDREX/STREX and the compiler inlines it; **ARMv6-M
+  // (Cortex-M0/M0+) has neither**, so GCC emits calls to __atomic_fetch_add_4 /
+  // __atomic_fetch_sub_4 and a bare-metal toolchain ships no libatomic to
+  // resolve them.
+  //
+  // Without this assert the failure is `undefined reference to
+  // __atomic_fetch_add_4` at link time, pointing at a mangled symbol inside
+  // intrusive_ptr::reset — which tells a user nothing about what to do. It was
+  // found by running the test suite as a Cortex-M0 build (qemu-conformance).
+  //
+  // On a single-core MCU the answer is usually refcount_kind::non_atomic plus a
+  // metl::guarded<..., metl::irq_lock> around any ISR-shared access: masking
+  // interrupts is what makes that safe there, not an atomic counter.
+  static_assert(Kind == refcount_kind::non_atomic || std::atomic<std::size_t>::is_always_lock_free,
+                "metl::intrusive_ref_counter<Derived, refcount_kind::atomic> requires a lock-free "
+                "atomic read-modify-write on std::size_t, which ARMv6-M (Cortex-M0/M0+) does not "
+                "have. Use refcount_kind::non_atomic there, guarding ISR-shared access with "
+                "metl::guarded<T, metl::irq_lock>.");
+
  public:
   static constexpr refcount_kind kind = Kind;
 

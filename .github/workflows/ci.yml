@@ -731,10 +731,16 @@ jobs:
   # tolerates a timeout because its proof is "the program ran at all"; a
   # conformance gate that cannot distinguish a hang from a pass is not a gate.
   #
-  # The Cortex-M0 entry also asserts the capability gates: mpmc_queue and
-  # atomic_handle MUST fail to compile there, because ARMv6-M has no CAS. If one
-  # of them builds, the gate has silently stopped rejecting and the job fails --
-  # the same reasoning as the invariant canary.
+  # The Cortex-M0 entry also asserts the capability gates: mpmc_queue,
+  # atomic_handle and the atomic-refcounted intrusive_ptr MUST fail to compile
+  # there, because ARMv6-M has no lock-free read-modify-write. If one of them
+  # builds, the gate has silently stopped rejecting and the job fails -- the same
+  # reasoning as the invariant canary.
+  #
+  # intrusive_ptr was added to that list by this job finding it: the atomic
+  # counter used to fail at LINK time with `undefined reference to
+  # __atomic_fetch_add_4` inside a mangled symbol. It is now a static_assert that
+  # says what to use instead.
   # ---------------------------------------------------------------------------
   qemu-conformance:
     name: qemu-conformance / ${{ matrix.cpu }}
@@ -765,7 +771,7 @@ jobs:
           # irq_masking_test skips itself on ARMv6-M rather than passing falsely.
           - cpu: cortex-m0
             machine: mps2-an385
-            expect_build_fail: "sync/mpmc_queue_test.cpp,sync/atomic_handle_test.cpp"
+            expect_build_fail: "sync/mpmc_queue_test.cpp,sync/atomic_handle_test.cpp,vocab/intrusive_ptr_test.cpp"
 
     steps:
       - name: Checkout
