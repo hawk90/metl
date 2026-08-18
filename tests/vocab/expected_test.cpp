@@ -369,8 +369,10 @@ int main() {
   {
     using ev_t = metl::expected<void, int>;
 
-    const ev_t ok;
-    const ev_t err(metl::unexpect, 42);
+    // Named void_ok / void_err rather than ok / err: this function already has
+    // locals with those names near the top, and the build is -Wshadow -Werror.
+    const ev_t void_ok;
+    const ev_t void_err(metl::unexpect, 42);
 
     // and_then: runs on value, short-circuits on error.
     int and_then_calls = 0;
@@ -379,11 +381,11 @@ int main() {
       return metl::expected<int, int>(7);
     };
 
-    const auto from_ok = ok.and_then(make_ok);
+    const auto from_ok = void_ok.and_then(make_ok);
     if (!from_ok.has_value() || from_ok.value() != 7 || and_then_calls != 1) {
       return 54;
     }
-    const auto from_err = err.and_then(make_ok);
+    const auto from_err = void_err.and_then(make_ok);
     if (from_err.has_value() || from_err.error() != 42 || and_then_calls != 1) {
       return 55;  // the function must NOT have run, and the error must propagate
     }
@@ -395,11 +397,11 @@ int main() {
       return 9;
     };
 
-    const auto t_ok = ok.transform(to_value);
+    const auto t_ok = void_ok.transform(to_value);
     if (!t_ok.has_value() || t_ok.value() != 9 || transform_calls != 1) {
       return 56;
     }
-    const auto t_err = err.transform(to_value);
+    const auto t_err = void_err.transform(to_value);
     if (t_err.has_value() || t_err.error() != 42 || transform_calls != 1) {
       return 57;
     }
@@ -407,11 +409,11 @@ int main() {
     // transform to void: the U == void specialisation, both directions.
     int void_calls = 0;
     auto to_void = [&void_calls] { ++void_calls; };
-    const auto tv_ok = ok.transform(to_void);
+    const auto tv_ok = void_ok.transform(to_void);
     if (!tv_ok.has_value() || void_calls != 1) {
       return 58;
     }
-    const auto tv_err = err.transform(to_void);
+    const auto tv_err = void_err.transform(to_void);
     if (tv_err.has_value() || tv_err.error() != 42 || void_calls != 1) {
       return 59;
     }
@@ -423,11 +425,11 @@ int main() {
       return metl::expected<void, long>(metl::unexpect, static_cast<long>(e) + 1);
     };
 
-    const auto o_err = err.or_else(recover);
+    const auto o_err = void_err.or_else(recover);
     if (o_err.has_value() || o_err.error() != 43 || or_else_calls != 1) {
       return 60;
     }
-    const auto o_ok = ok.or_else(recover);
+    const auto o_ok = void_ok.or_else(recover);
     if (!o_ok.has_value() || or_else_calls != 1) {
       return 61;  // the handler must NOT have run on a value
     }
@@ -439,11 +441,11 @@ int main() {
       return static_cast<long>(e) * 2;
     };
 
-    const auto te_err = err.transform_error(widen);
+    const auto te_err = void_err.transform_error(widen);
     if (te_err.has_value() || te_err.error() != 84 || te_calls != 1) {
       return 62;
     }
-    const auto te_ok = ok.transform_error(widen);
+    const auto te_ok = void_ok.transform_error(widen);
     if (!te_ok.has_value() || te_calls != 1) {
       return 63;
     }
