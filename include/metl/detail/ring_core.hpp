@@ -21,12 +21,126 @@
 #include "metl/type_traits.hpp"
 
 #include <cstddef>
+#include <iterator>
 #include <new>
 #include <type_traits>
 #include <utility>
 
 namespace metl {
 namespace detail {
+
+/// Random-access iterator over a ring's LOGICAL order (front first).
+///
+/// Holds a container pointer and a logical index rather than a raw `T*`, because
+/// a ring's elements are not contiguous: the sequence wraps, so pointer
+/// arithmetic over the storage array would walk out of the live range and into
+/// unconstructed slots. Indices go through the container's existing
+/// `physical_index` mapping, so the iterator cannot disagree with `at()` about
+/// where an element lives — there is one mapping, not two.
+///
+/// Random access rather than bidirectional: the underlying `at()` is already
+/// O(1), so the stronger category costs nothing and lets the standard algorithms
+/// that need it work on a deque.
+///
+/// @tparam Container The ring type (const-qualified for a const_iterator).
+/// @tparam Reference `T&` or `const T&`.
+/// @tparam Pointer `T*` or `const T*`.
+template <typename Container, typename Reference, typename Pointer>
+class ring_iterator {
+ public:
+  using iterator_category = std::random_access_iterator_tag;
+  using value_type = typename std::remove_cv<typename std::remove_reference<Reference>::type>::type;
+  using difference_type = std::ptrdiff_t;
+  using reference = Reference;
+  using pointer = Pointer;
+
+  constexpr ring_iterator() noexcept : container_(nullptr), index_(0) {}
+  constexpr ring_iterator(Container* container, std::size_t index) noexcept
+      : container_(container), index_(index) {}
+
+  /// Converts a mutable iterator to a const one; the reverse does not compile.
+  template <typename OtherContainer,
+            typename OtherReference,
+            typename OtherPointer,
+            typename = typename std::enable_if<std::is_convertible<OtherContainer*, Container*>::value>::type>
+  constexpr ring_iterator(const ring_iterator<OtherContainer, OtherReference, OtherPointer>& other) noexcept
+      : container_(other.container()), index_(other.index()) {}
+
+  METL_NODISCARD reference operator*() const noexcept { return container_->at(index_); }
+  METL_NODISCARD pointer operator->() const noexcept { return &container_->at(index_); }
+  METL_NODISCARD reference operator[](difference_type n) const noexcept {
+    return container_->at(index_ + static_cast<std::size_t>(n));
+  }
+
+  ring_iterator& operator++() noexcept {
+    ++index_;
+    return *this;
+  }
+  ring_iterator operator++(int) noexcept {
+    ring_iterator copy = *this;
+    ++index_;
+    return copy;
+  }
+  ring_iterator& operator--() noexcept {
+    --index_;
+    return *this;
+  }
+  ring_iterator operator--(int) noexcept {
+    ring_iterator copy = *this;
+    --index_;
+    return copy;
+  }
+
+  ring_iterator& operator+=(difference_type n) noexcept {
+    index_ = static_cast<std::size_t>(static_cast<difference_type>(index_) + n);
+    return *this;
+  }
+  ring_iterator& operator-=(difference_type n) noexcept { return *this += -n; }
+
+  METL_NODISCARD friend ring_iterator operator+(ring_iterator it, difference_type n) noexcept {
+    it += n;
+    return it;
+  }
+  METL_NODISCARD friend ring_iterator operator+(difference_type n, ring_iterator it) noexcept {
+    it += n;
+    return it;
+  }
+  METL_NODISCARD friend ring_iterator operator-(ring_iterator it, difference_type n) noexcept {
+    it -= n;
+    return it;
+  }
+  METL_NODISCARD friend difference_type operator-(const ring_iterator& lhs,
+                                                  const ring_iterator& rhs) noexcept {
+    return static_cast<difference_type>(lhs.index_) - static_cast<difference_type>(rhs.index_);
+  }
+
+  METL_NODISCARD friend bool operator==(const ring_iterator& lhs, const ring_iterator& rhs) noexcept {
+    return lhs.index_ == rhs.index_ && lhs.container_ == rhs.container_;
+  }
+  METL_NODISCARD friend bool operator!=(const ring_iterator& lhs, const ring_iterator& rhs) noexcept {
+    return !(lhs == rhs);
+  }
+  METL_NODISCARD friend bool operator<(const ring_iterator& lhs, const ring_iterator& rhs) noexcept {
+    return lhs.index_ < rhs.index_;
+  }
+  METL_NODISCARD friend bool operator>(const ring_iterator& lhs, const ring_iterator& rhs) noexcept {
+    return rhs < lhs;
+  }
+  METL_NODISCARD friend bool operator<=(const ring_iterator& lhs, const ring_iterator& rhs) noexcept {
+    return !(rhs < lhs);
+  }
+  METL_NODISCARD friend bool operator>=(const ring_iterator& lhs, const ring_iterator& rhs) noexcept {
+    return !(lhs < rhs);
+  }
+
+  /// Exposed for the converting constructor above; not part of the contract.
+  METL_NODISCARD constexpr Container* container() const noexcept { return container_; }
+  METL_NODISCARD constexpr std::size_t index() const noexcept { return index_; }
+
+ private:
+  Container* container_;
+  std::size_t index_;
+};
 
 /// Circular fixed-capacity storage shared by `ring_buffer` and `fixed_deque`.
 ///
@@ -138,6 +252,30 @@ class ring_core {
   METL_NODISCARD reference operator[](size_type index) noexcept { return at(index); }
   /// Accesses the element at logical `index`. @pre `index < size()`; asserts otherwise.
   METL_NODISCARD const_reference operator[](size_type index) const noexcept { return at(index); }
+
+  // --- iteration -------------------------------------------------------------
+  // In LOGICAL order: begin() is the front (oldest), so a range-for walks the
+  // ring the same way front()/pop_front() do. Neither container had any way to
+  // iterate before this, which made the ordinary embedded job -- drain a
+  // telemetry buffer, walk a deque -- impossible without an index loop.
+  using iterator = ring_iterator<ring_core, reference, T*>;
+  using const_iterator = ring_iterator<const ring_core, const_reference, const T*>;
+  using reverse_iterator = std::reverse_iterator<iterator>;
+  using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
+  METL_NODISCARD iterator begin() noexcept { return iterator(this, 0); }
+  METL_NODISCARD iterator end() noexcept { return iterator(this, size_); }
+  METL_NODISCARD const_iterator begin() const noexcept { return const_iterator(this, 0); }
+  METL_NODISCARD const_iterator end() const noexcept { return const_iterator(this, size_); }
+  METL_NODISCARD const_iterator cbegin() const noexcept { return begin(); }
+  METL_NODISCARD const_iterator cend() const noexcept { return end(); }
+
+  METL_NODISCARD reverse_iterator rbegin() noexcept { return reverse_iterator(end()); }
+  METL_NODISCARD reverse_iterator rend() noexcept { return reverse_iterator(begin()); }
+  METL_NODISCARD const_reverse_iterator rbegin() const noexcept { return const_reverse_iterator(end()); }
+  METL_NODISCARD const_reverse_iterator rend() const noexcept { return const_reverse_iterator(begin()); }
+  METL_NODISCARD const_reverse_iterator crbegin() const noexcept { return rbegin(); }
+  METL_NODISCARD const_reverse_iterator crend() const noexcept { return rend(); }
 
   /// Constructs an element in place at the back if there is room.
   /// @return true on success; false if full (no assert).
