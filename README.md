@@ -395,6 +395,7 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | No heap / no exceptions / no RTTI | Cortex-M0/M3/M4/M7, newlib-nano | link + **audit the image's symbol table**; a deliberate canary must fail it | `invariants` |
 | Lock-free capability | Cortex-M0/M3/M4/M7 | the trait must match the target **and** the opposite expectation must not compile | `handle-atomics` |
 | Non-default configs | `METL_CRC_TABLE=0` | build + `ctest` (an `#if` arm nothing else compiles) | `config-matrix` |
+| Coverage | host, Clang source-based | `include/metl` line + branch coverage against a floor | `coverage` |
 | Benchmarks | host | build + run each suite (`--quick`); **not** a performance gate | `bench-smoke` |
 | Header hygiene | per-header self-containment + umbrella completeness | `-fsyntax-only` per header + `ctest` | `header-checks` |
 | Install / consume | `find_package(metl)` downstream | install + build + **run** a consumer | `install-check` |

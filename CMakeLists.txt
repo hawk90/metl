@@ -26,6 +26,7 @@ option(METL_INSTALL "Generate install targets" ON)
 option(METL_BUILD_FUZZERS
        "Build the libFuzzer harnesses (Clang only; links -fsanitize=fuzzer,address,undefined)" OFF)
 option(METL_BUILD_BENCHMARKS "Build the micro-benchmarks (host only; always compiled -O2)" OFF)
+option(METL_ENABLE_COVERAGE "Instrument the tests for source-based coverage (Clang/GCC)" OFF)
 
 # ---------------------------------------------------------------------------
 # Public library  (umbrella header-only target)
@@ -133,6 +134,21 @@ if(METL_BUILD_TESTS)
     if(METL_ENABLE_TSAN)
       target_compile_options(metl_test_options INTERFACE -fsanitize=thread -fno-omit-frame-pointer)
       target_link_options(metl_test_options INTERFACE -fsanitize=thread)
+    endif()
+    # Coverage instrumentation. Source-based (llvm-cov) on Clang, gcov on GCC.
+    #
+    # -O0 -g on purpose: an optimized build merges and reorders branches, so the
+    # report describes code the compiler produced rather than code that was
+    # written, and a branch that was inlined away reads as covered.
+    if(METL_ENABLE_COVERAGE)
+      if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
+        target_compile_options(metl_test_options INTERFACE
+          -fprofile-instr-generate -fcoverage-mapping -O0 -g)
+        target_link_options(metl_test_options INTERFACE -fprofile-instr-generate)
+      else()
+        target_compile_options(metl_test_options INTERFACE --coverage -O0 -g)
+        target_link_options(metl_test_options INTERFACE --coverage)
+      endif()
     endif()
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     target_compile_options(metl_test_options INTERFACE /W4 /permissive-)

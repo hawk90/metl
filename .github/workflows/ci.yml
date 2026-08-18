@@ -869,6 +869,56 @@ jobs:
         run: ctest --test-dir build-config -j --output-on-failure
 
   # ---------------------------------------------------------------------------
+  # Coverage (host, Clang source-based).
+  #
+  # Reports on include/metl only: llvm-cov's default total also counts the test
+  # sources, which measures how well the tests cover themselves.
+  #
+  # Floors rather than a target. They sit below the measured numbers so the job
+  # catches a regression instead of failing on noise, and they ratchet upward
+  # deliberately, never automatically.
+  #
+  # What this number does NOT cover, stated here because a single percentage
+  # invites the wrong conclusion:
+  #   * `#if` arms this configuration does not compile -- config-matrix exists
+  #     for those, since coverage cannot report on code that was never built.
+  #   * Anything gated on being an MCU: irq_lock's PRIMASK path, the ARMv6-M
+  #     capability rejections, the -fno-exceptions arms. Their evidence is
+  #     qemu-conformance.
+  #   * Anything evaluated at compile time. constexpr code exercised only by
+  #     static_assert reads as uncovered lines; bit.hpp shows ~29% lines at 100%
+  #     branches for that reason alone.
+  # ---------------------------------------------------------------------------
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    needs: preflight
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang llvm
+
+      - name: Measure
+        env:
+          CC: clang
+          CXX: clang++
+        run: tools/coverage.sh --min-lines 85 --min-branches 70
+
+      - name: Upload the report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: build-coverage/report.txt
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
   # Header hygiene — per-header self-containment + umbrella completeness
   # ---------------------------------------------------------------------------
   header-checks:
