@@ -26,6 +26,12 @@
 # So: this measures host-visible RUNTIME branch depth. It is a floor on quality,
 # not a summary of it.
 #
+# THE NUMBERS ARE COMPILER-VERSION DEPENDENT. Different Clang releases lower the
+# same source to different numbers of instrumented branches -- this repo measured
+# 1258 branches under Apple Clang and 1122 under Ubuntu's, giving 75.1% and 72.3%
+# for identical code. So a local run will not match CI, and the CI number is the
+# one the floor is set against. Do not chase a local figure.
+#
 # Usage: tools/coverage.sh [--min-lines 85] [--min-branches 70]
 
 set -uo pipefail
