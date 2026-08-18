@@ -16,7 +16,11 @@ fully usable on host platforms for development and testing.
 ## Highlights
 
 - Header-only; drop the `include/` directory into any project.
-- C++17, with no compiler extensions required.
+- **C++17 baseline**, with no compiler extensions required. C++20 is verified in
+  CI as well, and on a C++20 toolchain `optional` becomes genuinely
+  constant-evaluable — the library detects that through
+  `__cpp_lib_constexpr_dynamic_alloc` rather than the language version, so it
+  degrades correctly on a C++20 compiler with an older standard library.
 - No exceptions, no heap, and no RTTI by default.
 - Deterministic, fixed-capacity data structures and allocators.
 - Bazel-style CMake helpers for libraries, tests, benchmarks, and binaries.
@@ -361,6 +365,14 @@ To consume METL from your own IDF project without vendoring it, point
 | Clang             | 11              |
 | MSVC              | 19.20 (VS 2019) |
 | arm-none-eabi-gcc | 10              |
+
+**Language standard: C++17 is the baseline and is what these minimums are for.**
+Building as C++20 is also verified in CI (`config-matrix / cxx20`) and is
+supported, but not required — deliberately. Requiring it would raise the GCC
+floor and drop IAR EWARM and the older vendor SDKs listed below, and there is
+currently no METL feature that needs it: the one place C++20 buys something,
+`optional`'s constant evaluation, already works through a dual-mode path keyed on
+the standard library's feature-test macro rather than on the language version.
 
 Tested targets:
 
