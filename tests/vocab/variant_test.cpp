@@ -414,5 +414,97 @@ int main() {
                                const volatile int>,
                 "alt cv");
 
+  // ---- relational operators -------------------------------------------------
+  // Coverage showed all six barely exercised. They have two distinct paths that
+  // matter: comparing DIFFERENT alternatives, which orders by index and never
+  // touches the values, and comparing the SAME alternative, which forwards to
+  // the alternative's own operator. Index ordering is the subtle one, and it was
+  // untested.
+  {
+    using v_t = metl::variant<int, long>;
+    const v_t a0(metl::in_place_index<0>, 1);   // index 0, value 1
+    const v_t b0(metl::in_place_index<0>, 2);   // index 0, value 2
+    const v_t a1(metl::in_place_index<1>, 0L);  // index 1, value 0
+
+    // Same index: defers to the alternative's comparison.
+    if (!(a0 == a0) || (a0 == b0)) {
+      return 53;
+    }
+    if (!(a0 != b0) || (a0 != a0)) {
+      return 54;
+    }
+    if (!(a0 < b0) || (b0 < a0)) {
+      return 55;
+    }
+    if (!(b0 > a0) || (a0 > b0)) {
+      return 56;
+    }
+    if (!(a0 <= b0) || !(a0 <= a0) || (b0 <= a0)) {
+      return 57;
+    }
+    if (!(b0 >= a0) || !(a0 >= a0) || (a0 >= b0)) {
+      return 58;
+    }
+
+    // Different index: ordered by index alone, so a smaller VALUE at a larger
+    // index still compares greater. This is the path a naive implementation
+    // gets wrong by falling through to the value comparison.
+    if (a0 == a1) {
+      return 59;
+    }
+    if (!(a0 != a1)) {
+      return 60;
+    }
+    if (!(a0 < a1) || (a1 < a0)) {
+      return 61;
+    }
+    if (!(a1 > a0) || (a0 > a1)) {
+      return 62;
+    }
+    if (!(a0 <= a1) || (a1 <= a0)) {
+      return 63;
+    }
+    if (!(a1 >= a0) || (a0 >= a1)) {
+      return 64;
+    }
+  }
+
+  // ---- self-assignment ------------------------------------------------------
+  // Both operator= overloads begin with a `this == &other` guard that nothing
+  // had ever taken. Skipping it would destroy the alternative and then read it.
+  {
+    // Both self-assignments go through a pointer on purpose. Written directly,
+    // `v = v` and `v = std::move(v)` trip -Wself-assign / -Wself-move, and the
+    // build is -Werror -- so the obvious spelling does not compile here. The
+    // indirection is what lets the guard actually be exercised; do not
+    // "simplify" it away.
+    metl::variant<int, long> v(metl::in_place_index<0>, 7);
+    const metl::variant<int, long>* const_self = &v;
+    v = *const_self;  // copy self-assign
+    if (v.index() != 0 || metl::get<0>(v) != 7) {
+      return 65;
+    }
+    metl::variant<int, long>* self = &v;
+    v = static_cast<metl::variant<int, long>&&>(*self);  // move self-assign
+    if (v.index() != 0 || metl::get<0>(v) != 7) {
+      return 66;
+    }
+  }
+
+  // ---- get_if on the inactive alternative -----------------------------------
+  {
+    metl::variant<int, long> v(metl::in_place_index<0>, 3);
+    if (metl::get_if<1>(&v) != nullptr || metl::get_if<long>(&v) != nullptr) {
+      return 67;
+    }
+    if (metl::get_if<0>(&v) == nullptr || *metl::get_if<0>(&v) != 3) {
+      return 68;
+    }
+    const metl::variant<int, long>& cv = v;
+    if (metl::get_if<1>(&cv) != nullptr || metl::get_if<0>(&cv) == nullptr) {
+      return 69;
+    }
+  }
+
   return 0;
 }

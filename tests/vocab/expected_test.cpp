@@ -359,5 +359,95 @@ int main() {
     }
   }
 
+  // ---- expected<void, E>: the short-circuit half of the monadic API ---------
+  // Coverage showed the complementary branches untested: and_then / transform
+  // when the expected holds an ERROR, and or_else / transform_error when it
+  // holds a VALUE. Those are the branches that make the API worth having -- an
+  // and_then that ran its function on an error, or an or_else that ran its
+  // handler on success, would pass every test that only exercised the other
+  // direction.
+  {
+    using ev_t = metl::expected<void, int>;
+
+    const ev_t ok;
+    const ev_t err(metl::unexpect, 42);
+
+    // and_then: runs on value, short-circuits on error.
+    int and_then_calls = 0;
+    auto make_ok = [&and_then_calls] {
+      ++and_then_calls;
+      return metl::expected<int, int>(7);
+    };
+
+    const auto from_ok = ok.and_then(make_ok);
+    if (!from_ok.has_value() || from_ok.value() != 7 || and_then_calls != 1) {
+      return 54;
+    }
+    const auto from_err = err.and_then(make_ok);
+    if (from_err.has_value() || from_err.error() != 42 || and_then_calls != 1) {
+      return 55;  // the function must NOT have run, and the error must propagate
+    }
+
+    // transform: same shape.
+    int transform_calls = 0;
+    auto to_value = [&transform_calls] {
+      ++transform_calls;
+      return 9;
+    };
+
+    const auto t_ok = ok.transform(to_value);
+    if (!t_ok.has_value() || t_ok.value() != 9 || transform_calls != 1) {
+      return 56;
+    }
+    const auto t_err = err.transform(to_value);
+    if (t_err.has_value() || t_err.error() != 42 || transform_calls != 1) {
+      return 57;
+    }
+
+    // transform to void: the U == void specialisation, both directions.
+    int void_calls = 0;
+    auto to_void = [&void_calls] { ++void_calls; };
+    const auto tv_ok = ok.transform(to_void);
+    if (!tv_ok.has_value() || void_calls != 1) {
+      return 58;
+    }
+    const auto tv_err = err.transform(to_void);
+    if (tv_err.has_value() || tv_err.error() != 42 || void_calls != 1) {
+      return 59;
+    }
+
+    // or_else: runs on error, short-circuits on value.
+    int or_else_calls = 0;
+    auto recover = [&or_else_calls](int e) {
+      ++or_else_calls;
+      return metl::expected<void, long>(metl::unexpect, static_cast<long>(e) + 1);
+    };
+
+    const auto o_err = err.or_else(recover);
+    if (o_err.has_value() || o_err.error() != 43 || or_else_calls != 1) {
+      return 60;
+    }
+    const auto o_ok = ok.or_else(recover);
+    if (!o_ok.has_value() || or_else_calls != 1) {
+      return 61;  // the handler must NOT have run on a value
+    }
+
+    // transform_error: same shape.
+    int te_calls = 0;
+    auto widen = [&te_calls](int e) {
+      ++te_calls;
+      return static_cast<long>(e) * 2;
+    };
+
+    const auto te_err = err.transform_error(widen);
+    if (te_err.has_value() || te_err.error() != 84 || te_calls != 1) {
+      return 62;
+    }
+    const auto te_ok = ok.transform_error(widen);
+    if (!te_ok.has_value() || te_calls != 1) {
+      return 63;
+    }
+  }
+
   return 0;
 }
