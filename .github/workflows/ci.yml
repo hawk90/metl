@@ -807,6 +807,68 @@ jobs:
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
+  # Non-default configurations.
+  #
+  # Coverage tooling cannot see an #if arm that is never COMPILED — it reports on
+  # the code the build actually produced, so a configuration nobody builds looks
+  # like 100% covered code that has never existed. This job builds the ones the
+  # rest of the pipeline does not.
+  #
+  # The list is deliberately short, because an audit of the configuration macros
+  # found most of them already covered:
+  #
+  #   METL_HARDENING (NONE/FAST/DEBUG)  covered — tests/core/hardening_*_test.cpp
+  #                                     each #define a level before including the
+  #                                     shared body, so all three get compiled.
+  #   METL_NO_EXCEPTIONS (0 and 1)      covered — the host test build has
+  #                                     exceptions on, and qemu-conformance
+  #                                     compiles everything -fno-exceptions.
+  #   METL_CRC_TABLE (0)                NOT covered until now. Added with the
+  #                                     nibble table; only the default (1) was
+  #                                     ever built.
+  #
+  # Adding a configuration here is one matrix line, which is the point of the job
+  # existing for a single entry today.
+  # ---------------------------------------------------------------------------
+  config-matrix:
+    name: config-matrix / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    needs: preflight
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: crc-table-off
+            flags: -DMETL_CRC_TABLE=0
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang
+
+      - name: Configure with ${{ matrix.flags }}
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -B build-config -S . \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DMETL_WARNINGS_AS_ERRORS=ON \
+            -DMETL_INSTALL=OFF \
+            -DCMAKE_CXX_FLAGS="${{ matrix.flags }}"
+
+      - name: Build
+        run: cmake --build build-config -j
+
+      - name: Test
+        run: ctest --test-dir build-config -j --output-on-failure
+
+  # ---------------------------------------------------------------------------
   # Header hygiene — per-header self-containment + umbrella completeness
   # ---------------------------------------------------------------------------
   header-checks:
