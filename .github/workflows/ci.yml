@@ -826,6 +826,13 @@ jobs:
   #   METL_CRC_TABLE (0)                NOT covered until now. Added with the
   #                                     nibble table; only the default (1) was
   #                                     ever built.
+  #   C++20                             NOT covered until now, and it hid a test
+  #                                     that could not fail: the static_asserts
+  #                                     in optional_constexpr_test.cpp sit behind
+  #                                     `#if __cplusplus >= 202002L`, so the file
+  #                                     was green everywhere while verifying
+  #                                     nothing. The claim it makes turns out to
+  #                                     be true -- it just had never been checked.
   #
   # Adding a configuration here is one matrix line, which is the point of the job
   # existing for a single entry today.
@@ -840,7 +847,18 @@ jobs:
       matrix:
         include:
           - name: crc-table-off
-            flags: -DMETL_CRC_TABLE=0
+            cmake_args: -DCMAKE_CXX_FLAGS=-DMETL_CRC_TABLE=0
+          # C++20 was never compiled here until this entry existed, which meant
+          # detail/construct.hpp's std::construct_at path -- and the
+          # static_asserts in tests/vocab/optional_constexpr_test.cpp, which are
+          # guarded by `#if __cplusplus >= 202002L` -- had never been built. That
+          # test was green in every configuration while proving nothing.
+          #
+          # The baseline stays C++17. This leg only establishes that the C++20
+          # arm of the dual-mode code compiles and passes, which is the
+          # prerequisite for any decision about raising it.
+          - name: cxx20
+            cmake_args: -DCMAKE_CXX_STANDARD=20 -DCMAKE_CXX_STANDARD_REQUIRED=ON
 
     steps:
       - name: Checkout
@@ -851,7 +869,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential clang
 
-      - name: Configure with ${{ matrix.flags }}
+      - name: Configure with ${{ matrix.cmake_args }}
         env:
           CC: clang
           CXX: clang++
@@ -860,7 +878,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Debug \
             -DMETL_WARNINGS_AS_ERRORS=ON \
             -DMETL_INSTALL=OFF \
-            -DCMAKE_CXX_FLAGS="${{ matrix.flags }}"
+            ${{ matrix.cmake_args }}
 
       - name: Build
         run: cmake --build build-config -j
