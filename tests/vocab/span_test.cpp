@@ -211,5 +211,86 @@ int main() {
     return 13;
   }
 
+  // --- runtime subview API ---------------------------------------------------
+  // front/back and the NON-template first/last/subspan overloads were exercised
+  // only inside the constexpr checks above, i.e. only by constant evaluation.
+  // Coverage showed them at zero runtime executions, which left two things
+  // unverified: the METL_ASSERT precondition branches, and subspan's
+  // `count == dynamic_extent` arithmetic. Both are ordinary runtime paths for a
+  // library whose spans are normally runtime objects.
+  int rt[] = {1, 2, 3, 4, 5};
+  metl::span<int> rt_view(rt);
+
+  if (rt_view.front() != 1 || rt_view.back() != 5) {
+    return 14;
+  }
+
+  metl::span<int, 5> rt_fixed(rt);
+  if (rt_fixed.front() != 1 || rt_fixed.back() != 5) {
+    return 15;
+  }
+
+  const auto head = rt_view.first(2);
+  if (head.size() != 2 || head[0] != 1 || head[1] != 2) {
+    return 16;
+  }
+
+  const auto tail = rt_view.last(2);
+  if (tail.size() != 2 || tail[0] != 4 || tail[1] != 5) {
+    return 17;
+  }
+
+  // Both subspan overloads: with an explicit count, and with the default
+  // dynamic_extent count that makes it run to the end.
+  const auto mid = rt_view.subspan(1, 3);
+  if (mid.size() != 3 || mid[0] != 2 || mid[2] != 4) {
+    return 18;
+  }
+
+  const auto rest = rt_view.subspan(2);
+  if (rest.size() != 3 || rest[0] != 3 || rest[2] != 5) {
+    return 19;
+  }
+
+  // Degenerate but legal edges: empty results at both ends.
+  if (!rt_view.first(0).empty() || !rt_view.last(0).empty()) {
+    return 20;
+  }
+  if (!rt_view.subspan(rt_view.size()).empty()) {
+    return 21;
+  }
+  if (!rt_view.subspan(1, 0).empty()) {
+    return 22;
+  }
+
+  // Template first<N>/last<N> at runtime as well. The runtime overloads above do
+  // not reach them -- they are separate functions that only constant evaluation
+  // had ever entered.
+  const auto head_t = rt_view.first<2>();
+  if (head_t.size() != 2 || head_t[0] != 1 || head_t[1] != 2) {
+    return 24;
+  }
+  const auto tail_t = rt_view.last<2>();
+  if (tail_t.size() != 2 || tail_t[0] != 4 || tail_t[1] != 5) {
+    return 25;
+  }
+  static_assert(decltype(head_t)::extent == 2, "first<2> yields a fixed extent");
+  static_assert(decltype(tail_t)::extent == 2, "last<2> yields a fixed extent");
+
+  // Same two on a fixed-extent source, which is the branch the static_assert in
+  // those functions guards.
+  const auto fixed_head = rt_fixed.first<3>();
+  const auto fixed_tail = rt_fixed.last<3>();
+  if (fixed_head.size() != 3 || fixed_head[0] != 1 || fixed_tail[2] != 5) {
+    return 26;
+  }
+
+  // The whole span through subspan, so offset 0 with an explicit full count is
+  // exercised as well as the default.
+  const auto whole = rt_view.subspan(0, rt_view.size());
+  if (whole.size() != rt_view.size() || whole.front() != 1 || whole.back() != 5) {
+    return 23;
+  }
+
   return 0;
 }
