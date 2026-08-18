@@ -19,10 +19,11 @@ fully usable on host platforms for development and testing.
 - C++17, with no compiler extensions required.
 - No exceptions, no heap, and no RTTI by default.
 - Deterministic, fixed-capacity data structures and allocators.
-- Bazel-style CMake helpers for libraries, tests, and binaries (plus
-  scaffolding for future google/benchmark-based benchmarks).
+- Bazel-style CMake helpers for libraries, tests, benchmarks, and binaries.
 - Clean under AddressSanitizer and UndefinedBehaviorSanitizer with
   `-Werror` enabled.
+- **The test suite runs on emulated Cortex-M0/M3/M4/M7**, not just cross-compiles
+  for them — see [Platform support matrix](#platform-support-matrix).
 
 ## Quick start
 
@@ -178,6 +179,12 @@ Worked example: [`examples/mmio_peripheral.cpp`](examples/mmio_peripheral.cpp)
 
 ## Documentation
 
+- **[Scope](docs/SCOPE.md)** — what belongs in METL and what does not, stated as
+  five invariants (no heap; no exceptions/RTTI; deterministic; header-only C++17;
+  self-contained headers) rather than a target list. Also the tier definitions,
+  the progress-guarantee vocabulary used throughout the headers, and the rule
+  that a tier and its CI job arrive in the same PR. **Read this before opening a
+  PR.**
 - **[Cookbook](docs/COOKBOOK.md)** — task-oriented recipes (fixed-capacity
   vector, error handling without exceptions, ISR↔main-loop SPSC queue,
   memory-mapped registers, a small FSM, …). Every snippet mirrors a compiled
@@ -376,6 +383,7 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | Host LTO | Release + IPO/LTO | build + `ctest` | `lto` |
 | Sanitizers | Linux / clang — ASan+UBSan, TSan (Debug, `-Werror`) | build + `ctest` (incl. threaded tests) | `sanitizers` |
 | ARM Cortex-M (gcc) | Cortex-M0/M3/M4/M7, freestanding | cross-compile + code size | `arm-cross` |
+| **ARM Cortex-M (run)** | **Cortex-M0/M3/M4/M7 under qemu-system-arm** | **cross-compile + RUN the test suite (66 tests per core)**; the M0 leg additionally asserts that the CAS-requiring types *fail to compile* there | `qemu-conformance` |
 | ARM Cortex-M (clang) | cortex-m4, `arm-none-eabi` target | second frontend, `-fsyntax-only` | `arm-cross-clang` |
 | RISC-V | rv64 (linux-gnu g++) | freestanding `-fsyntax-only` | `riscv-cross` |
 | Xtensa (ESP32) | ESP-IDF component, `esp32` target | `idf.py build` (Docker) — **provisional** | `esp-idf` |
@@ -384,6 +392,10 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | Bare-metal libc (link) | Cortex-M3 + newlib-nano (nosys) | compile + **link** + size | `newlib-link` |
 | Bare-metal libc (run) | Cortex-M3 + picolibc, mps2-an385 | link + **run** under qemu-system-arm (semihosting) | `picolibc-qemu` |
 | Zephyr RTOS | qemu_cortex_m3 module build + run | `west build` + twister **run** (QEMU) — **provisional** | `zephyr` |
+| No heap / no exceptions / no RTTI | Cortex-M0/M3/M4/M7, newlib-nano | link + **audit the image's symbol table**; a deliberate canary must fail it | `invariants` |
+| Lock-free capability | Cortex-M0/M3/M4/M7 | the trait must match the target **and** the opposite expectation must not compile | `handle-atomics` |
+| Non-default configs | `METL_CRC_TABLE=0` | build + `ctest` (an `#if` arm nothing else compiles) | `config-matrix` |
+| Benchmarks | host | build + run each suite (`--quick`); **not** a performance gate | `bench-smoke` |
 | Header hygiene | per-header self-containment + umbrella completeness | `-fsyntax-only` per header + `ctest` | `header-checks` |
 | Install / consume | `find_package(metl)` downstream | install + build + **run** a consumer | `install-check` |
 | Examples | every `examples/*.cpp`, `-Wall -Wextra -Werror` | build + **run** (self-checking) | `examples` |
@@ -393,6 +405,24 @@ host; **arm-none-eabi-gcc** and **clang** (bare-metal ARM); **RISC-V** (rv64 and
 ESP32-C3); **Xtensa** (ESP32); **PowerPC64** big-endian. Build types: Debug,
 Release, MinSizeRel (`-Os`), plus LTO. Runtime configs: no-exceptions, no-RTTI,
 freestanding, newlib-nano and picolibc libcs.
+
+The distinction worth drawing out: most embedded C++ libraries are *cross-compiled*
+in CI. METL's test suite is **executed** on emulated Cortex-M0/M3/M4/M7 — 66 tests
+per core — so container, queue, allocator and vocabulary behaviour is verified on
+the target rather than inferred from a host run. `irq_lock` in particular is
+checked against a **real SysTick interrupt**: the test observes that the handler
+does not run while the lock is held, after first confirming it does run when the
+lock is not held.
+
+Two portability limits were found that way, and both are now compile-time errors
+with an explanatory message rather than link failures:
+
+- `intrusive_ref_counter<..., refcount_kind::atomic>` needs a lock-free
+  read-modify-write, which **ARMv6-M (Cortex-M0/M0+) does not have**. Use
+  `refcount_kind::non_atomic` there, guarding ISR-shared access with
+  `metl::guarded<T, metl::irq_lock>`.
+- `atomic_ref<T>` with an 8-byte `T` lowers to 64-bit atomic calls that no
+  bare-metal toolchain provides. Keep `T` to 4 bytes or fewer on an MCU.
 
 > **Provisional** jobs (`esp-idf`, `zephyr`) are `continue-on-error: true`:
 > their component/module wiring is real and correct-by-construction, but the
@@ -416,7 +446,11 @@ CI that automatically verifies them. They are supported on a best-effort basis:
 - Deterministic execution time — no surprise reallocation or rehashing.
 - Exception-free friendly — errors are returned via `expected`-style values.
 - Low-overhead abstractions — zero-cost wherever possible.
-- Host and embedded parity — the same code runs in both environments.
+- Host and embedded parity — the same code runs in both environments, and the
+  same test suite is executed in both. Where a target genuinely cannot support
+  something (ARMv6-M has no lock-free read-modify-write), the difference is a
+  **compile-time error naming the alternative**, never a silent behavioural
+  divergence.
 - Composable building blocks — small, orthogonal types over monolithic ones.
 
 ## Project layout
@@ -428,6 +462,9 @@ metl/
 ├── include/
 │   └── metl/
 ├── tests/
+│   └── embedded/       # freestanding probes + the QEMU runner shim
+├── bench/              # micro-benchmarks (dependency-free harness)
+├── tools/              # invariant symbol audit, QEMU test runner
 ├── examples/
 ├── samples/
 │   ├── zephyr/         # Zephyr sample app (metl_hello)
