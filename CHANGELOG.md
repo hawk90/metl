@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`ring_buffer` and `fixed_deque` are iterable.** Neither had `begin()`/`end()`
+  at all, which made the ordinary embedded job — drain a telemetry ring, walk a
+  deque — impossible without an index loop, and left them the only fixed-capacity
+  sequence containers in the library you could not use with a range-`for` or a
+  standard algorithm. Both now expose `begin`/`end`/`cbegin`/`cend` plus the
+  reverse forms, from a shared **random-access** iterator on `detail::ring_core`
+  so the two cannot drift apart.
+  The iterator holds a **logical index**, not a `T*`: a ring's elements are not
+  contiguous, so pointer arithmetic over the storage array walks out of the live
+  range and into unconstructed slots as soon as the buffer wraps. Indices go
+  through the container's existing `physical_index` mapping, so there is one
+  mapping rather than two that can disagree. Random access rather than
+  bidirectional because the underlying `at()` is already O(1) — the stronger
+  category costs nothing and lets algorithms that need it work. A mutable
+  iterator converts to a `const_iterator`; the reverse is rejected, and a
+  `static_assert` in the tests pins that.
+
 - **The test suite now runs on emulated Cortex-M0/M3/M4/M7 (`qemu-conformance`),
   and `irq_lock` is verified against a real interrupt.** Until now the only thing
   executed on an MCU was one smoke program covering 7 of 56 headers; everything
