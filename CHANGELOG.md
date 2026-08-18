@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **The test suite now runs on an emulated Cortex-M3 (`qemu-conformance`), and
-  `irq_lock` is verified against a real interrupt.** Until now the only thing
+- **The test suite now runs on emulated Cortex-M0/M3/M4/M7 (`qemu-conformance`),
+  and `irq_lock` is verified against a real interrupt.** Until now the only thing
   executed on an MCU was one smoke program covering 7 of 56 headers; everything
   else was compile-and-link only. 66 of the 75 host tests now execute on target,
   with 9 deny-listed for stated reasons (threads, forked death tests, tests that
@@ -31,6 +31,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the header could not have shown it. `atomic_ref.hpp` now warns.
   **Also corrected:** `lock_test` asserted `!has_irq_masking` unconditionally —
   true on a host, wrong on Cortex-M. The target run exposed it.
+  M3/M4/M7 run 66 tests each. The **Cortex-M0 leg additionally asserts the
+  capability gates**: `mpmc_queue`, `atomic_handle` and the atomic-refcounted
+  `intrusive_ptr` must *fail to compile* there, and the job fails if one of them
+  builds — a gate that cannot be observed rejecting is not a gate. (M0 runs an
+  ARMv6-M build on an ARMv7-M core, since QEMU has no M0 MPS2 board; that proves
+  the M0 *build* runs, not that an M0 *core* runs it, and `irq_masking_test`
+  skips itself there because ARMv6-M has no VTOR rather than passing falsely.)
+
+### Fixed
+
+- **`metl::intrusive_ref_counter<Derived, refcount_kind::atomic>` now fails with
+  a `static_assert` instead of a link error on ARMv6-M.** Cortex-M0/M0+ has no
+  lock-free read-modify-write, so GCC emits `__atomic_fetch_add_4` /
+  `__atomic_fetch_sub_4` and a bare-metal toolchain ships no libatomic. M3 and up
+  inline it with `LDREX`/`STREX`, which is why nothing had noticed. What a user
+  got was `undefined reference to __atomic_fetch_add_4` pointing into a mangled
+  symbol inside `intrusive_ptr::reset` — true and useless. The assert now names
+  the constraint and the alternative: `refcount_kind::non_atomic` plus
+  `metl::guarded<..., metl::irq_lock>` around ISR-shared access, because on a
+  single-core MCU masking interrupts is what makes that safe, not an atomic
+  counter. Found by the Cortex-M0 conformance leg.
 
 ### Changed
 
