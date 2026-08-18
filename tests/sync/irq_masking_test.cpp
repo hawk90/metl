@@ -24,7 +24,21 @@
 
 #include <metl/lock.hpp>
 
-#if METL_HAS_IRQ_MASKING
+// VTOR (the vector table relocation register) is ARMv7-M and up. Cortex-M0 is
+// ARMv6-M and has none — M0+ may have one, optionally — so an ARMv6-M build
+// cannot install its own table this way and skips the interrupt check.
+//
+// Worth being precise about what that costs: on an ARMv6-M build the masking
+// behaviour is left to lock_test's PRIMASK readback, which is weaker. Writing
+// VTOR anyway would "work" when ARMv6-M code is executed on an ARMv7-M core, and
+// fault on real silicon — a false pass is worse than a skip.
+#if defined(__ARM_ARCH_6M__)
+#define METL_IRQ_TEST_HAS_VTOR 0
+#else
+#define METL_IRQ_TEST_HAS_VTOR 1
+#endif
+
+#if METL_HAS_IRQ_MASKING && METL_IRQ_TEST_HAS_VTOR
 
 namespace {
 
@@ -41,6 +55,9 @@ constexpr std::uint32_t kSysTickClkSource = 1u << 2;  // processor clock
 // SysTick is exception number 15.
 constexpr std::size_t kSysTickVector = 15;
 constexpr std::size_t kVectorCount = 16;
+
+// Upper bound on how many 64-iteration chunks to wait for one tick.
+constexpr std::uint32_t kTickBudget = 200000;
 
 volatile std::uint32_t g_ticks = 0;
 
@@ -62,11 +79,30 @@ std::uint32_t read_primask() noexcept {
   return value;
 }
 
-// Burn time without letting the optimizer erase the loop. Long enough to span
-// many SysTick periods at the reload value chosen below.
+// Burn time without letting the optimizer erase the loop.
 void spin(std::uint32_t iterations) noexcept {
   for (volatile std::uint32_t i = 0; i < iterations; ++i) {
   }
+}
+
+// Spin until the tick counter moves, and report how long that took.
+//
+// Self-calibrating on purpose. The first version of this test spun a FIXED
+// number of iterations and assumed at least one tick would land inside it. That
+// assumption held on one CI run and failed on the next, because how much wall
+// time a fixed iteration count buys depends on the host QEMU is running on. A
+// conformance gate that flakes gets ignored, which is worse than not having it.
+//
+// Returns 0 if no tick ever arrived within the budget.
+std::uint32_t iterations_until_tick(std::uint32_t budget) noexcept {
+  const std::uint32_t start = g_ticks;
+  for (std::uint32_t spent = 1; spent <= budget; ++spent) {
+    spin(64);
+    if (g_ticks != start) {
+      return spent;
+    }
+  }
+  return 0;
 }
 
 void install_vector_table() noexcept {
@@ -94,12 +130,14 @@ void start_systick() noexcept {
 
 }  // namespace
 
-#endif  // METL_HAS_IRQ_MASKING
+#endif  // METL_HAS_IRQ_MASKING && METL_IRQ_TEST_HAS_VTOR
 
 int main() {
 #if !METL_HAS_IRQ_MASKING
   // No interrupts to mask on this target; lock_test covers the fallback path.
   std::printf("irq_masking_test: skipped (METL_HAS_IRQ_MASKING == 0)\n");
+#elif !METL_IRQ_TEST_HAS_VTOR
+  std::printf("irq_masking_test: skipped (ARMv6-M has no VTOR; see the note above)\n");
 #else
   install_vector_table();
   __asm__ __volatile__("cpsie i" ::: "memory");
@@ -109,14 +147,17 @@ int main() {
   // Without this, "the count did not move while masked" would be satisfied just
   // as well by a SysTick that never worked at all — which is exactly how a test
   // like this quietly becomes decorative.
-  const std::uint32_t before_control = g_ticks;
-  spin(100000);
-  const std::uint32_t after_control = g_ticks;
-  CHECK(after_control > before_control);
-  if (after_control == before_control) {
+  //
+  // The cost of one tick is measured rather than assumed, and every masked
+  // window below is sized from it. See iterations_until_tick.
+  const std::uint32_t cost_of_a_tick = iterations_until_tick(kTickBudget);
+  CHECK(cost_of_a_tick > 0);
+  if (cost_of_a_tick == 0) {
     std::printf("  SysTick never fired; the rest of this test would prove nothing\n");
     return metl_test::exit_code();
   }
+  // Ten ticks' worth of time: comfortably more than one, still bounded.
+  const std::uint32_t masked_window = cost_of_a_tick * 10u;
 
   // --- the actual claim: irq_lock blocks it -----------------------------------
   {
@@ -124,7 +165,9 @@ int main() {
     CHECK_EQ(read_primask(), std::uint32_t{1});
 
     const std::uint32_t at_lock = g_ticks;
-    spin(100000);  // same amount of time that just produced many ticks
+    for (std::uint32_t i = 0; i < masked_window; ++i) {
+      spin(64);
+    }
     const std::uint32_t while_locked = g_ticks;
 
     metl::irq_lock::unlock(state);
@@ -136,18 +179,16 @@ int main() {
 
   // --- and it resumes afterwards ----------------------------------------------
   // A lock that blocked interrupts permanently would pass everything above.
-  {
-    const std::uint32_t after_unlock = g_ticks;
-    spin(100000);
-    CHECK(g_ticks > after_unlock);
-  }
+  { CHECK(iterations_until_tick(kTickBudget) > 0); }
 
   // --- guarded<> holds the mask across the whole body -------------------------
   {
     metl::guarded<std::uint32_t, metl::irq_lock> value{0u};
-    const std::uint32_t ticks_during = value.with([](std::uint32_t&) {
+    const std::uint32_t ticks_during = value.with([masked_window](std::uint32_t&) {
       const std::uint32_t start = g_ticks;
-      spin(100000);
+      for (std::uint32_t i = 0; i < masked_window; ++i) {
+        spin(64);
+      }
       return static_cast<std::uint32_t>(g_ticks - start);
     });
     CHECK_EQ(ticks_during, std::uint32_t{0});
@@ -161,7 +202,9 @@ int main() {
       metl::irq_lock::unlock(inner);
     }
     const std::uint32_t at_inner_release = g_ticks;
-    spin(100000);
+    for (std::uint32_t i = 0; i < masked_window; ++i) {
+      spin(64);
+    }
     CHECK_EQ(g_ticks, at_inner_release);  // still masked by the outer
     metl::irq_lock::unlock(outer);
   }

@@ -27,7 +27,8 @@
 # failure — a conformance gate that cannot tell a hang from a pass is not a
 # gate.
 #
-# Usage: tools/run_qemu_tests.sh [--cpu cortex-m3] [--keep-going]
+# Usage: tools/run_qemu_tests.sh [--cpu cortex-m3] [--machine mps2-an385]
+#                                [--expect-build-fail a.cpp,b.cpp]
 
 set -uo pipefail
 
@@ -35,12 +36,17 @@ CPU="cortex-m3"
 MACHINE="mps2-an385"
 TIMEOUT_SECONDS=20
 KEEP_GOING=1
+EXPECT_BUILD_FAIL=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --cpu) CPU="$2"; shift 2 ;;
     --machine) MACHINE="$2"; shift 2 ;;
     --stop-on-first-failure) KEEP_GOING=0; shift ;;
+    # Comma-separated tests that MUST fail to compile on this target, because a
+    # capability gate should reject them. Asserted, not tolerated: if one of them
+    # builds, the gate has silently stopped working and that is a failure.
+    --expect-build-fail) EXPECT_BUILD_FAIL="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -101,6 +107,7 @@ passed=0
 failed=0
 build_failed=0
 skipped=0
+xfailed=0
 declare -a FAILURES=()
 declare -a BUILD_FAILURES=()
 
@@ -122,13 +129,34 @@ for src in "${SOURCES[@]}"; do
   elf="${BUILD_DIR}/$(echo "${rel}" | tr '/' '_' | sed 's/\.cpp$/.elf/')"
   log="${elf%.elf}.log"
 
+  expected_to_fail=0
+  case ",${EXPECT_BUILD_FAIL}," in
+    *",${rel},"*) expected_to_fail=1 ;;
+  esac
+
   if ! arm-none-eabi-g++ "${CFLAGS[@]}" "${src}" "${SHIM}" -o "${elf}" > "${log}" 2>&1; then
+    if [ "${expected_to_fail}" -eq 1 ]; then
+      # The capability gate fired, which is the point of the gate.
+      printf '%-52s XFAIL-BUILD  (capability gate fired, as required)\n' "${rel}"
+      xfailed=$((xfailed + 1))
+      continue
+    fi
     printf '%-52s BUILD-FAIL\n' "${rel}"
     # Print the diagnostic inline. Hiding it in an artifact means a red build
     # tells you only that something broke, not what.
     sed 's/^/      | /' "${log}" | head -20
     BUILD_FAILURES+=("${rel}")
     build_failed=$((build_failed + 1))
+    [ "${KEEP_GOING}" -eq 0 ] && break
+    continue
+  fi
+
+  if [ "${expected_to_fail}" -eq 1 ]; then
+    # It built on a target where the capability is absent. Same reasoning as the
+    # invariant canary: a gate that has stopped rejecting is not a gate.
+    printf '%-52s FAIL  (built, but the capability gate should have rejected it)\n' "${rel}"
+    FAILURES+=("${rel} (capability gate did not fire)")
+    failed=$((failed + 1))
     [ "${KEEP_GOING}" -eq 0 ] && break
     continue
   fi
@@ -189,6 +217,7 @@ echo "=============================================================="
 echo "  passed:       ${passed}"
 echo "  failed:       ${failed}"
 echo "  build-failed: ${build_failed}"
+echo "  xfail-build:  ${xfailed} (capability gate fired, as required)"
 echo "  skipped:      ${skipped} (deny-listed, see the table above)"
 echo "=============================================================="
 
