@@ -50,8 +50,9 @@ int main() {
     map.emplace(2, counted{20});
     CHECK_EQ(map.size(), std::size_t(2));
     auto* p = map.find(2);
-    CHECK(p != nullptr);
-    CHECK_EQ(p->value, 20);
+    if (CHECK(p != nullptr)) {
+      CHECK_EQ(p->value, 20);
+    }
   }
   // All elements destroyed with the map: no leaks.
   CHECK_EQ(counted::live, 0);

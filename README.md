@@ -392,7 +392,7 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | Area | Platform / config | What CI does | Job |
 | --- | --- | --- | --- |
 | Host | Linux / macOS / Windows × gcc / clang / MSVC × Debug / Release / MinSizeRel | build + `ctest` | `host-test` |
-| Host hardening | Release **+ `-Werror`** (clang) | build + `ctest` (NDEBUG warning gate) | `release-werror` |
+| Host hardening | Release **+ `-Werror`** (clang **and gcc**) | build + `ctest` (NDEBUG warning gate) | `release-werror` |
 | Host LTO | Release + IPO/LTO | build + `ctest` | `lto` |
 | Sanitizers | Linux / clang — ASan+UBSan, TSan (Debug, `-Werror`) | build + `ctest` (incl. threaded tests) | `sanitizers` |
 | ARM Cortex-M (gcc) | Cortex-M0/M3/M4/M7, freestanding | cross-compile + code size | `arm-cross` |

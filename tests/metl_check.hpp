@@ -51,11 +51,20 @@ inline void print_value(std::FILE* out, const T& value) {
   }
 }
 
-inline void check(bool condition, const char* expr, const char* file, int line) {
+// Returns the condition so a check can also gate the code after it:
+//
+//   if (CHECK(p != nullptr)) { CHECK_EQ(p->value, 20); }
+//
+// Checks are deliberately non-fatal — they record and let the test run on —
+// so a plain CHECK(p != nullptr) does not stop the next line from
+// dereferencing p. Where the follow-up would be undefined behaviour rather
+// than another failure line, guard it with the returned value.
+inline bool check(bool condition, const char* expr, const char* file, int line) {
   if (!condition) {
     std::fprintf(stderr, "%s:%d: CHECK failed: %s\n", file, line, expr);
     ++failure_count();
   }
+  return condition;
 }
 
 template <typename A, typename B>
@@ -64,6 +73,29 @@ inline void check_eq(
   if (!(lhs == rhs)) {
     std::fprintf(stderr, "%s:%d: CHECK_EQ failed: %s == %s (left = ", file, line, lhs_expr, rhs_expr);
     print_value(stderr, lhs);
+    std::fprintf(stderr, ", right = ");
+    print_value(stderr, rhs);
+    std::fprintf(stderr, ")\n");
+    ++failure_count();
+  }
+}
+
+// For the pointer-returning lookups (handle_pool::get, static_unordered_map::
+// find, ...) that report "absent" as nullptr. CHECK_EQ(*pool.get(h), 0)
+// asserts two things and checks one: on a miss the dereference is undefined
+// behaviour, so the test crashes instead of reporting. Checking the pointer
+// first turns a miss into an ordinary failure line.
+template <typename T, typename B>
+inline void check_deref_eq(
+    const T* ptr, const B& rhs, const char* ptr_expr, const char* rhs_expr, const char* file, int line) {
+  if (ptr == nullptr) {
+    std::fprintf(stderr, "%s:%d: CHECK_DEREF_EQ failed: %s is null\n", file, line, ptr_expr);
+    ++failure_count();
+    return;
+  }
+  if (!(*ptr == rhs)) {
+    std::fprintf(stderr, "%s:%d: CHECK_DEREF_EQ failed: *%s == %s (left = ", file, line, ptr_expr, rhs_expr);
+    print_value(stderr, *ptr);
     std::fprintf(stderr, ", right = ");
     print_value(stderr, rhs);
     std::fprintf(stderr, ")\n");
@@ -87,3 +119,5 @@ inline int exit_code() {
 #define CHECK(expr) ::metl_test::check(static_cast<bool>(expr), #expr, __FILE__, __LINE__)
 
 #define CHECK_EQ(lhs, rhs) ::metl_test::check_eq((lhs), (rhs), #lhs, #rhs, __FILE__, __LINE__)
+
+#define CHECK_DEREF_EQ(ptr, rhs) ::metl_test::check_deref_eq((ptr), (rhs), #ptr, #rhs, __FILE__, __LINE__)
