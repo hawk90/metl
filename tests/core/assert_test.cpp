@@ -55,9 +55,20 @@ void test_panic_handler(const char* message, const char* file, int line) noexcep
 
 }  // namespace
 
+namespace {
+metl::assert_handler_t g_previous_assert = nullptr;
+metl::panic_handler_t g_previous_panic = nullptr;
+}  // namespace
+
 int main() {
-  auto previous_assert = metl::set_assert_handler(&test_assert_handler);
-  auto previous_panic = metl::set_panic_handler(&test_panic_handler);
+  // File-scope, not locals: these values have to survive a longjmp back into
+  // this frame, and a local live across setjmp may be clobbered. GCC reports it
+  // against the inlined `previous` inside set_assert_handler (-Wclobbered),
+  // which is the same variable seen from the other side. Keeping them out of the
+  // frame fixes it where the problem is, rather than making the library's local
+  // volatile for every user because one test uses setjmp.
+  g_previous_assert = metl::set_assert_handler(&test_assert_handler);
+  g_previous_panic = metl::set_panic_handler(&test_panic_handler);
 
   // setjmp returns 0 on the initial call; the handler longjmps back with 1.
   if (setjmp(g_assert_jmp) == 0) {
@@ -82,7 +93,7 @@ int main() {
     return 2;
   }
 
-  metl::set_assert_handler(previous_assert);
-  metl::set_panic_handler(previous_panic);
+  metl::set_assert_handler(g_previous_assert);
+  metl::set_panic_handler(g_previous_panic);
   return 0;
 }

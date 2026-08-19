@@ -75,6 +75,21 @@ struct string_equal {
 
 }  // namespace
 
+namespace {
+
+// find() returns a pointer, and dereferencing it inline leaves GCC unable to
+// prove non-null in a Release build -- 11 -Wnull-dereference reports came from
+// exactly that shape. Routing through this keeps each assertion's meaning (a
+// missing key yields a sentinel that fails the comparison) while stating the
+// null check the compiler was asking for.
+template <typename Map, typename Key>
+int value_of(Map& map, const Key& key) {
+  const auto* found = map.find(key);
+  return found != nullptr ? *found : -1;
+}
+
+}  // namespace
+
 int main() {
   metl::static_unordered_map<int, int, 4> map;
   if (!map.empty() || map.capacity() != 4) {
@@ -98,7 +113,7 @@ int main() {
     return 5;
   }
 
-  if (!map.insert_or_assign(5, 55) || *map.find(5) != 55) {
+  if (!map.insert_or_assign(5, 55) || value_of(map, 5) != 55) {
     return 6;
   }
 
@@ -106,7 +121,7 @@ int main() {
     return 7;
   }
 
-  if (!map.try_emplace(13, 130) || *map.find(13) != 130) {
+  if (!map.try_emplace(13, 130) || value_of(map, 13) != 130) {
     return 8;
   }
 
@@ -175,7 +190,7 @@ int main() {
       return 14;
     }
     slot = 42;
-    if (*m.find(7) != 42) {
+    if (value_of(m, 7) != 42) {
       return 14;
     }
 
@@ -246,10 +261,10 @@ int main() {
     if (m.size() != 4 || !m.full()) {
       return 17;
     }
-    if (*m.find(0) != 100 || *m.find(8) != 108 || *m.find(16) != 116 || *m.find(24) != 124) {
+    if (value_of(m, 0) != 100 || value_of(m, 8) != 108 || value_of(m, 16) != 116 || value_of(m, 24) != 124) {
       return 17;
     }
-    if (!m.erase(8) || !m.try_emplace(32, 132) || *m.find(32) != 132) {
+    if (!m.erase(8) || !m.try_emplace(32, 132) || value_of(m, 32) != 132) {
       return 17;
     }
   }
@@ -283,7 +298,7 @@ int main() {
     if (!m.erase(10 * stride) || m.find(10 * stride) != nullptr) {
       return 18;
     }
-    if (!m.try_emplace(10 * stride, 999) || *m.find(10 * stride) != 999) {
+    if (!m.try_emplace(10 * stride, 999) || value_of(m, 10 * stride) != 999) {
       return 18;
     }
   }

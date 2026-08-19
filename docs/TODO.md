@@ -83,20 +83,24 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   configuration does not compile. Their evidence today is `qemu-conformance` and
   `config-matrix`, not a coverage percentage.
 - [ ] Promote **clang-tidy** from advisory to blocking. **Not** a matter of
-  fixing findings and flipping the switch — measured on CI at **3,084 warnings**,
-  and the distribution says the work is three separate steps:
-  1. *Tune the check list.* ~565 are `cppcoreguidelines-avoid-do-while` firing on
+  fixing findings and flipping the switch. CI prints **3,084 warnings**, but that
+  is the raw line count: every header is analysed once per translation unit that
+  includes it, so the same finding is reported many times. Deduplicated it is
+  **739 unique findings** — 76% of the raw count is echo. Size the work off 739,
+  never off 3,084; the distribution says it is three separate steps:
+  1. *Tune the check list.* 178 are `cppcoreguidelines-avoid-do-while` firing on
      the `do { } while (0)` macro idiom, which is correct practice here, and
-     another ~800 are magic-numbers / macro-to-enum / literal-suffix-case /
+     another ~167 are magic-numbers / macro-to-enum / literal-suffix-case /
      named-parameter — style positions this project has already taken. Disable
      them **with the reason written in `.clang-tidy`**, so a future reader sees a
      decision rather than an omission.
-  2. *One mechanical sweep.* `modernize-type-traits` alone is **1,466** (48% of
-     the total): `std::is_same<...>::value` → `std::is_same_v<...>`. C++17 has
+  2. *One mechanical sweep.* `modernize-type-traits` alone is **308** (42% of the
+     unique total): `std::is_same<...>::value` → `std::is_same_v<...>`. C++17 has
      the variable templates, so this is safe and test-verifiable in one pass.
   3. *Triage what remains.* The interesting residue is small and worth real
-     attention — `cppcoreguidelines-rvalue-reference-param-not-moved` (59) can
-     indicate a genuine bug, and `performance-enum-size` (61) matters on an MCU.
+     attention — `cppcoreguidelines-rvalue-reference-param-not-moved` (**25**) can
+     indicate a genuine bug, `cppcoreguidelines-pro-type-member-init` (14), and
+     `performance-enum-size` matters on an MCU.
   Only after (3) is a blocking promotion a decision rather than a wish.
 
 ### 🛠️ CI/CD polish (finish #18)
@@ -119,10 +123,25 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   `env:` source of truth; workflow-level `defaults.run.shell: bash`; fuzz-smoke
   harness list derived from built binaries; `.pre-commit-config.yaml` pins
   clang-format 18.1.8 so local == CI.
-- [ ] **gcc Release + `-Werror` hardening** (#14): fix `-Wclobbered` (setjmp assert
-  test → `volatile`/restructure), `-Wterminate` (expected swap), `-Waddress`
-  (lookup_table_test), `-Wnull-dereference` (metl_check); then re-enable gcc in the
-  release-werror matrix.
+- [x] **gcc Release + `-Werror` hardening** (#14, done #43): gcc is back in the
+  `release-werror` matrix. The old entry here named four diagnostics and got three
+  of the four *locations* wrong — `-Wnull-dereference` was in the pointer-returning
+  lookups in `handle_pool_test` / `static_unordered_map*_test`, not in
+  `metl_check.hpp` (gcc only *reports* it there, after inlining `check_eq`), and
+  `-Wclobbered` was reported against `assert.hpp`, not the setjmp test. Fixing from
+  the old list would have edited the wrong files. Two process notes worth keeping:
+  `make` stops at the first failing target, so a `-Werror` run only ever shows the
+  diagnostics *up to* that point — measure with `-k` and warnings-as-errors **off**;
+  and Apple's `g++` is clang, so gcc-specific diagnostics need a real gcc
+  (`brew install gcc`) or the CI leg.
+- [ ] **gcc 16 `-Waggressive-loop-optimizations` in `fixed_string::assign`** — gcc
+  16 reports "iteration 4 invokes undefined behavior" at `fixed_string.hpp:179` for
+  `fixed_string<3>::assign("toolong")`. It is a false positive: the
+  `if (input_size > Capacity) return false;` guard makes the loop unreachable for
+  that call, and the test runs clean under gcc-16 ASan+UBSan at `-O2`. Ubuntu's gcc
+  does not emit it, so nothing is blocked. Left unchanged deliberately — reshaping a
+  library loop to quiet a false positive costs more than it buys. Revisit if a
+  release-line gcc starts reporting it.
 - [x] **Zephyr** (#15) CI green — SDK wiring fixed (`ZEPHYR_SDK_INSTALL_DIR`); the
   `west build` structural gate is now blocking, only the QEMU twister run keeps a
   step-level `continue-on-error`.

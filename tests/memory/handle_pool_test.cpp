@@ -45,8 +45,14 @@ int main() {
     CHECK(pool.full());
     CHECK_EQ(tracker::constructions, 2);
 
-    CHECK_EQ(pool.get(first)->value, 10);
-    CHECK_EQ(pool.get(second)->value, 20);
+    const tracker* first_slot = pool.get(first);
+    if (CHECK(first_slot != nullptr)) {
+      CHECK_EQ(first_slot->value, 10);
+    }
+    const tracker* second_slot = pool.get(second);
+    if (CHECK(second_slot != nullptr)) {
+      CHECK_EQ(second_slot->value, 20);
+    }
     CHECK(pool.contains(first));
 
     // A full pool hands back a null handle rather than allocating.
@@ -97,8 +103,10 @@ int main() {
     CHECK(new_handle.generation() != old_handle.generation());
 
     CHECK_EQ(pool.get(old_handle), static_cast<tracker*>(nullptr));
-    CHECK(pool.get(new_handle) != nullptr);
-    CHECK_EQ(pool.get(new_handle)->value, 2);
+    const tracker* reused = pool.get(new_handle);
+    if (CHECK(reused != nullptr)) {
+      CHECK_EQ(reused->value, 2);
+    }
   }
 
   // --- clear() destroys everything and stales every handle -------------------
@@ -147,10 +155,10 @@ int main() {
     CHECK(pool.destroy(handles[2]));
     const auto refilled_a = pool.try_emplace(555);
     const auto refilled_b = pool.try_emplace(666);
-    CHECK_EQ(*pool.get(handles[0]), 0);
-    CHECK_EQ(*pool.get(handles[3]), 300);
-    CHECK_EQ(*pool.get(refilled_a), 555);
-    CHECK_EQ(*pool.get(refilled_b), 666);
+    CHECK_DEREF_EQ(pool.get(handles[0]), 0);
+    CHECK_DEREF_EQ(pool.get(handles[3]), 300);
+    CHECK_DEREF_EQ(pool.get(refilled_a), 555);
+    CHECK_DEREF_EQ(pool.get(refilled_b), 666);
     CHECK(pool.full());
   }
 
@@ -182,7 +190,7 @@ int main() {
       const auto handle = pool.try_emplace(cycle);
       CHECK(handle.valid());
       CHECK(handle.generation() != 0);
-      CHECK_EQ(*pool.get(handle), cycle);
+      CHECK_DEREF_EQ(pool.get(handle), cycle);
       CHECK(pool.destroy(handle));
     }
     CHECK(pool.generation_of(0) != 0);
