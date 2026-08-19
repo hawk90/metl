@@ -229,5 +229,50 @@ int main() {
     }
   }
 
+  // ---- relational operators -------------------------------------------------
+  // Same gap as flat_map: std::set has all six, this had none.
+  {
+    metl::flat_set<int, 4> a;
+    metl::flat_set<int, 4> b;
+    metl::flat_set<int, 8> wide;
+    for (int key : {3, 1}) {  // inserted out of order; the set stores them sorted
+      if (!a.try_emplace(key) || !b.try_emplace(key) || !wide.try_emplace(key)) {
+        return 32;
+      }
+    }
+
+    if (!(a == b) || (a != b)) {
+      return 33;
+    }
+    if (!(a == wide) || (a != wide)) {
+      return 34;  // capacity must not affect equality
+    }
+    if (!(a <= b) || !(a >= b) || (a < b) || (a > b)) {
+      return 35;
+    }
+
+    metl::flat_set<int, 4> higher;
+    if (!higher.try_emplace(1) || !higher.try_emplace(4)) {
+      return 36;
+    }
+    if ((a == higher) || !(a < higher) || !(higher > a)) {
+      return 37;
+    }
+
+    metl::flat_set<int, 4> prefix;
+    if (!prefix.try_emplace(1)) {
+      return 38;
+    }
+    if (!(prefix < a) || !(a > prefix) || !(prefix <= a) || (prefix >= a)) {
+      return 39;
+    }
+
+    const metl::flat_set<int, 4> empty_a;
+    const metl::flat_set<int, 8> empty_b;
+    if (!(empty_a == empty_b) || !(empty_a < a) || (a < empty_a)) {
+      return 40;
+    }
+  }
+
   return 0;
 }

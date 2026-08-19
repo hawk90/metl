@@ -244,5 +244,64 @@ int main() {
     }
   }
 
+  // ---- relational operators -------------------------------------------------
+  // std::map has all six; this had none, so two maps could not be compared at
+  // all. Cross-capacity like fixed_vector's and fixed_string's: capacity is a
+  // storage decision, not part of the value.
+  {
+    metl::flat_map<int, int, 4> a;
+    metl::flat_map<int, int, 4> b;
+    metl::flat_map<int, int, 8> wide;  // same entries, different capacity
+    for (int i = 1; i <= 2; ++i) {
+      if (!a.try_emplace(i, i * 10) || !b.try_emplace(i, i * 10) || !wide.try_emplace(i, i * 10)) {
+        return 35;
+      }
+    }
+
+    if (!(a == b) || (a != b)) {
+      return 36;
+    }
+    if (!(a == wide) || (a != wide)) {
+      return 37;  // capacity must not affect equality
+    }
+    if (!(a <= b) || !(a >= b) || (a < b) || (a > b)) {
+      return 38;
+    }
+
+    // Same keys, one differing value: ordering falls through to the value.
+    metl::flat_map<int, int, 4> higher_value;
+    if (!higher_value.try_emplace(1, 10) || !higher_value.try_emplace(2, 21)) {
+      return 39;
+    }
+    if ((a == higher_value) || !(a < higher_value) || !(higher_value > a)) {
+      return 40;
+    }
+
+    // A prefix orders before the longer sequence.
+    metl::flat_map<int, int, 4> prefix;
+    if (!prefix.try_emplace(1, 10)) {
+      return 41;
+    }
+    if (!(prefix < a) || !(a > prefix) || !(prefix <= a) || (prefix >= a)) {
+      return 42;
+    }
+
+    // A differing KEY outranks the value comparison.
+    metl::flat_map<int, int, 4> higher_key;
+    if (!higher_key.try_emplace(1, 10) || !higher_key.try_emplace(3, 0)) {
+      return 43;
+    }
+    if (!(a < higher_key)) {
+      return 44;  // key 2 < key 3 decides it, whatever the values are
+    }
+
+    // Empty compares equal to empty and below anything non-empty.
+    const metl::flat_map<int, int, 4> empty_a;
+    const metl::flat_map<int, int, 8> empty_b;
+    if (!(empty_a == empty_b) || !(empty_a < a) || (a < empty_a)) {
+      return 45;
+    }
+  }
+
   return 0;
 }
