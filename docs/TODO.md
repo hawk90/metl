@@ -63,9 +63,41 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   median of N repetitions *with the min/max spread*, so noise is visible.
   Deliberately no performance gate — a threshold on a shared runner either fires
   spuriously or never fires.
-- [ ] **Coverage** gate (llvm-cov/codecov) — audit gap; cover the `try_*`/full-container
-  branches.
-- [ ] Promote **clang-tidy** from advisory to blocking (after fixing findings).
+- [x] **Host coverage measurement + blocking floor** (#35) — `tools/coverage.sh`
+  and the `coverage` job report `include/metl` only (llvm-cov's default total
+  also counts the test sources, which measures how well the tests cover
+  themselves) and fail below 85% lines / 70% branches. Currently **89.91% lines,
+  75.75% branches, 95.31% functions**. "No coverage measurement" is no longer an
+  accurate description of this repo.
+- [ ] **Raise coverage depth** — the remaining `try_*` / full-container branches.
+  Note the structural ceiling before chasing a number: a large share of what is
+  uncovered cannot be reached by a *passing* test. `METL_ASSERT`/`METL_PANIC`
+  failure paths abort; `variant`'s `valueless_by_exception` branches are
+  unreachable because the type cannot become valueless here (default ctor engages
+  alternative 0, `reset()` is private, no exceptions); and constexpr code
+  exercised only by `static_assert` never executes, which is why `bit.hpp` reads
+  ~29% lines at 100% branches. Reaching 100% would mean weakening the types.
+- [ ] **Embedded / configuration coverage model** — the host number cannot see
+  MCU-only paths (`irq_lock`'s PRIMASK arm, the ARMv6-M capability rejections,
+  the `-fno-exceptions` arms of `expected.hpp`) or any `#if` arm this
+  configuration does not compile. Their evidence today is `qemu-conformance` and
+  `config-matrix`, not a coverage percentage.
+- [ ] Promote **clang-tidy** from advisory to blocking. **Not** a matter of
+  fixing findings and flipping the switch — measured on CI at **3,084 warnings**,
+  and the distribution says the work is three separate steps:
+  1. *Tune the check list.* ~565 are `cppcoreguidelines-avoid-do-while` firing on
+     the `do { } while (0)` macro idiom, which is correct practice here, and
+     another ~800 are magic-numbers / macro-to-enum / literal-suffix-case /
+     named-parameter — style positions this project has already taken. Disable
+     them **with the reason written in `.clang-tidy`**, so a future reader sees a
+     decision rather than an omission.
+  2. *One mechanical sweep.* `modernize-type-traits` alone is **1,466** (48% of
+     the total): `std::is_same<...>::value` → `std::is_same_v<...>`. C++17 has
+     the variable templates, so this is safe and test-verifiable in one pass.
+  3. *Triage what remains.* The interesting residue is small and worth real
+     attention — `cppcoreguidelines-rvalue-reference-param-not-moved` (59) can
+     indicate a genuine bug, and `performance-enum-size` (61) matters on an MCU.
+  Only after (3) is a blocking promotion a decision rather than a wish.
 
 ### 🛠️ CI/CD polish (finish #18)
 - [ ] README badges (add a docs/Pages badge; CI + license already present).
@@ -96,11 +128,27 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   tuning), then drop its `continue-on-error`.
 
 ### 📚 Library breadth (features)
-- [ ] Finish C++20-constexpr conversion of `expected` / `variant` / `fixed_vector` /
-  `flat_map` (helper `detail/construct.hpp` is in place; each is mechanical now).
-- [ ] New utilities: `fixed_bitset`, compile-time `static_string_map`/perfect-hash,
-  `expected` monadic ops (`and_then`/`transform`/`or_else`), a header self-containment
-  runtime test, iterator-invalidation contracts documented per container.
+
+> **Core is frozen for now.** The type surface is sufficient, and every addition
+> costs test area, documented contract, constexpr/exception-safety review and
+> release stability. New types wait for a concrete caller or workload rather than
+> for someone to think of them.
+
+- [x] **Container API completeness** (#37–#40) — `ring_buffer` and `fixed_deque`
+  are iterable (shared random-access iterator on `detail::ring_core`, holding a
+  logical index because a ring is not contiguous); `flat_map` and `flat_set` got
+  the six relational operators they were missing while `fixed_vector` had six and
+  `fixed_string` eight; `span`, `variant` and `expected` gained the runtime and
+  short-circuit coverage they lacked.
+- [ ] C++20-constexpr conversion of `expected` / `variant` / `fixed_vector` /
+  `flat_map` (helper `detail/construct.hpp` is in place). Optional backlog, not a
+  blocker: the C++17 baseline stays, and #36 established that the C++20 arm
+  builds and passes. Recommended order — `expected`, `variant`, `fixed_vector`,
+  `flat_map`/`flat_set` — one PR each, verifying size, alignment,
+  exception-safety, ASan, C++17, C++20 and QEMU together.
+- [ ] **Deferred pending a caller:** `fixed_bitset`, compile-time
+  `static_string_map` / perfect hash. See the freeze note above.
+- [ ] Iterator-invalidation contracts documented per container.
 - [ ] Compile-time cost: continue trimming heavy std-header deps where safe (#11).
 
 ### 🌍 Environment breadth (deferred — integrate later)

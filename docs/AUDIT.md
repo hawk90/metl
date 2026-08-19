@@ -385,6 +385,25 @@ unchanged.
 | LOW | **Optional** — benign on flat memory, not UBSan-flagged | `object_pool::index_of` uses relational `<`/`>=` on an unrelated caller pointer (UB); switched to `uintptr_t` comparison — exact containment test on flat targets, no `<functional>` dependency | `object_pool.hpp:116` | ✅ `uintptr_t` range test |
 | LOW | **Deferred** — no real-target failure, high-risk core rewrite | `fixed_vector`/`flat_map`/`flat_set` form a contiguous `data()` over an array of per-element `storage_for<T>`; `data()+i` (i>0) is cross-object pointer arithmetic. A real fix needs a union-of-`T[N]` storage rewrite — the same reason Section A deferred the `constexpr` conversion of these types | `fixed_vector.hpp:138`, `flat_map.hpp:387`, `flat_set.hpp:373` | ⏸ deferred (documented) |
 
+**Revisit conditions for the `storage_for` rewrite (added 2026-08-19).** This is
+not an independent goal. `storage_for` is raw aligned storage with a clear role,
+and `expected`, `variant`, `fixed_vector`, `flat_map`/`flat_set`, the pools and
+the queue family all sit on it — rewriting it without evidence of a real failure
+means the largest blast radius available for no observable behaviour change.
+Reopen it as the **common foundation of the C++20 constexpr conversion**, when
+that work actually starts. A rewrite then has to clear all of:
+
+- existing C++17 behaviour, `sizeof` and `alignof` unchanged
+- usable in C++20 constant evaluation
+- throwing-constructor rollback preserved
+- ASan tail poisoning preserved
+- ARM/QEMU conformance unchanged
+- placement-lifetime and `std::launder` rules re-examined, not assumed
+- any public API or layout change documented explicitly
+
+Coverage of the three affected containers is 96% lines / 77–80% branches, so the
+safety net exists; what is missing is a reason.
+
 **Explicitly not defects on this project** (deliberate / documented): the
 `[[nodiscard]]` gaps and `noexcept`-on-throwing-`T` smells are being addressed as
 cheap compile-time `static_assert` guards under E.1's static_assert-promotion
