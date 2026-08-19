@@ -784,14 +784,24 @@ class expected {
     if constexpr (std::is_nothrow_move_constructible<E>::value) {
       E tmp(static_cast<E&&>(*e.error_ptr()));
       e.error_ptr()->~E();
-#if !METL_NO_EXCEPTIONS
-      try {
-#endif
+      // The rollback exists for the case where T's move CAN throw. In the
+      // instantiation where it cannot, this function is noexcept (see the
+      // signature) and the handler is unreachable -- GCC reports exactly that as
+      // -Wterminate, since it sees a `throw` inside a noexcept function. Saying
+      // so with `if constexpr` compiles the handler only where it can run,
+      // which is what the code already meant.
+#if METL_NO_EXCEPTIONS
+      ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(*v.value_ptr()));
+#else
+      if constexpr (std::is_nothrow_move_constructible<T>::value) {
         ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(*v.value_ptr()));
-#if !METL_NO_EXCEPTIONS
-      } catch (...) {
-        ::new (e.storage_.error_storage.addr()) E(static_cast<E&&>(tmp));  // restore e
-        throw;
+      } else {
+        try {
+          ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(*v.value_ptr()));
+        } catch (...) {
+          ::new (e.storage_.error_storage.addr()) E(static_cast<E&&>(tmp));  // restore e
+          throw;
+        }
       }
 #endif
       v.value_ptr()->~T();

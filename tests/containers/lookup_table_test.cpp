@@ -12,9 +12,8 @@ constexpr auto commands =
     }});
 
 constexpr bool constexpr_checks() {
-  return commands.size() == 3 && commands.contains(2) && !commands.contains(4) &&
-         commands.find(1) != nullptr && commands.value_or(3, "none")[0] == 'r' &&
-         commands.value_or(9, "none")[0] == 'n';
+  return commands.size() == 3 && commands.contains(2) && !commands.contains(4) && commands.contains(1) &&
+         commands.value_or(3, "none")[0] == 'r' && commands.value_or(9, "none")[0] == 'n';
 }
 
 static_assert(constexpr_checks(), "lookup_table constexpr checks failed");
