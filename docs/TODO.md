@@ -108,9 +108,11 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   near-identical freestanding cross jobs (riscv-cross / arm-cross-clang /
   big-endian / newlib-link / picolibc-qemu) into one matrix or a composite
   `freestanding-syntax-check` action so the shared flag string lives once.
-- [ ] **(security)** Pin third-party actions to a full commit SHA (not a mutable
-  tag): `espressif/esp-idf-ci-action@v1`, `google/clusterfuzzlite/actions/*@v1`
-  (the latter is handed `GITHUB_TOKEN`). First-party `actions/*` via Dependabot.
+- [x] **(security)** Actions pinned to full commit SHAs. The third-party ones
+  (`google/clusterfuzzlite`, `espressif/esp-idf-ci-action`) already were; what was
+  still tag-pinned was GitHub's own `actions/*`, which OpenSSF Scorecard counts
+  too. All of them now carry a SHA with the version in a trailing comment, so the
+  human-readable version survives and Dependabot can still bump them.
 - [ ] **(caching)** Cache apt/pipx and the zephyr `west update` tree (re-cloned
   uncached every run, dominating the 60-min zephyr budget).
 - [x] Root-cause fixes DONE 2026-08-05: hard-coded test-source paths → single
