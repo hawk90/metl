@@ -94,20 +94,43 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
      named-parameter — style positions this project has already taken. Disable
      them **with the reason written in `.clang-tidy`**, so a future reader sees a
      decision rather than an omission.
-  2. *One mechanical sweep.* `modernize-type-traits` alone is **308** (42% of the
+  2. *One mechanical sweep.* `modernize-type-traits` alone was **308** (42% of the
      unique total): `std::is_same<...>::value` → `std::is_same_v<...>`. C++17 has
      the variable templates, so this is safe and test-verifiable in one pass.
-  3. *Triage what remains.* The interesting residue is small and worth real
-     attention — `cppcoreguidelines-rvalue-reference-param-not-moved` (**25**) can
-     indicate a genuine bug, `cppcoreguidelines-pro-type-member-init` (14), and
-     `performance-enum-size` matters on an MCU.
-  Only after (3) is a blocking promotion a decision rather than a wish.
+  3. *Triage what remains.* **Done 2026-08-19, and the residue is not what the
+     count suggested.** The two checks that looked like real-bug candidates were
+     read at every site and are false positives for this codebase, every one:
+     `cppcoreguidelines-rvalue-reference-param-not-moved` (25) fires because METL
+     moves with `static_cast<T&&>(v)` rather than `std::move` — the check only
+     recognises the latter — and on `variant::get`, which must return a reference
+     into its argument rather than move it; `cppcoreguidelines-missing-std-forward`
+     (46) fires on forwarding done in a constructor's member-init list
+     (`: value_(std::forward<Args>(args)...)`) and on a forward used as the callee
+     (`std::forward<Fn>(fn)(value_)`), neither of which the check counts. Treat the
+     remaining count as a regression budget, not a defect list.
+  Steps 1 and 2 are landed. What is left is only the switch, and it needs a
+  number: run the advisory job once on the tuned config and set
+  `tools/clang_tidy_report.sh --max` to the distinct count it reports, then drop
+  `continue-on-error`. **The budget must be measured on CI**, not locally —
+  macOS/libc++ and Ubuntu/libstdc++ disagree substantially at the same clang-tidy
+  version (locally: 472 distinct and *zero* `modernize-type-traits`, where CI
+  reported 739 and 308).
 
 ### 🛠️ CI/CD polish (finish #18)
 - [ ] README badges (add a docs/Pages badge; CI + license already present).
 - [ ] **Release automation** — tag → GitHub Release with changelog + a **single-header
   amalgamation** artifact (great for a header-only lib).
-- [ ] ccache caching; dedupe repeated checkout+apt via a composite action.
+- [x] Dedupe repeated apt installs via a composite action
+  (`.github/actions/apt-install`), DONE 2026-08-19. It exists for reliability more
+  than speed: the cross-toolchain jobs pull a **574 MB** `gcc-arm-none-eabi`, and
+  when Ubuntu's Azure mirror wedges, `apt-get` stops making progress rather than
+  failing — on 2026-08-19 that burned the full 15-minute budget in five jobs across
+  three runs. Note that GitHub reports a `timeout-minutes` expiry as `cancelled`,
+  not `timed_out`, so those runs looked like concurrency cancellations; tell the two
+  apart by whether the job died at *exactly* the budget. The `timeout` wrappers in
+  the action are the part that fixes this — a bare retry loop never reaches its
+  second iteration when the command simply hangs.
+- [ ] ccache caching.
 - [ ] **(CI anti-pattern review 2026-08-05, deferred)** Collapse the five
   near-identical freestanding cross jobs (riscv-cross / arm-cross-clang /
   big-endian / newlib-link / picolibc-qemu) into one matrix or a composite
@@ -117,8 +140,8 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   still tag-pinned was GitHub's own `actions/*`, which OpenSSF Scorecard counts
   too. All of them now carry a SHA with the version in a trailing comment, so the
   human-readable version survives and Dependabot can still bump them.
-- [ ] **(caching)** Cache apt/pipx and the zephyr `west update` tree (re-cloned
-  uncached every run, dominating the 60-min zephyr budget).
+- [ ] **(caching)** Cache pipx and the zephyr `west update` tree (re-cloned
+  uncached every run, dominating the 60-min zephyr budget). apt is done, above.
 - [x] Root-cause fixes DONE 2026-08-05: hard-coded test-source paths → single
   `env:` source of truth; workflow-level `defaults.run.shell: bash`; fuzz-smoke
   harness list derived from built binaries; `.pre-commit-config.yaml` pins

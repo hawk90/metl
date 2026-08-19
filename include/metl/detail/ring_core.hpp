@@ -49,7 +49,7 @@ template <typename Container, typename Reference, typename Pointer>
 class ring_iterator {
  public:
   using iterator_category = std::random_access_iterator_tag;
-  using value_type = typename std::remove_cv<typename std::remove_reference<Reference>::type>::type;
+  using value_type = std::remove_cv_t<std::remove_reference_t<Reference>>;
   using difference_type = std::ptrdiff_t;
   using reference = Reference;
   using pointer = Pointer;
@@ -62,7 +62,7 @@ class ring_iterator {
   template <typename OtherContainer,
             typename OtherReference,
             typename OtherPointer,
-            typename = typename std::enable_if<std::is_convertible<OtherContainer*, Container*>::value>::type>
+            typename = std::enable_if_t<std::is_convertible_v<OtherContainer*, Container*>>>
   constexpr ring_iterator(const ring_iterator<OtherContainer, OtherReference, OtherPointer>& other) noexcept
       : container_(other.container()), index_(other.index()) {}
 
@@ -170,7 +170,7 @@ class ring_core {
   }
 
   /// Move-constructs by moving each element out of `other`, leaving it empty.
-  ring_core(ring_core&& other) noexcept(std::is_nothrow_move_constructible<T>::value) : head_(0), size_(0) {
+  ring_core(ring_core&& other) noexcept(std::is_nothrow_move_constructible_v<T>) : head_(0), size_(0) {
     for (size_type i = 0; i < other.size_; ++i) {
       (void)emplace_back(static_cast<T&&>(other.at(i)));
     }
@@ -189,8 +189,8 @@ class ring_core {
     return *this;
   }
 
-  ring_core& operator=(ring_core&& other) noexcept(std::is_nothrow_move_constructible<T>::value &&
-                                                   std::is_nothrow_move_assignable<T>::value) {
+  ring_core& operator=(ring_core&& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
+                                                   std::is_nothrow_move_assignable_v<T>) {
     if (this == &other) {
       return *this;
     }

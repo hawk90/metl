@@ -1,0 +1,66 @@
+name: Install apt packages with cache and retry
+description: Cache downloaded Debian packages and tolerate transient apt failures
+
+# The failure this exists to fix is a *stall*, not an error. The cross-toolchain
+# jobs install gcc-arm-none-eabi, a 574 MB download that normally takes ~35 s;
+# when Ubuntu's Azure mirror wedges, `apt-get` simply stops making progress and
+# never returns. On 2026-08-19 that burned the whole `timeout-minutes: 15`
+# budget in five separate jobs, which GitHub reports as `cancelled` rather than
+# `timed_out` -- so the run looked like a concurrency cancellation.
+#
+# A bare retry loop does nothing against that: the command never exits, so the
+# loop never reaches its next iteration. The `timeout` wrappers are the part
+# that matters -- they turn a hang into a failure the retry can act on. The
+# budgets are generous multiples of the observed healthy time so a merely slow
+# mirror is not mistaken for a wedged one.
+#
+# `--no-install-recommends` is kept for hygiene, not for size: the ARM toolchain
+# pulls no Recommends at all (all five packages are hard Depends), so it does
+# not shrink that 574 MB.
+
+inputs:
+  packages:
+    description: Space-separated apt package names
+    required: true
+  cache-key:
+    description: Stable cache namespace for this package set
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # `partial/` is mode 0700 root:root and `lock` is unreadable, so pointing
+    # actions/cache at the archive directory wholesale makes its tar step fail.
+    # Cache only the .deb files.
+    - name: Cache apt archives
+      id: apt-cache
+      uses: actions/cache@6849a6489940f00c2f30c0fb92c6274307ccb58a  # v4.1.2
+      with:
+        path: /var/cache/apt/archives/*.deb
+        key: apt-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key }}
+
+    - name: Install apt packages (with timeout and retry)
+      shell: bash
+      env:
+        APT_PACKAGES: ${{ inputs.packages }}
+      run: |
+        set -euo pipefail
+
+        # apt deletes the .debs it just installed unless told otherwise, which
+        # would leave nothing for the post-run cache save to pick up.
+        echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' \
+          | sudo tee /etc/apt/apt.conf.d/99keep-downloads > /dev/null
+
+        for attempt in 1 2 3; do
+          if timeout 300 sudo apt-get update && \
+             timeout 900 sudo apt-get install --no-install-recommends -y ${APT_PACKAGES}; then
+            exit 0
+          fi
+          if [[ "${attempt}" -lt 3 ]]; then
+            delay=$((attempt * 10))
+            echo "apt attempt ${attempt} failed or timed out; retrying in ${delay}s" >&2
+            sleep "${delay}"
+          fi
+        done
+        echo "apt failed after 3 attempts" >&2
+        exit 1

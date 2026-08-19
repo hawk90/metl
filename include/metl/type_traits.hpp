@@ -63,27 +63,27 @@ using void_t = void;
 
 /// @brief Removes top-level const and volatile from `T`.
 template <typename T>
-using remove_cv_t = typename std::remove_cv<T>::type;
+using remove_cv_t = std::remove_cv_t<T>;
 
 /// @brief Removes top-level const from `T`.
 template <typename T>
-using remove_const_t = typename std::remove_const<T>::type;
+using remove_const_t = std::remove_const_t<T>;
 
 /// @brief Removes top-level volatile from `T`.
 template <typename T>
-using remove_volatile_t = typename std::remove_volatile<T>::type;
+using remove_volatile_t = std::remove_volatile_t<T>;
 
 /// @brief Removes a reference from `T`.
 template <typename T>
-using remove_reference_t = typename std::remove_reference<T>::type;
+using remove_reference_t = std::remove_reference_t<T>;
 
 /// @brief Adds an lvalue reference to `T` (reference-collapsing rules apply).
 template <typename T>
-using add_lvalue_reference_t = typename std::add_lvalue_reference<T>::type;
+using add_lvalue_reference_t = std::add_lvalue_reference_t<T>;
 
 /// @brief Adds an rvalue reference to `T` (reference-collapsing rules apply).
 template <typename T>
-using add_rvalue_reference_t = typename std::add_rvalue_reference<T>::type;
+using add_rvalue_reference_t = std::add_rvalue_reference_t<T>;
 
 /// @brief Removes reference then cv-qualifiers (the C++20 `remove_cvref_t` for C++17).
 template <typename T>
@@ -91,11 +91,11 @@ using remove_cvref_t = remove_cv_t<remove_reference_t<T>>;
 
 /// @brief Applies the decay conversions (array/function-to-pointer, cv/ref removal) to `T`.
 template <typename T>
-using decay_t = typename std::decay<T>::type;
+using decay_t = std::decay_t<T>;
 
 /// @brief Underlying integer type of an enum `T`.
 template <typename T>
-using underlying_type_t = typename std::underlying_type<T>::type;
+using underlying_type_t = std::underlying_type_t<T>;
 
 /// @brief Byte storage sized and aligned for `T`. Aliases metl's own
 /// `storage_for<T>` rather than the C++23-deprecated `std::aligned_storage`.
@@ -104,103 +104,103 @@ using aligned_storage_t = storage_for<T>;
 
 /// @brief True if `T` and `U` are the same type.
 template <typename T, typename U>
-inline constexpr bool is_same_v = std::is_same<T, U>::value;
+inline constexpr bool is_same_v = std::is_same_v<T, U>;
 
 /// @brief True if `Base` is a base class of `Derived`.
 template <typename Base, typename Derived>
-inline constexpr bool is_base_of_v = std::is_base_of<Base, Derived>::value;
+inline constexpr bool is_base_of_v = std::is_base_of_v<Base, Derived>;
 
 /// @brief True if `T` is const-qualified.
 template <typename T>
-inline constexpr bool is_const_v = std::is_const<T>::value;
+inline constexpr bool is_const_v = std::is_const_v<T>;
 
 /// @brief True if `T` is a reference type.
 template <typename T>
-inline constexpr bool is_reference_v = std::is_reference<T>::value;
+inline constexpr bool is_reference_v = std::is_reference_v<T>;
 
 /// @brief True if `T` is an lvalue reference.
 template <typename T>
-inline constexpr bool is_lvalue_reference_v = std::is_lvalue_reference<T>::value;
+inline constexpr bool is_lvalue_reference_v = std::is_lvalue_reference_v<T>;
 
 /// @brief True if `T` is an rvalue reference.
 template <typename T>
-inline constexpr bool is_rvalue_reference_v = std::is_rvalue_reference<T>::value;
+inline constexpr bool is_rvalue_reference_v = std::is_rvalue_reference_v<T>;
 
 /// @brief True if `T` is a pointer type.
 template <typename T>
-inline constexpr bool is_pointer_v = std::is_pointer<T>::value;
+inline constexpr bool is_pointer_v = std::is_pointer_v<T>;
 
 /// @brief True if `T` is an integral type.
 template <typename T>
-inline constexpr bool is_integral_v = std::is_integral<T>::value;
+inline constexpr bool is_integral_v = std::is_integral_v<T>;
 
 /// @brief True if `T` is an unsigned arithmetic type.
 template <typename T>
-inline constexpr bool is_unsigned_v = std::is_unsigned<T>::value;
+inline constexpr bool is_unsigned_v = std::is_unsigned_v<T>;
 
 /// @brief True if `T` is a signed arithmetic type.
 template <typename T>
-inline constexpr bool is_signed_v = std::is_signed<T>::value;
+inline constexpr bool is_signed_v = std::is_signed_v<T>;
 
 /// @brief True if `T` is an enumeration type.
 template <typename T>
-inline constexpr bool is_enum_v = std::is_enum<T>::value;
+inline constexpr bool is_enum_v = std::is_enum_v<T>;
 
 /// @brief True if `T` is a union type.
 template <typename T>
-inline constexpr bool is_union_v = std::is_union<T>::value;
+inline constexpr bool is_union_v = std::is_union_v<T>;
 
 /// @brief True if `T` is a non-union class type.
 template <typename T>
-inline constexpr bool is_class_v = std::is_class<T>::value;
+inline constexpr bool is_class_v = std::is_class_v<T>;
 
 /// @brief True if `T` is a trivial type.
 template <typename T>
-inline constexpr bool is_trivial_v = std::is_trivial<T>::value;
+inline constexpr bool is_trivial_v = std::is_trivial_v<T>;
 
 /// @brief True if `T` is trivially copyable.
 template <typename T>
-inline constexpr bool is_trivially_copyable_v = std::is_trivially_copyable<T>::value;
+inline constexpr bool is_trivially_copyable_v = std::is_trivially_copyable_v<T>;
 
 /// @brief True if `T` is trivially destructible.
 template <typename T>
-inline constexpr bool is_trivially_destructible_v = std::is_trivially_destructible<T>::value;
+inline constexpr bool is_trivially_destructible_v = std::is_trivially_destructible_v<T>;
 
 /// @brief True if `T` is default-constructible.
 template <typename T>
-inline constexpr bool is_default_constructible_v = std::is_default_constructible<T>::value;
+inline constexpr bool is_default_constructible_v = std::is_default_constructible_v<T>;
 
 /// @brief True if `T` is copy-constructible.
 template <typename T>
-inline constexpr bool is_copy_constructible_v = std::is_copy_constructible<T>::value;
+inline constexpr bool is_copy_constructible_v = std::is_copy_constructible_v<T>;
 
 /// @brief True if `T` is move-constructible.
 template <typename T>
-inline constexpr bool is_move_constructible_v = std::is_move_constructible<T>::value;
+inline constexpr bool is_move_constructible_v = std::is_move_constructible_v<T>;
 
 /// @brief True if `T` is copy-assignable.
 template <typename T>
-inline constexpr bool is_copy_assignable_v = std::is_copy_assignable<T>::value;
+inline constexpr bool is_copy_assignable_v = std::is_copy_assignable_v<T>;
 
 /// @brief True if `T` is move-assignable.
 template <typename T>
-inline constexpr bool is_move_assignable_v = std::is_move_assignable<T>::value;
+inline constexpr bool is_move_assignable_v = std::is_move_assignable_v<T>;
 
 /// @brief True if `T` is nothrow move-constructible.
 template <typename T>
-inline constexpr bool is_nothrow_move_constructible_v = std::is_nothrow_move_constructible<T>::value;
+inline constexpr bool is_nothrow_move_constructible_v = std::is_nothrow_move_constructible_v<T>;
 
 /// @brief True if `T` is nothrow move-assignable.
 template <typename T>
-inline constexpr bool is_nothrow_move_assignable_v = std::is_nothrow_move_assignable<T>::value;
+inline constexpr bool is_nothrow_move_assignable_v = std::is_nothrow_move_assignable_v<T>;
 
 /// @brief True if `T` is default-constructible (single-argument form of `std::is_constructible`).
 template <typename T>
-inline constexpr bool is_constructible_v = std::is_constructible<T>::value;
+inline constexpr bool is_constructible_v = std::is_constructible_v<T>;
 
 /// @brief True if `T` is constructible from `Args...`.
 template <typename T, typename... Args>
-inline constexpr bool is_constructible_from_v = std::is_constructible<T, Args...>::value;
+inline constexpr bool is_constructible_from_v = std::is_constructible_v<T, Args...>;
 
 /// @brief Short-circuiting logical AND over a pack of traits (C++17 `std::conjunction`).
 template <typename...>

@@ -2,9 +2,44 @@
 # Embedded C++17 header-only library.
 #
 # Strategy: enable broad check families, then disable checks that are noisy
-# or inappropriate for low-level container / MMIO code. Warnings are not
-# enforced as errors yet (start permissive; tighten later).
-
+# or inappropriate for low-level container / MMIO code. Every disable below
+# carries its reason, so a future reader sees a decision rather than an
+# omission. Run `tools/clang_tidy_report.sh` for the deduplicated report --
+# the raw warning count is ~4x the number of distinct findings because each
+# header is re-analysed by every header that includes it.
+#
+# NOTE ON ALIASES: several checks exist under two names and clang-tidy reports
+# a finding if *either* is enabled, e.g.
+#   [cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers]
+# Disabling one side of a pair changes nothing. Both names are listed wherever
+# a decision applies to an aliased check.
+#
+# Do NOT put `#` comments inside the `Checks:` block below. It is a YAML folded
+# scalar, so a comment line is joined to its neighbours as literal text and the
+# entry that follows it silently stops being a check name -- the disable is
+# accepted and has no effect. Verify any edit with
+# `clang-tidy --list-checks -p <build> <header>`.
+#
+# Why each non-obvious check is off:
+#
+#   cppcoreguidelines-avoid-do-while
+#     METL wraps multi-statement macros in do-while(0) so each invocation is a
+#     single statement. The idiom this check objects to is correct practice here.
+#
+#   {cppcoreguidelines-avoid,readability}-magic-numbers
+#     Bit widths, masks and register offsets read better as literals at the
+#     point of use than as named constants defined elsewhere.
+#
+#   {modernize,cppcoreguidelines}-macro-to-enum
+#     METL's macros are configuration and portability shims that have to be
+#     testable with `#if`, which an enum cannot be.
+#
+#   readability-uppercase-literal-suffix
+#     Project style is lowercase literal suffixes (`0u`, `1ul`).
+#
+#   readability-named-parameter
+#     Declarations deliberately omit names for parameters they do not use; the
+#     names that matter are on the documented definitions.
 Checks: >
   -*,
   bugprone-*,
@@ -17,6 +52,13 @@ Checks: >
   -readability-identifier-length,
   -modernize-use-trailing-return-type,
   -modernize-use-nodiscard,
+  -cppcoreguidelines-avoid-do-while,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -readability-magic-numbers,
+  -modernize-macro-to-enum,
+  -cppcoreguidelines-macro-to-enum,
+  -readability-uppercase-literal-suffix,
+  -readability-named-parameter,
   -modernize-avoid-c-arrays,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
   -cppcoreguidelines-pro-bounds-constant-array-index,

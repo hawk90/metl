@@ -73,8 +73,8 @@ struct handle_packed_type {
 ///       message struct, or sent through a queue like any other integer.
 template <typename Tag, typename IndexT = std::uint16_t, typename GenT = std::uint16_t>
 class versioned_handle {
-  static_assert(std::is_unsigned<IndexT>::value, "versioned_handle IndexT must be unsigned");
-  static_assert(std::is_unsigned<GenT>::value, "versioned_handle GenT must be unsigned");
+  static_assert(std::is_unsigned_v<IndexT>, "versioned_handle IndexT must be unsigned");
+  static_assert(std::is_unsigned_v<GenT>, "versioned_handle GenT must be unsigned");
 
  public:
   using tag_type = Tag;

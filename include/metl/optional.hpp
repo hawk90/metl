@@ -56,10 +56,9 @@ class optional {
   // Converting forwarding constructor. SFINAE prevents hijacking copy/move and
   // in_place_t overloads (e.g. `optional<optional<T>>` should not bind here).
   template <typename U = T,
-            typename = std::enable_if_t<!std::is_same<std::decay_t<U>, optional>::value &&
-                                        !std::is_same<std::decay_t<U>, in_place_t>::value &&
-                                        !std::is_same<std::decay_t<U>, nullopt_t>::value &&
-                                        std::is_constructible<T, U>::value>>
+            typename = std::enable_if_t<
+                !std::is_same_v<std::decay_t<U>, optional> && !std::is_same_v<std::decay_t<U>, in_place_t> &&
+                !std::is_same_v<std::decay_t<U>, nullopt_t> && std::is_constructible_v<T, U>>>
   constexpr optional(U&& v) : storage_{}, has_value_(false) {
     construct(std::forward<U>(v));
   }
@@ -82,7 +81,7 @@ class optional {
 
   /// @brief Move constructor; moves the contained value if engaged.
   /// @note The source remains engaged (its value is moved-from), not reset.
-  optional(optional&& other) noexcept(std::is_nothrow_move_constructible<T>::value)
+  optional(optional&& other) noexcept(std::is_nothrow_move_constructible_v<T>)
       : storage_{}, has_value_(false) {
     if (other.has_value_) {
       construct(static_cast<T&&>(*other));
@@ -116,8 +115,8 @@ class optional {
   }
 
   /// @brief Move-assigns from another optional, matching engaged state.
-  optional& operator=(optional&& other) noexcept(std::is_nothrow_move_assignable<T>::value &&
-                                                 std::is_nothrow_move_constructible<T>::value) {
+  optional& operator=(optional&& other) noexcept(std::is_nothrow_move_assignable_v<T> &&
+                                                 std::is_nothrow_move_constructible_v<T>) {
     if (this == &other) {
       return *this;
     }
@@ -133,10 +132,9 @@ class optional {
 
   /// @brief Assigns a value, engaging the optional (constructs or assigns `T`).
   /// @param value The value forwarded into the contained `T`.
-  template <
-      typename U = T,
-      typename = std::enable_if_t<!std::is_same<std::decay_t<U>, optional>::value &&
-                                  std::is_constructible<T, U>::value && std::is_assignable<T&, U>::value>>
+  template <typename U = T,
+            typename = std::enable_if_t<!std::is_same_v<std::decay_t<U>, optional> &&
+                                        std::is_constructible_v<T, U> && std::is_assignable_v<T&, U>>>
   optional& operator=(U&& value) {
     assign_or_construct(std::forward<U>(value));
     return *this;
@@ -280,8 +278,8 @@ class optional {
   }
 
   /// @brief Swaps the contents (and engaged state) with another optional.
-  void swap(optional& other) noexcept(std::is_nothrow_move_constructible<T>::value &&
-                                      std::is_nothrow_move_assignable<T>::value) {
+  void swap(optional& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
+                                      std::is_nothrow_move_assignable_v<T>) {
     if (has_value_ && other.has_value_) {
       using std::swap;
       swap(*data(), *other.data());

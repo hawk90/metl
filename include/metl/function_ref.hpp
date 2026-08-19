@@ -55,12 +55,12 @@ class function_ref<R(Args...)> {
   // exactly when the argument is an lvalue. `Referenced` carries the callable's
   // cv-qualification, so the correct (const or non-const) operator() is invoked.
   template <typename F,
-            typename Referenced = typename std::remove_reference<F>::type,
-            typename Decayed = typename std::decay<F>::type,
-            typename = typename std::enable_if<std::is_lvalue_reference<F>::value>::type,
-            typename = typename std::enable_if<!std::is_same<Decayed, function_ref>::value>::type,
-            typename = typename std::enable_if<!std::is_pointer<Decayed>::value>::type,
-            typename = typename std::enable_if<std::is_invocable_r<R, Referenced&, Args...>::value>::type>
+            typename Referenced = std::remove_reference_t<F>,
+            typename Decayed = std::decay_t<F>,
+            typename = std::enable_if_t<std::is_lvalue_reference_v<F>>,
+            typename = std::enable_if_t<!std::is_same_v<Decayed, function_ref>>,
+            typename = std::enable_if_t<!std::is_pointer_v<Decayed>>,
+            typename = std::enable_if_t<std::is_invocable_r_v<R, Referenced&, Args...>>>
   /// @brief Binds an lvalue callable (const or non-const), preserving cv-qualification.
   /// @param function Lvalue callable to reference; must outlive this function_ref.
   /// @warning Only lvalues bind here; rvalues select the deleted overload below.
@@ -81,10 +81,10 @@ class function_ref<R(Args...)> {
   // mirrors std::function_ref (P0792), which deletes rvalue binding. Function
   // pointers are unaffected — they use the dedicated pointer constructor above.
   template <typename F,
-            typename Decayed = typename std::decay<F>::type,
-            typename = typename std::enable_if<!std::is_lvalue_reference<F>::value>::type,
-            typename = typename std::enable_if<!std::is_same<Decayed, function_ref>::value>::type,
-            typename = typename std::enable_if<!std::is_pointer<Decayed>::value>::type>
+            typename Decayed = std::decay_t<F>,
+            typename = std::enable_if_t<!std::is_lvalue_reference_v<F>>,
+            typename = std::enable_if_t<!std::is_same_v<Decayed, function_ref>>,
+            typename = std::enable_if_t<!std::is_pointer_v<Decayed>>>
   function_ref(F&& function) = delete;
 
   /// @brief Tests whether a callable is referenced.

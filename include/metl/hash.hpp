@@ -195,7 +195,7 @@ struct fnv1a_hash {
     // objects can hash differently, breaking the hash/equality invariant. Gate
     // the raw-bytes overload on has_unique_object_representations; specialize
     // fnv1a_hash for other types.
-    static_assert(std::has_unique_object_representations<T>::value,
+    static_assert(std::has_unique_object_representations_v<T>,
                   "fnv1a_hash default overload hashes the raw object representation, which is only "
                   "sound for types with a unique object representation (no padding / no ambiguous "
                   "bit patterns). Provide a specialized hash for other types.");
