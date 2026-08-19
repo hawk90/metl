@@ -466,4 +466,87 @@ class flat_map {
   size_type size_;
 };
 
+// ---------------------------------------------------------------------------
+// Relational operators
+//
+// Cross-capacity, like fixed_vector's and fixed_string's: two maps that hold the
+// same entries compare equal whatever their declared capacities are, since
+// capacity is a storage decision and not part of the value.
+//
+// The comparator type must match, and that restriction is deliberate rather than
+// an oversight. Compare determines the ORDER the entries are stored in, so a
+// flat_map<K, V, less> and a flat_map<K, V, greater> holding the same entries
+// hold them in opposite sequences; a lexicographic comparison of the two would
+// report a difference that says something about the comparators rather than
+// about the contents.
+//
+// value_type is a plain aggregate with no operator== of its own, so the fields
+// are compared directly here rather than through the element type.
+// ---------------------------------------------------------------------------
+
+/// @brief True when both maps hold the same entries in the same order.
+template <typename Key, typename T, std::size_t N1, std::size_t N2, typename Compare>
+METL_NODISCARD bool operator==(const flat_map<Key, T, N1, Compare>& lhs,
+                               const flat_map<Key, T, N2, Compare>& rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  for (std::size_t i = 0; i < lhs.size(); ++i) {
+    if (!(lhs.begin()[i].key == rhs.begin()[i].key) || !(lhs.begin()[i].value == rhs.begin()[i].value)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// @brief True when the maps differ in size or in any entry.
+template <typename Key, typename T, std::size_t N1, std::size_t N2, typename Compare>
+METL_NODISCARD bool operator!=(const flat_map<Key, T, N1, Compare>& lhs,
+                               const flat_map<Key, T, N2, Compare>& rhs) {
+  return !(lhs == rhs);
+}
+
+/// @brief Lexicographic order over the entry sequence, key before value.
+template <typename Key, typename T, std::size_t N1, std::size_t N2, typename Compare>
+METL_NODISCARD bool operator<(const flat_map<Key, T, N1, Compare>& lhs,
+                              const flat_map<Key, T, N2, Compare>& rhs) {
+  const std::size_t common = lhs.size() < rhs.size() ? lhs.size() : rhs.size();
+  for (std::size_t i = 0; i < common; ++i) {
+    if (lhs.begin()[i].key < rhs.begin()[i].key) {
+      return true;
+    }
+    if (rhs.begin()[i].key < lhs.begin()[i].key) {
+      return false;
+    }
+    if (lhs.begin()[i].value < rhs.begin()[i].value) {
+      return true;
+    }
+    if (rhs.begin()[i].value < lhs.begin()[i].value) {
+      return false;
+    }
+  }
+  return lhs.size() < rhs.size();
+}
+
+/// @brief `rhs < lhs`.
+template <typename Key, typename T, std::size_t N1, std::size_t N2, typename Compare>
+METL_NODISCARD bool operator>(const flat_map<Key, T, N1, Compare>& lhs,
+                              const flat_map<Key, T, N2, Compare>& rhs) {
+  return rhs < lhs;
+}
+
+/// @brief `!(rhs < lhs)`.
+template <typename Key, typename T, std::size_t N1, std::size_t N2, typename Compare>
+METL_NODISCARD bool operator<=(const flat_map<Key, T, N1, Compare>& lhs,
+                               const flat_map<Key, T, N2, Compare>& rhs) {
+  return !(rhs < lhs);
+}
+
+/// @brief `!(lhs < rhs)`.
+template <typename Key, typename T, std::size_t N1, std::size_t N2, typename Compare>
+METL_NODISCARD bool operator>=(const flat_map<Key, T, N1, Compare>& lhs,
+                               const flat_map<Key, T, N2, Compare>& rhs) {
+  return !(lhs < rhs);
+}
+
 }  // namespace metl

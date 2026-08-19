@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`flat_map` and `flat_set` gain the six relational operators.** They had
+  **none** — `std::map` and `std::set` have all six, so two of these could not be
+  compared at all, not even for equality. Cross-capacity like `fixed_vector`'s
+  and `fixed_string`'s: two containers holding the same entries compare equal
+  whatever their declared capacities, because capacity is a storage decision
+  rather than part of the value. Ordering is lexicographic over the entry
+  sequence, key before value for the map.
+  The comparator type must match, and that restriction is deliberate: `Compare`
+  determines the order entries are stored in, so a `flat_map<K, V, less>` and a
+  `flat_map<K, V, greater>` holding identical entries hold them in opposite
+  sequences — comparing the two would report a difference that describes the
+  comparators rather than the contents.
+
 - **`ring_buffer` and `fixed_deque` are iterable.** Neither had `begin()`/`end()`
   at all, which made the ordinary embedded job — drain a telemetry ring, walk a
   deque — impossible without an index loop, and left them the only fixed-capacity
