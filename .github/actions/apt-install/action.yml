@@ -9,10 +9,22 @@ description: Cache downloaded Debian packages and tolerate transient apt failure
 # `timed_out` -- so the run looked like a concurrency cancellation.
 #
 # A bare retry loop does nothing against that: the command never exits, so the
-# loop never reaches its next iteration. The `timeout` wrappers are the part
-# that matters -- they turn a hang into a failure the retry can act on. The
-# budgets are generous multiples of the observed healthy time so a merely slow
-# mirror is not mistaken for a wedged one.
+# loop never reaches its next iteration. Two things fix it, in this order:
+#
+#   1. `Acquire::*::Timeout` makes *apt* give up on a stalled socket instead of
+#      waiting forever, and `Acquire::Retries` lets it re-try the fetch itself.
+#      This is the real fix -- it recovers without losing the packages already
+#      downloaded.
+#   2. The outer `timeout` is only a backstop for a hang apt's own timeouts do
+#      not cover.
+#
+# The retry budget must stay *under* the calling job's `timeout-minutes`, or
+# the retries eat the job rather than saving it. That is how the first version
+# of this action failed: three attempts at up to 20 minutes each, inside a job
+# budgeted at 10, so attempt 2 was still running when the job died -- and with
+# no output flushed, it looked like a hang with no diagnosis. The loop below is
+# bounded by a single deadline (default 8 minutes, under every job budget here)
+# and always reports why it gave up.
 #
 # `--no-install-recommends` is kept for hygiene, not for size: the ARM toolchain
 # pulls no Recommends at all (all five packages are hard Depends), so it does
@@ -25,6 +37,13 @@ inputs:
   cache-key:
     description: Stable cache namespace for this package set
     required: true
+  total-timeout:
+    description: >
+      Hard ceiling in seconds for all attempts combined. Must be less than the
+      calling job's timeout-minutes so a wedged mirror fails with a message
+      instead of consuming the job.
+    required: false
+    default: "480"
 
 runs:
   using: composite
@@ -42,10 +61,11 @@ runs:
         path: /var/cache/apt/archives/*.deb
         key: apt-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key }}
 
-    - name: Install apt packages (with timeout and retry)
+    - name: Install apt packages (bounded retry)
       shell: bash
       env:
         APT_PACKAGES: ${{ inputs.packages }}
+        APT_TOTAL_TIMEOUT: ${{ inputs.total-timeout }}
       run: |
         set -euo pipefail
 
@@ -54,16 +74,34 @@ runs:
         echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' \
           | sudo tee /etc/apt/apt.conf.d/99keep-downloads > /dev/null
 
-        for attempt in 1 2 3; do
-          if timeout 300 sudo apt-get update && \
-             timeout 900 sudo apt-get install --no-install-recommends -y ${APT_PACKAGES}; then
+        # Make apt itself fail a stalled socket rather than waiting forever,
+        # and re-fetch on its own before we throw the whole attempt away.
+        APT_OPTS=(
+          -o Acquire::Retries=3
+          -o Acquire::http::Timeout=30
+          -o Acquire::https::Timeout=30
+          -o Acquire::ftp::Timeout=30
+        )
+
+        deadline=$(( SECONDS + APT_TOTAL_TIMEOUT ))
+        attempt=0
+        while (( SECONDS < deadline )); do
+          attempt=$(( attempt + 1 ))
+          remaining=$(( deadline - SECONDS ))
+          echo "apt attempt ${attempt} (${remaining}s of budget left)"
+
+          # `update` gets a slice, `install` whatever is still left, so a slow
+          # index refresh cannot starve the download it exists to enable.
+          if timeout $(( remaining / 4 + 1 )) sudo apt-get "${APT_OPTS[@]}" update && \
+             timeout $(( deadline - SECONDS )) \
+               sudo apt-get "${APT_OPTS[@]}" install --no-install-recommends -y ${APT_PACKAGES}; then
             exit 0
           fi
-          if [[ "${attempt}" -lt 3 ]]; then
-            delay=$((attempt * 10))
-            echo "apt attempt ${attempt} failed or timed out; retrying in ${delay}s" >&2
-            sleep "${delay}"
-          fi
+
+          echo "apt attempt ${attempt} failed or timed out" >&2
+          sleep 5
         done
-        echo "apt failed after 3 attempts" >&2
+
+        echo "apt did not succeed within ${APT_TOTAL_TIMEOUT}s (${attempt} attempts)." >&2
+        echo "If only the cross-toolchain jobs are affected, suspect the Ubuntu mirror." >&2
         exit 1
