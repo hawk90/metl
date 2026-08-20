@@ -7,7 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — BREAKING
+
+These land before the first tag on purpose. After v0.1.0 the same corrections
+would cost a deprecation cycle; today they cost a recompile.
+
+- **The recoverable-API contract is now uniform and machine-checked**
+  (`docs/SCOPE.md` §9). METL has always offered two forms of every operation that
+  can run out of capacity — `X(...)` asserts, `try_X(...)` reports — but the
+  contract was applied unevenly, and the unevenness was invisible:
+
+  - **`METL_NODISCARD` was missing from 22 of the 55 `try_*` entry points**, split
+    by *when each header was written* rather than by any principle.
+    `fixed_vector::try_push_back(x);` compiled silently while
+    `fixed_queue::try_push(x);` warned — the same idiom with opposite safety in
+    the same library, and the silent one was in the most-used container. Ignoring
+    a `try_*` result is now a warning everywhere.
+
+  - **`fixed_string::assign` / `append` → `try_assign` / `try_append`.** They
+    returned `bool` for "did it fit" without the `try_` prefix, contradicting the
+    rule the cookbook states. Their plain names now mean what they mean
+    everywhere else in the library: assert on overflow.
+
+  - **`flat_map` / `static_unordered_map`: `insert_or_assign` → `try_insert_or_assign`.**
+    Sharper than a naming slip. `std::map::insert_or_assign`'s `bool` means *was
+    it inserted rather than assigned*; this one meant *did it fit*. Borrowing a
+    standard name and changing what its result means is the silent mislabelling
+    the design principles forbid. `insert_or_assign` now exists as the asserting
+    form and returns a reference, like `emplace`.
+
+  Migration is mechanical: add `try_` to those five names, and check results you
+  were ignoring (the compiler now points at every one).
+
 ### Added
+
+- **`fixed_vector` gains the recoverable half of its mutating API** —
+  `try_insert` (four overloads), `try_emplace(pos, ...)`, `try_resize` (two) and
+  `try_assign` (two). `insert`/`resize`/`assign` were asserting-only, so code
+  sizing a buffer from runtime input — a protocol frame, a sensor burst, a parse
+  — had no recovery path short of pre-checking capacity by hand.
+
+  `try_insert` returns `end()` on refusal rather than a `bool`, so a successful
+  call still yields the std-shaped iterator to the new element; a successful
+  insert can never return `end()`, so the outcomes are distinguishable.
+
+  All of them are all-or-nothing: on refusal the container is byte-for-byte what
+  it was. That is why the range overloads require a **forward** iterator — a
+  single-pass source cannot be measured without being consumed, so the promise
+  could not be kept. The rejection is a `static_assert` naming that reason rather
+  than an `enable_if`, because "no matching function" explains nothing.
+
+- **`api-contract` CI job** (`tools/check_api_contract.py`) enforces the two
+  mechanical halves of §9: every `try_*` is `METL_NODISCARD` (R3), and `try_` is
+  reserved for recoverable forms (R2), with a reasoned allowlist for the bools
+  that answer a question instead of reporting a failure (`erase`, `contains`, …).
+  It ships a `--self-test` canary — a gate that cannot fail is not a gate — and
+  the job additionally compiles `forward_iterator_contract.cpp` both ways,
+  requiring the single-pass arm to fail, the same shape as `handle-atomics`.
+
+- **`fixed_string` gains asserting `assign`/`append`**, completing the pair for
+  the names freed up by the renames above.
+
+### Fixed
+
+- **`fixed_vector::insert(pos, n, value)` could overflow its own bounds check.**
+  The precondition was written `size_ + n <= Capacity`, which wraps for a large
+  `n` and then passes. It is now a subtraction. Covered by a test that passes
+  `SIZE_MAX`.
 
 - **`flat_map` and `flat_set` gain the six relational operators.** They had
   **none** — `std::map` and `std::set` have all six, so two of these could not be

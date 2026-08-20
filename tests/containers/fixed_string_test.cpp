@@ -9,7 +9,7 @@ int main() {
     return 1;
   }
 
-  if (!text.assign("ab")) {
+  if (!text.try_assign("ab")) {
     return 2;
   }
 
@@ -17,7 +17,7 @@ int main() {
     return 3;
   }
 
-  if (!text.try_push_back('c') || !text.append("de")) {
+  if (!text.try_push_back('c') || !text.try_append("de")) {
     return 4;
   }
 
@@ -39,7 +39,7 @@ int main() {
     return 8;
   }
 
-  if (!text.append("fghi")) {
+  if (!text.try_append("fghi")) {
     return 9;
   }
 
@@ -47,7 +47,7 @@ int main() {
     return 10;
   }
 
-  if (text.append("yz")) {
+  if (text.try_append("yz")) {
     return 11;
   }
 
@@ -71,7 +71,7 @@ int main() {
   // silently truncating. (The const char* constructor instead asserts on
   // overflow, which cannot be exercised in-process without aborting.)
   metl::fixed_string<3> small;
-  if (small.assign("toolong")) {
+  if (small.try_assign("toolong")) {
     return 15;
   }
   if (!small.empty()) {

@@ -1,7 +1,7 @@
 // libFuzzer harness for metl::flat_map.
 //
 // Drives a fixed-capacity sorted flat map with an opcode stream of
-// CONTRACT-VALID operations only: try_emplace / insert_or_assign / erase are
+// CONTRACT-VALID operations only: try_emplace / try_insert_or_assign / erase are
 // bool/return-based (never assert), find/contains are total, and positional
 // operator[]/nth are always bounded by `% size()`. emplace (which asserts on a
 // full map or duplicate key) is deliberately NOT called.
@@ -43,15 +43,15 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     const std::uint16_t key = in.integer<std::uint16_t>();
     switch (in.byte() % 7u) {
       case 0: {  // try_emplace — false on duplicate key or full (no assert)
-        map.try_emplace(key, in.integer<std::uint32_t>());
+        (void)map.try_emplace(key, in.integer<std::uint32_t>());
         break;
       }
-      case 1: {  // insert_or_assign — false only if a new key cannot fit
-        map.insert_or_assign(key, in.integer<std::uint32_t>());
+      case 1: {  // try_insert_or_assign — false only if a NEW key cannot fit
+        (void)map.try_insert_or_assign(key, in.integer<std::uint32_t>());
         break;
       }
       case 2: {  // erase — false if absent
-        map.erase(key);
+        (void)map.erase(key);
         break;
       }
       case 3: {  // find / contains consistency

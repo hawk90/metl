@@ -93,7 +93,7 @@ int main() {
     return 8;
   }
 
-  if (!map.insert_or_assign(2, 25) || *map.find(2) != 25) {
+  if (!map.try_insert_or_assign(2, 25) || *map.find(2) != 25) {
     return 9;
   }
 
@@ -146,9 +146,9 @@ int main() {
   // --- Custom non-transparent Compare (reverse order) ---
   {
     metl::flat_map<int, int, 4, int_greater> rmap;
-    rmap.try_emplace(1, 100);
-    rmap.try_emplace(3, 300);
-    rmap.try_emplace(2, 200);
+    if (!rmap.try_emplace(1, 100) || !rmap.try_emplace(3, 300) || !rmap.try_emplace(2, 200)) {
+      return 46;
+    }
 
     // Stored in descending order.
     if (rmap[0].key != 3 || rmap[1].key != 2 || rmap[2].key != 1) {
@@ -178,9 +178,9 @@ int main() {
   // --- Heterogeneous lookup with const char* + cstr_less ---
   {
     metl::flat_map<const char*, int, 4, cstr_less> smap;
-    smap.try_emplace("banana", 2);
-    smap.try_emplace("apple", 1);
-    smap.try_emplace("cherry", 3);
+    if (!smap.try_emplace("banana", 2) || !smap.try_emplace("apple", 1) || !smap.try_emplace("cherry", 3)) {
+      return 47;
+    }
 
     // Sorted in strcmp order: apple, banana, cherry.
     if (std::strcmp(smap[0].key, "apple") != 0) {

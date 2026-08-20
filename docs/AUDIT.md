@@ -294,6 +294,9 @@ Surveyed the heavy standard headers pulled in by public headers (`<functional>`,
 9. Reconcile `std::`-divergences: `at()` asserts not throws; `flat_map::operator[]` positional; `value()`/`get()` assert. Rename/document.
 10. Fix the concrete High/Med bugs above.
 11. Missing utilities: `fixed_bitset`, documented iterator-invalidation contracts, `expected` monadic ops, `try_value()` recoverable paths, compile-time `static_string_map`.
+    **Update (2026-08-20):** `try_value()` is closed as *not needed* — see `docs/SCOPE.md` §9 R5:
+    `has_value()` is an exact, non-racy pre-check on a single-threaded vocabulary type, so the
+    recoverable form would add API surface without adding a capability. The remaining items stand.
 
 ## Section C — Fuzzing / security (bug bounty)
 
@@ -443,7 +446,7 @@ posture.
 | HIGH | `static_unordered_set.hpp:405` `emplace`/`construct_at` | full table → `index == npos` → wild placement-new + state write + `++size_` (OOB **write**). The set lacks the map's guard entirely | add non-strippable `METL_HARDEN(index < bucket_count)` |
 | HIGH | `static_unordered_map.hpp:589` `construct_at` | the existing bounds guard is itself `METL_ASSERT` → false at `NONE`; the code comment claiming it defends a user-disabled assert is now untrue | change that one guard to `METL_HARDEN` |
 | MED | `arena_allocator.hpp:149` `allocate_impl` | non-power-of-two `alignment` (runtime `allocate()` path) → silent offset corruption → later OOB allocation | `METL_HARDEN` / `panic` on the runtime path |
-| MED | `flat_map.hpp:344` / `flat_set.hpp:343` `emplace` | full container → `return data()[Capacity]` one-past-end reference (OOB **read**/dangling) | branch on `inserted` / non-strippable capacity guard |
+| MED | `flat_map.hpp:344` / `flat_set.hpp:343` `emplace` | full container → `return data()[Capacity]` one-past-end reference (OOB **read**/dangling) | ✅ **DONE** — non-strippable `METL_HARDEN(index < size_)` before the return, on `emplace` and on the new `insert_or_assign` twin (which had the identical shape) |
 | LOW | `atomic_ref.hpp:63` ctor | misaligned pointer → torn/UB atomic access rather than abort (acceptable precondition) | document that `NONE` removes the alignment guarantee |
 
 **Verified non-issues** (so they are not re-flagged): no side-effect-in-assert

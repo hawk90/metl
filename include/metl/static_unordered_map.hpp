@@ -354,7 +354,7 @@ class static_unordered_map {
   /// @note Unlike @c emplace, a full map or duplicate key is reported by the return value
   ///       rather than an assertion.
   template <typename K, typename V>
-  bool try_emplace(K&& key, V&& value) {
+  METL_NODISCARD bool try_emplace(K&& key, V&& value) {
     size_type index = npos;
     if (!locate_insert_index(key, &index)) {
       return false;
@@ -398,25 +398,25 @@ class static_unordered_map {
 
   /// @brief Assign @p value to an existing @p key, or insert the pair if absent.
   /// @return @c true on assign or successful insert; @c false only if a new key cannot fit (full).
+  /// @note The boolean answers "did it fit", **not** std's "was it inserted rather than
+  ///       assigned" — hence the @c try_ prefix, which reserves the plain name for the
+  ///       asserting form below.
   template <typename K, typename V>
-  bool insert_or_assign(K&& key, V&& value) {
-    const size_type existing = find_existing_index(key);
-    if (existing != npos) {
-      slot_value(existing)->value = std::forward<V>(value);
-      return true;
-    }
+  METL_NODISCARD bool try_insert_or_assign(K&& key, V&& value) {
+    return insert_or_assign_impl(std::forward<K>(key), std::forward<V>(value)) != npos;
+  }
 
-    if (size_ >= Capacity) {
-      return false;
-    }
-
-    size_type index = npos;
-    if (!locate_insert_index(key, &index)) {
-      return false;
-    }
-
-    construct_at(index, std::forward<K>(key), std::forward<V>(value));
-    return true;
+  /// @brief Assign @p value to an existing @p key, or insert the pair if absent.
+  /// @return Reference to the assigned-to or newly inserted element.
+  /// @pre A new key fits; a full map asserts. Use @c try_insert_or_assign otherwise.
+  template <typename K, typename V>
+  reference insert_or_assign(K&& key, V&& value) {
+    const size_type index = insert_or_assign_impl(std::forward<K>(key), std::forward<V>(value));
+    METL_ASSERT(index != npos);
+    // A refused insert returns npos, and METL_ASSERT is stripped at low
+    // hardening levels; without this, slot_value(npos) would be a wild read.
+    METL_HARDEN(index < bucket_count);
+    return *slot_value(index);
   }
 
   /// @brief Key-based subscript: return the mapped value for @p key, default-constructing and
@@ -551,6 +551,31 @@ class static_unordered_map {
     }
 
     return false;
+  }
+
+  /// Shared body of try_insert_or_assign / insert_or_assign.
+  /// @return Index of the assigned-to or newly inserted slot, or `npos` if a new
+  ///         key does not fit. Returning the index rather than a bool is what lets
+  ///         the asserting form hand back a reference without a second lookup.
+  template <typename K, typename V>
+  size_type insert_or_assign_impl(K&& key, V&& value) {
+    const size_type existing = find_existing_index(key);
+    if (existing != npos) {
+      slot_value(existing)->value = std::forward<V>(value);
+      return existing;
+    }
+
+    if (size_ >= Capacity) {
+      return npos;
+    }
+
+    size_type index = npos;
+    if (!locate_insert_index(key, &index)) {
+      return npos;
+    }
+
+    construct_at(index, std::forward<K>(key), std::forward<V>(value));
+    return index;
   }
 
   template <typename K, typename V>

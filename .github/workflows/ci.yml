@@ -1000,6 +1000,68 @@ jobs:
         run: ctest --test-dir build -R 'metl_umbrella_complete|metl_header_self_contained' --output-on-failure
 
   # ---------------------------------------------------------------------------
+  # Recoverable-API contract (docs/SCOPE.md section 9)
+  #
+  # Exists because review already failed at this once. 22 of the 55 `try_*` entry
+  # points shipped without METL_NODISCARD, and the split followed *when the header
+  # was written*, not any principle: `fixed_vector::try_push_back(x);` compiled
+  # silently while `fixed_queue::try_push(x);` warned — the same idiom, opposite
+  # safety, in the same library. A one-time sweep fixes that once; this job is
+  # what keeps it fixed.
+  #
+  # Two things are checked that a compiler cannot check for itself:
+  #   * R3 (every `try_*` is METL_NODISCARD) and R2 (`try_` is reserved for the
+  #     recoverable form) — a source scan with a reasoned allowlist for R4.
+  #   * the forward-iterator requirement on try_assign/try_insert. It is a hard
+  #     `static_assert` rather than an `enable_if`, deliberately: a named reason
+  #     beats "no matching function". The cost is that it is not SFINAE-detectable,
+  #     so the only way to prove it still fires is to compile the rejecting case
+  #     and require failure — the same shape as the handle-atomics capability gate.
+  #
+  # `--self-test` runs the checker against fixtures that must be reported. A gate
+  # that cannot fail is not a gate.
+  # ---------------------------------------------------------------------------
+  api-contract:
+    name: api-contract
+    runs-on: ubuntu-latest
+    needs: preflight
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Install build deps
+        uses: ./.github/actions/apt-install
+        with:
+          packages: build-essential clang
+          cache-key: build-essential-clang
+
+      - name: The checker must still bite (canary)
+        run: tools/check_api_contract.py --self-test
+
+      - name: R2/R3 hold across every public header
+        run: tools/check_api_contract.py
+
+      - name: A forward-iterator range is accepted
+        run: |
+          clang++ -std=c++17 -Wall -Wextra -Werror -Iinclude \
+            -DMETL_ITERATOR_KIND=0 \
+            -c tests/containers/forward_iterator_contract.cpp -o forward.o
+
+      - name: A single-pass range must NOT compile
+        run: |
+          set -uo pipefail
+          if clang++ -std=c++17 -Wall -Wextra -Werror -Iinclude \
+               -DMETL_ITERATOR_KIND=1 \
+               -c tests/containers/forward_iterator_contract.cpp -o input.o 2>/dev/null; then
+            echo "::error::try_assign accepted a single-pass iterator — it can no longer"
+            echo "::error::promise 'contents unchanged on failure'. The constraint is gone."
+            exit 1
+          fi
+          echo "single-pass range correctly rejected at compile time"
+
+  # ---------------------------------------------------------------------------
   # clang-tidy (blocking deduplicated ratchet)
   #
   # 148 is the distinct-finding count this exact job reported on this runner

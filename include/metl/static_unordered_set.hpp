@@ -347,7 +347,7 @@ class static_unordered_set {
   /// @note Unlike @c emplace, a full set or duplicate key is reported by the return value
   ///       rather than an assertion.
   template <typename K>
-  bool try_emplace(K&& key) {
+  METL_NODISCARD bool try_emplace(K&& key) {
     size_type index = npos;
     if (!locate_insert_index(key, &index)) {
       return false;

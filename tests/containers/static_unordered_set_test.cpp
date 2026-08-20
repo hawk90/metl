@@ -165,8 +165,9 @@ int main() {
   // 14: find_iter is an STL-compatible alias for find_iterator.
   {
     metl::static_unordered_set<int, 4> s;
-    s.try_emplace(7);
-    s.try_emplace(11);
+    if (!s.try_emplace(7) || !s.try_emplace(11)) {
+      return 21;
+    }
     auto it = s.find_iter(11);
     if (it == s.end() || *it != 11) {
       return 14;
@@ -179,8 +180,9 @@ int main() {
   // 15: Heterogeneous lookup.
   {
     metl::static_unordered_set<test_string, 8, string_hash, string_equal> s;
-    s.try_emplace(test_string("alpha"));
-    s.try_emplace(test_string("beta"));
+    if (!s.try_emplace(test_string("alpha")) || !s.try_emplace(test_string("beta"))) {
+      return 19;
+    }
 
     const char* lookup = "alpha";
     if (!s.contains(lookup)) {
@@ -207,10 +209,9 @@ int main() {
     };
     metl::static_unordered_set<int, 4, identity_hash> s;
     // bucket_count == 8, these all start at bucket 0.
-    s.try_emplace(0);
-    s.try_emplace(8);
-    s.try_emplace(16);
-    s.try_emplace(24);
+    if (!s.try_emplace(0) || !s.try_emplace(8) || !s.try_emplace(16) || !s.try_emplace(24)) {
+      return 20;
+    }
     if (s.size() != 4 || !s.full()) {
       return 16;
     }

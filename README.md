@@ -441,6 +441,7 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | Coverage | host, Clang source-based | `include/metl` line + branch coverage against a floor | `coverage` |
 | Benchmarks | host | build + run each suite (`--quick`); **not** a performance gate | `bench-smoke` |
 | Header hygiene | per-header self-containment + umbrella completeness | `-fsyntax-only` per header + `ctest` | `header-checks` |
+| API contract | every public header | every `try_*` is `[[nodiscard]]` and `try_` is reserved for recoverable forms; a self-test canary must still fail; a single-pass iterator must **not** compile | `api-contract` |
 | Install / consume | `find_package(metl)` downstream | install + build + **run** a consumer | `install-check` |
 | Conan package | `conan create` + `test_package/` | build + **run** a consumer against the *packaged* headers; a pre-C++17 profile must be refused | `conan` |
 | Single-header | generated amalgamation of every public header | redirect every `metl/*.hpp` at it and **run the whole test suite through it** | `amalgamation` |
