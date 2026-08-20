@@ -257,6 +257,35 @@ add_executable(app main.cpp)
 target_link_libraries(app PRIVATE metl::metl)
 ```
 
+## Conan
+
+```bash
+conan create .            # from a checkout
+```
+
+The recipe exports the same `metl::metl` target as the CMake install, so the
+consumer side is identical either way, and it rejects a pre-C++17 profile at
+configure time rather than failing inside a header. `test_package/` builds
+against the packaged headers on every CI run.
+
+## Single-header build
+
+`tools/amalgamate.py` flattens the public headers into one file:
+
+```bash
+python3 tools/amalgamate.py -o metl-single.hpp
+```
+
+```cpp
+#include "metl-single.hpp"
+```
+
+It is generated from the real headers rather than maintained alongside them, so
+it cannot drift — and it is not a reduced subset: CI redirects every
+`metl/*.hpp` at the amalgamated file and runs the **whole test suite** through
+it. That file is attached to each GitHub Release; the `amalgamation` job builds
+it on every push.
+
 ## Zephyr
 
 METL ships as a header-only [Zephyr module](https://docs.zephyrproject.org/latest/develop/modules.html).
@@ -413,6 +442,10 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | Benchmarks | host | build + run each suite (`--quick`); **not** a performance gate | `bench-smoke` |
 | Header hygiene | per-header self-containment + umbrella completeness | `-fsyntax-only` per header + `ctest` | `header-checks` |
 | Install / consume | `find_package(metl)` downstream | install + build + **run** a consumer | `install-check` |
+| Conan package | `conan create` + `test_package/` | build + **run** a consumer against the *packaged* headers; a pre-C++17 profile must be refused | `conan` |
+| Single-header | generated amalgamation of every public header | redirect every `metl/*.hpp` at it and **run the whole test suite through it** | `amalgamation` |
+| Static analysis | clang-tidy, deduplicated | distinct-finding count against a ratchet that can only go down | `clang-tidy` |
+| Security scan | CodeQL `security-and-quality` | analyse a build that **instantiates the templates**, weekly + per PR | `codeql` |
 | Examples | every `examples/*.cpp`, `-Wall -Wextra -Werror` | build + **run** (self-checking) | `examples` |
 
 Cross-cutting frontends covered by the above: **GCC**, **Clang**, and **MSVC** on

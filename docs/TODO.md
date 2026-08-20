@@ -55,7 +55,23 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [ ] **OSSF Scorecard** (posture badge) + optionally SLSA/signed releases.
 
 ### 📦 Distribution / adoption
+- [ ] **First release.** Blocks the two items below, and nothing else blocks it:
+  `release.yml` makes it a one-tag operation, and the tag is checked against
+  `project(VERSION)` (0.1.0 today) before anything is published. Note that
+  `CHANGELOG.md` currently has a `0.1.0-alpha1` section but no `0.1.0` one, so a
+  `v0.1.0` tag would produce a release body saying no changelog section was
+  found — write the section, or tag `v0.1.0-alpha1`, which `release.yml` marks
+  as a pre-release automatically. **Deliberately not cut yet** (decision
+  2026-08-20): publishing is a public, effectively irreversible act and the API
+  is still moving.
 - [ ] **vcpkg** port (`portfile.cmake` + `vcpkg.json`) → `vcpkg install metl`.
+  Waits on the release above, and not for convenience: `vcpkg_from_github` pins
+  the **SHA512 of a release tarball**, and there is no tag to hash. A port
+  carrying a placeholder hash would look finished and fail on a user's first
+  `vcpkg install`, which is worse than not shipping one.
+- [ ] **conan-center-index submission.** The recipe and its consumer check are
+  done and gated in CI (see below); what CCI additionally wants is a published
+  version to point at, so this waits on the release too.
 - [x] **Conan** recipe (`conanfile.py` + `test_package/`), 2026-08-20, with a
   blocking `conan` CI job. The recipe reads its version from
   `project(VERSION)` in CMakeLists.txt rather than repeating it, so it cannot
