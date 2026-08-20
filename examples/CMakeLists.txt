@@ -17,6 +17,7 @@ set(_metl_examples
   mmio_peripheral   # mmio + register_access + bitfield (fake peripheral)
   error_handling    # expected + optional + variant (no exceptions)
   coroutine_task    # coro/protothread cooperative tasks
+  deadline_tasks    # coro/deadline_scheduler + fixed_priority_queue
   blinky_fsm        # fsm + mmio + delegate
   can_frame_parser  # bitfield + crc16 + span + expected
   sensor_pipeline   # realistic: spsc_queue -> ring_buffer -> fixed_vector

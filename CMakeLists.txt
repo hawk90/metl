@@ -41,6 +41,7 @@ set(_metl_headers
   include/metl/bitfield.hpp
   include/metl/compiler.hpp
   include/metl/config.hpp
+  include/metl/coro/deadline_scheduler.hpp
   include/metl/coro/protothread.hpp
   include/metl/coro/scheduler.hpp
   include/metl/coro/stepper.hpp
@@ -173,7 +174,7 @@ if(METL_BUILD_TESTS)
     containers/ring_buffer containers/flat_map containers/flat_set
     containers/static_unordered_map containers/static_unordered_set
     containers/static_unordered_map_emplace containers/lookup_table
-    containers/recoverable_api
+    containers/recoverable_api containers/fixed_priority_queue
     # memory/
     memory/arena_allocator memory/static_allocator memory/monotonic_buffer
     memory/object_pool memory/allocator_overflow
@@ -195,7 +196,7 @@ if(METL_BUILD_TESTS)
     # control/
     control/fsm control/fsm_reentrancy control/event_dispatcher
     control/coro_protothread control/coro_scheduler control/coro_scheduler_reentrancy
-    control/coro_stepper
+    control/coro_stepper control/coro_deadline_scheduler
     # core/  (assert/compiler + the METL_HARDENING level checks + smoke)
     core/assert core/compiler core/smoke
     core/hardening_none core/hardening_fast core/hardening_debug

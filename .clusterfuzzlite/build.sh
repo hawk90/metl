@@ -10,6 +10,7 @@
 FUZZERS="
 fuzz_fixed_string
 fuzz_flat_map
+fuzz_priority_queue
 fuzz_static_unordered_map
 fuzz_allocators
 fuzz_crc

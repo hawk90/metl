@@ -86,6 +86,8 @@ Containers
   [`fixed_stack`](include/metl/fixed_stack.hpp),
   [`fixed_deque`](include/metl/fixed_deque.hpp).
 - [`ring_buffer`](include/metl/ring_buffer.hpp).
+- [`fixed_priority_queue`](include/metl/fixed_priority_queue.hpp) — bounded binary
+  heap; max-heap by default, `std::greater<T>` for the min-heap deadlines want.
 - [`flat_map`](include/metl/flat_map.hpp),
   [`flat_set`](include/metl/flat_set.hpp).
 - [`static_unordered_map`](include/metl/static_unordered_map.hpp),
@@ -156,9 +158,12 @@ Coroutines / cooperative tasks
 
 - [`coro/protothread`](include/metl/coro/protothread.hpp),
   [`coro/stepper`](include/metl/coro/stepper.hpp),
-  [`coro/scheduler`](include/metl/coro/scheduler.hpp).
+  [`coro/scheduler`](include/metl/coro/scheduler.hpp) (round-robin),
+  [`coro/deadline_scheduler`](include/metl/coro/deadline_scheduler.hpp)
+  (earliest deadline first).
 
-Worked example: [`examples/coroutine_task.cpp`](examples/coroutine_task.cpp).
+Worked examples: [`examples/coroutine_task.cpp`](examples/coroutine_task.cpp),
+[`examples/deadline_tasks.cpp`](examples/deadline_tasks.cpp).
 
 Utility
 
@@ -205,6 +210,7 @@ Worked example: [`examples/mmio_peripheral.cpp`](examples/mmio_peripheral.cpp)
   | [`mmio_peripheral.cpp`](examples/mmio_peripheral.cpp) | `mmio`, `register_access`, `bitfield` |
   | [`error_handling.cpp`](examples/error_handling.cpp) | `expected`, `optional`, `variant` |
   | [`coroutine_task.cpp`](examples/coroutine_task.cpp) | `coro/protothread` |
+  | [`deadline_tasks.cpp`](examples/deadline_tasks.cpp) | `coro/deadline_scheduler`, `fixed_priority_queue` |
   | [`blinky_fsm.cpp`](examples/blinky_fsm.cpp) | `fsm`, `mmio`, `delegate` |
   | [`can_frame_parser.cpp`](examples/can_frame_parser.cpp) | `bitfield`, `crc16`, `span`, `expected` |
   | [`sensor_pipeline.cpp`](examples/sensor_pipeline.cpp) | `spsc_queue`→`ring_buffer`→`fixed_vector` (threaded) |

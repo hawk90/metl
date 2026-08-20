@@ -85,6 +85,22 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [ ] Submit to the ESP-IDF Component Registry (component manifest already present).
 
 ### 📊 Quality / claims
+- [x] **`fixed_priority_queue` + `coro::deadline_scheduler`** (2026-08-21) — the
+  first of the post-contract feature PRs, admitted under the SCOPE.md rule that a
+  public type needs an in-library caller, so the queue and its caller shipped
+  together. Notable beyond the code: the container and the scheduler were
+  **mutation-tested**, and it found a real hole — the scheduler test as first
+  written stayed green under a `sift_down` that no-ops at the root, because a
+  three-task heap is too shallow to tell a working sift from a broken one. It now
+  drains eight scrambled deadlines and catches that mutant, as does the new
+  `fuzz_priority_queue` harness (heap property + size + top-dominates-array
+  after every operation; 200k random inputs clean under ASan+UBSan locally).
+- [x] **clang-tidy ratchet re-measured on CI: 148 → 142** (2026-08-21, run
+  32393655273). `modernize-concat-nested-namespaces` was disabled with its reason
+  (project style opens nested namespaces separately, so the check only ever asked
+  for the one style the project does not use), which removed its accepted entries.
+  Done in two steps on purpose: the commit that caused the drop left the ceiling
+  at 148, CI reported 142, and only then was the number set from that report.
 - [x] **Recoverable-API contract completed and gated** (2026-08-20, pre-1.0 and
   deliberately breaking — after v0.1.0 the same corrections would cost a
   deprecation cycle). The library always had the asserting/recoverable pair; what

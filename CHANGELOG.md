@@ -41,6 +41,49 @@ would cost a deprecation cycle; today they cost a recompile.
 
 ### Added
 
+- **`fixed_priority_queue` — a bounded binary heap — and `coro::deadline_scheduler`,
+  its caller.** Admitted under the rule in `docs/SCOPE.md` that a public type needs
+  a user inside the library, so the two ship together: `coro::scheduler` is
+  round-robin, which means a task that only wants to run in 500 ms is still visited
+  on every pass and has to check the clock itself. The deadline scheduler keeps
+  tasks in the heap ordered by when they next want to run and polls only what is
+  due, so an idle loop can sleep to `next_deadline()` instead of spinning. The
+  worked example wakes 7 times where a 1 ms poll loop would have made 60 passes.
+
+  Contract choices worth knowing, each of which could have been made silently and
+  was not:
+
+  - **`top()` is const-only.** A mutable reference would let a caller change the
+    key the heap is ordered by, breaking the invariant for every later operation
+    with no diagnostic. `push`/`emplace` return `void` for the same class of
+    reason: the new element is sifted immediately, so its construction slot is not
+    where it ends up and a returned reference would point at whatever moved there.
+  - **The scheduler's `Tick` must not wrap.** It is compared with plain `<`. The
+    usual fix for a rolling hardware counter — comparing signed differences — is
+    not a strict weak ordering once the spread exceeds half a period, and a heap
+    requires one, so the queue would misorder *silently* rather than fail. The
+    header says to widen the counter where the overflow is observed instead of
+    hiding the problem behind a comparator.
+  - **`run_due` takes a `max_dispatches` bound.** A task may legitimately re-arm at
+    a deadline that is already due (a catch-up timer); without the bound that is an
+    unbounded loop, which I3 forbids.
+  - **One slot is reserved for the running task's re-arm** while its poll is on the
+    stack, so a poll that fills the scheduler cannot make the re-arm fail;
+    `try_schedule` reports full one slot early instead.
+
+  `erase_if` is the only way to remove something that is not on top, and is
+  deliberately O(Capacity) with a Floyd re-heapify — a heap has no ordering to
+  search by, so finding the victims is a full scan either way. It is what makes
+  `deadline_scheduler::cancel` possible.
+
+  Verified beyond "the tests pass": a new `fuzz_priority_queue` harness checks the
+  heap property, the size bookkeeping and `top()`-dominates-the-array after *every*
+  operation, and both it and the unit tests were mutation-tested — a `sift_down`
+  that no-ops at the root, and a `heapify` that starts too shallow, are each caught.
+  That exercise found a real gap: the scheduler test as first written passed under
+  the `sift_down` mutant, because a three-task heap is too shallow to distinguish a
+  working sift from a broken one. It now drains eight scrambled deadlines.
+
 - **`fixed_vector` gains the recoverable half of its mutating API** —
   `try_insert` (four overloads), `try_emplace(pos, ...)`, `try_resize` (two) and
   `try_assign` (two). `insert`/`resize`/`assign` were asserting-only, so code

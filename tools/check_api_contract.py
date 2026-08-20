@@ -45,6 +45,7 @@ BOOL_ALLOWLIST = {
     "is_done": "state query",
     "is_error": "state query",
     "is_attached": "state query",
+    "is_scheduled": "state query",
     "holds_alternative": "type query, mirrors std::holds_alternative",
     "can_dispatch": "predicate: would dispatch() fire?",
     "can_append": "predicate: would the characters fit?",
@@ -56,6 +57,7 @@ BOOL_ALLOWLIST = {
     "destroy": "answers 'was this a live slot of this pool'",
     "unsubscribe": "answers 'was a matching listener registered'",
     "detach": "answers 'was this task attached'",
+    "cancel": "answers 'was this task scheduled'; cancelling nothing is not a failure",
     # --- established std vocabulary where the bool is the documented result ---
     "compare_exchange_weak": "mirrors std::atomic; the bool IS the CAS result",
     "compare_exchange_strong": "mirrors std::atomic; the bool IS the CAS result",
