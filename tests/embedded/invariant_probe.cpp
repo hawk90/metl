@@ -34,6 +34,7 @@
 #include <cstdint>
 
 #include <metl/crc32.hpp>
+#include <metl/fixed_priority_queue.hpp>
 #include <metl/fixed_vector.hpp>
 #include <metl/handle_pool.hpp>
 #include <metl/object_pool.hpp>
@@ -124,6 +125,21 @@ void exercise_unordered_map() noexcept {
   sink(map.try_emplace(999u, 0u) ? 1u : 0u);
 }
 
+void exercise_priority_queue() noexcept {
+  // A heap moves elements between slots to restore its invariant; the point of
+  // exercising it here is that none of those moves may reach an allocator.
+  metl::fixed_priority_queue<std::uint32_t, 8> queue;
+  for (std::uint32_t i = 0; i < 8; ++i) {
+    sink(queue.try_push((i * 5u) % 8u) ? 1u : 0u);
+  }
+  sink(queue.try_push(99u) ? 1u : 0u);  // full: must not grow
+  sink(queue.erase_if([](const std::uint32_t& v) noexcept { return v < 2u; }) != 0 ? 1u : 0u);
+  while (!queue.empty()) {
+    sink(queue.top());
+    queue.pop();
+  }
+}
+
 void exercise_crc() noexcept {
   const std::uint8_t bytes[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
   sink(metl::crc32(metl::span<const std::uint8_t>{bytes, 16}));
@@ -139,6 +155,7 @@ extern "C" int probe_main(void) {
   exercise_object_pool();
   exercise_handle_pool();
   exercise_unordered_map();
+  exercise_priority_queue();
   exercise_crc();
   return static_cast<int>(g_sink);
 }

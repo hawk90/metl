@@ -26,6 +26,7 @@ ctest --test-dir build -R metl_example --output-on-failure
 - [Memory-mapped register access](#memory-mapped-register-access)
 - [A small finite state machine](#a-small-finite-state-machine)
 - [A cooperative task (protothread)](#a-cooperative-task-protothread)
+- [Running tasks by deadline instead of round-robin](#running-tasks-by-deadline-instead-of-round-robin)
 
 ---
 
@@ -372,3 +373,62 @@ for (std::uint32_t tick = 0; !t.run(); ++tick) t.set_tick(tick);
 
 For an explicit-state alternative without macros, see
 [`metl/coro/stepper.hpp`](../include/metl/coro/stepper.hpp).
+
+## Running tasks by deadline instead of round-robin
+
+*Full example: [`examples/deadline_tasks.cpp`](../examples/deadline_tasks.cpp)*
+
+`coro::scheduler` is round-robin: it polls every attached task on every pass, so
+a task that only wants to run in 500 ms is still visited on every loop iteration
+and has to check the clock itself. `coro::deadline_scheduler` keeps tasks in a
+`fixed_priority_queue` ordered by deadline and polls only the ones that are due.
+
+```cpp
+#include <metl/coro/deadline_scheduler.hpp>
+
+struct blink {
+    std::uint32_t period;
+
+    static metl::optional<std::uint32_t> poll(void* self, std::uint32_t now) noexcept {
+        auto* task = static_cast<blink*>(self);
+        toggle_led();
+        return now + task->period;   // re-arm; return nullopt to retire
+    }
+};
+
+metl::coro::deadline_scheduler<8> tasks;
+blink led{500};
+
+tasks.schedule(&led, &blink::poll, now_ms() + 500);   // asserts if full
+// or: if (!tasks.try_schedule(...)) { /* full */ }
+
+for (;;) {
+    tasks.run_due(now_ms());
+    if (const auto next = tasks.next_deadline()) {
+        sleep_until(*next);       // nothing to do until then
+    } else {
+        wait_for_interrupt();
+    }
+}
+```
+
+Three things worth knowing before you wire this to a timer:
+
+- **The tick must not wrap.** `Tick` is compared with plain `<`. The tempting fix
+  for a rolling hardware counter — comparing signed differences, `(int32_t)(a - b)
+  < 0` — is *not* a strict weak ordering once the spread exceeds half a period,
+  and a heap requires one, so the queue would misorder silently rather than fail.
+  Widen the counter where the overflow is observed (accumulate into a software
+  tick in the overflow ISR) and pass that.
+- **`run_due` is bounded by `max_dispatches`** (default 1024). A task that
+  re-arms at a deadline already `<= now` is asking to run again inside the same
+  call, which is legitimate for a catch-up timer but must not be unbounded.
+- **A poll may schedule and cancel**, including itself. One slot is reserved for
+  the running task's own re-arm while its poll is on the stack, so `try_schedule`
+  reports full one slot early rather than letting the re-arm fail.
+
+For the queue on its own — a work queue, a priority event list — use
+`fixed_priority_queue` directly. It is a max-heap by default like
+`std::priority_queue`; pass `std::greater<T>` for the min-heap that deadlines
+want. `top()` is const-only on purpose: handing out a mutable reference would let
+a caller change the key the heap is ordered by and silently break the invariant.

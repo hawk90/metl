@@ -30,6 +30,7 @@
 #include "metl/expected.hpp"
 #include "metl/fixed_deque.hpp"
 #include "metl/fixed_function.hpp"
+#include "metl/fixed_priority_queue.hpp"
 #include "metl/fixed_queue.hpp"
 #include "metl/fixed_stack.hpp"
 #include "metl/fixed_string.hpp"
@@ -67,6 +68,7 @@
 
 // Cooperative coroutine-style tasks (C++17 macro/state-machine based; no
 // <coroutine> support or extra compiler flags required).
+#include "metl/coro/deadline_scheduler.hpp"
 #include "metl/coro/protothread.hpp"
 #include "metl/coro/scheduler.hpp"
 #include "metl/coro/stepper.hpp"
