@@ -127,8 +127,22 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 
 ### 🛠️ CI/CD polish (finish #18)
 - [ ] README badges (add a docs/Pages badge; CI + license already present).
-- [ ] **Release automation** — tag → GitHub Release with changelog + a **single-header
-  amalgamation** artifact (great for a header-only lib).
+- [x] **Release automation** (2026-08-20) — `tools/amalgamate.py` flattens the 60
+  public headers into one file; `.github/workflows/release.yml` turns a `vX.Y.Z`
+  tag into a GitHub Release with that file attached and the matching CHANGELOG
+  section as the body. The tag triggers the release but is not trusted: the
+  workflow rebuilds and re-tests the tagged tree, refuses to publish if the tag
+  disagrees with `project(VERSION)` in CMakeLists.txt, and verifies the artifact
+  the only way that means anything — it redirects every `metl/*.hpp` to the
+  amalgamated file and runs the **entire test suite** through it (also a blocking
+  `amalgamation` CI job, so it cannot drift between releases). Two things the
+  generator has to get right and now does: `compiler.hpp` re-exports
+  `attributes.hpp` from its last line while `attributes.hpp` includes
+  `compiler.hpp` from its first, which is a cycle rather than a DAG — resolved
+  positionally (an include before the file's own code orders it, one after only
+  reaches it) rather than by a hardcoded exception; and a conditional
+  `#include <intrin.h>` must stay inside its `_MSC_VER` guard, so only
+  unconditional includes are hoisted.
 - [x] Dedupe repeated apt installs via a composite action
   (`.github/actions/apt-install`), DONE 2026-08-19. It exists for reliability more
   than speed: the cross-toolchain jobs pull a **574 MB** `gcc-arm-none-eabi`, and

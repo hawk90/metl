@@ -1,0 +1,144 @@
+name: Release
+
+# Tag -> GitHub Release, with the single-header amalgamation attached.
+#
+# The tag is the trigger but not the authority. Everything published here is
+# regenerated from the tagged tree and re-verified before the release exists:
+# the amalgamation is built and the whole test suite is run through it, and the
+# tag is checked against the version in CMakeLists.txt. A release that would
+# ship something unverified fails instead.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      # Required to create the release and upload assets.
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          # Full history so the changelog section can be located and, if a
+          # previous tag exists, referenced.
+          fetch-depth: 0
+
+      - name: Install build deps
+        uses: ./.github/actions/apt-install
+        with:
+          packages: build-essential clang
+          cache-key: build-essential-clang
+
+      - name: Check the tag against the project version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          # Strip any pre-release suffix before comparing: v0.2.0-rc1 is still
+          # project version 0.2.0.
+          tag_version="${tag%%-*}"
+          project_version="$(sed -n 's/^  VERSION \([0-9.]*\)$/\1/p' CMakeLists.txt | head -1)"
+          if [[ "${tag_version}" != "${project_version}" ]]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match project(VERSION ${project_version}) in CMakeLists.txt." >&2
+            echo "Bump the CMake version in the same commit you tag, so an installed" >&2
+            echo "metlConfigVersion.cmake agrees with the release it came from." >&2
+            exit 1
+          fi
+          echo "version=${tag_version}" >> "$GITHUB_ENV"
+
+      - name: Build and verify the tree
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DMETL_WARNINGS_AS_ERRORS=ON
+          cmake --build build -j
+          ctest --test-dir build -j"$(nproc)" --output-on-failure
+
+      - name: Generate the single-header amalgamation
+        run: |
+          python3 tools/amalgamate.py \
+            -o "metl-${version}-single.hpp" \
+            --version "${version}" \
+            --date "$(git log -1 --format=%cs)"
+
+      - name: Verify the amalgamation runs the whole test suite
+        run: |
+          mkdir -p shim
+          cp "metl-${version}-single.hpp" shim/metl_amalgamated.hpp
+          while read -r header; do
+            mkdir -p "shim/$(dirname "${header}")"
+            printf '#pragma once\n#include "metl_amalgamated.hpp"\n' > "shim/${header}"
+          done < <(cd include && find metl -name '*.hpp')
+
+          failed=()
+          while read -r test; do
+            if ! (clang++ -std=c++17 -O1 -Wall -Wextra -Werror -pthread \
+                    -I shim -I tests "${test}" -o /tmp/amal_bin && /tmp/amal_bin > /dev/null 2>&1); then
+              failed+=("${test}")
+            fi
+          done < <(find tests -name '*_test.cpp' -not -path 'tests/embedded/*')
+
+          if (( ${#failed[@]} > 0 )); then
+            printf 'FAILED through the amalgamated header: %s\n' "${failed[@]}" >&2
+            exit 1
+          fi
+
+      - name: Extract this version's changelog section
+        run: |
+          # Look the section up by the FULL tag, not the stripped version, and
+          # require the heading to end there. `0.1.0` as a loose prefix also
+          # matches `## [0.1.0-alpha1]`, which would quietly ship the
+          # pre-release's notes under the final tag.
+          full="${GITHUB_REF_NAME#v}"
+          escaped="$(printf '%s' "${full}" | sed 's/[.[\*^$]/\\&/g')"
+          # Via ENVIRON, not -v: `awk -v` expands escape sequences in the value
+          # first, so `\[` arrives as `[` and the pattern compiles a character
+          # class instead of a literal bracket -- and then matches nothing.
+          export METL_CHANGELOG_PAT="^## \\[?${escaped}\\]?([ ].*)?$"
+          awk '
+            $0 ~ ENVIRON["METL_CHANGELOG_PAT"] { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+
+          if [[ ! -s release-notes.md ]]; then
+            printf 'No CHANGELOG.md section found for %s.\n\n' "${full}" > release-notes.md
+          fi
+
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "### Single-header build"
+            echo ""
+            echo "\`metl-${version}-single.hpp\` is generated from all $(find include/metl -name '*.hpp' | wc -l) public headers"
+            echo "and is not a summary: this release only exists because the entire test"
+            echo "suite was compiled and run through that one file."
+            echo ""
+            echo "\`\`\`cpp"
+            echo "#include \"metl-${version}-single.hpp\""
+            echo "\`\`\`"
+          } >> release-notes.md
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          [[ "${GITHUB_REF_NAME}" == *-* ]] && prerelease="--prerelease"
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "metl ${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md \
+            ${prerelease} \
+            "metl-${version}-single.hpp"

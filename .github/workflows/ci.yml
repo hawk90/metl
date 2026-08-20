@@ -1047,6 +1047,69 @@ jobs:
         run: tools/clang_tidy_report.sh -p build --max 148
 
   # ---------------------------------------------------------------------------
+  # Single-header amalgamation
+  #
+  # The release artifact is generated from the real headers, so the only way it
+  # can be wrong is if generation itself is wrong. This job proves it is not, by
+  # the strongest check available: it redirects every `metl/*.hpp` to the
+  # amalgamated file and builds and runs the entire test suite through it. A
+  # missing declaration, a bad emission order or an include hoisted out of its
+  # `#if` guard all fail here rather than in a user's tree.
+  # ---------------------------------------------------------------------------
+  amalgamation:
+    name: amalgamation
+    runs-on: ubuntu-latest
+    needs: preflight
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Install build deps
+        uses: ./.github/actions/apt-install
+        with:
+          packages: build-essential clang
+          cache-key: build-essential-clang
+
+      - name: Generate
+        run: python3 tools/amalgamate.py -o metl-single.hpp
+
+      - name: Build every test through the amalgamated header
+        run: |
+          mkdir -p shim
+          cp metl-single.hpp shim/metl_amalgamated.hpp
+          # One shim per public header, so an `#include "metl/x.hpp"` in a test
+          # resolves to the amalgamation instead of the include directory.
+          while read -r header; do
+            mkdir -p "shim/$(dirname "${header}")"
+            printf '#pragma once\n#include "metl_amalgamated.hpp"\n' > "shim/${header}"
+          done < <(cd include && find metl -name '*.hpp')
+
+          pass=0
+          failed=()
+          while read -r test; do
+            if clang++ -std=c++17 -O1 -Wall -Wextra -Werror -pthread \
+                 -I shim -I tests "${test}" -o /tmp/amal_bin && /tmp/amal_bin > /dev/null 2>&1; then
+              pass=$(( pass + 1 ))
+            else
+              failed+=("${test}")
+            fi
+          done < <(find tests -name '*_test.cpp' -not -path 'tests/embedded/*')
+
+          echo "${pass} tests passed through the amalgamated header"
+          if (( ${#failed[@]} > 0 )); then
+            printf 'FAILED: %s\n' "${failed[@]}" >&2
+            exit 1
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: metl-single-header
+          path: metl-single.hpp
+
+  # ---------------------------------------------------------------------------
   # clang-format (strict — fails on any diff)
   # ---------------------------------------------------------------------------
   clang-format:
