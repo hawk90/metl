@@ -95,12 +95,12 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   drains eight scrambled deadlines and catches that mutant, as does the new
   `fuzz_priority_queue` harness (heap property + size + top-dominates-array
   after every operation; 200k random inputs clean under ASan+UBSan locally).
-- [ ] **Re-measure the clang-tidy ratchet on CI.** `modernize-concat-nested-namespaces`
-  was disabled with a reason (project style opens nested namespaces separately, so
-  the check only ever asked for the one style the project does not use), which
-  removes its ~7 accepted entries. The budget must come down to the number CI
-  actually reports — a ceiling left above the real count is blocking in name only.
-  Do NOT set it from a local run; the local figure has had the wrong *sign* before.
+- [x] **clang-tidy ratchet re-measured on CI: 148 → 142** (2026-08-21, run
+  32393655273). `modernize-concat-nested-namespaces` was disabled with its reason
+  (project style opens nested namespaces separately, so the check only ever asked
+  for the one style the project does not use), which removed its accepted entries.
+  Done in two steps on purpose: the commit that caused the drop left the ceiling
+  at 148, CI reported 142, and only then was the number set from that report.
 - [x] **Recoverable-API contract completed and gated** (2026-08-20, pre-1.0 and
   deliberately breaking — after v0.1.0 the same corrections would cost a
   deprecation cycle). The library always had the asserting/recoverable pair; what
