@@ -39,6 +39,7 @@
 #include <metl/handle_pool.hpp>
 #include <metl/object_pool.hpp>
 #include <metl/span.hpp>
+#include <metl/spsc_byte_ring.hpp>
 #include <metl/spsc_queue.hpp>
 #include <metl/static_message_queue.hpp>
 #include <metl/static_unordered_map.hpp>
@@ -140,6 +141,28 @@ void exercise_priority_queue() noexcept {
   }
 }
 
+void exercise_byte_ring() noexcept {
+  // The span protocol is pointer arithmetic over inline storage; the point of
+  // linking it here is that neither the wrap nor the copying helpers reach an
+  // allocator on the way.
+  metl::spsc_byte_ring<16> ring;
+  // Rotate past the seam so both the wrapped and unwrapped paths are linked.
+  for (std::uint32_t round = 0; round < 3; ++round) {
+    const metl::span<std::byte> out = ring.writable_span();
+    for (std::size_t i = 0; i < out.size(); ++i) {
+      out[i] = static_cast<std::byte>(i);
+    }
+    ring.commit_write(out.size());
+    const metl::span<const std::byte> in = ring.readable_span();
+    sink(static_cast<std::uint32_t>(in.size()));
+    ring.consume(in.size() / 2u);
+    ring.consume(ring.readable_size());
+  }
+  std::byte scratch[4] = {};
+  sink(ring.try_write(metl::span<const std::byte>(scratch, 4)) ? 1u : 0u);
+  sink(static_cast<std::uint32_t>(ring.read(metl::span<std::byte>(scratch, 4))));
+}
+
 void exercise_crc() noexcept {
   const std::uint8_t bytes[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
   sink(metl::crc32(metl::span<const std::uint8_t>{bytes, 16}));
@@ -156,6 +179,7 @@ extern "C" int probe_main(void) {
   exercise_handle_pool();
   exercise_unordered_map();
   exercise_priority_queue();
+  exercise_byte_ring();
   exercise_crc();
   return static_cast<int>(g_sink);
 }

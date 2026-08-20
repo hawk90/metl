@@ -130,6 +130,11 @@ Worked example: [`examples/allocators.cpp`](examples/allocators.cpp)
 Concurrency
 
 - [`spsc_queue`](include/metl/spsc_queue.hpp).
+- [`spsc_byte_ring`](include/metl/spsc_byte_ring.hpp) — SPSC byte ring that hands
+  out **contiguous spans**, so a driver fills or drains it in place instead of
+  byte at a time. The one thing `ring_buffer` cannot do: its elements are
+  deliberately non-contiguous, so it has no pointer to give a peripheral. Does
+  **no** cache maintenance — see the header before pointing DMA at it.
 - [`mpmc_queue`](include/metl/mpmc_queue.hpp) — bounded lock-free multi-producer /
   multi-consumer queue (sequence numbers, no double-width CAS). Requires a
   hardware CAS; **prefer `spsc_queue` when the roles are fixed**, and see the
@@ -207,6 +212,7 @@ Worked example: [`examples/mmio_peripheral.cpp`](examples/mmio_peripheral.cpp)
   | [`containers.cpp`](examples/containers.cpp) | `fixed_vector`, `flat_map`, `ring_buffer` |
   | [`allocators.cpp`](examples/allocators.cpp) | `arena_allocator`, `monotonic_buffer` |
   | [`spsc_isr.cpp`](examples/spsc_isr.cpp) | `spsc_queue` (ISR pattern) |
+  | [`uart_byte_ring.cpp`](examples/uart_byte_ring.cpp) | `spsc_byte_ring` (zero-copy driver region, wrap) |
   | [`mmio_peripheral.cpp`](examples/mmio_peripheral.cpp) | `mmio`, `register_access`, `bitfield` |
   | [`error_handling.cpp`](examples/error_handling.cpp) | `expected`, `optional`, `variant` |
   | [`coroutine_task.cpp`](examples/coroutine_task.cpp) | `coro/protothread` |

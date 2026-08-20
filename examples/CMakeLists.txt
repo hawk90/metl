@@ -14,6 +14,7 @@ set(_metl_examples
   containers        # fixed_vector + flat_map + ring_buffer
   allocators        # arena_allocator + monotonic_buffer
   spsc_isr          # spsc_queue ISR<->main-loop pattern
+  uart_byte_ring    # spsc_byte_ring zero-copy driver region + seam
   mmio_peripheral   # mmio + register_access + bitfield (fake peripheral)
   error_handling    # expected + optional + variant (no exceptions)
   coroutine_task    # coro/protothread cooperative tasks

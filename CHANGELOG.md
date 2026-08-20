@@ -41,6 +41,49 @@ would cost a deprecation cycle; today they cost a recompile.
 
 ### Added
 
+- **`spsc_byte_ring` — a lock-free SPSC byte ring that hands out contiguous
+  spans.** A driver does not want to push bytes one at a time; it wants an address
+  and a length to hand the peripheral, then one "I moved n bytes" call.
+  `ring_buffer` structurally cannot provide that — `detail/ring_core.hpp` states
+  that a ring's elements are not contiguous — and `spsc_queue<std::byte, N>` turns
+  a 256-byte frame into 256 push/pop pairs.
+
+  **It makes no DMA-safety claim, deliberately.** METL has no portable
+  cache-maintenance operation and `qemu-conformance` cannot model DMA coherency,
+  so a "DMA-safe" label would be a claim the project cannot verify — which its own
+  discipline forbids. The header says plainly that invalidating and cleaning is the
+  driver's job, and the type is named for its concurrency contract rather than for
+  DMA so the name cannot be read as a guarantee.
+
+  The wrap is part of the API rather than hidden behind it: both spans stop at the
+  physical end of the buffer, so `writable_span().size()` can be smaller than
+  `writable_size()`. Returning two spans would push that two-step onto every caller
+  including the ones that never wrap; mapping the pages twice needs an MMU and an
+  OS. What *is* guaranteed and tested: an empty span means full (or empty) and
+  nothing else.
+
+  **A defect found while writing it up, worth recording because no positive test
+  could see it:** the doc comment said `commit_write(n)` was bounded by the span
+  you were handed, while the guard checked the total free space. Those differ
+  exactly at the seam — eight bytes free of which two are contiguous — so
+  `commit_write(8)` after a two-byte span was accepted and published six bytes that
+  were never written and could not have been. `writable_span` and `commit_write`
+  now share one helper so they cannot drift again, and
+  `spsc_byte_ring_overcommit_test` is the negative control: it sets
+  `METL_HARDENING 0` (so only a never-stripped `METL_HARDEN` can fire) and requires
+  a forked child to die on the over-commit. Restoring the old guard makes that test
+  fail, which is the only reason to trust it.
+
+  `consume(n)` is deliberately *not* symmetric — it stays bounded by
+  `readable_size()`, because consuming past the seam only discards bytes, so
+  "drop everything queued" is a legitimate single call.
+
+  Verified: mutation-tested (ignoring the wrap in either direction, and an
+  off-by-one in `try_write`, are each caught; an equivalent `% Capacity` for
+  `& mask` is correctly *not* caught), and a two-thread test under TSAN is clean
+  while turning `commit_write`'s release store into a relaxed one produces a race
+  and an abort.
+
 - **`fixed_priority_queue` — a bounded binary heap — and `coro::deadline_scheduler`,
   its caller.** Admitted under the rule in `docs/SCOPE.md` that a public type needs
   a user inside the library, so the two ship together: `coro::scheduler` is

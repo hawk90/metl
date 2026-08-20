@@ -55,6 +55,7 @@
 #include "metl/ring_buffer.hpp"
 #include "metl/scope_exit.hpp"
 #include "metl/span.hpp"
+#include "metl/spsc_byte_ring.hpp"
 #include "metl/spsc_queue.hpp"
 #include "metl/static_allocator.hpp"
 #include "metl/static_message_queue.hpp"
