@@ -1,9 +1,17 @@
 # metl — Audit Findings & Backlog (2026-07-07)
 
-Read-only correctness audit. Verified baseline: clean build, **ctest 45/45**, all 51
-headers compile standalone, umbrella `metl.hpp` complete. The library is solid on the
-**default configuration**; most High-severity exposure is *conditional* on a user
-installing a returning assert handler — one fix neutralizes that whole class.
+Read-only correctness audit. Verified baseline **as of the audit date**: clean build,
+ctest 45/45, all 51 headers compile standalone, umbrella `metl.hpp` complete. The
+library is solid on the **default configuration**; most High-severity exposure is
+*conditional* on a user installing a returning assert handler — one fix neutralizes
+that whole class.
+
+> **The numbers above are the 2026-07-07 snapshot and are deliberately not updated** —
+> they are what the findings below were measured against. The tree has moved since:
+> **60 headers** and **78 tests** (87 with `METL_BUILD_EXAMPLES=ON`) as of 2026-08-20.
+> For what has landed since the audit, read `CHANGELOG.md`; for what is still open,
+> read `docs/TODO.md`. Re-dating this header without re-running the audit would make
+> the findings look re-verified when they have not been.
 
 ## Design Principles (library) — governing constraint
 

@@ -183,7 +183,7 @@ class static_unordered_map {
 
   /// @brief Move-construct, moving elements out of @p other and leaving it empty.
   static_unordered_map(static_unordered_map&& other) noexcept(
-      std::is_nothrow_move_constructible<value_type>::value)
+      std::is_nothrow_move_constructible_v<value_type>)
       : size_(0),
         hasher_(static_cast<Hash&&>(other.hasher_)),
         key_equal_(static_cast<KeyEqual&&>(other.key_equal_)) {
@@ -214,8 +214,8 @@ class static_unordered_map {
 
   /// @brief Move-assign from @p other, leaving it empty (self-assignment safe).
   static_unordered_map& operator=(static_unordered_map&& other) noexcept(
-      std::is_nothrow_move_constructible<value_type>::value && std::is_nothrow_move_assignable<Hash>::value &&
-      std::is_nothrow_move_assignable<KeyEqual>::value) {
+      std::is_nothrow_move_constructible_v<value_type> && std::is_nothrow_move_assignable_v<Hash> &&
+      std::is_nothrow_move_assignable_v<KeyEqual>) {
     if (this == &other) {
       return *this;
     }
@@ -282,14 +282,14 @@ class static_unordered_map {
   // ---- Heterogeneous lookup overloads (enabled when both Hash and KeyEqual are transparent) ----
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+                                   !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD bool contains(const K& key) const noexcept {
     return find_existing_index(key) != npos;
   }
 
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+                                   !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD mapped_type* find(const K& key) noexcept {
     const size_type index = find_existing_index(key);
     return index == npos ? nullptr : &slot_value(index)->value;
@@ -297,7 +297,7 @@ class static_unordered_map {
 
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+                                   !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD const mapped_type* find(const K& key) const noexcept {
     const size_type index = find_existing_index(key);
     return index == npos ? nullptr : &slot_value(index)->value;
@@ -305,7 +305,7 @@ class static_unordered_map {
 
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+                                   !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD iterator find_iterator(const K& key) noexcept {
     const size_type index = find_existing_index(key);
     return iterator(this, index == npos ? bucket_count : index);
@@ -313,7 +313,7 @@ class static_unordered_map {
 
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+                                   !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD const_iterator find_iterator(const K& key) const noexcept {
     const size_type index = find_existing_index(key);
     return const_iterator(this, index == npos ? bucket_count : index);
@@ -321,21 +321,21 @@ class static_unordered_map {
 
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+                                   !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD iterator find_iter(const K& key) noexcept {
     return find_iterator(key);
   }
 
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+                                   !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD const_iterator find_iter(const K& key) const noexcept {
     return find_iterator(key);
   }
 
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+                                   !std::is_same_v<decay_t<K>, key_type>>>
   bool erase(const K& key) noexcept {
     const size_type index = find_existing_index(key);
     if (index == npos) {

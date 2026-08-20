@@ -16,8 +16,7 @@ namespace metl {
 namespace detail {
 
 template <typename T>
-using enable_if_unsigned_integral_t =
-    typename std::enable_if<std::is_integral<T>::value && std::is_unsigned<T>::value, int>::type;
+using enable_if_unsigned_integral_t = std::enable_if_t<std::is_integral_v<T> && std::is_unsigned_v<T>, int>;
 
 template <typename T>
 inline constexpr int bit_width_v = static_cast<int>(sizeof(T) * CHAR_BIT);

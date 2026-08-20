@@ -61,7 +61,7 @@ class fixed_vector {
   }
 
   /// Move-constructs by moving each element out of `other`, leaving it empty.
-  fixed_vector(fixed_vector&& other) noexcept(std::is_nothrow_move_constructible<T>::value) : size_(0) {
+  fixed_vector(fixed_vector&& other) noexcept(std::is_nothrow_move_constructible_v<T>) : size_(0) {
     asan_poison_tail_();
     for (auto& value : other) {
       emplace_back(static_cast<T&&>(value));
@@ -99,8 +99,8 @@ class fixed_vector {
     return *this;
   }
 
-  fixed_vector& operator=(fixed_vector&& other) noexcept(std::is_nothrow_move_constructible<T>::value &&
-                                                         std::is_nothrow_move_assignable<T>::value) {
+  fixed_vector& operator=(fixed_vector&& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
+                                                         std::is_nothrow_move_assignable_v<T>) {
     if (this == &other) {
       return *this;
     }
@@ -320,7 +320,7 @@ class fixed_vector {
 
   /// Inserts the elements in [first, last) before `pos`.
   /// @pre `pos` in [begin(), end()] and the range fits in the remaining capacity.
-  template <typename It, typename = std::enable_if_t<!std::is_integral<It>::value>>
+  template <typename It, typename = std::enable_if_t<!std::is_integral_v<It>>>
   iterator insert(const_iterator pos, It first, It last) {
     METL_ASSERT(pos >= begin() && pos <= end());
     const size_type index = static_cast<size_type>(pos - begin());
@@ -337,7 +337,7 @@ class fixed_vector {
   /// Removes the element at `pos`, shifting later elements left.
   /// @return Iterator to the element after the erased one.
   /// @pre `pos` in [begin(), end()); asserts otherwise.
-  iterator erase(const_iterator pos) noexcept(std::is_nothrow_move_assignable<T>::value) {
+  iterator erase(const_iterator pos) noexcept(std::is_nothrow_move_assignable_v<T>) {
     METL_ASSERT(pos >= begin() && pos < end());
     const size_type index = static_cast<size_type>(pos - begin());
     asan_unpoison_all_();
@@ -353,8 +353,7 @@ class fixed_vector {
   /// Removes the elements in [first, last), shifting later elements left.
   /// @return Iterator to the element after the last erased one.
   /// @pre `begin() <= first <= last <= end()`; asserts otherwise.
-  iterator erase(const_iterator first,
-                 const_iterator last) noexcept(std::is_nothrow_move_assignable<T>::value) {
+  iterator erase(const_iterator first, const_iterator last) noexcept(std::is_nothrow_move_assignable_v<T>) {
     METL_ASSERT(first >= begin() && last <= end() && first <= last);
     const size_type first_index = static_cast<size_type>(first - begin());
     const size_type last_index = static_cast<size_type>(last - begin());
@@ -416,7 +415,7 @@ class fixed_vector {
 
   /// Replaces the contents with the elements in [first, last).
   /// @pre The range fits within `Capacity`; asserts otherwise.
-  template <typename It, typename = std::enable_if_t<!std::is_integral<It>::value>>
+  template <typename It, typename = std::enable_if_t<!std::is_integral_v<It>>>
   void assign(It first, It last) {
     clear();
     for (It it = first; it != last; ++it) {
@@ -426,8 +425,8 @@ class fixed_vector {
   }
 
   /// Swaps contents with `other` element-wise (no pointer swap; capacity is fixed).
-  void swap(fixed_vector& other) noexcept(std::is_nothrow_move_constructible<T>::value &&
-                                          std::is_nothrow_move_assignable<T>::value) {
+  void swap(fixed_vector& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
+                                          std::is_nothrow_move_assignable_v<T>) {
     if (this == &other) {
       return;
     }

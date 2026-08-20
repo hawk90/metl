@@ -72,7 +72,7 @@ struct index_of_type<T, U, Ts...> {
 
  public:
   static constexpr std::size_t value =
-      std::is_same<T, U>::value ? 0 : (next == variant_npos ? variant_npos : 1 + next);
+      std::is_same_v<T, U> ? 0 : (next == variant_npos ? variant_npos : 1 + next);
 };
 
 // Count how many times T appears in Ts...
@@ -84,8 +84,7 @@ struct count_of_type<T> : std::integral_constant<std::size_t, 0> {};
 
 template <typename T, typename U, typename... Ts>
 struct count_of_type<T, U, Ts...>
-    : std::integral_constant<std::size_t,
-                             (std::is_same<T, U>::value ? 1 : 0) + count_of_type<T, Ts...>::value> {};
+    : std::integral_constant<std::size_t, (std::is_same_v<T, U> ? 1 : 0) + count_of_type<T, Ts...>::value> {};
 
 // Trait checks across all alternatives.
 template <bool... Bs>
@@ -98,24 +97,24 @@ template <bool B, bool... Bs>
 struct all_of<B, Bs...> : std::integral_constant<bool, B && all_of<Bs...>::value> {};
 
 template <typename... Ts>
-using all_nothrow_default_constructible = all_of<std::is_nothrow_default_constructible<Ts>::value...>;
+using all_nothrow_default_constructible = all_of<std::is_nothrow_default_constructible_v<Ts>...>;
 
 template <typename... Ts>
-using all_nothrow_move_constructible = all_of<std::is_nothrow_move_constructible<Ts>::value...>;
+using all_nothrow_move_constructible = all_of<std::is_nothrow_move_constructible_v<Ts>...>;
 
 template <typename... Ts>
-using all_nothrow_copy_constructible = all_of<std::is_nothrow_copy_constructible<Ts>::value...>;
+using all_nothrow_copy_constructible = all_of<std::is_nothrow_copy_constructible_v<Ts>...>;
 
 template <typename... Ts>
 using all_nothrow_move_assignable =
-    all_of<(std::is_nothrow_move_constructible<Ts>::value && std::is_nothrow_move_assignable<Ts>::value)...>;
+    all_of<(std::is_nothrow_move_constructible_v<Ts> && std::is_nothrow_move_assignable_v<Ts>)...>;
 
 template <typename... Ts>
 using all_nothrow_copy_assignable =
-    all_of<(std::is_nothrow_copy_constructible<Ts>::value && std::is_nothrow_copy_assignable<Ts>::value)...>;
+    all_of<(std::is_nothrow_copy_constructible_v<Ts> && std::is_nothrow_copy_assignable_v<Ts>)...>;
 
 template <typename... Ts>
-using all_nothrow_destructible = all_of<std::is_nothrow_destructible<Ts>::value...>;
+using all_nothrow_destructible = all_of<std::is_nothrow_destructible_v<Ts>...>;
 
 // ---------- Storage helpers ----------
 // Replacement for std::aligned_storage (deprecated in C++23).
@@ -132,13 +131,12 @@ void destroy_value(void* storage) noexcept {
 }
 
 template <typename T>
-void copy_value(void* destination,
-                const void* source) noexcept(std::is_nothrow_copy_constructible<T>::value) {
+void copy_value(void* destination, const void* source) noexcept(std::is_nothrow_copy_constructible_v<T>) {
   new (destination) T(*std::launder(static_cast<const T*>(source)));
 }
 
 template <typename T>
-void move_value(void* destination, void* source) noexcept(std::is_nothrow_move_constructible<T>::value) {
+void move_value(void* destination, void* source) noexcept(std::is_nothrow_move_constructible_v<T>) {
   new (destination) T(static_cast<T&&>(*std::launder(static_cast<T*>(source))));
 }
 
@@ -181,17 +179,17 @@ struct variant_alternative<I, variant<Ts...>> {
 
 template <std::size_t I, typename V>
 struct variant_alternative<I, const V> {
-  using type = typename std::add_const<typename variant_alternative<I, V>::type>::type;
+  using type = std::add_const_t<typename variant_alternative<I, V>::type>;
 };
 
 template <std::size_t I, typename V>
 struct variant_alternative<I, volatile V> {
-  using type = typename std::add_volatile<typename variant_alternative<I, V>::type>::type;
+  using type = std::add_volatile_t<typename variant_alternative<I, V>::type>;
 };
 
 template <std::size_t I, typename V>
 struct variant_alternative<I, const volatile V> {
-  using type = typename std::add_cv<typename variant_alternative<I, V>::type>::type;
+  using type = std::add_cv_t<typename variant_alternative<I, V>::type>;
 };
 
 /// @brief Convenience alias for the type of `variant_alternative<I, V>`.
@@ -219,9 +217,8 @@ class variant {
 
   /// @brief Default-constructs, activating the first alternative.
   // Default constructor: requires first alternative to be default-constructible.
-  template <typename First = first_type,
-            typename = typename std::enable_if<std::is_default_constructible<First>::value>::type>
-  constexpr variant() noexcept(std::is_nothrow_default_constructible<First>::value)
+  template <typename First = first_type, typename = std::enable_if_t<std::is_default_constructible_v<First>>>
+  constexpr variant() noexcept(std::is_nothrow_default_constructible_v<First>)
       : storage_{}, index_(variant_npos) {
     new (raw_addr()) first_type();
     index_ = 0;
@@ -231,12 +228,11 @@ class variant {
   /// @param value The value forwarded into the matching alternative.
   // Converting constructor.
   template <typename T,
-            typename Decayed = typename std::decay<T>::type,
-            typename = typename std::enable_if<!std::is_same<Decayed, variant>::value>::type,
-            typename =
-                typename std::enable_if<(detail::index_of_type<Decayed, Ts...>::value != variant_npos)>::type,
-            typename = typename std::enable_if<(detail::count_of_type<Decayed, Ts...>::value == 1)>::type>
-  variant(T&& value) noexcept(std::is_nothrow_constructible<Decayed, T&&>::value)
+            typename Decayed = std::decay_t<T>,
+            typename = std::enable_if_t<!std::is_same_v<Decayed, variant>>,
+            typename = std::enable_if_t<(detail::index_of_type<Decayed, Ts...>::value != variant_npos)>,
+            typename = std::enable_if_t<(detail::count_of_type<Decayed, Ts...>::value == 1)>>
+  variant(T&& value) noexcept(std::is_nothrow_constructible_v<Decayed, T&&>)
       : storage_{}, index_(variant_npos) {
     construct<Decayed>(std::forward<T>(value));
   }
@@ -246,14 +242,12 @@ class variant {
   /// @tparam Args Constructor argument types forwarded to `T`.
   /// @param args Arguments forwarded to `T`'s constructor.
   // in_place_type constructor.
-  template <
-      typename T,
-      typename... Args,
-      typename = typename std::enable_if<(detail::index_of_type<T, Ts...>::value != variant_npos)>::type,
-      typename = typename std::enable_if<(detail::count_of_type<T, Ts...>::value == 1)>::type,
-      typename = typename std::enable_if<std::is_constructible<T, Args&&...>::value>::type>
-  explicit variant(in_place_type_t<T>,
-                   Args&&... args) noexcept(std::is_nothrow_constructible<T, Args&&...>::value)
+  template <typename T,
+            typename... Args,
+            typename = std::enable_if_t<(detail::index_of_type<T, Ts...>::value != variant_npos)>,
+            typename = std::enable_if_t<(detail::count_of_type<T, Ts...>::value == 1)>,
+            typename = std::enable_if_t<std::is_constructible_v<T, Args&&...>>>
+  explicit variant(in_place_type_t<T>, Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>)
       : storage_{}, index_(variant_npos) {
     construct<T>(std::forward<Args>(args)...);
   }
@@ -265,11 +259,11 @@ class variant {
   // in_place_index constructor.
   template <std::size_t I,
             typename... Args,
-            typename = typename std::enable_if<(I < sizeof...(Ts))>::type,
-            typename = typename std::enable_if<
-                std::is_constructible<typename detail::nth_type<I, Ts...>::type, Args&&...>::value>::type>
+            typename = std::enable_if_t<(I < sizeof...(Ts))>,
+            typename = std::enable_if_t<
+                std::is_constructible_v<typename detail::nth_type<I, Ts...>::type, Args&&...>>>
   explicit variant(in_place_index_t<I>, Args&&... args) noexcept(
-      std::is_nothrow_constructible<typename detail::nth_type<I, Ts...>::type, Args&&...>::value)
+      std::is_nothrow_constructible_v<typename detail::nth_type<I, Ts...>::type, Args&&...>)
       : storage_{}, index_(variant_npos) {
     using target_type = typename detail::nth_type<I, Ts...>::type;
     new (raw_addr()) target_type(std::forward<Args>(args)...);
@@ -330,13 +324,12 @@ class variant {
   /// @brief Assigns `value`, activating its unique matching alternative.
   /// @param value The value forwarded into the matching alternative.
   template <typename T,
-            typename Decayed = typename std::decay<T>::type,
-            typename = typename std::enable_if<!std::is_same<Decayed, variant>::value>::type,
-            typename =
-                typename std::enable_if<(detail::index_of_type<Decayed, Ts...>::value != variant_npos)>::type,
-            typename = typename std::enable_if<(detail::count_of_type<Decayed, Ts...>::value == 1)>::type>
-  variant& operator=(T&& value) noexcept(std::is_nothrow_constructible<Decayed, T&&>::value &&
-                                         std::is_nothrow_assignable<Decayed&, T&&>::value) {
+            typename Decayed = std::decay_t<T>,
+            typename = std::enable_if_t<!std::is_same_v<Decayed, variant>>,
+            typename = std::enable_if_t<(detail::index_of_type<Decayed, Ts...>::value != variant_npos)>,
+            typename = std::enable_if_t<(detail::count_of_type<Decayed, Ts...>::value == 1)>>
+  variant& operator=(T&& value) noexcept(std::is_nothrow_constructible_v<Decayed, T&&> &&
+                                         std::is_nothrow_assignable_v<Decayed&, T&&>) {
     // When the active alternative already holds `Decayed`, assign in place.
     // Routing unconditionally through emplace() would reset() (destroy the
     // active alternative) *before* reading `value`; if `value` aliases that
@@ -369,13 +362,12 @@ class variant {
   /// @param args Arguments forwarded to `T`'s constructor.
   /// @return Reference to the newly constructed alternative.
   template <typename T, typename... Args>
-  T& emplace(Args&&... args) noexcept(std::is_nothrow_constructible<T, Args&&...>::value &&
+  T& emplace(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...> &&
                                       detail::all_nothrow_destructible<Ts...>::value) {
     constexpr std::size_t target_index = detail::index_of_type<T, Ts...>::value;
     static_assert(target_index != variant_npos, "type is not an alternative of this variant");
     static_assert(detail::count_of_type<T, Ts...>::value == 1, "emplace<T> requires unique alternative type");
-    static_assert(std::is_constructible<T, Args&&...>::value,
-                  "T must be constructible from the given arguments");
+    static_assert(std::is_constructible_v<T, Args&&...>, "T must be constructible from the given arguments");
 
     reset();
     return construct<T>(std::forward<Args>(args)...);
@@ -388,11 +380,11 @@ class variant {
   /// @return Reference to the newly constructed alternative.
   template <std::size_t I, typename... Args>
   variant_alternative_t<I, variant>& emplace(Args&&... args) noexcept(
-      std::is_nothrow_constructible<typename detail::nth_type<I, Ts...>::type, Args&&...>::value &&
+      std::is_nothrow_constructible_v<typename detail::nth_type<I, Ts...>::type, Args&&...> &&
       detail::all_nothrow_destructible<Ts...>::value) {
     static_assert(I < sizeof...(Ts), "emplace<I> index out of range");
     using target_type = typename detail::nth_type<I, Ts...>::type;
-    static_assert(std::is_constructible<target_type, Args&&...>::value,
+    static_assert(std::is_constructible_v<target_type, Args&&...>,
                   "alternative must be constructible from the given arguments");
 
     reset();
@@ -439,7 +431,7 @@ class variant {
   }
 
   template <typename T, typename... Args>
-  T& construct(Args&&... args) noexcept(std::is_nothrow_constructible<T, Args&&...>::value) {
+  T& construct(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>) {
     new (raw_addr()) T(std::forward<Args>(args)...);
     index_ = detail::index_of_type<T, Ts...>::value;
     return *std::launder(static_cast<T*>(raw_addr()));

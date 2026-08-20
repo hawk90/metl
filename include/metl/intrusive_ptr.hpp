@@ -119,7 +119,7 @@ class intrusive_ref_counter {
       // Enforce the safe cases: Derived is a concrete leaf (final) or a
       // polymorphic base with a virtual destructor (virtual dispatch destroys
       // the real most-derived object correctly).
-      static_assert(std::is_final<Derived>::value || std::has_virtual_destructor<Derived>::value,
+      static_assert(std::is_final_v<Derived> || std::has_virtual_destructor_v<Derived>,
                     "intrusive_ref_counter<Derived>: the reference-count release destroys the "
                     "object through Derived. To keep that well-defined, declare Derived 'final' "
                     "(concrete leaf types) or give it a virtual destructor (bases meant to be "

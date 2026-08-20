@@ -1,0 +1,112 @@
+name: Install apt packages with cache and retry
+description: Cache downloaded Debian packages and tolerate transient apt failures
+
+# The failure this exists to fix is a *stall*, not an error. The cross-toolchain
+# jobs install gcc-arm-none-eabi, a 574 MB download that normally takes ~35 s;
+# when Ubuntu's Azure mirror wedges, `apt-get` simply stops making progress and
+# never returns. On 2026-08-19 that burned the whole `timeout-minutes: 15`
+# budget in five separate jobs, which GitHub reports as `cancelled` rather than
+# `timed_out` -- so the run looked like a concurrency cancellation.
+#
+# A bare retry loop does nothing against that: the command never exits, so the
+# loop never reaches its next iteration. Two things fix it, in this order:
+#
+#   1. `Acquire::*::Timeout` makes *apt* give up on a stalled socket instead of
+#      waiting forever, and `Acquire::Retries` lets it re-try the fetch itself.
+#      This is the real fix -- it recovers without losing the packages already
+#      downloaded.
+#   2. The outer `timeout` is only a backstop for a hang apt's own timeouts do
+#      not cover.
+#
+# The retry budget must stay *under* the calling job's `timeout-minutes`, or
+# the retries eat the job rather than saving it. That is how the first version
+# of this action failed: three attempts at up to 20 minutes each, inside a job
+# budgeted at 10, so attempt 2 was still running when the job died -- and with
+# no output flushed, it looked like a hang with no diagnosis. The loop below is
+# bounded by a single deadline (default 8 minutes, under every job budget here)
+# and always reports why it gave up.
+#
+# Do NOT add `--no-install-recommends` here. `libnewlib-arm-none-eabi` and the
+# `libstdc++-arm-none-eabi-*` packages are Recommends of `gcc-arm-none-eabi`,
+# not Depends, so the flag removes the freestanding C++ standard headers and
+# every cross build dies on `fatal error: cstdint: No such file or directory`.
+# A default `apt-get install` log does not reveal this -- it folds recommends
+# into "The following additional packages will be installed" and prints no
+# "Recommended packages:" section at all, so their absence there is not
+# evidence that there are none.
+
+inputs:
+  packages:
+    description: Space-separated apt package names
+    required: true
+  cache-key:
+    description: Stable cache namespace for this package set
+    required: true
+  total-timeout:
+    description: >
+      Hard ceiling in seconds for all attempts combined. Must be less than the
+      calling job's timeout-minutes so a wedged mirror fails with a message
+      instead of consuming the job.
+    required: false
+    default: "480"
+
+runs:
+  using: composite
+  steps:
+    # `partial/` is mode 0700 root:root and `lock` is unreadable, so pointing
+    # actions/cache at the archive directory wholesale makes its tar step fail.
+    # Cache only the .deb files.
+    - name: Cache apt archives
+      id: apt-cache
+      # Must be >= v4.2.0: GitHub closed down the cache service API that
+      # actions/cache v4.1.x and earlier used, and hard-fails any job that
+      # calls it. A SHA that resolves to a real tag is not enough here.
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      with:
+        path: /var/cache/apt/archives/*.deb
+        key: apt-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key }}
+
+    - name: Install apt packages (bounded retry)
+      shell: bash
+      env:
+        APT_PACKAGES: ${{ inputs.packages }}
+        APT_TOTAL_TIMEOUT: ${{ inputs.total-timeout }}
+      run: |
+        set -euo pipefail
+
+        # apt deletes the .debs it just installed unless told otherwise, which
+        # would leave nothing for the post-run cache save to pick up.
+        echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' \
+          | sudo tee /etc/apt/apt.conf.d/99keep-downloads > /dev/null
+
+        # Make apt itself fail a stalled socket rather than waiting forever,
+        # and re-fetch on its own before we throw the whole attempt away.
+        APT_OPTS=(
+          -o Acquire::Retries=3
+          -o Acquire::http::Timeout=30
+          -o Acquire::https::Timeout=30
+          -o Acquire::ftp::Timeout=30
+        )
+
+        deadline=$(( SECONDS + APT_TOTAL_TIMEOUT ))
+        attempt=0
+        while (( SECONDS < deadline )); do
+          attempt=$(( attempt + 1 ))
+          remaining=$(( deadline - SECONDS ))
+          echo "apt attempt ${attempt} (${remaining}s of budget left)"
+
+          # `update` gets a slice, `install` whatever is still left, so a slow
+          # index refresh cannot starve the download it exists to enable.
+          if timeout $(( remaining / 4 + 1 )) sudo apt-get "${APT_OPTS[@]}" update && \
+             timeout $(( deadline - SECONDS )) \
+               sudo apt-get "${APT_OPTS[@]}" install -y ${APT_PACKAGES}; then
+            exit 0
+          fi
+
+          echo "apt attempt ${attempt} failed or timed out" >&2
+          sleep 5
+        done
+
+        echo "apt did not succeed within ${APT_TOTAL_TIMEOUT}s (${attempt} attempts)." >&2
+        echo "If only the cross-toolchain jobs are affected, suspect the Ubuntu mirror." >&2
+        exit 1

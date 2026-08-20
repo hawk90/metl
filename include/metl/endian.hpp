@@ -48,10 +48,10 @@ enum class endian {
 namespace detail {
 
 template <typename T>
-using enable_if_integral_t = typename std::enable_if<std::is_integral<T>::value, int>::type;
+using enable_if_integral_t = std::enable_if_t<std::is_integral_v<T>, int>;
 
 template <typename T>
-using unsigned_like_t = typename std::make_unsigned<T>::type;
+using unsigned_like_t = std::make_unsigned_t<T>;
 
 template <typename T>
 constexpr unsigned_like_t<T> byteswap_unsigned(unsigned_like_t<T> value) noexcept {

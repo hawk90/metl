@@ -35,15 +35,15 @@ class unexpected {
   /// @param e The value used to direct-initialize the contained error.
   // P0323 requires these to be explicit (per LWG / std::unexpected).
   template <typename Err = E,
-            typename = std::enable_if_t<!std::is_same<std::decay_t<Err>, unexpected>::value &&
-                                        !std::is_same<std::decay_t<Err>, in_place_t>::value &&
-                                        std::is_constructible<E, Err>::value>>
+            typename = std::enable_if_t<!std::is_same_v<std::decay_t<Err>, unexpected> &&
+                                        !std::is_same_v<std::decay_t<Err>, in_place_t> &&
+                                        std::is_constructible_v<E, Err>>>
   constexpr explicit unexpected(Err&& e) : value_(std::forward<Err>(e)) {}
 
   /// @brief Constructs the wrapped error in place from `args`.
   /// @tparam Args Constructor argument types forwarded to `E`.
   /// @param args Arguments forwarded to `E`'s constructor.
-  template <typename... Args, typename = std::enable_if_t<std::is_constructible<E, Args...>::value>>
+  template <typename... Args, typename = std::enable_if_t<std::is_constructible_v<E, Args...>>>
   constexpr explicit unexpected(in_place_t, Args&&... args) : value_(std::forward<Args>(args)...) {}
 
   /// @brief Returns a reference to the wrapped error value.
@@ -62,8 +62,8 @@ class unexpected {
   constexpr E&& value() && noexcept { return static_cast<E&&>(value_); }
 
   /// @brief Swaps the wrapped error with another unexpected.
-  void swap(unexpected& other) noexcept(std::is_nothrow_move_constructible<E>::value &&
-                                        std::is_nothrow_move_assignable<E>::value) {
+  void swap(unexpected& other) noexcept(std::is_nothrow_move_constructible_v<E> &&
+                                        std::is_nothrow_move_assignable_v<E>) {
     using std::swap;
     swap(value_, other.value_);
   }
@@ -100,8 +100,8 @@ void swap(unexpected<E>& lhs, unexpected<E>& rhs) noexcept(noexcept(lhs.swap(rhs
 /// @brief Creates an unexpected wrapper holding a decayed copy of `error`.
 /// @param error The error value to wrap.
 template <typename E>
-constexpr unexpected<typename std::decay<E>::type> make_unexpected(E&& error) {
-  return unexpected<typename std::decay<E>::type>(std::forward<E>(error));
+constexpr unexpected<std::decay_t<E>> make_unexpected(E&& error) {
+  return unexpected<std::decay_t<E>>(std::forward<E>(error));
 }
 
 // =============================================================================
@@ -160,7 +160,7 @@ class expected {
 
   /// @brief Constructs a value-state expected by default-constructing `T`.
   // Default constructor (requires T default-constructible).
-  template <typename U = T, typename = std::enable_if_t<std::is_default_constructible<U>::value>>
+  template <typename U = T, typename = std::enable_if_t<std::is_default_constructible_v<U>>>
   constexpr expected() : has_value_(true) {
     construct_value();
   }
@@ -172,12 +172,12 @@ class expected {
 
   /// @brief Constructs an error-state expected from an unexpected wrapper.
   // unexpected conversion constructors.
-  template <typename G = E, typename = std::enable_if_t<std::is_constructible<E, const G&>::value>>
+  template <typename G = E, typename = std::enable_if_t<std::is_constructible_v<E, const G&>>>
   expected(const unexpected<G>& u) : has_value_(false) {
     construct_error(u.error());
   }
 
-  template <typename G = E, typename = std::enable_if_t<std::is_constructible<E, G&&>::value>>
+  template <typename G = E, typename = std::enable_if_t<std::is_constructible_v<E, G&&>>>
   expected(unexpected<G>&& u) : has_value_(false) {
     construct_error(static_cast<G&&>(u.error()));
   }
@@ -186,7 +186,7 @@ class expected {
   /// @tparam Args Constructor argument types forwarded to `T`.
   /// @param args Arguments forwarded to `T`'s constructor.
   // in_place_t and unexpect_t tag constructors.
-  template <typename... Args, typename = std::enable_if_t<std::is_constructible<T, Args...>::value>>
+  template <typename... Args, typename = std::enable_if_t<std::is_constructible_v<T, Args...>>>
   constexpr explicit expected(in_place_t, Args&&... args) : has_value_(true) {
     construct_value(std::forward<Args>(args)...);
   }
@@ -194,7 +194,7 @@ class expected {
   /// @brief Constructs an error-state expected, building `E` in place.
   /// @tparam Args Constructor argument types forwarded to `E`.
   /// @param args Arguments forwarded to `E`'s constructor.
-  template <typename... Args, typename = std::enable_if_t<std::is_constructible<E, Args...>::value>>
+  template <typename... Args, typename = std::enable_if_t<std::is_constructible_v<E, Args...>>>
   constexpr explicit expected(unexpect_t, Args&&... args) : has_value_(false) {
     construct_error(std::forward<Args>(args)...);
   }
@@ -209,8 +209,8 @@ class expected {
   }
 
   /// @brief Move constructor; moves the active value or error.
-  expected(expected&& other) noexcept(std::is_nothrow_move_constructible<T>::value &&
-                                      std::is_nothrow_move_constructible<E>::value)
+  expected(expected&& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
+                                      std::is_nothrow_move_constructible_v<E>)
       : has_value_(other.has_value_) {
     if (has_value_) {
       construct_value(static_cast<T&&>(other.value_unchecked()));
@@ -240,10 +240,10 @@ class expected {
   }
 
   /// @brief Move-assigns, switching state if needed (exception-safe).
-  expected& operator=(expected&& other) noexcept(std::is_nothrow_move_assignable<T>::value &&
-                                                 std::is_nothrow_move_constructible<T>::value &&
-                                                 std::is_nothrow_move_assignable<E>::value &&
-                                                 std::is_nothrow_move_constructible<E>::value) {
+  expected& operator=(expected&& other) noexcept(std::is_nothrow_move_assignable_v<T> &&
+                                                 std::is_nothrow_move_constructible_v<T> &&
+                                                 std::is_nothrow_move_assignable_v<E> &&
+                                                 std::is_nothrow_move_constructible_v<E>) {
     if (this == &other) {
       return *this;
     }
@@ -259,28 +259,26 @@ class expected {
 
   /// @brief Assigns a value, switching to the value state if needed.
   /// @param value The value forwarded into the contained `T`.
-  template <
-      typename U = T,
-      typename = std::enable_if_t<!std::is_same<std::decay_t<U>, expected>::value &&
-                                  std::is_constructible<T, U>::value && std::is_assignable<T&, U>::value>>
+  template <typename U = T,
+            typename = std::enable_if_t<!std::is_same_v<std::decay_t<U>, expected> &&
+                                        std::is_constructible_v<T, U> && std::is_assignable_v<T&, U>>>
   expected& operator=(U&& value) {
     assign_value_or_rebind(std::forward<U>(value));
     return *this;
   }
 
   /// @brief Assigns an error, switching to the error state if needed.
-  template <typename G = E,
-            typename = std::enable_if_t<std::is_constructible<E, const G&>::value &&
-                                        std::is_assignable<E&, const G&>::value>>
+  template <
+      typename G = E,
+      typename = std::enable_if_t<std::is_constructible_v<E, const G&> && std::is_assignable_v<E&, const G&>>>
   expected& operator=(const unexpected<G>& error) {
     assign_error_or_rebind(error.error());
     return *this;
   }
 
   /// @brief Assigns an error, switching to the error state if needed.
-  template <
-      typename G = E,
-      typename = std::enable_if_t<std::is_constructible<E, G&&>::value && std::is_assignable<E&, G&&>::value>>
+  template <typename G = E,
+            typename = std::enable_if_t<std::is_constructible_v<E, G&&> && std::is_assignable_v<E&, G&&>>>
   expected& operator=(unexpected<G>&& error) {
     assign_error_or_rebind(static_cast<G&&>(error.error()));
     return *this;
@@ -462,10 +460,10 @@ class expected {
   // ---- swap ----------------------------------------------------------------
 
   /// @brief Swaps contents and state with another expected (exception-safe).
-  void swap(expected& other) noexcept(std::is_nothrow_move_constructible<T>::value &&
-                                      std::is_nothrow_move_constructible<E>::value &&
-                                      std::is_nothrow_move_assignable<T>::value &&
-                                      std::is_nothrow_move_assignable<E>::value) {
+  void swap(expected& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
+                                      std::is_nothrow_move_constructible_v<E> &&
+                                      std::is_nothrow_move_assignable_v<T> &&
+                                      std::is_nothrow_move_assignable_v<E>) {
     if (has_value_ && other.has_value_) {
       using std::swap;
       swap(*value_ptr(), *other.value_ptr());
@@ -720,10 +718,10 @@ class expected {
   // has_value_ unchanged (which would double-destroy the error on ~expected).
   template <typename... Args>
   void reinit_as_value(Args&&... args) {
-    if constexpr (std::is_nothrow_constructible<T, Args&&...>::value) {
+    if constexpr (std::is_nothrow_constructible_v<T, Args&&...>) {
       error_ptr()->~E();
       construct_value(std::forward<Args>(args)...);
-    } else if constexpr (std::is_nothrow_move_constructible<T>::value) {
+    } else if constexpr (std::is_nothrow_move_constructible_v<T>) {
       // Build the new value first (may throw; error stays intact), then commit.
       T tmp(std::forward<Args>(args)...);
       error_ptr()->~E();
@@ -749,10 +747,10 @@ class expected {
   // Precondition: currently in the value state; switch to the error state.
   template <typename... Args>
   void reinit_as_error(Args&&... args) {
-    if constexpr (std::is_nothrow_constructible<E, Args&&...>::value) {
+    if constexpr (std::is_nothrow_constructible_v<E, Args&&...>) {
       value_ptr()->~T();
       construct_error(std::forward<Args>(args)...);
-    } else if constexpr (std::is_nothrow_move_constructible<E>::value) {
+    } else if constexpr (std::is_nothrow_move_constructible_v<E>) {
       E tmp(std::forward<Args>(args)...);
       value_ptr()->~T();
       construct_error(static_cast<E&&>(tmp));
@@ -778,10 +776,9 @@ class expected {
   // On return `v` holds the error and `e` holds the value. If a move-construct
   // throws, both operands are rolled back to their original active member so
   // neither is left with a destroyed member under a stale discriminant.
-  static void swap_value_error(expected& v,
-                               expected& e) noexcept(std::is_nothrow_move_constructible<T>::value &&
-                                                     std::is_nothrow_move_constructible<E>::value) {
-    if constexpr (std::is_nothrow_move_constructible<E>::value) {
+  static void swap_value_error(expected& v, expected& e) noexcept(std::is_nothrow_move_constructible_v<T> &&
+                                                                  std::is_nothrow_move_constructible_v<E>) {
+    if constexpr (std::is_nothrow_move_constructible_v<E>) {
       E tmp(static_cast<E&&>(*e.error_ptr()));
       e.error_ptr()->~E();
       // The rollback exists for the case where T's move CAN throw. In the
@@ -793,7 +790,7 @@ class expected {
 #if METL_NO_EXCEPTIONS
       ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(*v.value_ptr()));
 #else
-      if constexpr (std::is_nothrow_move_constructible<T>::value) {
+      if constexpr (std::is_nothrow_move_constructible_v<T>) {
         ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(*v.value_ptr()));
       } else {
         try {
@@ -875,18 +872,18 @@ class expected<void, E> {
   /// @brief Constructs an error-state expected, building `E` in place.
   /// @tparam Args Constructor argument types forwarded to `E`.
   /// @param args Arguments forwarded to `E`'s constructor.
-  template <typename... Args, typename = std::enable_if_t<std::is_constructible<E, Args...>::value>>
+  template <typename... Args, typename = std::enable_if_t<std::is_constructible_v<E, Args...>>>
   constexpr explicit expected(unexpect_t, Args&&... args) : has_value_(false) {
     construct_error(std::forward<Args>(args)...);
   }
 
   /// @brief Constructs an error-state expected from an unexpected wrapper.
-  template <typename G = E, typename = std::enable_if_t<std::is_constructible<E, const G&>::value>>
+  template <typename G = E, typename = std::enable_if_t<std::is_constructible_v<E, const G&>>>
   expected(const unexpected<G>& u) : has_value_(false) {
     construct_error(u.error());
   }
 
-  template <typename G = E, typename = std::enable_if_t<std::is_constructible<E, G&&>::value>>
+  template <typename G = E, typename = std::enable_if_t<std::is_constructible_v<E, G&&>>>
   expected(unexpected<G>&& u) : has_value_(false) {
     construct_error(static_cast<G&&>(u.error()));
   }
@@ -899,7 +896,7 @@ class expected<void, E> {
   }
 
   /// @brief Move constructor; moves the error if in the error state.
-  expected(expected&& other) noexcept(std::is_nothrow_move_constructible<E>::value)
+  expected(expected&& other) noexcept(std::is_nothrow_move_constructible_v<E>)
       : has_value_(other.has_value_) {
     if (!has_value_) {
       construct_error(static_cast<E&&>(*other.error_ptr()));
@@ -938,8 +935,8 @@ class expected<void, E> {
   }
 
   /// @brief Move-assigns, switching between success and error as needed.
-  expected& operator=(expected&& other) noexcept(std::is_nothrow_move_constructible<E>::value &&
-                                                 std::is_nothrow_move_assignable<E>::value) {
+  expected& operator=(expected&& other) noexcept(std::is_nothrow_move_constructible_v<E> &&
+                                                 std::is_nothrow_move_assignable_v<E>) {
     if (this == &other) {
       return *this;
     }
@@ -961,9 +958,9 @@ class expected<void, E> {
   }
 
   /// @brief Assigns an error, switching to the error state if needed.
-  template <typename G = E,
-            typename = std::enable_if_t<std::is_constructible<E, const G&>::value &&
-                                        std::is_assignable<E&, const G&>::value>>
+  template <
+      typename G = E,
+      typename = std::enable_if_t<std::is_constructible_v<E, const G&> && std::is_assignable_v<E&, const G&>>>
   expected& operator=(const unexpected<G>& error) {
     if (has_value_) {
       construct_error(error.error());
@@ -975,9 +972,8 @@ class expected<void, E> {
   }
 
   /// @brief Assigns an error, switching to the error state if needed.
-  template <
-      typename G = E,
-      typename = std::enable_if_t<std::is_constructible<E, G&&>::value && std::is_assignable<E&, G&&>::value>>
+  template <typename G = E,
+            typename = std::enable_if_t<std::is_constructible_v<E, G&&> && std::is_assignable_v<E&, G&&>>>
   expected& operator=(unexpected<G>&& error) {
     if (has_value_) {
       construct_error(static_cast<G&&>(error.error()));
@@ -1080,8 +1076,8 @@ class expected<void, E> {
   }
 
   /// @brief Swaps contents and state with another expected<void, E>.
-  void swap(expected& other) noexcept(std::is_nothrow_move_constructible<E>::value &&
-                                      std::is_nothrow_move_assignable<E>::value) {
+  void swap(expected& other) noexcept(std::is_nothrow_move_constructible_v<E> &&
+                                      std::is_nothrow_move_assignable_v<E>) {
     if (has_value_ && other.has_value_) {
       // nothing to swap.
     } else if (!has_value_ && !other.has_value_) {
@@ -1152,7 +1148,7 @@ class expected<void, E> {
   template <typename F>
   METL_NODISCARD auto transform(F&& f) & {
     using result_value_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
-    if constexpr (std::is_void<result_value_t>::value) {
+    if constexpr (std::is_void_v<result_value_t>) {
       if (has_value_) {
         std::forward<F>(f)();
         return expected<void, E>();
@@ -1169,7 +1165,7 @@ class expected<void, E> {
   template <typename F>
   METL_NODISCARD auto transform(F&& f) const& {
     using result_value_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
-    if constexpr (std::is_void<result_value_t>::value) {
+    if constexpr (std::is_void_v<result_value_t>) {
       if (has_value_) {
         std::forward<F>(f)();
         return expected<void, E>();
@@ -1186,7 +1182,7 @@ class expected<void, E> {
   template <typename F>
   METL_NODISCARD auto transform(F&& f) && {
     using result_value_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
-    if constexpr (std::is_void<result_value_t>::value) {
+    if constexpr (std::is_void_v<result_value_t>) {
       if (has_value_) {
         std::forward<F>(f)();
         return expected<void, E>();
@@ -1203,7 +1199,7 @@ class expected<void, E> {
   template <typename F>
   METL_NODISCARD auto transform(F&& f) const&& {
     using result_value_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
-    if constexpr (std::is_void<result_value_t>::value) {
+    if constexpr (std::is_void_v<result_value_t>) {
       if (has_value_) {
         std::forward<F>(f)();
         return expected<void, E>();

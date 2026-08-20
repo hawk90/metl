@@ -28,7 +28,7 @@ struct is_std_array_helper : std::false_type {};
 
 template <typename T>
 struct remove_cvref {
-  using type = typename std::remove_cv<typename std::remove_reference<T>::type>::type;
+  using type = std::remove_cv_t<std::remove_reference_t<T>>;
 };
 
 template <typename T>
@@ -40,15 +40,15 @@ struct has_data_size : std::false_type {};
 
 template <typename C>
 struct has_data_size<C,
-                     typename std::enable_if<!std::is_array<typename remove_cvref<C>::type>::value &&
-                                                 !is_span_helper<typename remove_cvref<C>::type>::value,
-                                             decltype(static_cast<void>(std::declval<C&>().data()),
-                                                      static_cast<void>(std::declval<C&>().size()))>::type>
+                     std::enable_if_t<!std::is_array_v<typename remove_cvref<C>::type> &&
+                                          !is_span_helper<typename remove_cvref<C>::type>::value,
+                                      decltype(static_cast<void>(std::declval<C&>().data()),
+                                               static_cast<void>(std::declval<C&>().size()))>>
     : std::true_type {};
 
 template <typename T, typename U>
-struct is_qualification_convertible
-    : std::integral_constant<bool, std::is_convertible<U (*)[], T (*)[]>::value> {};
+struct is_qualification_convertible : std::integral_constant<bool, std::is_convertible_v<U (*)[], T (*)[]>> {
+};
 
 // Storage helper: stores only data when extent is fixed; data + size otherwise.
 template <typename T, std::size_t Extent>
@@ -83,7 +83,7 @@ template <typename T, std::size_t Extent>
 class span {
  public:
   using element_type = T;
-  using value_type = typename std::remove_cv<T>::type;
+  using value_type = std::remove_cv_t<T>;
   using size_type = std::size_t;
   using difference_type = std::ptrdiff_t;
   using pointer = T*;
@@ -98,7 +98,7 @@ class span {
   static constexpr size_type extent = Extent;
 
   /// Constructs an empty span. Enabled only when Extent == 0 or dynamic_extent.
-  template <std::size_t E = Extent, typename = typename std::enable_if<E == 0 || E == dynamic_extent>::type>
+  template <std::size_t E = Extent, typename = std::enable_if_t<E == 0 || E == dynamic_extent>>
   constexpr span() noexcept : storage_(nullptr, 0) {}
 
   /// Constructs a span over `count` elements starting at `ptr`.
@@ -118,17 +118,17 @@ class span {
   /// Constructs a span viewing all `N` elements of a C array.
   /// METL_LIFETIME_BOUND: the span refers into `array`; the array must outlive
   /// the span. clang flags obvious dangling (e.g. binding to a temporary array).
-  template <std::size_t N, typename = typename std::enable_if<Extent == dynamic_extent || Extent == N>::type>
+  template <std::size_t N, typename = std::enable_if_t<Extent == dynamic_extent || Extent == N>>
   constexpr span(element_type (&array METL_LIFETIME_BOUND)[N]) noexcept : storage_(array, N) {}
 
   /// Constructs a span viewing a container that exposes compatible data()/size().
   // Container constructor: enabled for types exposing data()/size() with compatible element type.
   template <typename C,
-            typename = typename std::enable_if<
-                detail::has_data_size<C&>::value && !std::is_same<detail::remove_cvref_t<C>, span>::value &&
+            typename = std::enable_if_t<
+                detail::has_data_size<C&>::value && !std::is_same_v<detail::remove_cvref_t<C>, span> &&
                 detail::is_qualification_convertible<
                     T,
-                    typename std::remove_pointer<decltype(std::declval<C&>().data())>::type>::value>::type>
+                    std::remove_pointer_t<decltype(std::declval<C&>().data())>>::value>>
   // METL_LIFETIME_BOUND: the span views `container`'s storage; the container
   // must outlive the span. clang flags obvious dangling (e.g. a span bound to a
   // temporary container).
@@ -139,11 +139,10 @@ class span {
   }
 
   /// Converting constructor between compatible spans (extent/qualification).
-  template <
-      typename U,
-      std::size_t N,
-      typename = typename std::enable_if<(Extent == dynamic_extent || N == dynamic_extent || Extent == N) &&
-                                         detail::is_qualification_convertible<T, U>::value>::type>
+  template <typename U,
+            std::size_t N,
+            typename = std::enable_if_t<(Extent == dynamic_extent || N == dynamic_extent || Extent == N) &&
+                                        detail::is_qualification_convertible<T, U>::value>>
   constexpr span(const span<U, N>& other) noexcept : storage_(other.data(), other.size()) {
     METL_ASSERT(Extent == dynamic_extent || other.size() == Extent);
   }
@@ -265,11 +264,10 @@ template <typename T, std::size_t N>
 span(T (&)[N]) -> span<T, N>;
 
 template <typename C>
-span(C&) -> span<typename std::remove_reference<decltype(*std::declval<C&>().data())>::type>;
+span(C&) -> span<std::remove_reference_t<decltype(*std::declval<C&>().data())>>;
 
 template <typename C>
-span(const C&)
-    -> span<const typename std::remove_reference<decltype(*std::declval<const C&>().data())>::type>;
+span(const C&) -> span<const std::remove_reference_t<decltype(*std::declval<const C&>().data())>>;
 
 template <typename T>
 span(T*, std::size_t) -> span<T>;
@@ -294,7 +292,7 @@ METL_NODISCARD inline span<const std::byte, detail::bytes_extent<N, sizeof(T)>::
 }
 
 /// Reinterprets a non-const span as a writable view of its underlying bytes.
-template <typename T, std::size_t N, typename = typename std::enable_if<!std::is_const<T>::value>::type>
+template <typename T, std::size_t N, typename = std::enable_if_t<!std::is_const_v<T>>>
 METL_NODISCARD inline span<std::byte, detail::bytes_extent<N, sizeof(T)>::value> as_writable_bytes(
     span<T, N> s) noexcept {
   return span<std::byte, detail::bytes_extent<N, sizeof(T)>::value>(reinterpret_cast<std::byte*>(s.data()),

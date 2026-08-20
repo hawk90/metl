@@ -58,7 +58,7 @@ class static_message_queue {
     }
   }
 
-  static_message_queue(static_message_queue&& other) noexcept(std::is_nothrow_move_constructible<T>::value)
+  static_message_queue(static_message_queue&& other) noexcept(std::is_nothrow_move_constructible_v<T>)
       : head_(0), tail_(0), size_(0) {
     for (size_type i = 0; i < other.size_; ++i) {
       const size_type index = other.physical_index(i);
@@ -81,7 +81,7 @@ class static_message_queue {
   }
 
   static_message_queue& operator=(static_message_queue&& other) noexcept(
-      std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_assignable<T>::value) {
+      std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_assignable_v<T>) {
     if (this == &other) {
       return *this;
     }

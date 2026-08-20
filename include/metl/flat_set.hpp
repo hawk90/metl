@@ -37,10 +37,10 @@ class flat_set {
   using const_iterator = const value_type*;
 
   /// @brief Construct an empty set with a default-constructed comparator.
-  constexpr flat_set() noexcept(std::is_nothrow_default_constructible<Compare>::value) : comp_(), size_(0) {}
+  constexpr flat_set() noexcept(std::is_nothrow_default_constructible_v<Compare>) : comp_(), size_(0) {}
 
   /// @brief Construct an empty set using the given comparator.
-  explicit flat_set(const Compare& comp) noexcept(std::is_nothrow_copy_constructible<Compare>::value)
+  explicit flat_set(const Compare& comp) noexcept(std::is_nothrow_copy_constructible_v<Compare>)
       : comp_(comp), size_(0) {}
 
   /// @brief Copy-construct, copying every element from @p other.
@@ -51,8 +51,8 @@ class flat_set {
   }
 
   /// @brief Move-construct, moving elements out of @p other and leaving it empty.
-  flat_set(flat_set&& other) noexcept(std::is_nothrow_move_constructible<value_type>::value &&
-                                      std::is_nothrow_move_constructible<Compare>::value)
+  flat_set(flat_set&& other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
+                                      std::is_nothrow_move_constructible_v<Compare>)
       : comp_(static_cast<Compare&&>(other.comp_)), size_(0) {
     for (auto& item : other) {
       emplace(static_cast<Key&&>(item));
@@ -78,9 +78,9 @@ class flat_set {
   }
 
   /// @brief Move-assign from @p other, leaving it empty (self-assignment safe).
-  flat_set& operator=(flat_set&& other) noexcept(std::is_nothrow_move_constructible<value_type>::value &&
-                                                 std::is_nothrow_move_assignable<value_type>::value &&
-                                                 std::is_nothrow_move_assignable<Compare>::value) {
+  flat_set& operator=(flat_set&& other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
+                                                 std::is_nothrow_move_assignable_v<value_type> &&
+                                                 std::is_nothrow_move_assignable_v<Compare>) {
     if (this == &other) {
       return *this;
     }
@@ -114,12 +114,12 @@ class flat_set {
   METL_NODISCARD size_type capacity() const noexcept { return Capacity; }
 
   /// @brief Copy of the key comparator.
-  METL_NODISCARD Compare key_comp() const noexcept(std::is_nothrow_copy_constructible<Compare>::value) {
+  METL_NODISCARD Compare key_comp() const noexcept(std::is_nothrow_copy_constructible_v<Compare>) {
     return comp_;
   }
 
   /// @brief Copy of the value comparator (same as the key comparator for a set).
-  METL_NODISCARD Compare value_comp() const noexcept(std::is_nothrow_copy_constructible<Compare>::value) {
+  METL_NODISCARD Compare value_comp() const noexcept(std::is_nothrow_copy_constructible_v<Compare>) {
     return comp_;
   }
 
@@ -222,62 +222,62 @@ class flat_set {
   }
 
   // ---- Heterogeneous lookup overloads (enabled when Compare is transparent) ----
-  template <typename K,
-            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+  template <
+      typename K,
+      typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD iterator lower_bound(const K& key) noexcept {
     return begin() + lower_bound_index(key);
   }
 
-  template <typename K,
-            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+  template <
+      typename K,
+      typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD const_iterator lower_bound(const K& key) const noexcept {
     return begin() + lower_bound_index(key);
   }
 
-  template <typename K,
-            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+  template <
+      typename K,
+      typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD iterator upper_bound(const K& key) noexcept {
     return begin() + upper_bound_index(key);
   }
 
-  template <typename K,
-            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+  template <
+      typename K,
+      typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD const_iterator upper_bound(const K& key) const noexcept {
     return begin() + upper_bound_index(key);
   }
 
-  template <typename K,
-            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+  template <
+      typename K,
+      typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD std::pair<iterator, iterator> equal_range(const K& key) noexcept {
     const size_type lo = lower_bound_index(key);
     const size_type hi = upper_bound_index_from(key, lo);
     return {begin() + lo, begin() + hi};
   }
 
-  template <typename K,
-            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+  template <
+      typename K,
+      typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD std::pair<const_iterator, const_iterator> equal_range(const K& key) const noexcept {
     const size_type lo = lower_bound_index(key);
     const size_type hi = upper_bound_index_from(key, lo);
     return {begin() + lo, begin() + hi};
   }
 
-  template <typename K,
-            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+  template <
+      typename K,
+      typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD bool contains(const K& key) const noexcept {
     return find(key) != nullptr;
   }
 
-  template <typename K,
-            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+  template <
+      typename K,
+      typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD value_type* find(const K& key) noexcept {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index])) {
@@ -286,9 +286,9 @@ class flat_set {
     return nullptr;
   }
 
-  template <typename K,
-            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+  template <
+      typename K,
+      typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD const value_type* find(const K& key) const noexcept {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index])) {
@@ -297,9 +297,9 @@ class flat_set {
     return nullptr;
   }
 
-  template <typename K,
-            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
-                                   !std::is_same<decay_t<K>, key_type>::value>>
+  template <
+      typename K,
+      typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   bool erase(const K& key) noexcept {
     const size_type index = lower_bound_index(key);
     if (index >= size_ || comp_(key, data()[index])) {

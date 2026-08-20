@@ -23,13 +23,11 @@ class scope_exit {
  public:
   /// @brief Construct an armed guard owning a copy/move of the callable.
   /// @param func Callable to invoke at scope exit.
-  template <typename G,
-            typename =
-                typename std::enable_if<!std::is_same<typename std::decay<G>::type, scope_exit>::value>::type>
+  template <typename G, typename = std::enable_if_t<!std::is_same_v<std::decay_t<G>, scope_exit>>>
   explicit scope_exit(G&& func) noexcept : func_(std::forward<G>(func)), active_(true) {}
 
   /// @brief Move constructor; transfers the armed state and disarms the source.
-  scope_exit(scope_exit&& other) noexcept(std::is_nothrow_move_constructible<F>::value)
+  scope_exit(scope_exit&& other) noexcept(std::is_nothrow_move_constructible_v<F>)
       : func_(std::move(other.func_)), active_(other.active_) {
     other.active_ = false;
   }
@@ -65,8 +63,8 @@ scope_exit(F) -> scope_exit<F>;
 /// @param func Callable to invoke at scope exit.
 /// @return An armed scope_exit owning a decayed copy of `func`.
 template <typename F>
-METL_NODISCARD auto make_scope_exit(F&& func) noexcept -> scope_exit<typename std::decay<F>::type> {
-  return scope_exit<typename std::decay<F>::type>(std::forward<F>(func));
+METL_NODISCARD auto make_scope_exit(F&& func) noexcept -> scope_exit<std::decay_t<F>> {
+  return scope_exit<std::decay_t<F>>(std::forward<F>(func));
 }
 
 namespace detail {
@@ -75,8 +73,8 @@ namespace detail {
 struct scope_exit_tag {};
 
 template <typename F>
-auto operator+(scope_exit_tag, F&& func) noexcept -> scope_exit<typename std::decay<F>::type> {
-  return scope_exit<typename std::decay<F>::type>(std::forward<F>(func));
+auto operator+(scope_exit_tag, F&& func) noexcept -> scope_exit<std::decay_t<F>> {
+  return scope_exit<std::decay_t<F>>(std::forward<F>(func));
 }
 
 }  // namespace detail

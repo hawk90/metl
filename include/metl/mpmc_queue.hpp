@@ -87,8 +87,8 @@ class mpmc_queue {
   // Same reasoning as spsc_queue: this is a no-exception library and the push /
   // pop paths are noexcept, so a throwing move or destructor would terminate at
   // runtime. Requiring nothrow here turns that into a compile error.
-  static_assert(std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_assignable<T>::value &&
-                    std::is_nothrow_destructible<T>::value,
+  static_assert(std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_assignable_v<T> &&
+                    std::is_nothrow_destructible_v<T>,
                 "metl::mpmc_queue requires T to be nothrow move-constructible, nothrow "
                 "move-assignable and nothrow destructible");
 
