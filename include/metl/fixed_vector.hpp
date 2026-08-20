@@ -278,8 +278,13 @@ class fixed_vector {
   /// Inserts `value` (by move) before `pos` if there is room.
   /// @return Iterator to the new element, or `end()` if the container is full
   ///         (contents unchanged; `value` is not moved from).
+  /// @note Spelled `std::move` rather than this file's usual `static_cast<T&&>`
+  ///       (which is the same thing) because clang-tidy's
+  ///       `cppcoreguidelines-rvalue-reference-param-not-moved` only recognises the
+  ///       named form, and a new entry in the analysis budget for a cast style is
+  ///       not worth spending. `spsc_queue`/`mpmc_queue` already spell it this way.
   METL_NODISCARD iterator try_insert(const_iterator pos, T&& value) {
-    return try_emplace(pos, static_cast<T&&>(value));
+    return try_emplace(pos, std::move(value));
   }
 
   /// Constructs an element in place before `pos` if there is room.

@@ -241,7 +241,7 @@ int main() {
 
     // Assigning over an existing key still fits, even when full.
     CHECK(m.try_insert_or_assign(1, 11));
-    CHECK_EQ(*m.find(1), 11);
+    CHECK_DEREF_EQ(m.find(1), 11);
     CHECK_EQ(m.size(), 2u);
 
     // A *new* key does not.
