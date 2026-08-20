@@ -12,7 +12,8 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   (PREDICT/ASSUME/cacheline), `METL_DASSERT`, `CONST_INIT`, `TRIVIAL_ABI`,
   ASan tail-poisoning for `fixed_vector`
 - [x] constexpr honesty: `optional` genuinely constexpr on C++20 (via `detail/construct.hpp`)
-- [x] Per-symbol Doxygen docs across all 51 headers + non-standard-contract warnings
+- [x] Per-symbol Doxygen docs across every public header (51 at the time; 60 today)
+  + non-standard-contract warnings
 - [x] Examples (9, CI-compiled) + `docs/COOKBOOK.md`
 - [x] Environment coverage: host (Linux/macOS/Windows × gcc/clang/MSVC × Debug/Release/MinSizeRel),
   ASan/UBSan, TSAN (real threaded tests), LTO, ARM Cortex-M (gcc + clang frontends),
@@ -82,7 +83,7 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   the `-fno-exceptions` arms of `expected.hpp`) or any `#if` arm this
   configuration does not compile. Their evidence today is `qemu-conformance` and
   `config-matrix`, not a coverage percentage.
-- [ ] Promote **clang-tidy** from advisory to blocking. **Not** a matter of
+- [x] Promote **clang-tidy** from advisory to blocking (2026-08-20). **Not** a matter of
   fixing findings and flipping the switch. CI prints **3,084 warnings**, but that
   is the raw line count: every header is analysed once per translation unit that
   includes it, so the same finding is reported many times. Deduplicated it is
@@ -108,13 +109,14 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
      (`: value_(std::forward<Args>(args)...)`) and on a forward used as the callee
      (`std::forward<Fn>(fn)(value_)`), neither of which the check counts. Treat the
      remaining count as a regression budget, not a defect list.
-  Steps 1 and 2 are landed. What is left is only the switch, and it needs a
-  number: run the advisory job once on the tuned config and set
-  `tools/clang_tidy_report.sh --max` to the distinct count it reports, then drop
-  `continue-on-error`. **The budget must be measured on CI**, not locally —
-  macOS/libc++ and Ubuntu/libstdc++ disagree substantially at the same clang-tidy
-  version (locally: 472 distinct and *zero* `modernize-type-traits`, where CI
-  reported 739 and 308).
+  Steps 1–3 are landed and CI now blocks regressions with a **148**-finding
+  ratchet (run 32274968429: 148 distinct, 491 raw). The budget has to be
+  measured by the CI job itself, and a local number is not a substitute:
+  macOS/libc++ and Ubuntu/libstdc++ disagree substantially even at the same
+  clang-tidy version, and the versions differ too — locally this tree reports
+  472 distinct and *zero* `modernize-type-traits`, where CI reported 739 and
+  308. A ratchet set from the local 546 would have been ~3.7x slack and blocked
+  nothing.
 
 ### 🛠️ CI/CD polish (finish #18)
 - [ ] README badges (add a docs/Pages badge; CI + license already present).
@@ -140,8 +142,11 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   still tag-pinned was GitHub's own `actions/*`, which OpenSSF Scorecard counts
   too. All of them now carry a SHA with the version in a trailing comment, so the
   human-readable version survives and Dependabot can still bump them.
-- [ ] **(caching)** Cache pipx and the zephyr `west update` tree (re-cloned
-  uncached every run, dominating the 60-min zephyr budget). apt is done, above.
+- [x] **(caching)** Cache the Zephyr `west update` tree (re-cloned uncached every
+  run, dominating the 60-min zephyr budget). The workspace cache is keyed to the
+  pinned v3.7.0 release. apt is done, above.
+- [ ] Cache pipx's clang-format environment separately; it is a small install
+  and remains lower priority than the Zephyr workspace cache.
 - [x] Root-cause fixes DONE 2026-08-05: hard-coded test-source paths → single
   `env:` source of truth; workflow-level `defaults.run.shell: bash`; fuzz-smoke
   harness list derived from built binaries; `.pre-commit-config.yaml` pins

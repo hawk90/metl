@@ -1000,21 +1000,29 @@ jobs:
         run: ctest --test-dir build -R 'metl_umbrella_complete|metl_header_self_contained' --output-on-failure
 
   # ---------------------------------------------------------------------------
-  # clang-tidy (advisory — one more run to measure, then the ratchet goes on)
+  # clang-tidy (blocking deduplicated ratchet)
   #
-  # The budget for `--max` has to come from a real run of *this* config on *this*
-  # runner. A number measured locally is not transferable: macOS/libc++ and
-  # Ubuntu/libstdc++ disagree substantially at the same clang-tidy version (the
-  # local run reports zero `modernize-type-traits` where CI reported 308). Read
-  # the distinct count off this job, set `--max` to it, drop
-  # `continue-on-error`, and the ratchet can only go down from there.
+  # 148 is the distinct-finding count this exact job reported on this runner
+  # after the mechanical trait sweep and the intentional exclusions (run
+  # 32274968429: 148 distinct, 491 raw). The budget can only go down; a new
+  # diagnostic fails this job.
+  #
+  # Do not set it from a local run. macOS/libc++ and Ubuntu/libstdc++ disagree
+  # substantially even at the same clang-tidy version, and the versions differ
+  # too (this image ships clang-tidy 18): locally this tree reports 472 distinct
+  # and *zero* `modernize-type-traits`, where CI reported 739 and 308. A budget
+  # taken from the local number would have been ~3.7x slack and blocked nothing.
+  #
+  # `--max` is a regression budget, not a defect count. The residue was triaged
+  # (docs/TODO.md): the two checks that looked like real-bug candidates are
+  # false positives here. If a runner image bumps clang-tidy, expect this number
+  # to move -- re-measure rather than padding it.
   # ---------------------------------------------------------------------------
   clang-tidy:
     name: clang-tidy
     runs-on: ubuntu-latest
     needs: preflight
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: Checkout
@@ -1035,8 +1043,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
-      - name: Run clang-tidy on public headers (deduplicated report)
-        run: tools/clang_tidy_report.sh -p build
+      - name: Run clang-tidy on public headers (deduplicated ratchet)
+        run: tools/clang_tidy_report.sh -p build --max 148
 
   # ---------------------------------------------------------------------------
   # clang-format (strict — fails on any diff)
@@ -1408,7 +1416,22 @@ jobs:
             echo "ZEPHYR_SDK_INSTALL_DIR=$sdk" >> "$GITHUB_ENV"
           fi
 
+      # west update is the dominant cost of this job. Cache the pinned Zephyr
+      # workspace and its modules; the key is tied to the pinned release, so a
+      # Zephyr upgrade gets a clean workspace automatically.
+      - name: Cache Zephyr west workspace
+        id: zephyr-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            zephyrproject/.west
+            zephyrproject/zephyr
+            zephyrproject/modules
+            zephyrproject/bootloader
+          key: zephyr-west-v3.7.0-${{ runner.os }}-${{ runner.arch }}
+
       - name: Initialize a throwaway upstream Zephyr workspace
+        if: steps.zephyr-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           # Pin upstream Zephyr to the v3.7.0 LTS. qemu_cortex_m3 + native_sim
@@ -1416,7 +1439,10 @@ jobs:
           west init -m https://github.com/zephyrproject-rtos/zephyr --mr v3.7.0 zephyrproject
           cd zephyrproject
           west update --narrow -o=--depth=1
-          west zephyr-export
+
+      - name: Export Zephyr CMake package
+        working-directory: zephyrproject
+        run: west zephyr-export
 
       - name: Build the sample for qemu_cortex_m3 (structural gate)
         working-directory: zephyrproject

@@ -26,9 +26,14 @@ description: Cache downloaded Debian packages and tolerate transient apt failure
 # bounded by a single deadline (default 8 minutes, under every job budget here)
 # and always reports why it gave up.
 #
-# `--no-install-recommends` is kept for hygiene, not for size: the ARM toolchain
-# pulls no Recommends at all (all five packages are hard Depends), so it does
-# not shrink that 574 MB.
+# Do NOT add `--no-install-recommends` here. `libnewlib-arm-none-eabi` and the
+# `libstdc++-arm-none-eabi-*` packages are Recommends of `gcc-arm-none-eabi`,
+# not Depends, so the flag removes the freestanding C++ standard headers and
+# every cross build dies on `fatal error: cstdint: No such file or directory`.
+# A default `apt-get install` log does not reveal this -- it folds recommends
+# into "The following additional packages will be installed" and prints no
+# "Recommended packages:" section at all, so their absence there is not
+# evidence that there are none.
 
 inputs:
   packages:
@@ -94,7 +99,7 @@ runs:
           # index refresh cannot starve the download it exists to enable.
           if timeout $(( remaining / 4 + 1 )) sudo apt-get "${APT_OPTS[@]}" update && \
              timeout $(( deadline - SECONDS )) \
-               sudo apt-get "${APT_OPTS[@]}" install --no-install-recommends -y ${APT_PACKAGES}; then
+               sudo apt-get "${APT_OPTS[@]}" install -y ${APT_PACKAGES}; then
             exit 0
           fi
 
