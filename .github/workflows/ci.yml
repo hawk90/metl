@@ -1110,6 +1110,54 @@ jobs:
           path: metl-single.hpp
 
   # ---------------------------------------------------------------------------
+  # Conan package
+  #
+  # Packaging breaks in ways the test suite cannot see: a header left out of the
+  # copy, a target name that does not match what `find_package(metl)` provides,
+  # a C++ standard requirement that is assumed rather than declared. This runs
+  # `conan create`, which builds the recipe and then compiles and runs
+  # `test_package/` against the *packaged* headers through `metl::metl`, and
+  # then checks that a C++14 consumer is refused at configure time rather than
+  # failing deep inside a header.
+  # ---------------------------------------------------------------------------
+  conan:
+    name: conan
+    runs-on: ubuntu-latest
+    needs: preflight
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Install build deps
+        uses: ./.github/actions/apt-install
+        with:
+          packages: build-essential
+          cache-key: build-essential
+
+      - name: Install Conan
+        run: pipx install conan
+
+      - name: Package and consume
+        run: |
+          conan profile detect --force
+          conan create . --build=missing -s compiler.cppstd=17
+
+      - name: A C++14 consumer must be refused
+        run: |
+          if conan create . --build=missing -s compiler.cppstd=14 > cxx14.log 2>&1; then
+            echo "Expected the C++14 configuration to be rejected, but it succeeded." >&2
+            exit 1
+          fi
+          grep -q "lower than the required C++ standard" cxx14.log || {
+            echo "C++14 failed, but not with the cppstd validation error:" >&2
+            tail -20 cxx14.log >&2
+            exit 1
+          }
+          echo "C++14 correctly refused at validate() time."
+
+  # ---------------------------------------------------------------------------
   # clang-format (strict — fails on any diff)
   # ---------------------------------------------------------------------------
   clang-format:
