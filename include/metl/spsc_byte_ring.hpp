@@ -69,7 +69,8 @@ class spsc_byte_ring {
   using value_type = std::byte;
   using size_type = std::size_t;
 
-  spsc_byte_ring() noexcept : head_(0), tail_(0), storage_{} {}
+  spsc_byte_ring() noexcept : head_(0), tail_(0) {}
+  ~spsc_byte_ring() = default;
 
   spsc_byte_ring(const spsc_byte_ring&) = delete;
   spsc_byte_ring(spsc_byte_ring&&) = delete;
@@ -272,7 +273,7 @@ class spsc_byte_ring {
   // unmeasured complication.
   METL_CACHELINE_ALIGNED std::atomic<size_type> head_;  ///< Consumer position (monotonic).
   METL_CACHELINE_ALIGNED std::atomic<size_type> tail_;  ///< Producer position (monotonic).
-  METL_CACHELINE_ALIGNED std::byte storage_[Capacity];
+  METL_CACHELINE_ALIGNED std::byte storage_[Capacity] = {};
 };
 
 }  // namespace metl

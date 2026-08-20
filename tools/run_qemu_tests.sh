@@ -63,7 +63,10 @@ declare -A DENIED=(
   ["sync/spsc_queue_threaded_test.cpp"]="needs <thread>; no OS scheduler on bare metal"
   ["sync/atomic_handle_threaded_test.cpp"]="needs <thread>"
   ["sync/mpmc_queue_threaded_test.cpp"]="needs <thread>"
+  ["sync/spsc_byte_ring_threaded_test.cpp"]="needs <thread>"
   ["core/harden_floor_none_test.cpp"]="forked death test (unistd.h / sys/wait.h)"
+  ["sync/spsc_byte_ring_overcommit_test.cpp"]="forked death test (unistd.h / sys/wait.h); its
+    positive half is index arithmetic that sync/spsc_byte_ring_test already runs on target"
   ["containers/fixed_vector_asan_test.cpp"]="forked death test; also assumes ASan"
   ["core/assert_test.cpp"]="setjmp/longjmp around an abort path; host-runtime specific"
   # These three deliberately `throw` to check what METL does when a USER's type
