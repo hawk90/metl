@@ -1,0 +1,75 @@
+name: CodeQL
+
+# Static security analysis, complementing the fuzzers (which find what they can
+# reach at runtime) and clang-tidy (which is a style/idiom ratchet, not a
+# taint-tracking engine).
+#
+# THE BUILD MATTERS. METL is header-only, so a template that nothing
+# instantiates is never type-checked, let alone analysed -- CodeQL would report
+# a clean scan of almost no code. The build step below compiles the test suite
+# precisely so the templates are instantiated; if that stops building, this job
+# still "passes" while covering nothing, which is why it is a manual build mode
+# rather than autobuild.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, so a newly published query finds the code without waiting for a
+    # push. Off-peak on a Monday.
+    - cron: '17 4 * * 1'
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: analyze / c-cpp
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      # Required to upload the SARIF result to the Security tab.
+      security-events: write
+      # Required by the action to read workflow run metadata on private repos.
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Install build deps
+        uses: ./.github/actions/apt-install
+        with:
+          packages: build-essential clang
+          cache-key: build-essential-clang
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd  # v4.37.7
+        with:
+          languages: c-cpp
+          build-mode: manual
+          # `security-and-quality` over the default `security-extended`: this is
+          # a library whose contract is correctness, so the quality suite's
+          # findings are on-topic rather than noise.
+          queries: security-and-quality
+
+      - name: Build (instantiates the templates CodeQL needs to see)
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build -j
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd  # v4.37.7
+        with:
+          category: /language:c-cpp

@@ -44,7 +44,14 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   free 24/7 continuous fuzzing on Google infra. Requires a project config PR
   upstream + a maintainer contact email.
 - [x] **SECURITY.md** — vulnerability disclosure policy (root).
-- [ ] **CodeQL** security scan workflow.
+- [x] **CodeQL** security scan workflow (`.github/workflows/codeql.yml`), push/PR
+  plus a weekly schedule so newly published queries reach the code without
+  waiting for a commit. Uses `build-mode: manual` on purpose: METL is
+  header-only, so a template nothing instantiates is never analysed, and
+  `autobuild` on a repo with no library to link would report a clean scan of
+  almost nothing. The step builds the test suite precisely to instantiate the
+  templates — if that build ever stops covering a header, this job keeps passing
+  while covering less, so treat it as part of the gate, not scaffolding.
 - [ ] **OSSF Scorecard** (posture badge) + optionally SLSA/signed releases.
 
 ### 📦 Distribution / adoption
