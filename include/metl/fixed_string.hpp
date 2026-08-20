@@ -36,10 +36,10 @@ class fixed_string {
   /// Constructs from a null-terminated C string.
   /// @pre `text` fits in Capacity. On overflow this asserts (the default handler
   /// aborts) rather than silently truncating. Callers needing a recoverable,
-  /// non-asserting path should default-construct and call assign(), which reports
+  /// non-asserting path should default-construct and call try_assign(), which reports
   /// overflow via its bool result.
   fixed_string(const char* text) : storage_{}, size_(0) {
-    const bool assigned = assign(text);
+    const bool assigned = try_assign(text);
     METL_ASSERT(assigned);
     (void)assigned;
   }
@@ -124,7 +124,7 @@ class fixed_string {
 
   /// Appends `ch` if there is room.
   /// @return true on success; false if the string is full (no assert).
-  bool try_push_back(char ch) noexcept {
+  METL_NODISCARD bool try_push_back(char ch) noexcept {
     if (full()) {
       return false;
     }
@@ -146,7 +146,10 @@ class fixed_string {
 
   /// Removes the last character if the string is non-empty.
   /// @return true on success; false if the string is empty (no assert).
-  bool try_pop_back() noexcept {
+  /// @note Underflow normally does not get a `try_` form — `if (!s.empty())` is an
+  /// exact, non-racy pre-check on a single-threaded container (see SCOPE.md R5).
+  /// This one exists because a character-at-a-time parse loop reads better with it.
+  METL_NODISCARD bool try_pop_back() noexcept {
     if (empty()) {
       return false;
     }
@@ -167,7 +170,7 @@ class fixed_string {
   /// Replaces the contents with the null-terminated string `text`.
   /// @return true on success; false if `text` does not fit (contents unchanged).
   /// @pre `text != nullptr`.
-  bool assign(const char* text) noexcept {
+  METL_NODISCARD bool try_assign(const char* text) noexcept {
     METL_ASSERT(text != nullptr);
 
     const size_type input_size = string_length(text);
@@ -184,10 +187,19 @@ class fixed_string {
     return true;
   }
 
+  /// Replaces the contents with the null-terminated string `text`.
+  /// @pre `text != nullptr` and `text` fits; overflow asserts and aborts. Use
+  /// try_assign for a non-asserting path.
+  void assign(const char* text) noexcept {
+    const bool assigned = try_assign(text);
+    METL_ASSERT(assigned);
+    (void)assigned;
+  }
+
   /// Appends the null-terminated string `text`.
   /// @return true on success; false if it does not fit (contents unchanged).
   /// @pre `text != nullptr`.
-  bool append(const char* text) noexcept {
+  METL_NODISCARD bool try_append(const char* text) noexcept {
     METL_ASSERT(text != nullptr);
 
     const size_type input_size = string_length(text);
@@ -206,7 +218,7 @@ class fixed_string {
 
   /// Appends the characters viewed by `text`.
   /// @return true on success; false if they do not fit (contents unchanged).
-  bool append(span<const char> text) noexcept {
+  METL_NODISCARD bool try_append(span<const char> text) noexcept {
     if (!can_append(text.size())) {
       return false;
     }
@@ -218,6 +230,24 @@ class fixed_string {
     size_ += text.size();
     storage_[size_] = '\0';
     return true;
+  }
+
+  /// Appends the null-terminated string `text`.
+  /// @pre `text != nullptr` and `text` fits; overflow asserts and aborts. Use
+  /// try_append for a non-asserting path.
+  void append(const char* text) noexcept {
+    const bool appended = try_append(text);
+    METL_ASSERT(appended);
+    (void)appended;
+  }
+
+  /// Appends the characters viewed by `text`.
+  /// @pre The characters fit; overflow asserts and aborts. Use try_append for a
+  /// non-asserting path.
+  void append(span<const char> text) noexcept {
+    const bool appended = try_append(text);
+    METL_ASSERT(appended);
+    (void)appended;
   }
 
   /// Returns a span viewing the current characters (excluding the terminator).

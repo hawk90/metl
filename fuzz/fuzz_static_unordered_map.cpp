@@ -2,9 +2,9 @@
 //
 // Drives a fixed-capacity open-addressing hash map (linear probing with
 // tombstones) with an opcode stream of CONTRACT-VALID operations only:
-// try_emplace / insert_or_assign / erase / find / contains / clear are all
-// return-based and never assert. The asserting members (emplace / operator[]
-// on a full map) are deliberately NOT called.
+// try_emplace / try_insert_or_assign / erase / find / contains / clear are all
+// return-based and never assert. The asserting members (emplace /
+// insert_or_assign / operator[] on a full map) are deliberately NOT called.
 //
 // A shadow count of live keys is tracked to assert size() consistency, and
 // find/contains agreement is checked, so a probing / tombstone / size bug
@@ -42,9 +42,9 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         }
         break;
       }
-      case 1: {  // insert_or_assign — false only when a new key cannot fit
+      case 1: {  // try_insert_or_assign — false only when a NEW key cannot fit
         const std::uint32_t value = in.integer<std::uint32_t>();
-        if (map.insert_or_assign(key, value)) {
+        if (map.try_insert_or_assign(key, value)) {
           const std::uint32_t* v = map.find(key);
           if (v == nullptr || *v != value) {
             __builtin_trap();
@@ -53,7 +53,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         break;
       }
       case 2: {  // erase — false if absent
-        map.erase(key);
+        (void)map.erase(key);
         if (map.contains(key)) {
           __builtin_trap();
         }

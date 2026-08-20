@@ -85,6 +85,34 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [ ] Submit to the ESP-IDF Component Registry (component manifest already present).
 
 ### 📊 Quality / claims
+- [x] **Recoverable-API contract completed and gated** (2026-08-20, pre-1.0 and
+  deliberately breaking — after v0.1.0 the same corrections would cost a
+  deprecation cycle). The library always had the asserting/recoverable pair; what
+  it did not have was consistency, and the inconsistency was invisible:
+  **22 of 55 `try_*` entry points shipped without `METL_NODISCARD`**, split by
+  *when each header was written* rather than by any principle, so
+  `fixed_vector::try_push_back(x);` compiled silently where
+  `fixed_queue::try_push(x);` warned. Three more (`fixed_string::assign`/`append`,
+  `flat_map`/`static_unordered_map::insert_or_assign`) spelled the same contract
+  without the `try_` prefix — and `insert_or_assign`'s bool meant *did it fit*
+  where std's means *was it inserted rather than assigned*.
+  Rules R1–R5 are now written down (`docs/SCOPE.md` §9); R2/R3 are enforced by the
+  **`api-contract`** job with a `--self-test` canary, and R1's forward-iterator
+  half by compiling `forward_iterator_contract.cpp` both ways and requiring the
+  single-pass arm to fail. `fixed_vector` gained the nine missing `try_*` forms.
+  Measured: 88/88 ctest, clang-tidy **down 1** distinct locally (351 → 350, same
+  toolchain both sides), coverage **up** to 90.39% lines / 76.19% branches.
+- [x] **`flat_map`/`flat_set::emplace` one-past-the-end return** (Section D of
+  `docs/AUDIT.md`) — closed while adding the `insert_or_assign` asserting twin,
+  which had the identical shape. On a full container `index == size_ == Capacity`
+  and `METL_ASSERT` is stripped at low hardening levels, so the returned reference
+  was out of bounds. Now guarded by the never-stripped `METL_HARDEN`, the same way
+  `static_unordered_map::construct_at` already guarded its own npos path.
+- [ ] **`try_value()` on `expected`/`optional`** (`docs/AUDIT.md` item 11) —
+  **re-adjudicated under §9 R5 and closed as not needed.** R5's line is whether a
+  pre-check is available and non-racy; `has_value()` is exactly that on a
+  single-threaded vocabulary type, and `value_or()` already covers the total
+  accessor. A `try_value()` would add API surface without adding a capability.
 - [x] **Benchmarks** — `metl_cc_benchmark` now builds for real (it used to
   silently `return()` whenever `benchmark::benchmark` was absent, which was
   always). Three suites under `bench/` — containers/lookup, object_pool vs

@@ -113,7 +113,7 @@ int main() {
     return 5;
   }
 
-  if (!map.insert_or_assign(5, 55) || value_of(map, 5) != 55) {
+  if (!map.try_insert_or_assign(5, 55) || value_of(map, 5) != 55) {
     return 6;
   }
 
@@ -204,8 +204,9 @@ int main() {
   // 15: find_iter is an STL-compatible iterator-returning lookup.
   {
     metl::static_unordered_map<int, int, 4> m;
-    m.try_emplace(1, 11);
-    m.try_emplace(2, 22);
+    if (!m.try_emplace(1, 11) || !m.try_emplace(2, 22)) {
+      return 20;
+    }
 
     auto it = m.find_iter(2);
     if (it == m.end() || it->key != 2 || it->value != 22) {
@@ -221,8 +222,9 @@ int main() {
   // 16: Heterogeneous lookup with transparent hasher / equal_to.
   {
     metl::static_unordered_map<test_string, int, 8, string_hash, string_equal> m;
-    m.try_emplace(test_string("alpha"), 1);
-    m.try_emplace(test_string("beta"), 2);
+    if (!m.try_emplace(test_string("alpha"), 1) || !m.try_emplace(test_string("beta"), 2)) {
+      return 21;
+    }
 
     const char* lookup = "alpha";
     if (!m.contains(lookup)) {
@@ -254,10 +256,10 @@ int main() {
     };
     metl::static_unordered_map<int, int, 4, identity_hash> m;
     // bucket_count == 8, all of these hash to bucket 0 then collide.
-    m.try_emplace(0, 100);
-    m.try_emplace(8, 108);
-    m.try_emplace(16, 116);
-    m.try_emplace(24, 124);
+    if (!m.try_emplace(0, 100) || !m.try_emplace(8, 108) || !m.try_emplace(16, 116) ||
+        !m.try_emplace(24, 124)) {
+      return 22;
+    }
     if (m.size() != 4 || !m.full()) {
       return 17;
     }

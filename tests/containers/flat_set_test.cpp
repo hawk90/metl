@@ -143,9 +143,9 @@ int main() {
   // --- Custom non-transparent Compare (reverse order) ---
   {
     metl::flat_set<int, 4, int_greater> rset;
-    rset.try_emplace(1);
-    rset.try_emplace(3);
-    rset.try_emplace(2);
+    if (!rset.try_emplace(1) || !rset.try_emplace(3) || !rset.try_emplace(2)) {
+      return 41;
+    }
 
     if (rset[0] != 3 || rset[1] != 2 || rset[2] != 1) {
       return 17;
@@ -163,9 +163,9 @@ int main() {
   // --- Heterogeneous lookup with const char* + cstr_less ---
   {
     metl::flat_set<const char*, 4, cstr_less> sset;
-    sset.try_emplace("banana");
-    sset.try_emplace("apple");
-    sset.try_emplace("cherry");
+    if (!sset.try_emplace("banana") || !sset.try_emplace("apple") || !sset.try_emplace("cherry")) {
+      return 42;
+    }
 
     if (std::strcmp(sset[0], "apple") != 0) {
       return 20;

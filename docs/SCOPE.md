@@ -132,6 +132,8 @@ Copy into the PR description:
       (the gate only proves what the probe links)
 - [ ] tier declared (0/1/2); if 1 or 2, the CI job is in THIS PR
 - [ ] single-core ISR safety: lock policy documented or `irq_lock` default
+- [ ] R1 (§9): every capacity-failing operation has BOTH an asserting form and a
+      `try_` form — `api-contract` checks R2/R3 mechanically but not this
 ```
 
 ---
@@ -329,3 +331,84 @@ gate proves certain symbols *are absent*. Different axes, complementary.
 A runtime trap (override `_sbrk` to `abort()` and run under QEMU) is
 deliberately not used: it only covers paths the test actually executed, whereas
 the static audit covers everything linked into the image.
+
+---
+
+## 9. The recoverable-API contract
+
+A fixed-capacity library lives or dies on one question: **when an operation does
+not fit, is that a bug or a normal Tuesday?** Both answers are legitimate, and
+they need different APIs. METL provides both, and this section is what "both"
+means precisely.
+
+### R1 — the pair
+
+Any operation that can fail because the container is **full** has exactly two
+forms:
+
+| Form | On failure |
+|---|---|
+| `X(...)` | Treats it as a precondition violation: asserts and aborts. |
+| `try_X(...)` | Reports it by return value and leaves the container **unchanged**. |
+
+"Unchanged" is the load-bearing half. A `try_` form that half-applies and then
+returns `false` is *worse* than one that asserts, because the caller's recovery
+path then runs against corrupted state. This is why `try_assign`/`try_insert`
+require a **forward** iterator: a single-pass source cannot be measured without
+being consumed, so the promise could not be kept. That is a `static_assert` with
+a named reason rather than an `enable_if`, because "no matching function for
+call to `try_assign`" tells a user nothing.
+
+### R2 — the name
+
+The `try_` prefix is **reserved for, and required by,** R1's recoverable form. No
+other public function returns a bare `bool` or pointer meaning "the operation did
+not happen."
+
+This rule was added after `flat_map::insert_or_assign` was found returning a
+`bool` that meant *did it fit*, while `std::map::insert_or_assign`'s bool means
+*was it inserted rather than assigned*. Borrowing a standard name and changing
+what its result means is the "silent surprise" the design principles forbid.
+
+### R3 — nodiscard
+
+Every `try_X` is `METL_NODISCARD`. Dropping the result is the exact bug the pair
+exists to prevent: `v.try_push_back(x);` as a statement is a silent overflow.
+
+### R4 — the exception, and only this one
+
+A `bool` that is **an answer to a question** rather than a failure report keeps
+its plain name and stays discardable: `erase(key)` ("was it present"),
+`object_pool::destroy(ptr)` ("was that a live slot"), `contains`, `empty`,
+`full`. `m.erase(k);` is a legitimate idiom and must not warn.
+
+The full list lives in `tools/check_api_contract.py` as `BOOL_ALLOWLIST`, one
+entry per name **with its reason**, so a future reader sees a decision rather
+than an omission.
+
+### R5 — where `try_pop` belongs
+
+Underflow gets a `try_` form only where a pre-check is unavailable or unsafe —
+that is, on the concurrent queues (`spsc_queue`, `mpmc_queue`,
+`static_message_queue`), where `if (!q.empty()) q.pop();` is a race. On a
+single-threaded container `if (!v.empty()) v.pop_back();` is already exact, so no
+underflow twin is added. `fixed_string::try_pop_back` predates this rule and is
+kept for character-at-a-time parse loops; the header says so.
+
+### How it is enforced
+
+R2 and R3 are mechanical and are checked by the **`api-contract`** job
+(`tools/check_api_contract.py`), which also has a `--self-test` canary — a gate
+that cannot fail is not a gate, the same argument as §8's `invariant_canary`. The
+forward-iterator constraint in R1 is proved by compiling
+`tests/containers/forward_iterator_contract.cpp` both ways and requiring the
+single-pass arm to fail, the same shape as the `handle-atomics` capability gate.
+
+R1's "both forms exist" half needs a human and is on the §4 checklist.
+
+**Why any of this is a gate rather than a review item:** review had already
+looked at every one of these. 22 of the 55 `try_*` entry points shipped without
+`METL_NODISCARD`, and the boundary followed *when each header was written* rather
+than any principle — `fixed_vector::try_push_back(x);` compiled silently while
+`fixed_queue::try_push(x);` warned, the same idiom with opposite safety in the
+same library.

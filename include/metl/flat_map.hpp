@@ -316,7 +316,7 @@ class flat_map {
   /// @note Unlike @c emplace, a full map or duplicate key is reported by the return value
   ///       rather than an assertion.
   template <typename K, typename V>
-  bool try_emplace(K&& key, V&& value) {
+  METL_NODISCARD bool try_emplace(K&& key, V&& value) {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index].key)) {
       return false;
@@ -336,13 +336,21 @@ class flat_map {
     const bool inserted = try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
     METL_ASSERT(inserted);
     (void)inserted;
+    // Hard guard on the full-map path (docs/AUDIT.md, Section D): on a full map
+    // try_insert_at returns false with `index == size_ == Capacity`, so the
+    // return below would hand out a one-past-the-end reference. METL_ASSERT is
+    // stripped at low hardening levels; METL_HARDEN never is.
+    METL_HARDEN(index < size_);
     return data()[index];
   }
 
   /// @brief Assign @p value to an existing @p key, or insert the pair if absent.
   /// @return @c true on assign or successful insert; @c false only if a new key cannot fit (full).
+  /// @note The boolean answers "did it fit", **not** std's "was it inserted rather than
+  ///       assigned" — hence the @c try_ prefix, which reserves the plain name for the
+  ///       asserting form below.
   template <typename K, typename V>
-  bool insert_or_assign(K&& key, V&& value) {
+  METL_NODISCARD bool try_insert_or_assign(K&& key, V&& value) {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index].key)) {
       data()[index].value = std::forward<V>(value);
@@ -350,6 +358,21 @@ class flat_map {
     }
 
     return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
+  }
+
+  /// @brief Assign @p value to an existing @p key, or insert the pair if absent.
+  /// @return Reference to the assigned-to or newly inserted element.
+  /// @pre A new key fits; a full map asserts. Use @c try_insert_or_assign otherwise.
+  template <typename K, typename V>
+  reference insert_or_assign(K&& key, V&& value) {
+    const size_type index = lower_bound_index(key);
+    const bool stored = try_insert_or_assign(std::forward<K>(key), std::forward<V>(value));
+    METL_ASSERT(stored);
+    (void)stored;
+    // Same full-map hazard as emplace above: a refused insert leaves
+    // `index == size_`, which would make this a one-past-the-end reference.
+    METL_HARDEN(index < size_);
+    return data()[index];
   }
 
   /// @brief Erase the element with the given key, if present.
@@ -429,7 +452,7 @@ class flat_map {
   }
 
   template <typename K, typename V>
-  bool try_insert_at(size_type index, K&& key, V&& value) {
+  METL_NODISCARD bool try_insert_at(size_type index, K&& key, V&& value) {
     if (full()) {
       return false;
     }

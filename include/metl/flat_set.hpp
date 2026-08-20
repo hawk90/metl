@@ -315,7 +315,7 @@ class flat_set {
   /// @note Unlike @c emplace, a full set or duplicate key is reported by the return value
   ///       rather than an assertion.
   template <typename K>
-  bool try_emplace(K&& key) {
+  METL_NODISCARD bool try_emplace(K&& key) {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index])) {
       return false;
@@ -335,6 +335,10 @@ class flat_set {
     const bool inserted = try_insert_at(index, std::forward<K>(key));
     METL_ASSERT(inserted);
     (void)inserted;
+    // Hard guard on the full-set path (docs/AUDIT.md, Section D) — see the twin
+    // comment on flat_map::emplace. METL_ASSERT is stripped at low hardening
+    // levels; METL_HARDEN never is.
+    METL_HARDEN(index < size_);
     return data()[index];
   }
 
@@ -415,7 +419,7 @@ class flat_set {
   }
 
   template <typename K>
-  bool try_insert_at(size_type index, K&& key) {
+  METL_NODISCARD bool try_insert_at(size_type index, K&& key) {
     if (full()) {
       return false;
     }

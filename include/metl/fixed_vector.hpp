@@ -216,7 +216,7 @@ class fixed_vector {
   /// Constructs an element in place at the back if there is room.
   /// @return true on success; false if the container is full (no assert).
   template <typename... Args>
-  bool try_emplace_back(Args&&... args) {
+  METL_NODISCARD bool try_emplace_back(Args&&... args) {
     if (full()) {
       return false;
     }
@@ -240,9 +240,9 @@ class fixed_vector {
   }
 
   /// Appends a copy of `value` if there is room; returns false when full.
-  bool try_push_back(const T& value) { return try_emplace_back(value); }
+  METL_NODISCARD bool try_push_back(const T& value) { return try_emplace_back(value); }
   /// Appends `value` by move if there is room; returns false when full.
-  bool try_push_back(T&& value) { return try_emplace_back(static_cast<T&&>(value)); }
+  METL_NODISCARD bool try_push_back(T&& value) { return try_emplace_back(static_cast<T&&>(value)); }
 
   /// Appends a copy of `value`.
   /// @pre Container is not full; overflow asserts and aborts.
@@ -266,6 +266,65 @@ class fixed_vector {
     while (size_ > 0) {
       pop_back();
     }
+  }
+
+  /// Inserts a copy of `value` before `pos` if there is room.
+  /// @return Iterator to the new element, or `end()` if the container is full
+  ///         (contents unchanged).
+  /// @pre `pos` in [begin(), end()]; a bad iterator is still a programming error
+  ///      and asserts. Only the capacity failure is recoverable.
+  METL_NODISCARD iterator try_insert(const_iterator pos, const T& value) { return try_emplace(pos, value); }
+
+  /// Inserts `value` (by move) before `pos` if there is room.
+  /// @return Iterator to the new element, or `end()` if the container is full
+  ///         (contents unchanged; `value` is not moved from).
+  METL_NODISCARD iterator try_insert(const_iterator pos, T&& value) {
+    return try_emplace(pos, static_cast<T&&>(value));
+  }
+
+  /// Constructs an element in place before `pos` if there is room.
+  /// @return Iterator to the new element, or `end()` if the container is full
+  ///         (contents unchanged).
+  /// @note `end()` is unambiguous as the failure marker: a successful insert always
+  ///       yields an iterator to a live element, which `end()` never is.
+  template <typename... Args>
+  METL_NODISCARD iterator try_emplace(const_iterator pos, Args&&... args) {
+    METL_ASSERT(pos >= begin() && pos <= end());
+    if (size_ == Capacity) {
+      return end();
+    }
+    return emplace(pos, std::forward<Args>(args)...);
+  }
+
+  /// Inserts `n` copies of `value` before `pos` if they all fit.
+  /// @return Iterator to the first new element, or `end()` if they do not fit
+  ///         (contents unchanged — this is all-or-nothing, never partial).
+  METL_NODISCARD iterator try_insert(const_iterator pos, size_type n, const T& value) {
+    METL_ASSERT(pos >= begin() && pos <= end());
+    if (n > Capacity - size_) {
+      return end();
+    }
+    return insert(pos, n, value);
+  }
+
+  /// Inserts the elements in [first, last) before `pos` if they all fit.
+  /// @return Iterator to the first new element, or `end()` if they do not fit
+  ///         (contents unchanged).
+  /// @note Forward iterators only. "Contents unchanged on failure" requires knowing
+  ///       the length before writing anything, and a single-pass input iterator
+  ///       cannot be measured without consuming it. Use the asserting `insert`, or
+  ///       stage into a `fixed_vector` first.
+  template <typename It, typename = std::enable_if_t<!std::is_integral_v<It>>>
+  METL_NODISCARD iterator try_insert(const_iterator pos, It first, It last) {
+    static_assert(
+        std::is_base_of_v<std::forward_iterator_tag, typename std::iterator_traits<It>::iterator_category>,
+        "try_insert requires a forward iterator: the range must be measurable "
+        "before anything is written, so that a failure leaves contents unchanged");
+    METL_ASSERT(pos >= begin() && pos <= end());
+    if (static_cast<size_type>(std::distance(first, last)) > Capacity - size_) {
+      return end();
+    }
+    return insert(pos, first, last);
   }
 
   /// Inserts a copy of `value` before `pos`.
@@ -305,7 +364,9 @@ class fixed_vector {
   /// @pre `pos` in [begin(), end()] and `size() + n <= Capacity`; asserts otherwise.
   iterator insert(const_iterator pos, size_type n, const T& value) {
     METL_ASSERT(pos >= begin() && pos <= end());
-    METL_ASSERT(size_ + n <= Capacity);
+    // Written as a subtraction, not `size_ + n <= Capacity`: the sum overflows for
+    // a large `n` and would wrap into a passing assert.
+    METL_ASSERT(n <= Capacity - size_);
     const size_type index = static_cast<size_type>(pos - begin());
     if (n == 0) {
       return begin() + index;
@@ -371,6 +432,53 @@ class fixed_vector {
     size_ -= erase_count;
     asan_poison_tail_();
     return begin() + first_index;
+  }
+
+  /// Resizes to `n` elements if `n` fits, default-constructing or removing from the back.
+  /// @return true on success; false if `n > capacity()` (contents unchanged).
+  METL_NODISCARD bool try_resize(size_type n) {
+    if (n > Capacity) {
+      return false;
+    }
+    resize(n);
+    return true;
+  }
+
+  /// Resizes to `n` elements if `n` fits, appending copies of `value` when growing.
+  /// @return true on success; false if `n > capacity()` (contents unchanged).
+  METL_NODISCARD bool try_resize(size_type n, const T& value) {
+    if (n > Capacity) {
+      return false;
+    }
+    resize(n, value);
+    return true;
+  }
+
+  /// Replaces the contents with `n` copies of `value` if they fit.
+  /// @return true on success; false if `n > capacity()` (contents unchanged — the
+  ///         check happens before the existing elements are destroyed).
+  METL_NODISCARD bool try_assign(size_type n, const T& value) {
+    if (n > Capacity) {
+      return false;
+    }
+    assign(n, value);
+    return true;
+  }
+
+  /// Replaces the contents with the elements in [first, last) if they fit.
+  /// @return true on success; false if the range does not fit (contents unchanged).
+  /// @note Forward iterators only, for the reason given on `try_insert`.
+  template <typename It, typename = std::enable_if_t<!std::is_integral_v<It>>>
+  METL_NODISCARD bool try_assign(It first, It last) {
+    static_assert(
+        std::is_base_of_v<std::forward_iterator_tag, typename std::iterator_traits<It>::iterator_category>,
+        "try_assign requires a forward iterator: the range must be measurable "
+        "before anything is written, so that a failure leaves contents unchanged");
+    if (static_cast<size_type>(std::distance(first, last)) > Capacity) {
+      return false;
+    }
+    assign(first, last);
+    return true;
   }
 
   /// Resizes to `n` elements, default-constructing or removing from the back.

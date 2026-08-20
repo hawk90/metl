@@ -116,7 +116,7 @@ class scheduler {
 
   static bool stepper_poll(void* p) noexcept { return static_cast<stepper*>(p)->poll(); }
 
-  bool try_attach_impl(void* task, poll_fn fn) noexcept {
+  METL_NODISCARD bool try_attach_impl(void* task, poll_fn fn) noexcept {
     if (tasks_.full()) {
       return false;
     }

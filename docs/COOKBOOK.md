@@ -58,7 +58,7 @@ Consequences:
 - **`flat_map` is not `std::map`.** `operator[]` and `at()` take an integer
   **position** into the key-sorted storage (like a vector), *not* a key. To work
   by key, use `find(key)` (returns `mapped_type*` / `nullptr`), `contains(key)`,
-  `try_emplace(key, value)`, `insert_or_assign(key, value)`, or `erase(key)`.
+  `try_emplace(key, value)`, `try_insert_or_assign(key, value)`, or `erase(key)`.
 - **`function_ref` binds lvalues only.** Constructing one from a temporary
   callable is a compile error, because the reference would dangle at the end of
   the full expression. Bind a named callable or a function pointer instead.
@@ -84,8 +84,47 @@ v.pop_back();
 int last = v.back();
 ```
 
-Use `try_push_back` on any path where "full" is a normal, recoverable outcome;
-use `push_back` only where overflow is a programming error you want to catch.
+### The `try_` rule, in one paragraph
+
+Every operation that can fail because the container is full comes in two forms.
+`X(...)` treats "full" as a programming error: it asserts and aborts.
+`try_X(...)` treats it as a normal outcome: it reports failure by return value
+and leaves the container **exactly as it was** — never half-applied. Use `try_X`
+wherever the size comes from runtime input (a parser, a protocol frame, a sensor
+burst); use `X` where overflow would mean your capacity arithmetic is wrong and
+you want to find out immediately.
+
+Every `try_X` is `[[nodiscard]]`, so ignoring the answer is a compile warning
+rather than a silent overflow. The pairs on `fixed_vector`:
+
+```cpp
+metl::fixed_vector<int, 8> v;
+
+v.push_back(10);                       // asserts on overflow
+v.resize(4);                           // asserts if 4 > capacity
+v.assign(first, last);                 // asserts if the range does not fit
+v.insert(v.begin(), 3, 0);             // asserts if 3 more do not fit
+
+if (!v.try_push_back(20))    { /* full */ }
+if (!v.try_resize(n))        { /* n came off the wire and is too big */ }
+if (!v.try_assign(first, last)) { /* range too long; v is untouched */ }
+if (v.try_insert(v.begin(), 3, 0) == v.end()) { /* refused; v is untouched */ }
+```
+
+`try_insert` returns `end()` on refusal rather than a `bool`, so a successful
+call still hands back the std-shaped iterator to the new element. A successful
+insert never yields `end()`, so the two outcomes cannot be confused.
+
+Two consequences worth knowing:
+
+- `try_assign` and `try_insert` need a **forward** iterator. Keeping "unchanged
+  on failure" means measuring the range before writing anything, and a
+  single-pass source cannot be measured without being consumed. The compile
+  error says exactly that.
+- A `bool` that answers a *question* rather than reporting a failure keeps its
+  plain name and may be ignored: `erase(key)` ("was it there"), `contains`,
+  `empty`, `full`. Only failures get the `try_` prefix. The full rule is
+  [SCOPE.md §9](SCOPE.md#9-the-recoverable-api-contract).
 
 ## Key/value lookup with flat_map
 
@@ -101,7 +140,7 @@ see [contracts](#non-standard-contracts-you-must-know).
 metl::flat_map<std::uint8_t, std::int32_t, 16> readings;
 
 readings.try_emplace(3, 300);          // insert; returns false if key exists / full
-readings.insert_or_assign(2, 250);     // insert-or-update by key
+readings.try_insert_or_assign(2, 250); // insert-or-update; false only if a NEW key won't fit
 
 if (const std::int32_t* r = readings.find(2)) {   // KEY lookup -> pointer or null
     use(*r);
@@ -125,7 +164,7 @@ readings.erase(1);                     // erase BY key
 
 metl::ring_buffer<int, 4> rb;
 
-rb.try_push_back(1);        // returns false when full (won't clobber)
+if (!rb.try_push_back(1)) { /* full; nothing was clobbered */ }
 rb.push_overwrite(2);       // drops the oldest element to make room when full
 
 int oldest = rb.front();

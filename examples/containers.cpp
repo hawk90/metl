@@ -60,9 +60,10 @@ int demo_flat_map() {
   metl::flat_map<std::uint8_t, std::int32_t, 16> readings;
 
   // try_emplace inserts and returns false on a duplicate key or when full.
-  readings.try_emplace(std::uint8_t{3}, 300);
-  readings.try_emplace(std::uint8_t{1}, 100);
-  readings.try_emplace(std::uint8_t{2}, 200);
+  if (!readings.try_emplace(std::uint8_t{3}, 300) || !readings.try_emplace(std::uint8_t{1}, 100) ||
+      !readings.try_emplace(std::uint8_t{2}, 200)) {
+    return 9;  // an empty 16-slot map has room for three keys
+  }
   if (readings.try_emplace(std::uint8_t{1}, 999)) {
     return 10;  // duplicate key must be rejected
   }

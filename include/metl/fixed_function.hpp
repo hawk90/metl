@@ -240,7 +240,7 @@ class fixed_function_impl {
 
  protected:
   template <typename F>
-  bool try_assign_callable(F&& function) {
+  METL_NODISCARD bool try_assign_callable(F&& function) {
     using decayed_type = std::decay_t<F>;
 
     static_assert(std::is_invocable_r_v<R, decayed_type&, Args...>,
@@ -363,7 +363,7 @@ class fixed_any_invocable_impl {
 
  protected:
   template <typename F>
-  bool try_assign_callable(F&& function) {
+  METL_NODISCARD bool try_assign_callable(F&& function) {
     using decayed_type = std::decay_t<F>;
 
     static_assert(std::is_invocable_r_v<R, decayed_type&, Args...>,
@@ -497,7 +497,7 @@ class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<
 
   /// @brief Stores a function pointer if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
-  bool try_assign(R (*function)(Args...)) {
+  METL_NODISCARD bool try_assign(R (*function)(Args...)) {
     METL_ASSERT(function != nullptr);
     return this->try_assign_callable(function);
   }
@@ -505,7 +505,7 @@ class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<
   /// @brief Stores any compatible callable if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
   template <typename F>
-  bool try_assign(F&& function) {
+  METL_NODISCARD bool try_assign(F&& function) {
     return this->try_assign_callable(std::forward<F>(function));
   }
 
@@ -595,7 +595,7 @@ class fixed_function<R(Args...) noexcept, Capacity>
 
   /// @brief Stores a noexcept function pointer if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
-  bool try_assign(R (*function)(Args...) noexcept) {
+  METL_NODISCARD bool try_assign(R (*function)(Args...) noexcept) {
     METL_ASSERT(function != nullptr);
     return this->try_assign_callable(function);
   }
@@ -603,7 +603,7 @@ class fixed_function<R(Args...) noexcept, Capacity>
   /// @brief Stores any compatible callable if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
   template <typename F>
-  bool try_assign(F&& function) {
+  METL_NODISCARD bool try_assign(F&& function) {
     return this->try_assign_callable(std::forward<F>(function));
   }
 
@@ -734,7 +734,7 @@ class fixed_any_invocable<R(Args...), Capacity>
 
   /// @brief Stores a function pointer if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
-  bool try_assign(R (*function)(Args...)) {
+  METL_NODISCARD bool try_assign(R (*function)(Args...)) {
     METL_ASSERT(function != nullptr);
     return this->try_assign_callable(function);
   }
@@ -742,7 +742,7 @@ class fixed_any_invocable<R(Args...), Capacity>
   /// @brief Stores any compatible callable if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
   template <typename F>
-  bool try_assign(F&& function) {
+  METL_NODISCARD bool try_assign(F&& function) {
     return this->try_assign_callable(std::forward<F>(function));
   }
 
@@ -832,7 +832,7 @@ class fixed_any_invocable<R(Args...) noexcept, Capacity>
 
   /// @brief Stores a noexcept function pointer if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
-  bool try_assign(R (*function)(Args...) noexcept) {
+  METL_NODISCARD bool try_assign(R (*function)(Args...) noexcept) {
     METL_ASSERT(function != nullptr);
     return this->try_assign_callable(function);
   }
@@ -840,7 +840,7 @@ class fixed_any_invocable<R(Args...) noexcept, Capacity>
   /// @brief Stores any compatible callable if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
   template <typename F>
-  bool try_assign(F&& function) {
+  METL_NODISCARD bool try_assign(F&& function) {
     return this->try_assign_callable(std::forward<F>(function));
   }
 

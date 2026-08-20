@@ -1,9 +1,9 @@
 // libFuzzer harness for metl::fixed_string.
 //
 // Drives a fixed-capacity string with an opcode stream of CONTRACT-VALID
-// operations only (try_push_back / try_pop_back / assign / append / clear plus
+// operations only (try_push_back / try_pop_back / try_assign / try_append / clear plus
 // bounded reads). Overflowing operations that would assert-abort are never
-// invoked; assign/append/try_* report overflow via their bool result instead.
+// invoked; every try_* reports overflow via its bool result instead.
 // Round-trip invariants (assign then c_str()/size()) are checked so a mismatch
 // surfaces as a real bug, and every buffer touch is ASan/UBSan-instrumented.
 
@@ -41,17 +41,17 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
   while (!in.empty()) {
     switch (in.byte() % 8u) {
       case 0: {  // try_push_back — never asserts (returns false when full)
-        str.try_push_back(static_cast<char>(in.byte()));
+        (void)str.try_push_back(static_cast<char>(in.byte()));
         break;
       }
       case 1: {  // try_pop_back — never asserts (returns false when empty)
-        str.try_pop_back();
+        (void)str.try_pop_back();
         break;
       }
-      case 2: {  // assign from a bounded, NUL-terminated slice
+      case 2: {  // try_assign from a bounded, NUL-terminated slice
         char buf[kCapacity + 1];
         in.c_string(buf, sizeof(buf));
-        const bool ok = str.assign(buf);
+        const bool ok = str.try_assign(buf);
         if (ok) {
           // On success the contents must equal the source exactly.
           if (std::strcmp(str.c_str(), buf) != 0) {
@@ -60,16 +60,18 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         }
         break;
       }
-      case 3: {  // append from a bounded, NUL-terminated slice
+      case 3: {  // try_append from a bounded, NUL-terminated slice
         char buf[kCapacity + 1];
         in.c_string(buf, sizeof(buf));
-        str.append(buf);  // reports overflow via bool; contents unchanged on false
+        // Reports overflow via bool; contents unchanged on false. The plain
+        // `append` asserts instead, so it is NOT contract-valid on fuzz input.
+        (void)str.try_append(buf);
         break;
       }
-      case 4: {  // append from a span (may contain embedded NUL, no termination needed)
+      case 4: {  // try_append from a span (may contain embedded NUL, no termination needed)
         std::size_t len = 0;
         const std::uint8_t* p = in.slice(&len);
-        str.append(metl::span<const char>(reinterpret_cast<const char*>(p), len));
+        (void)str.try_append(metl::span<const char>(reinterpret_cast<const char*>(p), len));
         break;
       }
       case 5: {  // bounded index read (contract: index < size())

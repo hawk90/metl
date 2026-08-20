@@ -173,6 +173,7 @@ if(METL_BUILD_TESTS)
     containers/ring_buffer containers/flat_map containers/flat_set
     containers/static_unordered_map containers/static_unordered_set
     containers/static_unordered_map_emplace containers/lookup_table
+    containers/recoverable_api
     # memory/
     memory/arena_allocator memory/static_allocator memory/monotonic_buffer
     memory/object_pool memory/allocator_overflow
