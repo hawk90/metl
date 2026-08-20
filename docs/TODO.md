@@ -56,7 +56,16 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 
 ### 📦 Distribution / adoption
 - [ ] **vcpkg** port (`portfile.cmake` + `vcpkg.json`) → `vcpkg install metl`.
-- [ ] **Conan** recipe (`conanfile.py`).
+- [x] **Conan** recipe (`conanfile.py` + `test_package/`), 2026-08-20, with a
+  blocking `conan` CI job. The recipe reads its version from
+  `project(VERSION)` in CMakeLists.txt rather than repeating it, so it cannot
+  drift into a third answer alongside the tag check in `release.yml`. It exports
+  `metl::metl` — the same target `find_package(metl)` gives — so a consumer's
+  CMake does not change with how they obtained the library, and `validate()`
+  rejects a pre-C++17 consumer at configure time instead of failing hundreds of
+  lines into a header. Both behaviours are asserted by the CI job, not just
+  written down. Submitting to conan-center-index is a separate step and wants a
+  published release to point at.
 - [ ] Submit to the ESP-IDF Component Registry (component manifest already present).
 
 ### 📊 Quality / claims
