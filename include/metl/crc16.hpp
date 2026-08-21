@@ -8,11 +8,18 @@
 ///   | one byte, table build (`METL_CRC_TABLE` on) | wait-free, bounded |
 ///   | one byte, bitwise (`METL_CRC_TABLE` off) | wait-free, 8 iterations |
 ///   | a buffer | wait-free, bounded by the length you pass |
+///   | a `const char*` | **bounded by the caller's NUL, not by METL** |
 ///
 /// Per-byte cost is a compile-time constant either way -- one table lookup, or a
 /// fixed eight shift-and-conditional-xor steps. Whole-buffer cost is that constant
 /// times the length, and the length is the caller's, so a caller with a deadline
 /// bounds it by choosing how much to feed in at a time.
+///
+/// The `const char*` overload is the exception, and it is the same one
+/// `metl::hash` and `metl::fixed_string` document: the scan ends at the caller's
+/// NUL terminator, so METL cannot bound it and a buffer without a terminator
+/// reads past its end. Pass a `metl::span<const std::uint8_t>` when the length
+/// must be bounded by something you control.
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
