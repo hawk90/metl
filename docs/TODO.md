@@ -158,8 +158,12 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [x] **Host coverage measurement + blocking floor** (#35) — `tools/coverage.sh`
   and the `coverage` job report `include/metl` only (llvm-cov's default total
   also counts the test sources, which measures how well the tests cover
-  themselves) and fail below 85% lines / 70% branches. Currently **89.91% lines,
-  75.75% branches, 95.31% functions**. "No coverage measurement" is no longer an
+  themselves) and fail below **90% lines / 72% branches** (raised from 85/70 on
+  2026-08-21; the old floors had 6.2 and 4.7 points of slack, so a gate that only
+  fired after a collapse). CI measures **91.22% lines, 74.67% branches, 95.56%
+  functions**. The branch margin is one observed toolchain spread wide -- local
+  llvm-cov reports 77.31% on the same tree, a 2.6-point disagreement about what
+  counts as a branch. "No coverage measurement" is no longer an
   accurate description of this repo.
 - [ ] **Raise coverage depth** — the remaining `try_*` / full-container branches.
   Note the structural ceiling before chasing a number: a large share of what is
