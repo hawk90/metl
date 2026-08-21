@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <type_traits>
 #include <utility>
 
 namespace metl {
@@ -186,7 +187,14 @@ class guarded {
   constexpr guarded() = default;
 
   /// Constructs the guarded value in place.
-  template <typename... Args>
+  /// @note Excluded from the one-argument case where the argument is itself a
+  ///       `guarded`. Without that, this unconstrained template beats the
+  ///       deleted copy constructor for a non-const lvalue (`guarded g2(g1);`),
+  ///       and the diagnostic comes from failing to construct `T` from a
+  ///       `guarded&` instead of saying that copying is deleted.
+  template <typename... Args,
+            typename = std::enable_if_t<!(sizeof...(Args) == 1 &&
+                                          (std::is_same_v<std::decay_t<Args>, guarded> || ...))>>
   explicit constexpr guarded(Args&&... args) : value_(std::forward<Args>(args)...) {}
 
   guarded(const guarded&) = delete;
@@ -197,6 +205,20 @@ class guarded {
   /// Runs `fn(value)` with the lock held and returns whatever `fn` returns.
   /// @param fn Callable taking `T&`. Keep it short: with `irq_lock` this is the
   ///        window during which interrupts are masked.
+  ///
+  /// @warning **Do not return a reference to the guarded value.** The return type
+  ///          is deduced, so `with([](auto& v) -> auto& { return v; })` compiles
+  ///          and hands back a reference that outlives the critical section --
+  ///          the very thing this class refuses to provide a `get()` for.
+  ///          Return a copy, or do the work inside the callable.
+  ///
+  ///          This is a documented hazard rather than a compile error, and the
+  ///          reason is worth recording: a `static_assert` rejecting a returned
+  ///          `T&` was written, and it rejected correct code. For
+  ///          `guarded<int>`, a callable returning `int&` to an unrelated global
+  ///          is indistinguishable *by type* from one returning the guarded
+  ///          `int&`. A check that fails valid code is worse than a warning that
+  ///          names the hazard, so the check was removed and this note kept.
   template <typename Fn>
   decltype(auto) with(Fn&& fn) {
     scoped_lock<Lock> guard;
@@ -204,6 +226,7 @@ class guarded {
   }
 
   /// @copydoc with
+  /// @note The const overload hands the callable a `const T&`, not a `T&`.
   template <typename Fn>
   decltype(auto) with(Fn&& fn) const {
     scoped_lock<Lock> guard;

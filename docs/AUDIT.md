@@ -457,3 +457,61 @@ assert-only bool has a following `(void)var;` or is `return`ed, and the stripped
 macro `(void)sizeof((expr) ? 1 : 0)` still textually references the operand; and
 `assert.hpp`'s `assertion_failed`/`panic` machinery is referenced only inside the
 active (`>= FAST`) macro branch, so nothing dangles when `METL_ASSERT` is a no-op.
+
+---
+
+## Section F — Post-2026-07-07 headers (audited 2026-08-21)
+
+The audit above covers the 51 headers that existed on 2026-07-07. Thirteen have
+landed since (three of them `detail/`), and had never had that treatment. This
+section is that pass over the highest-risk subset: the six concurrency and
+lifetime headers from 2026-08-11/13 — `atomic_handle`, `handle_pool`, `lock`,
+`versioned_handle`, `wait`, `mpmc_queue` — plus the three `detail/` headers.
+
+The four headers added on 2026-08-21 (`fixed_priority_queue`,
+`coro/deadline_scheduler`, `spsc_byte_ring`, `format`) are **deliberately not
+covered here**. They were written with mutation testing, a fuzz harness, TSAN and
+compile-rejection fixtures within days of this audit; a self-audit at that
+distance has close to zero yield, and claiming otherwise would inflate the
+coverage this section reports.
+
+`mpmc_queue`'s enqueue/dequeue were checked line by line against the canonical
+Vyukov bounded-queue algorithm, including the signed-difference comparison and
+the `pos + Capacity` handoff. **They match exactly; no finding.** The two
+findings below are both in code *around* that algorithm.
+
+### Findings
+
+| Sev | Where | Finding | Status |
+|---|---|---|---|
+| MED | `mpmc_queue.hpp` `size_approx` | `(tail > head) ? (tail - head) : 0` breaks at the counter wrap. Both counters are monotonic and wrap; only their *difference* is meaningful, and the guard destroys it. After the wrap it reports 0 for a non-empty queue — and since `empty()` and `full()` are both derived from it, **`full()` answers `false` on a full queue**, which is the optimistic direction. `spsc_queue::size_approx` always did the plain subtraction. Reachable in about 2^32 operations on a 32-bit target. | ✅ fixed — plain subtraction, matching `spsc_queue` |
+| LOW | `mpmc_queue.hpp` destructor | Drained through `try_pop`, which needs a `T discarded;` to pop into — silently requiring `T` to be **default-constructible**. No `static_assert` said so, `spsc_queue` has no such requirement, and it surfaced only as an error inside the destructor. | ✅ fixed — destroys in place like `spsc_queue` |
+| LOW | `lock.hpp` `guarded::with` | The return type is deduced, so `with([](auto& v) -> auto& { return v; })` hands back a reference that outlives the critical section — the exact thing the class refuses to provide a `get()` for. | ⚠️ documented, not fixed — see below |
+| LOW | `lock.hpp` `guarded` ctor | The unconstrained variadic constructor out-competes the deleted copy constructor for a non-const lvalue, so `guarded g2(g1);` fails inside `T`'s construction instead of saying that copying is deleted. | ✅ fixed — constrained away from the one-argument `guarded` case |
+| DOC | `lock.hpp` `guarded::with() const` | Documented as "callable taking `T&`"; the const overload passes `const T&`. | ✅ fixed |
+
+`atomic_handle`, `handle_pool`, `versioned_handle`, `wait` and the three
+`detail/` headers produced **no findings**. That is a result, not an absence of
+looking: `handle_pool`'s generation re-validation and `versioned_handle`'s packed
+layout are the mechanism §7 is built on, and they hold.
+
+### Why the `guarded::with` hazard is documented rather than gated
+
+A `static_assert` rejecting a returned `T&` was written, and it rejected correct
+code — a test case returning `int&` to an unrelated global. For `guarded<int>`,
+a reference to the guarded value and a reference to any other `int` are the same
+type, so the check cannot be made precise. **A check that fails valid code is
+worse than a warning that names the hazard**, so the check was removed and the
+`@warning` kept. Recorded here because "we tried and it does not work" is more
+useful to the next reader than silence.
+
+### Regression coverage
+
+`tests/sync/audit_regressions_test.cpp` has one block per finding. Each was
+confirmed to FAIL against the unfixed code before the fix landed — a regression
+test that has never been red proves only that it compiles.
+
+The `size_approx` wrap itself needs 2^size_t operations and cannot be reached in
+a test. What the test pins is the ordinary path, so a future "simplification"
+that reintroduces a comparison has something to fail against; the wrap case is
+correct by construction now that the arithmetic is identical to `spsc_queue`'s.
