@@ -300,6 +300,10 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   builds and passes. Recommended order — `expected`, `variant`, `fixed_vector`,
   `flat_map`/`flat_set` — one PR each, verifying size, alignment,
   exception-safety, ASan, C++17, C++20 and QEMU together.
+- [x] **`intrusive_list` — decided, not pending.** Written up in `docs/SCOPE.md` §5
+  (Green, "Not planned"): it reintroduces the use-after-free class that §7 argues
+  handles were adopted to remove, and a caller would not change that argument. Not
+  the same status as the two items below, which really are waiting for a caller.
 - [ ] **Deferred pending a caller:** `fixed_bitset`, compile-time
   `static_string_map` / perfect hash. See the freeze note above.
 - [ ] Iterator-invalidation contracts documented per container.
