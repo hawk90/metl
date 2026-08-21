@@ -53,9 +53,23 @@ inputs:
 runs:
   using: composite
   steps:
-    # `partial/` is mode 0700 root:root and `lock` is unreadable, so pointing
-    # actions/cache at the archive directory wholesale makes its tar step fail.
-    # Cache only the .deb files.
+    # Cache a RUNNER-OWNED directory, never /var/cache/apt/archives directly.
+    #
+    # The obvious version of this -- `path: /var/cache/apt/archives/*.deb` --
+    # looks right and never worked. actions/cache runs its tar as `runner`, and
+    # every .deb there is root:root 0644, so the SAVE fails with
+    # "Cannot open: Permission denied" and the restore then finds nothing:
+    #
+    #   ##[warning]Failed to restore: "/usr/bin/tar" failed with exit code 2
+    #   Cache not found for input keys: apt-Linux-X64-gcc-arm-none-eabi
+    #
+    # It failed that way in 47 of 55 jobs on run 32435781000 -- and those were
+    # the only warnings in the entire run. So every cross job has been
+    # re-downloading the 574 MB toolchain on every push since this action
+    # landed, which is exactly the exposure the timeouts below exist to survive.
+    # An earlier comment here noted that `partial/` is 0700 root:root and
+    # narrowed the path to the .deb files; that was one step short, because the
+    # .debs are unreadable to the runner too.
     - name: Cache apt archives
       id: apt-cache
       # Must be >= v4.2.0: GitHub closed down the cache service API that
@@ -63,7 +77,7 @@ runs:
       # calls it. A SHA that resolves to a real tag is not enough here.
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
       with:
-        path: /var/cache/apt/archives/*.deb
+        path: ~/.cache/metl-apt
         key: apt-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key }}
 
     - name: Install apt packages (bounded retry)
@@ -71,6 +85,7 @@ runs:
       env:
         APT_PACKAGES: ${{ inputs.packages }}
         APT_TOTAL_TIMEOUT: ${{ inputs.total-timeout }}
+        APT_CACHE_HIT: ${{ steps.apt-cache.outputs.cache-hit }}
       run: |
         set -euo pipefail
 
@@ -78,6 +93,26 @@ runs:
         # would leave nothing for the post-run cache save to pick up.
         echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' \
           | sudo tee /etc/apt/apt.conf.d/99keep-downloads > /dev/null
+
+        CACHE_DIR="${HOME}/.cache/metl-apt"
+        mkdir -p "${CACHE_DIR}"
+
+        # Hand the cached packages to apt so `install` finds them already
+        # downloaded. This is the whole point of the cache; the log line is how
+        # anyone can tell it worked without reading the timings.
+        if compgen -G "${CACHE_DIR}/*.deb" > /dev/null; then
+          sudo cp "${CACHE_DIR}"/*.deb /var/cache/apt/archives/
+          echo "apt cache: seeded $(find "${CACHE_DIR}" -name '*.deb' | wc -l | tr -d ' ') package(s)"
+        elif [[ "${APT_CACHE_HIT}" == "true" ]]; then
+          # A hit that restores nothing is how this broke the first time, and it
+          # was invisible for months because it was only a warning. Make it a
+          # failure so it cannot be silent twice.
+          echo "::error::apt cache reported a hit but restored no .deb files."
+          echo "::error::The cache is broken again -- check the tar step's output."
+          exit 1
+        else
+          echo "apt cache: cold (nothing restored; this run will populate it)"
+        fi
 
         # Make apt itself fail a stalled socket rather than waiting forever,
         # and re-fetch on its own before we throw the whole attempt away.
@@ -100,6 +135,13 @@ runs:
           if timeout $(( remaining / 4 + 1 )) sudo apt-get "${APT_OPTS[@]}" update && \
              timeout $(( deadline - SECONDS )) \
                sudo apt-get "${APT_OPTS[@]}" install -y ${APT_PACKAGES}; then
+            # Copy the archives somewhere the post-step cache save can actually
+            # read. `sudo cp` lands them root-owned, so chown before leaving.
+            if compgen -G "/var/cache/apt/archives/*.deb" > /dev/null; then
+              sudo cp /var/cache/apt/archives/*.deb "${CACHE_DIR}/"
+              sudo chown -R "$(id -u):$(id -g)" "${CACHE_DIR}"
+              echo "apt cache: staged $(find "${CACHE_DIR}" -name '*.deb' | wc -l | tr -d ' ') package(s) for save"
+            fi
             exit 0
           fi
 

@@ -200,6 +200,13 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
      (`: value_(std::forward<Args>(args)...)`) and on a forward used as the callee
      (`std::forward<Fn>(fn)(value_)`), neither of which the check counts. Treat the
      remaining count as a regression budget, not a defect list.
+  > **The numbers in this entry are the promotion-time record and are deliberately
+  > not updated** — they are what the three steps below were measured against. The
+  > ratchet has since come down to **142** (run 32393655273), after
+  > `modernize-concat-nested-namespaces` was disabled with its reason; see the
+  > "clang-tidy ratchet re-measured" entry above for that. Rewriting 148 here would
+  > detach the reasoning from the evidence it was drawn from.
+
   Steps 1–3 are landed and CI now blocks regressions with a **148**-finding
   ratchet (run 32274968429: 148 distinct, 491 raw). The budget has to be
   measured by the CI job itself, and a local number is not a substitute:
