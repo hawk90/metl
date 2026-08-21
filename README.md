@@ -58,6 +58,11 @@ int main() {
 
 ## Modules
 
+> **New here?** [**docs/CHOOSING.md**](docs/CHOOSING.md) is organised by what you
+> are trying to do — "I need a FIFO", "I need to move bytes from an ISR" — and says
+> when *not* to use each type. The list below is the reference; that page is the
+> way in.
+
 Core types
 
 - [`span`](include/metl/span.hpp) — non-owning contiguous view.

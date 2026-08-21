@@ -13,10 +13,12 @@
 set(_metl_examples
   containers        # fixed_vector + flat_map + ring_buffer
   allocators        # arena_allocator + monotonic_buffer
+  handles_and_pools # object_pool vs handle_pool: why a stale handle fails loudly
   spsc_isr          # spsc_queue ISR<->main-loop pattern
   uart_byte_ring    # spsc_byte_ring zero-copy driver region + seam
   mmio_peripheral   # mmio + register_access + bitfield (fake peripheral)
   error_handling    # expected + optional + variant (no exceptions)
+  callbacks         # function_ref / delegate / fixed_function / event_dispatcher / scope_exit
   log_line          # format.hpp int-to-text + fixed_string, no stdio formatting
   coroutine_task    # coro/protothread cooperative tasks
   deadline_tasks    # coro/deadline_scheduler + fixed_priority_queue
