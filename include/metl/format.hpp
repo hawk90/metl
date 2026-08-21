@@ -110,6 +110,8 @@ constexpr bool is_plain_integer_v =
 // ---------------------------------------------------------------------------
 
 /// @brief Write @p value as decimal into @p out, if it fits.
+/// @param out Destination characters.
+/// @param value The unsigned value to render.
 /// @return The text written, or an **empty span** if @p out is too small — in which
 ///         case @p out is not modified at all.
 /// @note An empty span is unambiguous as the failure marker: a number is always at
@@ -136,6 +138,9 @@ METL_NODISCARD constexpr span<char> try_format_uint(span<char> out, T value) noe
 }
 
 /// @brief Write @p value as decimal into @p out.
+/// @param out Destination characters.
+/// @param value The unsigned value to render.
+/// @return The text written.
 /// @pre It fits; too small a buffer asserts and aborts. Use `try_format_uint` where
 ///      the buffer size is not known to be sufficient.
 /// @note 20 characters hold any 64-bit unsigned value, so a `char[20]` makes this
@@ -153,6 +158,8 @@ constexpr span<char> format_uint(span<char> out, T value) noexcept {
 // ---------------------------------------------------------------------------
 
 /// @brief Write @p value as decimal into @p out, with a leading `-` when negative.
+/// @param out Destination characters.
+/// @param value The signed value to render.
 /// @return The text written, or an empty span if @p out is too small (@p out
 ///         unmodified).
 template <typename T>
@@ -177,6 +184,9 @@ METL_NODISCARD constexpr span<char> try_format_int(span<char> out, T value) noex
 }
 
 /// @brief Write @p value as decimal into @p out.
+/// @param out Destination characters.
+/// @param value The signed value to render.
+/// @return The text written.
 /// @pre It fits; too small a buffer asserts and aborts. A `char[20]` holds any
 ///      64-bit signed value including the sign.
 template <typename T>
@@ -191,6 +201,8 @@ constexpr span<char> format_int(span<char> out, T value) noexcept {
 // ---------------------------------------------------------------------------
 
 /// @brief Write @p value as hex into @p out, if it fits.
+/// @param out Destination characters.
+/// @param value The unsigned value to render.
 /// @param digits Exact number of digits, zero-padded on the left. `0` means "as
 ///        many as the value needs". A register or a byte reads better at a fixed
 ///        width, which is why this is a parameter rather than a separate function.
@@ -223,6 +235,11 @@ METL_NODISCARD constexpr span<char> try_format_hex(span<char> out,
 }
 
 /// @brief Write @p value as hex into @p out.
+/// @param out Destination characters.
+/// @param value The unsigned value to render.
+/// @param digits Exact number of digits, zero-padded; `0` means as many as needed.
+/// @param letters Lower or upper case for `a`-`f`.
+/// @return The text written.
 /// @pre It fits and @p digits is wide enough; a violation asserts and aborts.
 template <typename T>
 constexpr span<char> format_hex(span<char> out,
