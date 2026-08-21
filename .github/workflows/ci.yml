@@ -597,8 +597,30 @@ jobs:
           fi
           echo "canary correctly rejected; the audit can fail"
 
-      - name: Report probe size (informational)
-        run: arm-none-eabi-size invariant_probe.elf
+      # Code-size ratchet. This replaces an "(informational)" size print, which
+      # is the same shape as bench-smoke: a step that can only pass.
+      #
+      # Size is the performance-ish number that CAN be gated here. docs/TODO.md
+      # rejected a wall-clock threshold because "a threshold on a shared runner
+      # either fires spuriously or never fires" -- true, and it does not apply to
+      # a cross-compiled .text figure, which is a deterministic function of the
+      # source and the toolchain. On a Cortex-M an unnoticed kilobyte matters
+      # more than a percentage of throughput on a shared x86 runner anyway.
+      #
+      # The budgets start unset on purpose: there is no ARM toolchain on the dev
+      # machine, so the first numbers have to come from this job. --report prints
+      # them and exits 0; they get written into tools/check_size.py in a
+      # follow-up commit. Same two-step as the clang-tidy ratchet, for the same
+      # reason.
+      - name: Probe code-size ratchet must still bite (canary)
+        run: tools/check_size.py --self-test
+
+      - name: Probe code size against its budget
+        run: |
+          tools/check_size.py \
+            --elf invariant_probe.elf \
+            --cpu ${{ matrix.cpu }} \
+            --report
 
   # ---------------------------------------------------------------------------
   # Tier 1 capability gate for METL's lock-free types — metl::atomic_handle and
@@ -1384,6 +1406,11 @@ jobs:
       - name: Run each benchmark (--quick)
         run: ctest --test-dir build-bench -L bench --output-on-failure
 
+      # Deliberately asserts nothing. A wall-clock threshold on a shared runner
+      # either fires spuriously or never fires (docs/TODO.md), so this job proves
+      # the benchmarks BUILD and RUN, and nothing about their numbers. The
+      # performance claim that is actually gated is code size, in the
+      # `invariants` job -- see tools/check_size.py.
       - name: Show the numbers (informational only)
         run: |
           for b in build-bench/metl_bench_*; do
