@@ -7,6 +7,10 @@
 
 #include "metl_check.hpp"
 
+// Includes mpmc_queue, which static_asserts on a lock-free single-word CAS. That
+// makes this file one of the ARMv6-M `expect_build_fail` entries in the
+// qemu-conformance matrix -- a Cortex-M0 has no CAS, so failing to build there
+// is the correct outcome and is declared rather than tolerated.
 #include "metl/lock.hpp"
 #include "metl/mpmc_queue.hpp"
 
