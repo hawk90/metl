@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""Keep the documentation's checkable claims checked.
+
+docs/COOKBOOK.md opens with "Every snippet below mirrors a compiled, CI-run
+example under examples/". That is a claim about CI, and until now nothing in CI
+tested it -- the same shape of problem as a benchmark that asserts nothing or a
+checklist item nobody measures. This script tests the parts of it that a machine
+can settle:
+
+  D1  every `metl::Name` used in the docs exists in a public header.
+      Catches an API that was renamed or removed while the prose kept using it.
+  D2  every relative link to a file in the repo resolves.
+  D3  every example named in the docs is registered in examples/CMakeLists.txt,
+      and every examples/*.cpp on disk is registered there too. An example that
+      is not in that list is not built and not run, so pointing a reader at it
+      is pointing them at something nothing verifies.
+
+What this deliberately does NOT do is compile the snippets. They are excerpts:
+they interleave top-level definitions with statements, call functions the prose
+introduces (`read_adc`, `toggle_led`), and elide bodies with `// ...`. Making
+them compile would mean rewriting each one into a whole program -- which is what
+examples/ already is, and would make the cookbook worse to read for a guarantee
+examples/ already provides. So the snippets stay excerpts, D1 catches the drift
+that actually bites, and D3 keeps the example they mirror real and running.
+
+Usage:
+    tools/check_docs.py
+    tools/check_docs.py --self-test   # prove the checker still bites
+"""
+
+import argparse
+import pathlib
+import re
+import sys
+
+DOCS = ["README.md", "docs/COOKBOOK.md", "docs/CHOOSING.md", "docs/SCOPE.md",
+        "docs/ROADMAP.md", "docs/TODO.md", "docs/AUDIT.md"]
+
+# D1: `metl::` names the docs use on purpose that are not, and must not be,
+# symbols. Each carries its reason, so a reader sees a decision.
+NOT_A_SYMBOL = {
+    "bad_": "prose about the `metl::bad_*_access` exceptions METL does NOT have",
+    "exp": "the planned Tier 2 opt-in namespace `metl::exp::`, not a type",
+}
+
+QUALIFIED = re.compile(r"\bmetl::([a-zA-Z_][a-zA-Z_0-9]*)")
+RELATIVE_LINK = re.compile(r"\]\(((?!https?:|#)[^)\s]+\.(?:cpp|hpp|md|py|yml|txt))[^)]*\)")
+EXAMPLE_REF = re.compile(r"examples/([a-zA-Z_0-9]+)\.cpp")
+
+
+def public_header_text(root):
+    return "\n".join(p.read_text(encoding="utf-8")
+                     for p in sorted(pathlib.Path(root).rglob("*.hpp")))
+
+
+def registered_examples(cmake_path):
+    """Names in `set(_metl_examples ...)`.
+
+    Comments are stripped BEFORE looking for the closing paren. They have to be:
+    one of the entries is commented `# mmio + register_access + bitfield (fake
+    peripheral)`, and a scan that respects that paren ends the list eight entries
+    early -- which made this checker's first run report fifteen examples as
+    unbuilt when every one of them was built. A gate that reads a list wrong is
+    worse than no gate.
+    """
+    text = pathlib.Path(cmake_path).read_text(encoding="utf-8")
+    uncommented = "\n".join(line.split("#")[0] for line in text.splitlines())
+    match = re.search(r"set\(\s*_metl_examples\b(.*?)\)", uncommented, re.S)
+    if not match:
+        return None
+    return set(match.group(1).split())
+
+
+def check(repo_root="."):
+    """Return a list of (rule, message)."""
+    root = pathlib.Path(repo_root)
+    problems = []
+
+    headers = public_header_text(root / "include" / "metl")
+    registered = registered_examples(root / "examples" / "CMakeLists.txt")
+    if registered is None:
+        problems.append(("D3", "could not find set(_metl_examples ...) in "
+                               "examples/CMakeLists.txt -- has it been renamed?"))
+        registered = set()
+
+    for doc in DOCS:
+        path = root / doc
+        if not path.exists():
+            problems.append(("D2", f"{doc}: listed in DOCS but does not exist"))
+            continue
+        text = path.read_text(encoding="utf-8")
+
+        # D1
+        for name in sorted(set(QUALIFIED.findall(text))):
+            if name in NOT_A_SYMBOL:
+                continue
+            if not re.search(rf"\b{re.escape(name)}\b", headers):
+                problems.append(("D1", f"{doc}: uses `metl::{name}`, which no public "
+                                       f"header defines"))
+
+        # D2
+        for target in sorted(set(RELATIVE_LINK.findall(text))):
+            if not (path.parent / target).resolve().exists():
+                problems.append(("D2", f"{doc}: links to `{target}`, which does not exist"))
+
+        # D3
+        for name in sorted(set(EXAMPLE_REF.findall(text))):
+            if name not in registered:
+                problems.append(("D3", f"{doc}: points at examples/{name}.cpp, which is not "
+                                       f"in set(_metl_examples) -- CI neither builds nor "
+                                       f"runs it"))
+
+    # D3, the other direction: an example on disk that CI does not build.
+    examples_dir = root / "examples"
+    if examples_dir.is_dir():
+        for source in sorted(examples_dir.glob("*.cpp")):
+            if source.stem not in registered:
+                problems.append(("D3", f"examples/{source.name} exists but is not in "
+                                       f"set(_metl_examples) -- it is neither built nor run"))
+
+    return problems
+
+
+def self_test():
+    """Build a throwaway tree where each rule is violated exactly once."""
+    import tempfile
+
+    failures = []
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / "include" / "metl").mkdir(parents=True)
+        (root / "include" / "metl" / "real.hpp").write_text("class fixed_vector {};\n")
+        (root / "examples").mkdir()
+        # The comment on the first entry closes a paren on purpose: that is the
+        # bug this checker shipped with, and the fixture keeps it from coming back.
+        (root / "examples" / "CMakeLists.txt").write_text(
+            "set(_metl_examples\n  good   # mmio + bitfield (fake peripheral)\n  also\n)\n")
+        (root / "examples" / "good.cpp").write_text("int main(){}\n")
+        (root / "examples" / "also.cpp").write_text("int main(){}\n")
+        (root / "examples" / "orphan.cpp").write_text("int main(){}\n")
+        (root / "docs").mkdir()
+        (root / "README.md").write_text(
+            "`metl::fixed_vector` is fine and `metl::ghost_type` is not.\n"
+            "[missing](docs/nope.md)\n"
+            "[unbuilt](examples/never.cpp)\n")
+        for extra in DOCS[1:]:
+            (root / extra).parent.mkdir(parents=True, exist_ok=True)
+            (root / extra).write_text("nothing here\n")
+
+        found = {rule for rule, _ in check(root)}
+        for rule in ("D1", "D2", "D3"):
+            if rule not in found:
+                failures.append(f"{rule} did not fire on a tree that violates it")
+
+        # And the clean case must stay clean.
+        (root / "README.md").write_text("`metl::fixed_vector` is fine.\n")
+        (root / "examples" / "orphan.cpp").unlink()
+        remaining = check(root)
+        if remaining:
+            failures.append(f"clean tree was flagged: {remaining}")
+
+    if failures:
+        for failure in failures:
+            print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
+        return 1
+    print("self-test passed: D1, D2 and D3 each bite, and a clean tree is not flagged")
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--repo-root", default=".")
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+
+    if args.self_test:
+        return self_test()
+
+    problems = check(args.repo_root)
+    for rule, message in problems:
+        print(f"{rule}: {message}")
+    if problems:
+        print(f"\n{len(problems)} problem(s).")
+        return 1
+    print("docs OK: every metl:: name resolves, every relative link exists, "
+          "every example is built and run by CI")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

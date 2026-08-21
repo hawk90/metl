@@ -8,6 +8,18 @@ Every snippet below mirrors a **compiled, CI-run example** under
 `-Wall -Wextra -Werror -std=c++17` and to pass its own self-checks. Build the
 examples with:
 
+> **What CI checks about this page, precisely.** `tools/check_docs.py` runs in
+> the `api-contract` job and settles three things: every `metl::` name used here
+> exists in a public header, every link into the repo resolves, and every
+> example this page points at is registered in `examples/CMakeLists.txt` — which
+> is what makes "CI-run" true rather than aspirational.
+>
+> It does **not** compile the snippets, and that is deliberate. They are
+> excerpts: they interleave definitions with statements and call things the
+> prose introduces (`read_adc`, `toggle_led`). Turning each into a whole program
+> would duplicate `examples/` and make this page worse to read. Read a snippet
+> as a sketch; open the linked example when you want the program.
+
 ```sh
 cmake -B build -S . -DMETL_BUILD_EXAMPLES=ON
 cmake --build build -j
