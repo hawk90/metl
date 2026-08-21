@@ -159,8 +159,10 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   deterministic function of the source and a fixed cross toolchain. `bench-smoke`
   still asserts nothing about its numbers, and now says so; the gated performance
   claim is `tools/check_size.py`, a `.text` ratchet on the linked
-  `invariant_probe.elf` per Cortex-M target in the `invariants` job. Budgets start
-  unset and are filled from what that job reports, never from a local figure.
+  `invariant_probe.elf` per Cortex-M target in the `invariants` job. Budgets were
+  filled from what that job reported (run 32467860630) and never from a local
+  figure: **m0 2780, m3 3536, m4 3544, m7 3556** bytes, +512 tolerance for
+  toolchain drift. Enforcing, not reporting.
 - [x] **Host coverage measurement + blocking floor** (#35) — `tools/coverage.sh`
   and the `coverage` job report `include/metl` only (llvm-cov's default total
   also counts the test sources, which measures how well the tests cover

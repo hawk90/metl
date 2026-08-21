@@ -44,11 +44,12 @@ import sys
 #
 # A budget can only go DOWN. If a toolchain bump moves these, re-measure and say
 # so in the commit; do not pad.
+# Measured by the `invariants` job on run 32467860630 (main @ e3f700f).
 BUDGETS = {
-    "cortex-m0": None,
-    "cortex-m3": None,
-    "cortex-m4": None,
-    "cortex-m7": None,
+    "cortex-m0": 2780,
+    "cortex-m3": 3536,
+    "cortex-m4": 3544,
+    "cortex-m7": 3556,
 }
 
 # Room for a toolchain that shifts codegen slightly without anything regressing.
@@ -97,13 +98,18 @@ def main():
     rodata = sizes.get(".rodata", 0)
     print(f"{args.cpu}: .text={text} .rodata={rodata} bytes  ({args.elf})")
 
+    if args.report:
+        print("  --report: printing only, not enforcing")
+        return 0
+
     budget = BUDGETS.get(args.cpu)
     if budget is None:
         print(
-            f"  no budget recorded for {args.cpu} yet -- set BUDGETS['{args.cpu}'] = {text} "
-            f"in tools/check_size.py from THIS number, not a local one"
+            f"::error::no budget recorded for {args.cpu}. Set BUDGETS['{args.cpu}'] = {text} "
+            f"in tools/check_size.py from THIS number, not a local one.",
+            file=sys.stderr,
         )
-        return 0 if args.report else 0
+        return 1
 
     ceiling = budget + TOLERANCE_BYTES
     if text > ceiling:
