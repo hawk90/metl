@@ -103,11 +103,22 @@ class mpmc_queue {
     }
   }
 
-  /// @note Not thread-safe: drains whatever is left and assumes no concurrent
+  /// @note Not thread-safe: destroys whatever is left and assumes no concurrent
   ///       access, exactly like `spsc_queue`'s destructor.
+  /// @note Destroys in place rather than draining through `try_pop`. The drain
+  ///       version needed a `T discarded;` to pop into, which silently made
+  ///       `mpmc_queue<T>` require a DEFAULT-CONSTRUCTIBLE T -- a requirement
+  ///       none of the static_asserts above state, that `spsc_queue` does not
+  ///       have, and that surfaced only as an error inside the destructor.
   ~mpmc_queue() {
-    T discarded;
-    while (try_pop(discarded)) {
+    // Single-threaded at destruction: every ticket between the two counters was
+    // claimed and constructed before its slot was published, so this range is
+    // exactly the live elements.
+    size_type pos = dequeue_pos_.load(std::memory_order_relaxed);
+    const size_type end = enqueue_pos_.load(std::memory_order_relaxed);
+    while (pos != end) {
+      cells_[pos & mask].storage.ptr()->~T();
+      ++pos;
     }
   }
 
@@ -192,10 +203,17 @@ class mpmc_queue {
   }
 
   /// Approximate number of queued elements; only a hint under concurrent access.
+  /// @note Plain unsigned subtraction, deliberately, and NOT `tail > head ? ... : 0`.
+  ///       Both counters are monotonic and wrap; their difference is meaningful
+  ///       across the wrap and the comparison is not. The guarded version
+  ///       reported 0 for a non-empty queue once the counters wrapped, which made
+  ///       `full()` answer *false* on a full queue -- optimistic, which is the
+  ///       wrong direction for a hint. `spsc_queue::size_approx` always did the
+  ///       plain subtraction; this now matches it.
   METL_NODISCARD size_type size_approx() const noexcept {
     const size_type tail = enqueue_pos_.load(std::memory_order_relaxed);
     const size_type head = dequeue_pos_.load(std::memory_order_relaxed);
-    return (tail > head) ? (tail - head) : 0;
+    return tail - head;
   }
 
   /// Approximate emptiness check; only a hint under concurrent access.

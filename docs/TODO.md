@@ -179,6 +179,13 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   alternative 0, `reset()` is private, no exceptions); and constexpr code
   exercised only by `static_assert` never executes, which is why `bit.hpp` reads
   ~29% lines at 100% branches. Reaching 100% would mean weakening the types.
+- [x] **Audit the post-2026-07-07 headers** (2026-08-21) — `docs/AUDIT.md`
+  Section F. Nine headers read; two real defects in `mpmc_queue` (a `size_approx`
+  that breaks at the counter wrap and makes `full()` answer false on a full
+  queue, and a destructor that silently required a default-constructible `T`),
+  two smaller ones in `lock.hpp`. The Vyukov algorithm itself matched the
+  canonical form line for line. The four headers from 2026-08-21 are excluded
+  with a reason rather than counted.
 - [ ] **Embedded / configuration coverage model** — the host number cannot see
   MCU-only paths (`irq_lock`'s PRIMASK arm, the ARMv6-M capability rejections,
   the `-fno-exceptions` arms of `expected.hpp`) or any `#if` arm this

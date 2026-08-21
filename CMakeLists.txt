@@ -185,7 +185,7 @@ if(METL_BUILD_TESTS)
     # sync/
     sync/spsc_queue sync/static_message_queue sync/atomic_ref sync/atomic_handle sync/wait
     sync/spsc_queue_cached_index sync/lock sync/mpmc_queue sync/irq_masking
-    sync/spsc_byte_ring sync/spsc_byte_ring_overcommit
+    sync/spsc_byte_ring sync/spsc_byte_ring_overcommit sync/audit_regressions
     # vocab/
     vocab/optional vocab/optional_constexpr vocab/expected vocab/expected_regression
     vocab/variant vocab/variant_regression vocab/span vocab/function_ref
