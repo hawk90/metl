@@ -83,6 +83,7 @@ set(_metl_headers
   include/metl/ring_buffer.hpp
   include/metl/scope_exit.hpp
   include/metl/span.hpp
+  include/metl/spsc_byte_ring.hpp
   include/metl/spsc_queue.hpp
   include/metl/static_allocator.hpp
   include/metl/static_message_queue.hpp
@@ -183,6 +184,7 @@ if(METL_BUILD_TESTS)
     # sync/
     sync/spsc_queue sync/static_message_queue sync/atomic_ref sync/atomic_handle sync/wait
     sync/spsc_queue_cached_index sync/lock sync/mpmc_queue sync/irq_masking
+    sync/spsc_byte_ring sync/spsc_byte_ring_overcommit
     # vocab/
     vocab/optional vocab/optional_constexpr vocab/expected vocab/expected_regression
     vocab/variant vocab/variant_regression vocab/span vocab/function_ref
@@ -230,6 +232,14 @@ if(METL_BUILD_TESTS)
   metl_cc_test(
     NAME metl_atomic_handle_threaded_test
     SRCS tests/sync/atomic_handle_threaded_test.cpp
+    DEPS metl::metl_test_options Threads::Threads
+    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/tests
+    LABELS "metl"
+  )
+
+  metl_cc_test(
+    NAME metl_spsc_byte_ring_threaded_test
+    SRCS tests/sync/spsc_byte_ring_threaded_test.cpp
     DEPS metl::metl_test_options Threads::Threads
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/tests
     LABELS "metl"

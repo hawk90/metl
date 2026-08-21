@@ -85,6 +85,15 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [ ] Submit to the ESP-IDF Component Registry (component manifest already present).
 
 ### 📊 Quality / claims
+- [x] **`spsc_byte_ring`** (2026-08-21) — zero-copy contiguous spans for the driver
+  boundary; no DMA-safety claim, because METL cannot verify one. **The only new
+  public type so far without an in-library caller**, and `docs/SCOPE.md` records
+  that rather than glossing it: the gap is structural (no existing type can hand a
+  peripheral a pointer, by `ring_core`'s own design note) and a driver-shaped
+  example crosses the seam on 6 of 8 transfers, so the API is exercised by a real
+  use. Found and fixed a defect no positive test could see — `commit_write`'s guard
+  was bounded by the free space where the doc said the span, which differ at the
+  seam — with a `fork()`-based negative control that fails if the old guard returns.
 - [x] **`fixed_priority_queue` + `coro::deadline_scheduler`** (2026-08-21) — the
   first of the post-contract feature PRs, admitted under the SCOPE.md rule that a
   public type needs an in-library caller, so the queue and its caller shipped

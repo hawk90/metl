@@ -27,6 +27,7 @@ ctest --test-dir build -R metl_example --output-on-failure
 - [A small finite state machine](#a-small-finite-state-machine)
 - [A cooperative task (protothread)](#a-cooperative-task-protothread)
 - [Running tasks by deadline instead of round-robin](#running-tasks-by-deadline-instead-of-round-robin)
+- [A zero-copy driver region (UART/SPI/DMA)](#a-zero-copy-driver-region-uartspidma)
 
 ---
 
@@ -432,3 +433,54 @@ For the queue on its own — a work queue, a priority event list — use
 `std::priority_queue`; pass `std::greater<T>` for the min-heap that deadlines
 want. `top()` is const-only on purpose: handing out a mutable reference would let
 a caller change the key the heap is ordered by and silently break the invariant.
+
+## A zero-copy driver region (UART/SPI/DMA)
+
+*Full example: [`examples/uart_byte_ring.cpp`](../examples/uart_byte_ring.cpp)*
+
+A driver does not want to push bytes one at a time. It wants a **region** — an
+address and a length to hand the peripheral, then one "I moved n bytes" call.
+`ring_buffer` cannot give you that: its elements are deliberately non-contiguous,
+so there is no pointer to hand out. `spsc_byte_ring` exists for exactly this.
+
+```cpp
+#include <metl/spsc_byte_ring.hpp>
+
+metl::spsc_byte_ring<256> rx;
+
+// Producer (driver / ISR):
+auto region = rx.writable_span();
+if (!region.empty()) {
+    const std::size_t got = uart_receive(region.data(), region.size());
+    rx.commit_write(got);              // publish exactly what was moved
+}
+
+// Consumer (main loop): parse in place, no copy
+auto in = rx.readable_span();
+const std::size_t used = parse(in);
+rx.consume(used);
+```
+
+**The seam is visible, and that is the design.** Both spans stop at the physical
+end of the buffer, so `writable_span().size()` can be smaller than
+`writable_size()` — that is the wrap, not a full ring. Ask again after
+committing/consuming to reach the rest. What *is* guaranteed: **an empty span
+means full (or empty) and nothing else**, so `if (region.empty())` is a correct
+"no room" test.
+
+Three more things before you point DMA at it:
+
+- **No cache maintenance.** If your DMA engine is not coherent with the data
+  cache, invalidate the region before reading what DMA deposited and clean it
+  before DMA transmits what you wrote. The operations are core- and MPU-specific;
+  METL has no portable way to do them and does not pretend to.
+- **`writable_span()` is a query, not a checkout.** It records nothing, so calling
+  it twice returns the same region. While a transfer is filling it, do not write
+  into it yourself and do not `commit_write` until the transfer reports its count.
+- **`commit_write(n)` is bounded by the span, not by the free space.** Those
+  differ at the seam — 8 bytes free of which 2 are contiguous — and committing 8
+  there would publish six bytes you never wrote. The guard is a `METL_HARDEN`, so
+  it fires even at `METL_HARDENING_NONE`.
+
+If you are copying anyway and there is only one thread, `ring_buffer` is simpler
+and does not make you think about any of this.
