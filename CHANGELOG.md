@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.1.0-alpha2] - 2026-08-21
+
+Second pre-alpha. The public API is still subject to change before 1.0 — and this
+release contains a **breaking** change on purpose, because there was no tag yet to
+be compatible with. See "Changed — BREAKING" below; migration is adding `try_` to
+five names and checking results the compiler now points at.
+
 ### Changed — BREAKING
 
 These land before the first tag on purpose. After v0.1.0 the same corrections
