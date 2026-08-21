@@ -85,6 +85,12 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [ ] Submit to the ESP-IDF Component Registry (component manifest already present).
 
 ### 📊 Quality / claims
+- [x] **`format.hpp` — bounded int-to-text** (2026-08-21) — the last of the four
+  planned feature PRs. Narrow on purpose: no format-string parser, ever. Landed
+  alongside a refinement of `docs/SCOPE.md`'s caller rule, since this and
+  `spsc_byte_ring` are both leaf utilities that *cannot* have an in-library caller;
+  the rule now names that category and replaces the requirement with two harder
+  questions instead of granting exceptions one at a time.
 - [x] **`spsc_byte_ring`** (2026-08-21) — zero-copy contiguous spans for the driver
   boundary; no DMA-safety claim, because METL cannot verify one. **The only new
   public type so far without an in-library caller**, and `docs/SCOPE.md` records

@@ -142,6 +142,32 @@ Copy into the PR description:
 
 Ordered by (value / cost), not by novelty.
 
+### A note on the caller rule
+
+Several entries below are justified by "no caller inside the library, so not yet".
+That rule is about **speculation**: a type invented before anyone needs it buys an
+API-stability commitment and returns nothing. It was never meant to exclude a
+whole category, and two entries have now hit the seam, so the distinction is
+written down rather than re-argued each time.
+
+A **leaf utility for the application boundary** — `spsc_byte_ring` for a driver's
+DMA region, `format.hpp` for a log line — cannot have an in-library caller, because
+the thing that calls it is by definition outside METL. For those, the caller rule is
+replaced by two harder questions, both of which have to be answered in the PR:
+
+1. **Is the gap structural or speculative?** `ring_core.hpp` states that a ring's
+   elements are not contiguous, so no existing type *can* hand a peripheral a
+   pointer. Nothing in `include/metl` includes `<charconv>` or `<cstdio>`, so no
+   existing type *can* turn a number into text. Those are structural. "It would be
+   nice to have" is not.
+2. **Is it exercised by a real use, not an assertion that it is useful?** The PR
+   ships an example that does the actual job and self-checks, and it must reach the
+   hard case: `uart_byte_ring.cpp` crosses the ring's seam on six of its eight
+   transfers, and fails loudly if it ever stops doing so.
+
+Everything that *can* have an in-library caller still must have one. `fixed_bitset`
+and the compile-time string map remain deferred on exactly that basis.
+
 ### Green — works on every current CI target, zero policy change
 
 | Item | Note |
@@ -153,6 +179,7 @@ Ordered by (value / cost), not by novelty.
 | lock policy (`irq_lock` / `null_lock`) + `guarded<T, Lock>` | **Landed**, but *not* retrofitted onto existing types — see below. `spin_lock` deliberately omitted. |
 | `tagged_ptr<T, Bits>` | **Not planned.** Alignment-derived tagging is portable and harmless, but it no longer has a job here: the free-list ABA problem that motivated it is solved better by `versioned_handle` (§7), and "a small tag beside a pointer" is already covered by `variant` and `bitfield`. Adding a public type with no user inside the library buys an API-stability commitment and nothing else. Reopen if a concrete caller appears. |
 | `fixed_priority_queue` + `coro::deadline_scheduler` | **Landed.** Admitted under the caller rule, not on novelty: `coro::scheduler` is round-robin, so a task that wants to run in 500 ms is still visited every pass and has to check the clock itself. The scheduler is the queue's in-library caller and shipped in the same PR. I3 is a compile-time bound — push/pop touch `floor(log2(Capacity))` levels — with two things stated rather than assumed: `Compare` must itself be bounded, and `run_due` takes a `max_dispatches` bound because a task may legitimately re-arm at a deadline that is already due. The scheduler's `Tick` is compared with plain `<` and the header refuses to hide a wrapping counter: a signed-difference comparison is not a strict weak ordering over the full range, and a heap needs one, so it would misorder silently instead of failing. |
+| `format.hpp` (bounded int-to-text) | **Landed.** `fixed_string` could hold text but had no way to put a NUMBER in it, so the options were `snprintf` — stdio, allocating on some libcs, and a return value people misread on truncation — or a hand-rolled loop per project. A leaf utility by the note above: the gap is structural (nothing in `include/metl` includes `<charconv>` or `<cstdio>`, and this keeps it that way) and `examples/log_line.cpp` does the real job. **Deliberately not a format-string library**: a `{}`-parser is code and tables in every image that links it, for an ergonomic gain a few explicit calls already give. The caller owns the scratch buffer on purpose — a hidden one would have to be `static` (not reentrant, and this library is used from ISRs) or a stack temporary the caller cannot size. |
 | `spsc_byte_ring` | **Landed**, and the one entry here that did NOT have an in-library caller — worth recording rather than glossing. The caller rule exists to stop speculative types buying an API-stability commitment for nothing; this is a leaf utility for the driver boundary, which is outside the library by construction, so no METL type will ever call it. What stood in for the rule: `detail/ring_core.hpp` states that a ring's elements are not contiguous, so no existing type can hand a peripheral a pointer and a length — the gap is structural, not speculative — and the PR shipped a driver-shaped example that crosses the seam six times out of eight transfers, so the API is exercised by a real use rather than asserted to be useful. **No DMA-safety claim**: METL has no portable cache-maintenance operation and `qemu-conformance` cannot model DMA coherency, so the header says outright that keeping the cache honest is the driver's job. The type is named for its concurrency contract, not for DMA, so that no one reads a guarantee into the name. |
 | spsc_queue cached-index | **Landed.** Each side caches the other's index and reloads only when its copy says full/empty. Measured 1.7×–4.9× throughput (median ~2.4×) on a 2-thread benchmark, and **zero size cost** — the cached copies fit in padding the cache-line alignment already created. |
 

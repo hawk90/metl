@@ -41,6 +41,51 @@ would cost a deprecation cycle; today they cost a recompile.
 
 ### Added
 
+- **`format.hpp` — bounded integer-to-text.** `fixed_string` could hold text but
+  had no way to put a *number* into it, so the options were `snprintf` (pulls stdio
+  into the image, allocates on some libcs, and reports what *would* have been
+  written rather than what was) or a hand-rolled digit loop in every project.
+  Six functions in `try_`/asserting pairs: `format_uint`, `format_int`,
+  `format_hex`, each with a `try_` form that returns an **empty span** when the
+  buffer is too small and leaves it untouched.
+
+  Four decisions worth stating, because each could have gone the other way
+  silently:
+
+  - **No format string, and there will not be one.** A `{}`-parser is code and
+    tables in the image of every target that links it, for an ergonomic gain a few
+    explicit calls already deliver.
+  - **The scratch buffer is the caller's.** A hidden one would have to be `static`
+    — not reentrant, and this library is used from ISRs — or a stack temporary the
+    caller cannot size.
+  - **A too-narrow fixed hex width is refused, not truncated.**
+    `format_hex(out, 0xabcd, 2)` returns empty rather than `"cd"`: a register dump
+    missing its high nibbles is worse than no dump.
+  - **Passing a signed value to `format_uint`/`format_hex` is a compile error**
+    naming the reason, rather than a huge number at runtime.
+
+  The signed path takes its magnitude in the unsigned domain, because `-value` on
+  `LLONG_MIN` is undefined. Worth recording how that is actually guarded: on
+  two's-complement hardware the naive negate produces the *right* number, so no
+  assertion can see it — mutating the line back leaves every test green and makes
+  **UBSan** report "negation of -9223372036854775808 cannot be represented". The
+  test says so, so nobody later reads those assertions as covering it.
+
+  Also mutation-tested: losing the zero case in the digit count, dropping the
+  too-few-hex-digits refusal, and an off-by-one in the fit check are each caught
+  (the first at compile time, by the test's `constexpr` check).
+
+- **`docs/SCOPE.md` now distinguishes a leaf utility from a speculative type.**
+  The "no in-library caller, so not yet" rule is about speculation, and two entries
+  have now hit its seam — a driver's DMA region and a log line are called from
+  outside METL by definition. Rather than granting a second ad-hoc exception, the
+  rule is refined: for a leaf utility at the application boundary, the caller
+  requirement is replaced by two harder questions the PR must answer — is the gap
+  *structural* rather than "it would be nice", and is it exercised by a real,
+  self-checking example that reaches the hard case. Everything that *can* have an
+  in-library caller still must have one, so `fixed_bitset` and the compile-time
+  string map stay deferred on exactly that basis.
+
 - **`spsc_byte_ring` — a lock-free SPSC byte ring that hands out contiguous
   spans.** A driver does not want to push bytes one at a time; it wants an address
   and a length to hand the peripheral, then one "I moved n bytes" call.

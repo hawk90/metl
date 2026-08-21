@@ -37,6 +37,7 @@
 #include "metl/fixed_vector.hpp"
 #include "metl/flat_map.hpp"
 #include "metl/flat_set.hpp"
+#include "metl/format.hpp"
 #include "metl/fsm.hpp"
 #include "metl/function_ref.hpp"
 #include "metl/handle_pool.hpp"

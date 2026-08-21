@@ -36,6 +36,7 @@
 #include <metl/crc32.hpp>
 #include <metl/fixed_priority_queue.hpp>
 #include <metl/fixed_vector.hpp>
+#include <metl/format.hpp>
 #include <metl/handle_pool.hpp>
 #include <metl/object_pool.hpp>
 #include <metl/span.hpp>
@@ -163,6 +164,17 @@ void exercise_byte_ring() noexcept {
   sink(static_cast<std::uint32_t>(ring.read(metl::span<std::byte>(scratch, 4))));
 }
 
+void exercise_format() noexcept {
+  // Number-to-text without stdio: the point of linking it here is that no path
+  // through it reaches malloc the way snprintf can on some libcs.
+  char scratch[24];
+  const metl::span<char> out(scratch, sizeof scratch);
+  sink(static_cast<std::uint32_t>(metl::format_uint(out, 4294967295u).size()));
+  sink(static_cast<std::uint32_t>(metl::format_int(out, -2147483647 - 1).size()));
+  sink(static_cast<std::uint32_t>(metl::format_hex(out, 0xdeadbeefu, 8).size()));
+  sink(metl::try_format_uint(metl::span<char>(scratch, 1), 1000u).empty() ? 1u : 0u);
+}
+
 void exercise_crc() noexcept {
   const std::uint8_t bytes[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
   sink(metl::crc32(metl::span<const std::uint8_t>{bytes, 16}));
@@ -180,6 +192,7 @@ extern "C" int probe_main(void) {
   exercise_unordered_map();
   exercise_priority_queue();
   exercise_byte_ring();
+  exercise_format();
   exercise_crc();
   return static_cast<int>(g_sink);
 }
