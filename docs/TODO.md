@@ -153,8 +153,14 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   and would cost CI a fetch plus a framework build; the same call was already
   made in choosing `tests/metl_check.hpp` over gtest. The harness reports the
   median of N repetitions *with the min/max spread*, so noise is visible.
-  Deliberately no performance gate — a threshold on a shared runner either fires
-  spuriously or never fires.
+  Deliberately no *wall-clock* performance gate — a threshold on a shared runner
+  either fires spuriously or never fires.
+  **Update (2026-08-21):** that argument does not cover code SIZE, which is a
+  deterministic function of the source and a fixed cross toolchain. `bench-smoke`
+  still asserts nothing about its numbers, and now says so; the gated performance
+  claim is `tools/check_size.py`, a `.text` ratchet on the linked
+  `invariant_probe.elf` per Cortex-M target in the `invariants` job. Budgets start
+  unset and are filled from what that job reports, never from a local figure.
 - [x] **Host coverage measurement + blocking floor** (#35) — `tools/coverage.sh`
   and the `coverage` job report `include/metl` only (llvm-cov's default total
   also counts the test sources, which measures how well the tests cover

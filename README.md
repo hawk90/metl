@@ -480,7 +480,8 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | Lock-free capability | Cortex-M0/M3/M4/M7 | the trait must match the target **and** the opposite expectation must not compile | `handle-atomics` |
 | Non-default configs | `METL_CRC_TABLE=0`, **`-std=c++20`** | build + `ctest` for each (`#if` arms nothing else compiles) | `config-matrix` |
 | Coverage | host, Clang source-based | `include/metl` line + branch coverage against a floor | `coverage` |
-| Benchmarks | host | build + run each suite (`--quick`); **not** a performance gate | `bench-smoke` |
+| Benchmarks | host | build + run each suite (`--quick`); asserts **nothing** about the numbers — see code size below | `bench-smoke` |
+| Code size | Cortex-M0/M3/M4/M7, `-Os` | `.text` of the **linked** probe against a per-target budget that can only go down | `invariants` |
 | Header hygiene | per-header self-containment + umbrella completeness | `-fsyntax-only` per header + `ctest` | `header-checks` |
 | API contract | every public header | every `try_*` is `[[nodiscard]]` and `try_` is reserved for recoverable forms; a self-test canary must still fail; a single-pass iterator must **not** compile | `api-contract` |
 | Install / consume | `find_package(metl)` downstream | install + build + **run** a consumer | `install-check` |
