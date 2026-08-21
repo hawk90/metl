@@ -423,10 +423,9 @@ To consume METL from your own IDF project without vendoring it, point
 `EXTRA_COMPONENT_DIRS` at this checkout's `components/` directory, or add a local
 `path:` dependency on `components/metl` in your `main/idf_component.yml`.
 
-> Provisional: the component + sample are structurally complete and follow
-> ESP-IDF conventions, but the `esp-idf` CI job (which builds the sample for
-> `esp32`/`esp32c3` in the official Espressif Docker image) is non-blocking
-> while its IDF-version / target wiring is tuned — see the CI notes below.
+> The `esp-idf` CI job builds the sample for `esp32` and `esp32c3` in the
+> official Espressif Docker image, and is **blocking** as of 2026-08-21 — it was
+> non-blocking until CI had validated the wiring 24 times out of 24.
 
 ## Compatibility matrix
 
@@ -471,12 +470,12 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | ARM Cortex-M0 (run) | an **ARMv6-M build** executed on the AN385's ARMv7-M core — QEMU has no M0 board | runs 68 tests, and asserts that the three CAS-requiring types *fail to compile*. Proves the M0 **build** runs, **not** that an M0 **core** runs it: core-level differences (unaligned access, absent VTOR) are out of scope, which is why the interrupt test skips itself there | `qemu-conformance` |
 | ARM Cortex-M (clang) | cortex-m4, `arm-none-eabi` target | second frontend, `-fsyntax-only` | `arm-cross-clang` |
 | RISC-V | rv64 (linux-gnu g++) | freestanding `-fsyntax-only` | `riscv-cross` |
-| Xtensa (ESP32) | ESP-IDF component, `esp32` target | `idf.py build` (Docker) — **provisional** | `esp-idf` |
-| RISC-V (ESP32-C3) | ESP-IDF component, `esp32c3` target | `idf.py build` (Docker) — **provisional** | `esp-idf` |
+| Xtensa (ESP32) | ESP-IDF component, `esp32` target | `idf.py build` (Docker) | `esp-idf` |
+| RISC-V (ESP32-C3) | ESP-IDF component, `esp32c3` target | `idf.py build` (Docker) | `esp-idf` |
 | Big-endian | powerpc64 (BE) | build headers + build & **run** endian test under qemu-user | `big-endian` |
 | Bare-metal libc (link) | Cortex-M3 + newlib-nano (nosys) | compile + **link** + size | `newlib-link` |
 | Bare-metal libc (run) | Cortex-M3 + picolibc, mps2-an385 | link + **run** under qemu-system-arm (semihosting) | `picolibc-qemu` |
-| Zephyr RTOS | qemu_cortex_m3 module build + run | `west build` + twister **run** (QEMU) — **provisional** | `zephyr` |
+| Zephyr RTOS | qemu_cortex_m3 module build + run | `west build` + twister **run** (QEMU) | `zephyr` |
 | No heap / no exceptions / no RTTI | Cortex-M0/M3/M4/M7, newlib-nano | link + **audit the image's symbol table**; a deliberate canary must fail it | `invariants` |
 | Lock-free capability | Cortex-M0/M3/M4/M7 | the trait must match the target **and** the opposite expectation must not compile | `handle-atomics` |
 | Non-default configs | `METL_CRC_TABLE=0`, **`-std=c++20`** | build + `ctest` for each (`#if` arms nothing else compiles) | `config-matrix` |
@@ -515,10 +514,10 @@ with an explanatory message rather than link failures:
 - `atomic_ref<T>` with an 8-byte `T` lowers to 64-bit atomic calls that no
   bare-metal toolchain provides. Keep `T` to 4 bytes or fewer on an MCU.
 
-> **Provisional** jobs (`esp-idf`, `zephyr`) are `continue-on-error: true`:
-> their component/module wiring is real and correct-by-construction, but the
-> Docker/RTOS build automation is still being tuned, so they do not gate the
-> pipeline yet.
+> **Every job in `ci.yml` is blocking.** `esp-idf` and the Zephyr twister run
+> step were the last two that were not; both were promoted on 2026-08-21 after
+> 12 consecutive clean main runs each. A job that is green every time and still
+> cannot fail the pipeline reads as covered while proving nothing.
 
 ### Documented-only (not CI-verified)
 
