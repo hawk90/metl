@@ -578,5 +578,7 @@ METL is licensed under the [Apache License, Version 2.0](LICENSE).
 
 ## Status
 
-Pre-alpha (`v0.1.0-alpha1`). The public API may change without notice before
-the 1.0 release. See [CHANGELOG.md](CHANGELOG.md) for the current state.
+Pre-alpha (`v0.1.0-alpha2`). The public API may change without notice before
+the 1.0 release — `alpha2` contains a deliberate breaking change to the
+recoverable-API naming, made while there was still no tag to be compatible with.
+See [CHANGELOG.md](CHANGELOG.md) for the current state and the migration.
