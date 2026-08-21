@@ -1560,11 +1560,10 @@ jobs:
     runs-on: ubuntu-22.04
     needs: preflight
     container: ghcr.io/zephyrproject-rtos/ci:v0.27.4
-    # metl IS a working Zephyr module (zephyr/module.yml + sample + docs). The
-    # structural `west build` gate below is now blocking (it proves the module +
-    # sample compile for qemu_cortex_m3). Only the QEMU twister RUN step keeps a
-    # step-level continue-on-error, since a QEMU/semihosting hiccup there is a
-    # harness flake rather than a metl regression.
+    # metl IS a working Zephyr module (zephyr/module.yml + sample + docs). Both
+    # halves are blocking as of 2026-08-21: `west build` proves the module and
+    # sample compile for qemu_cortex_m3, and the twister step proves the sample
+    # runs on the emulated target and prints its sentinel.
     # Zephyr workspace init + build is slow; give it plenty of headroom.
     timeout-minutes: 60
     env:
@@ -1635,9 +1634,12 @@ jobs:
 
       - name: Build + run on QEMU via twister (assert sentinel)
         working-directory: zephyrproject
-        # Tolerate QEMU/semihosting flakiness here: the structural build above is
-        # the blocking proof; a twister run hiccup should not fail the pipeline.
-        continue-on-error: true
+        # BLOCKING since 2026-08-21. This step tolerated "QEMU/semihosting
+        # flakiness" that has not been observed: 12 of the last 12 main runs
+        # passed it. The flakiness was anticipated rather than measured, and an
+        # anticipated flake is not a reason to stop asserting the one thing this
+        # step exists for -- that the sample actually RUNS on the emulated target
+        # rather than merely linking for it.
         run: |
           set -euo pipefail
           ./zephyr/scripts/twister -v --inline-logs \
@@ -1686,16 +1688,18 @@ jobs:
   #     than C++17, so no CONFIG is needed for metl's C++17 surface); exceptions
   #     and RTTI are OFF by default, which is exactly metl's contract.
   #
-  # Provisional: the component + sample are structurally complete and follow
-  # ESP-IDF conventions, but this Docker-based build wiring can't be validated
-  # locally, so it is non-blocking (continue-on-error) until green — same
-  # pattern as the zephyr job above. The public pipeline stays green while this
-  # is tuned.
+  # BLOCKING since 2026-08-21. This job carried `continue-on-error: true` with the
+  # reason "the Docker-based build wiring can't be validated locally". That reason
+  # expired: CI has validated it 24 times out of 24 (both targets across the last
+  # twelve main runs) with no failing step. A job that is green every time and
+  # still cannot fail the pipeline is not evidence of anything — it reads as
+  # covered while proving nothing, which is the failure mode this repo keeps
+  # finding in itself. If it starts flaking, fix the flake or state the reason
+  # here; do not put the flag back silently.
   esp-idf:
     name: esp-idf / ${{ matrix.target }}
     runs-on: ubuntu-latest
     needs: preflight
-    continue-on-error: true
     timeout-minutes: 30
     strategy:
       fail-fast: false

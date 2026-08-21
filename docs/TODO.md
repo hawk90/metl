@@ -19,7 +19,7 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   ASan/UBSan, TSAN (real threaded tests), LTO, ARM Cortex-M (gcc + clang frontends),
   RISC-V rv64, PowerPC64 big-endian, per-header self-containment
 - [x] Embedded libc: newlib-nano link + **picolibc + QEMU semihosting run**
-- [x] RTOS/frameworks: Zephyr module + ESP-IDF component (+ samples) — *CI jobs provisional*
+- [x] RTOS/frameworks: Zephyr module + ESP-IDF component (+ samples) — **both CI jobs blocking** since 2026-08-21
 - [x] Release + `-Werror` hygiene gate; Doxygen 1.9.8 compat
 - [x] CI/CD: **preflight fail-fast gate** (dependency DAG, not flat fan-out),
   **GitHub Pages docs deploy** (gated on validation) → https://hawk90.github.io/metl/,
@@ -283,10 +283,11 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   library loop to quiet a false positive costs more than it buys. Revisit if a
   release-line gcc starts reporting it.
 - [x] **Zephyr** (#15) CI green — SDK wiring fixed (`ZEPHYR_SDK_INSTALL_DIR`); the
-  `west build` structural gate is now blocking, only the QEMU twister run keeps a
-  step-level `continue-on-error`.
-- [ ] Get the provisional **ESP-IDF** (#17) CI job to green (IDF image + target
-  tuning), then drop its `continue-on-error`.
+  `west build` structural gate and the QEMU twister run are **both** blocking as
+  of 2026-08-21.
+- [x] Get the **ESP-IDF** (#17) CI job to green and BLOCKING (2026-08-21): it was
+  already green 24/24 across twelve main runs, so the flag was the only thing
+  left. Same for the Zephyr twister run step (12/12).
 
 ### 📚 Library breadth (features)
 
