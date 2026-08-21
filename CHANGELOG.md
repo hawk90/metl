@@ -7,7 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **`metl/parse.hpp` — bounded text-to-integer**, the mirror of `metl/format.hpp`.
+  Six functions in `try_`/asserting pairs: `parse_uint`, `parse_int`, `parse_hex`
+  and their `try_` forms. The input is a `metl::span<const char>` and never a
+  `const char*`, because METL can bound a span and cannot bound a NUL scan — and
+  wire data has no terminator. Overflow is reported (`parse_error::out_of_range`),
+  never wrapped. No `<charconv>`, no `strtol`, no locale, no floating point.
+  `examples/wire_values.cpp` parses a telemetry line and self-checks that `256`
+  into a `std::uint8_t` and `-32769` into an `std::int16_t` are refused.
+- **`tools/check_progress_guarantee.py`** — the I3 checklist item is now a gate.
+  Every public header states a progress guarantee in `docs/SCOPE.md` §1's
+  vocabulary; 43 headers gained one, having been measured at 10 of 51.
+- **`tools/check_docs.py`** — checks the documentation claims a machine can
+  settle: every `metl::` name resolves, every relative link exists, and every
+  example the docs point at is registered in `examples/CMakeLists.txt`.
+
+### Changed
+
+- The code-size ratchet now **enforces** per-target `.text` budgets measured by
+  CI, rather than printing them.
+- `detail::is_plain_integer_v` moved from `metl/format.hpp` to
+  `metl/detail/plain_integer.hpp`, shared with `metl/parse.hpp`. No public API
+  change.
+- The CRC headers' progress guarantees now state that their `const char*`
+  overload is bounded by the caller's NUL, matching `hash` and `fixed_string`.
 
 ## [0.1.0-alpha2] - 2026-08-21
 

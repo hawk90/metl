@@ -41,6 +41,7 @@ ctest --test-dir build -R metl_example --output-on-failure
 - [Running tasks by deadline instead of round-robin](#running-tasks-by-deadline-instead-of-round-robin)
 - [A zero-copy driver region (UART/SPI/DMA)](#a-zero-copy-driver-region-uartspidma)
 - [Putting numbers in a string without stdio](#putting-numbers-in-a-string-without-stdio)
+- [Reading numbers back off a wire](#reading-numbers-back-off-a-wire)
 
 ---
 
@@ -541,3 +542,54 @@ Four things that are decisions rather than omissions:
 
 Passing a signed value to `format_uint` (or `format_hex`) is a compile error with a
 message saying why, rather than a huge number at runtime.
+
+## Reading numbers back off a wire
+
+*Full example: [`examples/wire_values.cpp`](../examples/wire_values.cpp)*
+
+The mirror of the section above. Bytes arrive, and the fields inside them have to
+become integers **of a declared width, without trusting the sender**. The usual
+fallback is `strtol`: locale-aware, reports failure through `errno`, and takes a
+NUL-terminated string — which is exactly what a UART does not send.
+
+```cpp
+#include <metl/parse.hpp>
+
+const metl::span<const char> field = /* bytes from the wire, no NUL */;
+
+if (const auto seq = metl::try_parse_uint<std::uint16_t>(field)) {
+    use(seq->value);          // the number
+    rest = seq->tail;         // and where the next field starts
+} else switch (seq.error()) {
+    case metl::parse_error::empty:        /* nothing arrived yet */        break;
+    case metl::parse_error::not_a_number: /* the sender is broken */       break;
+    case metl::parse_error::out_of_range: /* needs a wider field */        break;
+}
+```
+
+Six functions in `try_`/asserting pairs, mirroring `format.hpp` exactly:
+`parse_uint`, `parse_int`, `parse_hex` and their `try_` forms.
+
+Five things that are decisions rather than omissions:
+
+- **The input is a `span`, never a `const char*`.** METL can bound a span. It
+  cannot bound a `const char*` — the scan ends at the caller's NUL, and wire data
+  has none. The `const char*` overloads elsewhere in METL (`hash`, `fixed_string`,
+  the CRC headers) say so in their progress guarantees; the parsers avoid the
+  question by not accepting one.
+- **Overflow is reported, never wrapped.** `try_parse_uint<std::uint8_t>` on
+  `"256"` is `out_of_range`, not `0`. A parser that wraps turns a corrupt packet
+  into a plausible reading.
+- **Whitespace is not skipped and `+` is not accepted.** A field that arrived with
+  a leading space is a framing error, and finding out at the field beats finding
+  out three fields later. `std::from_chars` takes the same position on `+`.
+- **No `0x` prefix**, because `format_hex` writes none. Strip it yourself with
+  `text.subspan(2)` if your wire format has one.
+- **No floating point**, for the same reason `format.hpp` has none. Read `21.5` as
+  an integer part and a fraction digit and scale to tenths — the example shows the
+  four lines, and tenths is what the firmware wanted anyway.
+
+The asserting forms (`parse_uint` and friends) are for text **you** produced or
+control — a compile-time table, or something `format_uint` just wrote. Text off a
+wire is untrusted by definition, and turning a malformed packet into a reset is
+not error handling.

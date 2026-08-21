@@ -42,14 +42,23 @@ import sys
 # the numbers are set from that output in a follow-up commit -- the same
 # two-step the clang-tidy ratchet used, for the same reason.
 #
-# A budget can only go DOWN. If a toolchain bump moves these, re-measure and say
-# so in the commit; do not pad.
-# Measured by the `invariants` job on run 32467860630 (main @ e3f700f).
+# A budget goes DOWN freely. It goes UP only when the probe was deliberately
+# given more to link, and the commit that raises it has to say what and why --
+# never to make a red job green. "Do not pad" is the whole point: a budget set
+# above what was measured is a ratchet that has stopped ratcheting.
+#
+# Raised once so far, and it earned its keep. Adding metl/parse.hpp to the probe
+# cost +1504 bytes on Cortex-M0 against +812 on M3/M4/M7 -- the outlier said the
+# fold was using 64-bit arithmetic and a runtime divide on the one target with
+# neither. Fixing that brought M0 to +660 and the spread to 660..704. Had the
+# budget simply been raised to fit the first number, that bug would have shipped.
+#
+# Measured by the `invariants` job on run 32483066357 (PR #66, after the fix).
 BUDGETS = {
-    "cortex-m0": 2780,
-    "cortex-m3": 3536,
-    "cortex-m4": 3544,
-    "cortex-m7": 3556,
+    "cortex-m0": 3440,
+    "cortex-m3": 4236,
+    "cortex-m4": 4244,
+    "cortex-m7": 4260,
 }
 
 # Room for a toolchain that shifts codegen slightly without anything regressing.

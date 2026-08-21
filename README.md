@@ -90,6 +90,9 @@ Containers
 - [`format`](include/metl/format.hpp) — bounded integer-to-text (decimal, signed,
   hex with optional zero padding) for logs and protocol fields. No `<cstdio>`, no
   format-string parser, and the scratch buffer is the caller's.
+- [`parse`](include/metl/parse.hpp) — the mirror: bounded text-to-integer for
+  fields arriving off a wire. Takes a `span`, never a `const char*`, and reports
+  an out-of-range value instead of wrapping it. No `<charconv>`, no `strtol`.
 - [`fixed_queue`](include/metl/fixed_queue.hpp),
   [`fixed_stack`](include/metl/fixed_stack.hpp),
   [`fixed_deque`](include/metl/fixed_deque.hpp).
@@ -245,6 +248,7 @@ Worked example: [`examples/mmio_peripheral.cpp`](examples/mmio_peripheral.cpp)
   | [`mmio_peripheral.cpp`](examples/mmio_peripheral.cpp) | `mmio`, `register_access`, `bitfield` |
   | [`error_handling.cpp`](examples/error_handling.cpp) | `expected`, `optional`, `variant` |
   | [`log_line.cpp`](examples/log_line.cpp) | `format`, `fixed_string` (diagnostics without stdio) |
+  | [`wire_values.cpp`](examples/wire_values.cpp) | `parse` (telemetry fields, boundary refusal, fixed point) |
   | [`coroutine_task.cpp`](examples/coroutine_task.cpp) | `coro/protothread` |
   | [`deadline_tasks.cpp`](examples/deadline_tasks.cpp) | `coro/deadline_scheduler`, `fixed_priority_queue` |
   | [`blinky_fsm.cpp`](examples/blinky_fsm.cpp) | `fsm`, `mmio`, `delegate` |

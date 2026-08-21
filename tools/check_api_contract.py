@@ -72,6 +72,7 @@ BOOL_ALLOWLIST = {
     "run_until_idle": "cooperative step protocol: 'settled before max_rounds'",
     # --- private helpers whose bool is an internal predicate ---
     "locate_insert_index": "private helper: 'was a slot found'",
+    "is_decimal_digit": "private helper predicate: is this character a digit?",
 }
 
 # A `try_` name preceded by something that is not a return type -- i.e. a call,

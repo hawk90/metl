@@ -45,6 +45,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/plain_integer.hpp"
 #include "metl/span.hpp"
 
 #include <cstddef>
@@ -114,11 +115,9 @@ constexpr unsigned long long magnitude_of(long long value) noexcept {
   return value < 0 ? (0ULL - unsigned_value) : unsigned_value;
 }
 
-template <typename T>
-constexpr bool is_plain_integer_v =
-    std::is_integral_v<T> && !std::is_same_v<std::remove_cv_t<T>, bool> &&
-    !std::is_same_v<std::remove_cv_t<T>, char> && !std::is_same_v<std::remove_cv_t<T>, char16_t> &&
-    !std::is_same_v<std::remove_cv_t<T>, char32_t> && !std::is_same_v<std::remove_cv_t<T>, wchar_t>;
+// `is_plain_integer_v` used to be defined here. It moved to
+// metl/detail/plain_integer.hpp when metl/parse.hpp needed the same rule, so the
+// two headers cannot drift into disagreeing about what an integer is.
 
 }  // namespace detail
 
