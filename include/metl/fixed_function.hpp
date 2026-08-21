@@ -1,5 +1,20 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::fixed_function` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | construct, assign, `reset`, `swap` | wait-free, bounded by `Capacity` bytes |
+///   | `operator()` | one indirect call **plus the target's own cost** |
+///
+/// The callable lives in `Capacity` bytes of inline storage, so storing one moves
+/// at most that many bytes -- a compile-time constant, not a function of the
+/// target's behaviour. There is no heap, so there is no allocation cliff.
+///
+/// Invoking costs one indirect call through the operation table; what the stored
+/// callable then does is not something this header can bound.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 

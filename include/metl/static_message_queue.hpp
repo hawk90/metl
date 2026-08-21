@@ -1,5 +1,23 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::static_message_queue` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `push`, `pop`, `emplace`, `try_*`, `front`, `back` | wait-free, bounded |
+///   | `size`, `empty`, `full` | wait-free, bounded |
+///   | `clear`, copy, destructor | wait-free, bounded by `size()` |
+///
+/// Push and pop are index arithmetic on a ring: nothing is shifted and the cost
+/// does not depend on how full the queue is.
+///
+/// This type does not synchronise at all -- it is the single-threaded queue, and
+/// the guarantees above are per thread. Between an ISR and the main loop use
+/// `metl::spsc_queue`, which is wait-free across that boundary; between threads on
+/// one core wrap this in `metl::guarded` with `irq_lock`, which makes it blocking
+/// and bounded rather than wait-free.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/type_traits.hpp"

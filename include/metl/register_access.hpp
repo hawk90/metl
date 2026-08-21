@@ -1,5 +1,17 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for the register accessors (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | every function in this header | wait-free, bounded -- one bus access each |
+///
+/// Each accessor is a single `volatile` load or store with no loop and no retry.
+/// As with `metl/mmio.hpp`, how long one access takes is a property of the target's
+/// bus -- wait states and clock-domain bridges are not something this header can
+/// bound. What it guarantees is a fixed, data-independent number of accesses.
+
 #include "metl/compiler.hpp"
 
 #include <atomic>

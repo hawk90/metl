@@ -1,5 +1,26 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::coro::scheduler` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `attach`, `detach`, `is_attached` | wait-free, bounded by `Capacity` |
+///   | `run_once` | bounded by the attached tasks and their own poll cost |
+///   | `run_until_idle` | bounded by its `max_rounds` argument |
+///
+/// The task table is a flat array searched linearly, so attaching and detaching are
+/// `Capacity`-bounded rather than constant -- the array is small and fixed, which is
+/// the trade this type makes for having no free list to corrupt.
+///
+/// `run_once` visits each attached task once; its bound is therefore the sum of the
+/// tasks' own poll functions, which the scheduler cannot bound for you. A task that
+/// never returns is a task that never returns. `run_until_idle` takes `max_rounds`
+/// for exactly this reason: a set of tasks that keep re-arming each other would
+/// otherwise spin, and SCOPE.md section 2 rejects unbounded retry.
+///
+/// Single-threaded: this scheduler does not synchronise.
+
 // Fixed-capacity round-robin scheduler for `protothread` and `stepper` tasks.
 //
 // Storage policy: non-owning. The scheduler holds raw pointers; the caller

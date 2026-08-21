@@ -1,5 +1,22 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for the bounded formatters (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | every function in this header | wait-free, bounded by the output span |
+///
+/// Formatting an integer costs one iteration per digit produced, and the number of
+/// digits is bounded twice over: by the type (20 for a 64-bit value in decimal, 16
+/// in hex) and by the size of the span you pass. Nothing here scans an input
+/// string, allocates, or consults a locale, so there is no path whose cost depends
+/// on anything but the value and the buffer.
+///
+/// A buffer too small to hold the result is a capacity failure like any other: the
+/// `try_` form returns `nullopt` and the asserting form aborts. Neither writes past
+/// the span.
+
 // Bounded integer-to-text conversion for logs, diagnostics and protocol framing.
 //
 // The gap this fills: `fixed_string` can hold text but has no way to put a NUMBER

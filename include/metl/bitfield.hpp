@@ -1,5 +1,16 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::bitfield` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | every operation in this header | wait-free, bounded |
+///
+/// Extraction and insertion are a shift and a mask against constants known at
+/// compile time. There is no loop, and no dependence on the value being read or
+/// written.
+
 #include "metl/compiler.hpp"
 
 #include <cstddef>

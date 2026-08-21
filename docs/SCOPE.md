@@ -16,13 +16,21 @@ one and it is out of scope, however embedded it sounds.
 |---|---|---|
 | I1 | **No heap.** No `malloc`/`free`/`operator new`/`sbrk` reachable from any public API. | `invariants` CI job (symbol audit) |
 | I2 | **No exceptions, no RTTI.** No `throw`, no `dynamic_cast`, no `typeid`. | `invariants` CI job + `-fno-exceptions -fno-rtti` builds |
-| I3 | **Deterministic.** Every public operation has a bounded worst-case execution time — no unbounded loops on data, no unbounded retry, no allocation-shaped latency cliffs. | Review + documented progress guarantee |
+| I3 | **Deterministic.** Every public operation has a bounded worst-case execution time — no unbounded loops on data, no unbounded retry, no allocation-shaped latency cliffs. | Review, plus `api-contract` CI job (`check_progress_guarantee.py`) for the *stated* guarantee |
 | — | *(not an invariant, but the same discipline)* **Claims about hardware behaviour are verified by executing on the hardware.** `qemu-conformance` runs the test suite on an emulated Cortex-M3; `irq_lock` is checked against a real SysTick interrupt rather than by reading its own register back. | `qemu-conformance` CI job |
 | I4 | **Header-only, C++17.** No separately compiled TU required; no C++20+ features in public headers. | `host-test`, `cross-syntax` |
 | I5 | **Self-contained headers.** Every public header compiles standalone; every public header is reachable from the umbrella (or is explicitly opt-in — see §4). | `header-checks` CI job |
 
-Four of the five are machine-checked. I3 is the one that needs a human, which
-is why it gets its own vocabulary below.
+Four of the five are machine-checked. I3 is the one that needs a human to decide
+*what* the bound is, which is why it gets its own vocabulary below.
+
+What a machine can check is whether a human decided at all, and
+`tools/check_progress_guarantee.py` does: every public header must state a
+guarantee, in this vocabulary, in its doc comment. It was added after the
+checklist item below was measured for the first time and found to be honoured by
+10 headers out of 51. The script has an `EXEMPT` list for headers with no
+runtime operation to bound — macros, tag types, compile-time traits — and every
+entry carries its reason.
 
 ### I3 in detail — what "deterministic" means here
 
@@ -125,7 +133,8 @@ Copy into the PR description:
 - [ ] I1  no heap: `invariants` job green (no malloc/new/sbrk in the image)
 - [ ] I2  no exceptions/RTTI: `invariants` job green
 - [ ] I3  progress guarantee stated in the header doc comment
-          (wait-free bounded / lock-free / blocking bounded)
+          (wait-free bounded / lock-free / blocking bounded) — the
+          `api-contract` job checks that one is stated; you decide what it is
 - [ ] I4  header-only, C++17, self-contained
 - [ ] I5  new header added to the umbrella, or explicitly Tier 2 opt-in
 - [ ] new container/allocator exercised in tests/embedded/invariant_probe.cpp

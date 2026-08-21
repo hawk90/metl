@@ -1,5 +1,23 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::hash` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `hash_mix`, hashing an integral, enum, or pointer | wait-free, bounded |
+///   | hashing an object by its bytes | wait-free, bounded by `sizeof(T)` |
+///   | hashing a `const char*` | **bounded by the caller's NUL, not by METL** |
+///
+/// FNV-1a costs one multiply and one xor per byte, and for a `T` hashed by its
+/// object representation the byte count is `sizeof(T)` -- known at compile time.
+///
+/// The `const char*` overload is the exception, and it is the same one
+/// `metl::fixed_string` documents: the scan ends at the caller's NUL terminator, so
+/// a longer string costs more and a buffer without a terminator reads past its end.
+/// Hash a `metl::fixed_string` or a `metl::span<const char>` when the length must
+/// be bounded by something you control.
+
 #include "metl/compiler.hpp"
 
 #include <cstddef>

@@ -1,5 +1,22 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::arena_allocator` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `allocate`, `try_emplace`, `emplace`, `mark` | wait-free, bounded |
+///   | `rewind`, `reset` | wait-free, bounded by the records above the mark |
+///
+/// An allocation is a pointer bump plus one fixed-size record write, so its cost
+/// does not depend on how much is already allocated. `rewind` walks those records
+/// in LIFO order and runs each object's destructor, so its bound is the number of
+/// live records -- at most `Capacity / sizeof(allocation_record)` -- multiplied by
+/// whatever `~T()` costs. `reset` is `rewind(mark_type{0})` and has the same bound.
+///
+/// Single-threaded: none of these operations synchronise, so the guarantees hold
+/// per thread and the type is not for ISR-shared use without an external lock.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 

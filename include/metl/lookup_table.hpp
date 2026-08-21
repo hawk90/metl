@@ -1,5 +1,21 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::lookup_table` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `find`, `contains`, `value_or` | wait-free, bounded by `Size` comparisons |
+///   | `at`, `size` | wait-free, bounded |
+///
+/// The table is a flat array scanned linearly, so a lookup costs at most `Size`
+/// comparisons -- a template parameter, fixed when the table is declared. The type
+/// is `constexpr` throughout, so a lookup on a compile-time key usually costs
+/// nothing at run time at all.
+///
+/// `Size` is small by construction; if it is not, a `metl::flat_map` searches the
+/// same data in `log2(Size)` comparisons instead.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 

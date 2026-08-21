@@ -1,5 +1,26 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::fixed_string` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `size`, `empty`, `capacity`, indexing, `c_str` | wait-free, bounded |
+///   | `append`, `assign`, `push_back`, comparison, hashing | wait-free, bounded by `Capacity` |
+///   | constructing or assigning from `const char*` | **bounded by the caller's NUL, not by `Capacity`** |
+///
+/// Everything that works on characters already inside the string is bounded by
+/// `Capacity`, which is known at compile time.
+///
+/// The exception is worth stating plainly: taking a `const char*` means finding its
+/// length, and the only thing that ends that scan is the caller's NUL terminator.
+/// METL cannot bound it -- a longer string costs more even when only `Capacity`
+/// characters will be kept, and a buffer with no NUL in it reads past the end. That
+/// is a precondition on the caller, not a bound this header provides. Pass a
+/// `metl::span<const char>` or an explicit length when the input length matters.
+///
+/// Single-threaded: this type does not synchronise.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/hash.hpp"

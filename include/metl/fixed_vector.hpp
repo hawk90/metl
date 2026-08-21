@@ -1,5 +1,25 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::fixed_vector` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `push_back`, `pop_back`, `emplace_back`, `try_*`, `back`, indexing | wait-free, bounded |
+///   | `insert`, `emplace`, `erase` | wait-free, bounded by `size()` moves |
+///   | `clear`, `resize`, copy, destructor | wait-free, bounded by `size()` |
+///
+/// Appending and removing at the end are one construction or destruction plus an
+/// index update; they do not depend on `size()`. Inserting or erasing in the middle
+/// shifts the tail, so the bound is `size()` moves of `T` -- at most `Capacity`.
+///
+/// This is `O(n)` with a compile-time-known `n`, which docs/SCOPE.md section 1
+/// accepts and distinguishes from `O(1) amortized` with a reallocation cliff. There
+/// is no reallocation here: the capacity is fixed and an overflowing `push_back`
+/// asserts, while `try_push_back` returns false.
+///
+/// Single-threaded: this type does not synchronise.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/span.hpp"

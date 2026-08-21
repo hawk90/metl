@@ -1,5 +1,25 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::object_pool` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `try_emplace`, `emplace` | wait-free, bounded by `Capacity` |
+///   | `destroy`, `contains`, `size`, `empty`, `full` | wait-free, bounded |
+///   | `clear`, destructor | wait-free, bounded by `Capacity` |
+///
+/// Acquiring a slot scans the occupancy flags for the first free one, so it is
+/// `Capacity`-bounded rather than constant -- worth knowing if `Capacity` is large
+/// and the pool is usually near full, because that is the case that scans furthest.
+/// Releasing is constant: the pointer gives the index directly.
+///
+/// `metl::handle_pool` acquires in constant time from a free list, and hands back a
+/// handle that detects use-after-free instead of a pointer that does not. Prefer it
+/// unless you need a raw `T*`.
+///
+/// Single-threaded: this type does not synchronise.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/type_traits.hpp"

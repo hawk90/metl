@@ -1,5 +1,20 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::optional` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | construct, assign, `emplace`, `reset`, `swap`, observers | wait-free, bounded |
+///   | `and_then`, `or_else`, `transform` | bounded by the callable you pass |
+///
+/// The value lives inline, so engaging and disengaging is one construction or one
+/// destruction plus a flag -- no loop, no allocation. The bound is therefore `T`'s
+/// own bound.
+///
+/// The monadic operations add one call; their bound is the bound of the callable,
+/// which is yours to keep.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/construct.hpp"

@@ -1,5 +1,17 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::span` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | every operation in this header | wait-free, bounded |
+///
+/// A span is a pointer and a length. Constructing, subspanning, indexing, and
+/// iterating touch only those two values -- no element is copied, nothing is
+/// searched, and nothing is owned. `first`, `last`, and `subspan` return a new span
+/// rather than moving data.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 

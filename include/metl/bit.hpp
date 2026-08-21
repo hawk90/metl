@@ -1,5 +1,20 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for the bit utilities (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | every function in this header | wait-free, bounded by `sizeof(T) * CHAR_BIT` |
+///
+/// On GCC and Clang these lower to a single instruction (`__builtin_popcount` and
+/// friends). The portable software fallbacks -- which are also the constant-
+/// evaluation path on MSVC, whose bit-scan intrinsics are not `constexpr` -- are
+/// loops over the bits of `T`, so the worst case is the width of the type: 64
+/// iterations for a `std::uint64_t`. The zero operand, which would run a
+/// leading/trailing-zero loop past the width, is rejected by the public functions
+/// before the loop is entered.
+
 #include "metl/compiler.hpp"
 
 #include <climits>

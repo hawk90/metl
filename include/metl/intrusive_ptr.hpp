@@ -1,5 +1,26 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::intrusive_ptr` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | copy, assign, `reset`, `detach`, `swap` (`refcount_kind::non_atomic`) | wait-free, bounded |
+///   | the same, with `refcount_kind::atomic` | **lock-free**, not wait-free |
+///   | releasing the last reference | **plus the pointee's destructor** |
+///
+/// The default non-atomic counter is a plain increment or decrement, so it is
+/// wait-free. The atomic counter is a `fetch_add`/`fetch_sub`, which on ARMv7-M and
+/// other load-linked/store-conditional machines is an `LDREX`/`STREX` retry loop
+/// with no bound on the retry count -- lock-free, and therefore multi-core only
+/// under docs/SCOPE.md section 1. ARMv6-M has no such instruction at all, and the
+/// `static_assert` in `intrusive_ref_counter` refuses that combination rather than
+/// letting the toolchain fall back to a libatomic call.
+///
+/// Dropping the last reference runs the pointee's destructor inline, so that cost
+/// belongs to whoever released it -- which on a deadline is worth knowing before
+/// the release happens on the deadline's thread.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 

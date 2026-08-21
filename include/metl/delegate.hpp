@@ -1,5 +1,17 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::delegate` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `bind`, `from_function`, `reset`, `operator bool` | wait-free, bounded |
+///   | `operator()` | one indirect call **plus the target's own cost** |
+///
+/// A delegate stores two pointers and copies nothing, so binding and rebinding do
+/// not depend on the target. Invoking it costs one indirect call; what that call
+/// does is the target's business, and this header does not bound it.
+
 #include "metl/config.hpp"
 
 #include <type_traits>

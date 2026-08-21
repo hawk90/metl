@@ -1,5 +1,23 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::fsm` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `dispatch` | wait-free, bounded by the transition and hook tables |
+///   | `state`, `is_in` | wait-free, bounded |
+///
+/// The transition table is scanned linearly, so a dispatch costs at most
+/// `TransitionCount` comparisons plus one scan of the entry/exit hook table. Both
+/// counts are template parameters -- fixed when the machine is declared, not a
+/// function of how many events have been handled.
+///
+/// What this header cannot bound is the handlers: a transition action, an entry
+/// hook, or an exit hook runs inside `dispatch`, and a handler that blocks blocks
+/// the dispatch. If the machine drives something with a deadline, the bound lives
+/// in the handlers.
+
 #include "metl/compiler.hpp"
 #include "metl/delegate.hpp"
 

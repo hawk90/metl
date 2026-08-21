@@ -1,5 +1,27 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::atomic_ref` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `load`, `store` (lock-free `T`) | wait-free, bounded |
+///   | `fetch_add`, `fetch_sub`, `exchange`, `compare_exchange_*` | **lock-free**, not wait-free |
+///   | any operation on a non-lock-free `T` | **no METL guarantee** -- see below |
+///
+/// The read-modify-write operations are lock-free rather than wait-free because
+/// ARMv7-M and other load-linked/store-conditional machines implement them as an
+/// `LDREX`/`STREX` retry loop, and the retry count is not bounded: a thread can
+/// lose the reservation arbitrarily many times. Under docs/SCOPE.md section 1 that
+/// restricts them to multi-core use -- never between an ISR and the main loop on a
+/// single core, where the ISR that preempts the retry makes it spin forever.
+///
+/// When `std::atomic<T>::is_always_lock_free` is false, the standard library
+/// implements the operation with an address-keyed lock pool that METL does not own
+/// and cannot bound, so METL states no guarantee at all for that case rather than
+/// claiming one it cannot keep. Check `is_always_lock_free` before using
+/// `atomic_ref` on any path with a deadline.
+
 #include "metl/config.hpp"
 
 #include <atomic>
