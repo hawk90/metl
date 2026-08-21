@@ -1,5 +1,19 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::coro::protothread` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | resuming at a yield point, `reset`, `is_done` | wait-free, bounded |
+///   | the protothread body itself | **bounded by the body you write** |
+///
+/// A resume is a `switch` on the saved line number -- a jump table, not a scan --
+/// so re-entering a protothread costs the same no matter how many yield points it
+/// has. What runs after the jump is your code, and this header cannot bound it. A
+/// protothread that loops without yielding blocks its scheduler for as long as the
+/// loop runs; the yield macros exist so that it does not have to.
+
 // Stackless cooperative thread, modeled after Adam Dunkels' Protothreads
 // (https://dunkels.com/adam/pt/). Uses Duff's-device style yield via a
 // `switch` over `__LINE__` markers. State is a single `int` (`pt_line_`):

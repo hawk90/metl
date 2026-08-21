@@ -1,5 +1,19 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::mmio` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `read`, `write`, `modify`, the bit helpers | wait-free, bounded -- one bus access each |
+///
+/// There is no loop here and no retry: each operation is a single `volatile` load
+/// or store, and `modify` is one of each. What METL cannot state is how long a bus
+/// access takes. A peripheral behind wait states, a slower APB clock domain, or a
+/// bridge can make one register write cost many core cycles, and that number
+/// belongs to the target's reference manual, not to this header. The guarantee METL
+/// makes is the one it can keep: a fixed, data-independent number of accesses.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/register_access.hpp"

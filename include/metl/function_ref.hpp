@@ -1,5 +1,17 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::function_ref` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | construct, assign, `operator bool` | wait-free, bounded |
+///   | `operator()` | one indirect call **plus the referent's own cost** |
+///
+/// A `function_ref` stores a pointer pair and copies nothing, so binding is
+/// independent of what it binds to. Invoking costs one indirect call; the referent
+/// is not something this header can bound.
+
 #include "metl/config.hpp"
 
 #include <cstddef>

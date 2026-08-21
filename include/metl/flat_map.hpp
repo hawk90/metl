@@ -1,5 +1,24 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::flat_map` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | lookup: `find`, `contains`, `lower_bound`, `at` | wait-free, `log2(Capacity)` comparisons |
+///   | `insert`, `try_emplace`, `erase` | wait-free, bounded by `Capacity` moves |
+///   | `clear`, iteration, copy, destructor | wait-free, bounded by `size()` |
+///
+/// Storage is one sorted array, so lookup is a binary search and modification
+/// shifts the tail to keep it sorted. Both bounds are compile-time known.
+///
+/// Two things this header does not bound, and cannot: `Compare` must itself be
+/// bounded -- a comparator that loops on the key makes every operation above
+/// inherit that loop -- and so must `Key`'s and `T`'s move and destroy operations,
+/// which the shifting runs `size()` times.
+///
+/// Single-threaded: this type does not synchronise.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/transparent.hpp"

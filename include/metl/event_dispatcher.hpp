@@ -1,5 +1,25 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::event_dispatcher` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `subscribe`, `unsubscribe`, `clear` | wait-free, bounded by `Capacity` |
+///   | `dispatch` | bounded by `Capacity` **plus every listener's own cost** |
+///
+/// The listener table is a flat array of `Capacity` slots scanned linearly, so
+/// subscribing costs the same whether one listener or all of them are registered.
+///
+/// `dispatch` is the operation to think about: it walks the whole table and calls
+/// each live listener, so its worst case is the sum of what the listeners do. This
+/// header cannot bound that -- a listener that blocks blocks the dispatch, and
+/// every later listener with it. If dispatch happens on a deadline, the bound is
+/// something the listeners have to keep, not something the dispatcher can enforce.
+///
+/// Single-threaded: this type does not synchronise. Subscribing from an ISR while
+/// the main loop dispatches is a data race, not a slow path.
+
 #include "metl/config.hpp"
 #include "metl/delegate.hpp"
 #include "metl/optional.hpp"

@@ -1,5 +1,22 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::fixed_queue` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `push`, `pop`, `emplace`, `try_*`, `front`, `back` | wait-free, bounded |
+///   | `size`, `empty`, `full` | wait-free, bounded |
+///   | `clear`, destructor | wait-free, bounded by `size()` |
+///
+/// Push and pop are index arithmetic on a ring: nothing is shifted, nothing is
+/// searched, and the cost does not depend on how full the queue is. `clear` runs
+/// one destructor per live element, at most `Capacity` of them.
+///
+/// Single-threaded: this type does not synchronise. For a producer in an ISR and a
+/// consumer in the main loop, use `metl::spsc_queue`; for anything else, wrap this
+/// in `metl::guarded` with `irq_lock`.
+
 #include "metl/compiler.hpp"
 #include "metl/ring_buffer.hpp"
 

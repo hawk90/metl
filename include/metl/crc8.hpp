@@ -1,5 +1,19 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for the CRC-8 functions (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | one byte, table build (`METL_CRC_TABLE` on) | wait-free, bounded |
+///   | one byte, bitwise (`METL_CRC_TABLE` off) | wait-free, 8 iterations |
+///   | a buffer | wait-free, bounded by the length you pass |
+///
+/// Per-byte cost is a compile-time constant either way -- one table lookup, or a
+/// fixed eight shift-and-conditional-xor steps. Whole-buffer cost is that constant
+/// times the length, and the length is the caller's, so a caller with a deadline
+/// bounds it by choosing how much to feed in at a time.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/crc.hpp"

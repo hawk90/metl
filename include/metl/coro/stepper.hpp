@@ -1,5 +1,17 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::coro::stepper` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `step`, `reset`, state queries | wait-free, bounded |
+///   | the step body itself | **bounded by the body you write** |
+///
+/// `step` is one indirect call through a stored function pointer plus a state
+/// update. Everything else is the work you put in the step body, which this header
+/// cannot bound.
+
 // Explicit-state stackless task. Unlike `protothread`, no macro magic: the
 // derived class implements `step()` as an explicit state machine and returns
 // one of `step_result::yield`, `done`, or `error`. The wrapper `poll()`

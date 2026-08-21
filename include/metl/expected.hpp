@@ -1,5 +1,20 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::expected` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | construct, assign, `emplace`, `reset`, observers | wait-free, bounded |
+///   | `and_then`, `or_else`, `transform`, `transform_error` | bounded by the callable you pass |
+///
+/// `expected` holds one `T` or one `E` inline and switches between them by
+/// destroying one and constructing the other, so every operation is a fixed number
+/// of steps plus whatever `T` and `E` cost. There is no loop and no allocation.
+///
+/// The monadic operations add one call; their bound is the bound of the callable,
+/// which is yours to keep.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/in_place.hpp"

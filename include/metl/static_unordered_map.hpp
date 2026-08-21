@@ -1,5 +1,32 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::static_unordered_map` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `find`, `contains`, `count`, `at`, `operator[]` | wait-free, bounded by `bucket_count` probes |
+///   | `insert`, `try_emplace`, `erase` | wait-free, bounded by `bucket_count` probes |
+///   | `clear`, iteration, copy, destructor | wait-free, bounded by `bucket_count` |
+///
+/// Open addressing with linear probing: the worst case is a probe run the length of
+/// the table, and `bucket_count` is a power of two fixed at compile time.
+///
+/// That worst case stays a worst case rather than drifting upward, and this is the
+/// part worth reading. A table that only ever marked erasures as tombstones would
+/// let negative lookups walk further and further as tombstones accumulated, which is
+/// `O(1) average` with an unbounded tail -- exactly what docs/SCOPE.md section 1
+/// refuses to call deterministic. So erasure reclaims in place: once tombstones pass
+/// one eighth of the table, `rehash_in_place` rebuilds it without allocating. That
+/// rebuild is itself bounded -- it visits each slot once, and its inner carry loop
+/// terminates because every iteration turns one more slot permanently occupied.
+///
+/// Two bounds this header does not own: `Hash` and `KeyEqual` are called on the
+/// probe path, so an unbounded hash or comparison makes every operation above
+/// unbounded with it.
+///
+/// Single-threaded: this type does not synchronise.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/transparent.hpp"

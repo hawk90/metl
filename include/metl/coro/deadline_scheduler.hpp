@@ -44,8 +44,9 @@ using deadline_poll_fn = optional<Tick> (*)(void* task, Tick now) noexcept;
 /// @brief Fixed-capacity, single-threaded scheduler that runs tasks in deadline
 ///        order (earliest first).
 ///
-/// **Progress guarantee (SCOPE.md I3): bounded.** `schedule` and `cancel` are
-/// O(log Capacity) and O(Capacity) respectively, both compile-time bounded.
+/// **Progress guarantee (docs/SCOPE.md section 1): wait-free, bounded.**
+/// `schedule` and `cancel` are O(log Capacity) and O(Capacity) respectively,
+/// both compile-time bounded. Nothing here retries or blocks.
 /// `run_due` is bounded by its `max_dispatches` argument, which exists precisely
 /// so that a task re-arming at a deadline that is already due cannot spin
 /// forever.

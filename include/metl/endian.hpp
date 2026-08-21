@@ -1,5 +1,17 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for the endian utilities (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | every function in this header | wait-free, bounded by `sizeof(T)` |
+///
+/// Byte swapping lowers to `REV`/`REV16` on ARM and `bswap` on x86; the portable
+/// fallback is a loop over the bytes of `T`, so the worst case is eight iterations
+/// for a 64-bit type. Unaligned load and store helpers copy exactly `sizeof(T)`
+/// bytes.
+
 #include "metl/compiler.hpp"
 
 #include <cstdint>

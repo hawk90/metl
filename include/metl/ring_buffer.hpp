@@ -1,5 +1,22 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::ring_buffer` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `push_overwrite`, `push_back`, `pop_front`, `emplace_*`, `try_*` | wait-free, bounded |
+///   | element access, `size`, `empty`, `full` | wait-free, bounded |
+///   | `clear`, destructor | wait-free, bounded by `size()` |
+///
+/// Every position is index arithmetic on a ring, so nothing is shifted and the cost
+/// does not depend on how full the buffer is. `push_overwrite` on a full buffer
+/// destroys the oldest element and constructs the new one in its place -- still a
+/// fixed number of steps, plus `~T()`.
+///
+/// Single-threaded: this type does not synchronise. For a byte stream across an ISR
+/// boundary, use `metl::spsc_byte_ring`.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/ring_core.hpp"

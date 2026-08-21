@@ -1,5 +1,26 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::spsc_queue` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `try_push`, `try_emplace`, `try_pop` | wait-free, bounded |
+///   | `size`, `empty`, `full` | wait-free, bounded (and only a hint) |
+///   | `clear`, destructor | wait-free, bounded by `size()` -- **not** concurrency-safe |
+///
+/// This is the queue that may cross an ISR boundary on a single core, and the
+/// reason is in the first row: a push or a pop is two atomic loads and one release
+/// store, with **no retry loop**. There is no compare-exchange to lose, so a
+/// producer preempted mid-push cannot make the consumer spin. `metl::mpmc_queue` is
+/// lock-free rather than wait-free and is therefore multi-core only.
+///
+/// `size`, `empty`, and `full` read two counters that another thread may be moving,
+/// so they are hints -- true at some instant during the call, not afterwards.
+///
+/// `clear` and the destructor assume no concurrent access: they destroy the
+/// remaining elements, which is a single-threaded operation by nature.
+
 #include "metl/config.hpp"
 #include "metl/optimization.hpp"
 #include "metl/type_traits.hpp"

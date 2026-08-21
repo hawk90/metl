@@ -1,5 +1,20 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::fixed_stack` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `push`, `pop`, `emplace`, `try_*`, `top` | wait-free, bounded |
+///   | `size`, `empty`, `full` | wait-free, bounded |
+///   | `clear`, destructor | wait-free, bounded by `size()` |
+///
+/// The stack is an index into inline storage, so a push or pop is one construction
+/// or destruction plus an increment -- independent of depth. `clear` runs one
+/// destructor per live element, at most `Capacity` of them.
+///
+/// Single-threaded: this type does not synchronise.
+
 #include "metl/compiler.hpp"
 #include "metl/fixed_vector.hpp"
 

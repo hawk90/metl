@@ -1,5 +1,23 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::static_allocator` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `try_allocate`, `allocate`, `try_new`, `new_object` | wait-free, bounded |
+///   | `reset`, `used`, `remaining` | wait-free, bounded |
+///
+/// Allocation forwards to `metl::monotonic_buffer`: an alignment round-up and a
+/// pointer bump, with no free list to walk and no search for a fit. A request that
+/// does not fit is refused, not serviced more slowly.
+///
+/// There is no per-object deallocation, so there is no fragmentation and no path
+/// whose cost grows with how long the allocator has been in use. `reset` releases
+/// everything at once and does not run destructors.
+///
+/// Single-threaded: this type does not synchronise.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/monotonic_buffer.hpp"

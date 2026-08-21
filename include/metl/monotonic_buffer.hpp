@@ -1,5 +1,23 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::monotonic_buffer` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `allocate`, `try_emplace`, `emplace` | wait-free, bounded |
+///   | `reset`, `used`, `remaining` | wait-free, bounded |
+///
+/// An allocation is an alignment round-up and a pointer bump, so it costs the same
+/// whether the buffer is empty or nearly full, and a full buffer refuses rather
+/// than searching for a fit. There is no free list, so there is nothing to walk.
+///
+/// `reset` is a single assignment because this buffer **does not run destructors**
+/// -- that is the difference between it and `metl::arena_allocator`, whose `rewind`
+/// does and is bounded accordingly.
+///
+/// Single-threaded: this type does not synchronise.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 

@@ -1,5 +1,22 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::variant` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | construct, assign, `emplace`, `index`, `get`, `get_if` | wait-free, bounded |
+///   | `visit` | wait-free, bounded by the number of alternatives |
+///   | destructor | bounded by the active alternative's destructor |
+///
+/// Every alternative lives in one inline union, so changing which one is active is
+/// a destruction and a construction -- a fixed number of steps plus whatever those
+/// alternatives cost. Nothing is allocated and nothing is searched.
+///
+/// `visit` dispatches on the discriminant through a table built at compile time; it
+/// does not test the alternatives one by one, so its cost does not depend on which
+/// one is active. The visitor itself is yours to bound.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/in_place.hpp"

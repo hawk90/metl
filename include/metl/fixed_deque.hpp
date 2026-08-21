@@ -1,5 +1,21 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::fixed_deque` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `push_front`, `push_back`, `pop_front`, `pop_back`, `emplace_*`, `try_*` | wait-free, bounded |
+///   | element access, `size`, `empty`, `full` | wait-free, bounded |
+///   | `clear`, destructor | wait-free, bounded by `size()` |
+///
+/// Both ends are index arithmetic on a ring, so a push or pop costs the same at
+/// either end and does not depend on how full the deque is -- nothing is shifted.
+/// `clear` runs one destructor per live element, so its bound is `size()` times
+/// `~T()`, at most `Capacity` of them.
+///
+/// Single-threaded: this type does not synchronise.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/ring_core.hpp"

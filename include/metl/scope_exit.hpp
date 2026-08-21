@@ -1,5 +1,18 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::scope_exit` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | construct, `release` | wait-free, bounded |
+///   | the destructor | **bounded by the function you gave it** |
+///
+/// Constructing stores the callable and a flag; `release` clears the flag. The
+/// destructor runs the callable if it is still armed, so the cost of leaving the
+/// scope is the cost of that function -- which is yours to bound. It must also be
+/// `noexcept`, and a `static_assert` enforces that.
+
 #include "metl/compiler.hpp"
 
 #include <type_traits>
