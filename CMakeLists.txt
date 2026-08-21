@@ -64,6 +64,7 @@ set(_metl_headers
   include/metl/fixed_vector.hpp
   include/metl/flat_map.hpp
   include/metl/flat_set.hpp
+  include/metl/format.hpp
   include/metl/fsm.hpp
   include/metl/function_ref.hpp
   include/metl/handle_pool.hpp
@@ -194,7 +195,7 @@ if(METL_BUILD_TESTS)
     # bits/
     bits/bit bits/bitfield bits/crc8 bits/crc16 bits/crc32 bits/hash
     bits/hash_unique_repr bits/endian bits/mmio bits/mmio_regression bits/register_access
-    bits/crc_table_equivalence
+    bits/crc_table_equivalence bits/format
     # control/
     control/fsm control/fsm_reentrancy control/event_dispatcher
     control/coro_protothread control/coro_scheduler control/coro_scheduler_reentrancy

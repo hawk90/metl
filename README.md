@@ -82,6 +82,9 @@ Containers
 
 - [`fixed_vector`](include/metl/fixed_vector.hpp),
   [`fixed_string`](include/metl/fixed_string.hpp).
+- [`format`](include/metl/format.hpp) — bounded integer-to-text (decimal, signed,
+  hex with optional zero padding) for logs and protocol fields. No `<cstdio>`, no
+  format-string parser, and the scratch buffer is the caller's.
 - [`fixed_queue`](include/metl/fixed_queue.hpp),
   [`fixed_stack`](include/metl/fixed_stack.hpp),
   [`fixed_deque`](include/metl/fixed_deque.hpp).
@@ -215,6 +218,7 @@ Worked example: [`examples/mmio_peripheral.cpp`](examples/mmio_peripheral.cpp)
   | [`uart_byte_ring.cpp`](examples/uart_byte_ring.cpp) | `spsc_byte_ring` (zero-copy driver region, wrap) |
   | [`mmio_peripheral.cpp`](examples/mmio_peripheral.cpp) | `mmio`, `register_access`, `bitfield` |
   | [`error_handling.cpp`](examples/error_handling.cpp) | `expected`, `optional`, `variant` |
+  | [`log_line.cpp`](examples/log_line.cpp) | `format`, `fixed_string` (diagnostics without stdio) |
   | [`coroutine_task.cpp`](examples/coroutine_task.cpp) | `coro/protothread` |
   | [`deadline_tasks.cpp`](examples/deadline_tasks.cpp) | `coro/deadline_scheduler`, `fixed_priority_queue` |
   | [`blinky_fsm.cpp`](examples/blinky_fsm.cpp) | `fsm`, `mmio`, `delegate` |

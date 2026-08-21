@@ -28,6 +28,7 @@ ctest --test-dir build -R metl_example --output-on-failure
 - [A cooperative task (protothread)](#a-cooperative-task-protothread)
 - [Running tasks by deadline instead of round-robin](#running-tasks-by-deadline-instead-of-round-robin)
 - [A zero-copy driver region (UART/SPI/DMA)](#a-zero-copy-driver-region-uartspidma)
+- [Putting numbers in a string without stdio](#putting-numbers-in-a-string-without-stdio)
 
 ---
 
@@ -484,3 +485,47 @@ Three more things before you point DMA at it:
 
 If you are copying anyway and there is only one thread, `ring_buffer` is simpler
 and does not make you think about any of this.
+
+## Putting numbers in a string without stdio
+
+*Full example: [`examples/log_line.cpp`](../examples/log_line.cpp)*
+
+`fixed_string` holds text but has no way to put a **number** into it. The usual
+fallbacks are `snprintf` — which pulls stdio into the image, allocates on some
+libcs, and returns what *would* have been written rather than what was — or a
+hand-rolled digit loop in every project.
+
+```cpp
+#include <metl/format.hpp>
+
+char scratch[24];                       // 24 holds any 64-bit value, sign included
+metl::fixed_string<64> line;
+
+line.append("temp=");
+line.append(metl::span<const char>(metl::format_int(scratch, -215)));
+line.append(" status=0x");
+line.append(metl::span<const char>(metl::format_hex(scratch, 0x2au, 4, metl::hex_case::upper)));
+// -> "temp=-215 status=0x002A"
+```
+
+Six functions, in `try_`/asserting pairs like everything else:
+`format_uint`, `format_int`, `format_hex` and their `try_` forms. The `try_` forms
+return an **empty span** when the buffer is too small — unambiguous, because a
+number is always at least one character — and leave the buffer untouched.
+
+Four things that are decisions rather than omissions:
+
+- **There is no format string, and there will not be one.** A `{}`-parser is code
+  and tables in the image of every target that links it, for an ergonomic gain a
+  few explicit calls already deliver.
+- **The scratch buffer is yours.** A hidden one inside the call would have to be
+  `static` — not reentrant, and this library is used from ISRs — or a stack
+  temporary you cannot size. An explicit `char[24]` is visible and safe anywhere.
+- **The result is not NUL-terminated.** It is a span, and its size is the length.
+  Feed it to `fixed_string::try_append(span<const char>)` or write it straight out.
+- **A too-narrow fixed hex width is refused, not truncated.** `format_hex(out, 0xabcd, 2)`
+  returns empty rather than `"cd"`: a register dump missing its high nibbles is
+  worse than no dump.
+
+Passing a signed value to `format_uint` (or `format_hex`) is a compile error with a
+message saying why, rather than a huge number at runtime.
