@@ -242,7 +242,7 @@ METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_uint(span<co
   // Both `constexpr`, so the divide happens in the compiler and not in an
   // ARMv6-M image that has no divide instruction. See `fold_decimal`.
   using accumulator_t = detail::parse_accumulator_t<T>;
-  constexpr accumulator_t limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
   constexpr accumulator_t limit_head = limit / accumulator_t{10};
   constexpr accumulator_t limit_tail = limit % accumulator_t{10};
 
@@ -306,7 +306,7 @@ METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_int(span<con
   // runtime divide. The two limits differ by one and must not be shared: the
   // negative range is larger, which is what lets "-32768" parse as an int16_t.
   using accumulator_t = detail::parse_accumulator_t<T>;
-  constexpr accumulator_t positive_limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  constexpr auto positive_limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
   constexpr accumulator_t negative_limit = detail::negative_limit_of<T>();
   const accumulator_t limit_head =
       negative ? negative_limit / accumulator_t{10} : positive_limit / accumulator_t{10};
@@ -374,7 +374,7 @@ METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_hex(span<con
     return unexpected<parse_error>(parse_error::empty);
   }
   using accumulator_t = detail::parse_accumulator_t<T>;
-  constexpr accumulator_t limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
   constexpr accumulator_t limit_head = limit / accumulator_t{16};
   constexpr accumulator_t limit_tail = limit % accumulator_t{16};
 
