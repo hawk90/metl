@@ -294,15 +294,15 @@ int main() {
   {
     constexpr bool folded = []() constexpr {
       const char digits[] = {'4', '0', '9', '5', 'z'};
-      const auto run = metl::detail::fold_decimal(metl::span<const char>(digits, 5), 65535ULL);
-      return run.value == 4095ULL && run.consumed == 4 && !run.overflowed;
+      const auto run = metl::detail::fold_decimal<unsigned>(metl::span<const char>(digits, 5), 6553u, 5u);
+      return run.value == 4095u && run.consumed == 4 && !run.overflowed;
     }();
     static_assert(folded, "the decimal fold must be usable in a constant expression");
     CHECK(folded);
 
     constexpr bool rejected = []() constexpr {
       const char digits[] = {'6', '5', '5', '3', '6'};
-      const auto run = metl::detail::fold_decimal(metl::span<const char>(digits, 5), 65535ULL);
+      const auto run = metl::detail::fold_decimal<unsigned>(metl::span<const char>(digits, 5), 6553u, 5u);
       return run.overflowed && run.consumed == 5;
     }();
     static_assert(rejected, "overflow must be detectable in a constant expression");
@@ -312,7 +312,7 @@ int main() {
     // number and a caller resuming at the tail does not restart mid-number.
     constexpr bool consumed_all = []() constexpr {
       const char digits[] = {'9', '9', '9', '9', '9', '9', ','};
-      const auto run = metl::detail::fold_decimal(metl::span<const char>(digits, 7), 255ULL);
+      const auto run = metl::detail::fold_decimal<unsigned>(metl::span<const char>(digits, 7), 25u, 5u);
       return run.overflowed && run.consumed == 6;
     }();
     static_assert(consumed_all, "an overflowing run must still consume all of its digits");
@@ -320,8 +320,8 @@ int main() {
 
     constexpr bool hex_folded = []() constexpr {
       const char digits[] = {'f', 'F', '0', 'g'};
-      const auto run = metl::detail::fold_hex(metl::span<const char>(digits, 4), 0xffffULL);
-      return run.value == 0xff0ULL && run.consumed == 3 && !run.overflowed;
+      const auto run = metl::detail::fold_hex<unsigned>(metl::span<const char>(digits, 4), 0xfffu, 0xfu);
+      return run.value == 0xff0u && run.consumed == 3 && !run.overflowed;
     }();
     static_assert(hex_folded, "the hex fold must be usable in a constant expression");
     CHECK(hex_folded);

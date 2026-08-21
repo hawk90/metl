@@ -122,70 +122,91 @@ constexpr unsigned hex_digit_value(char character) noexcept {
   return 16u;
 }
 
+/// The type the digits are accumulated in: `T`'s own unsigned counterpart, but
+/// never narrower than `unsigned`.
+///
+/// This is a code-size decision, measured rather than assumed. Folding every
+/// width in `unsigned long long` cost a Cortex-M0 image **1504 bytes** where a
+/// Cortex-M3 paid 812 -- ARMv6-M has no divide instruction and no 64-bit
+/// arithmetic, so a `uint16_t` field was being parsed with 64-bit helper calls
+/// it never needed. Accumulating in `T`'s width keeps a 16-bit field 32-bit and
+/// leaves the 64-bit path for the callers that actually asked for 64 bits.
+template <typename T>
+using parse_accumulator_t =
+    std::conditional_t<(sizeof(T) > sizeof(unsigned)), std::make_unsigned_t<T>, unsigned>;
+
 /// Outcome of folding a run of digits.
+template <typename Acc>
 struct digit_run {
-  unsigned long long value;
+  Acc value;
   std::size_t consumed;
   bool overflowed;
 };
 
 /// Fold decimal digits from the front of @p text, stopping at the first
-/// non-digit, and report whether the run exceeded @p limit.
+/// non-digit, and report whether the run exceeded the limit.
 ///
-/// The overflow test is `value > limit / 10 || (value == limit / 10 && digit >
-/// limit % 10)` rather than the tempting `value * 10 + digit > limit`, which
+/// The limit arrives **pre-divided**, as @p limit_head (`limit / 10`) and
+/// @p limit_tail (`limit % 10`), for the same measured reason as
+/// `parse_accumulator_t`: every caller's limit is a compile-time constant, but
+/// dividing it inside this function left the division in the image on a target
+/// with no divider. Callers compute both as `constexpr` locals, so the divide
+/// happens in the compiler.
+///
+/// The test is `value > limit_head || (value == limit_head && digit >
+/// limit_tail)` rather than the tempting `value * 10 + digit > limit`, which
 /// cannot work: the product it needs to compare has already wrapped by the time
 /// the comparison runs. Digits keep being consumed after an overflow so that
 /// `consumed` still describes the whole number -- a caller that stopped early
 /// would resume parsing in the middle of one.
-constexpr digit_run fold_decimal(span<const char> text, unsigned long long limit) noexcept {
-  unsigned long long value = 0;
+template <typename Acc>
+constexpr digit_run<Acc> fold_decimal(span<const char> text, Acc limit_head, Acc limit_tail) noexcept {
+  Acc value = 0;
   std::size_t index = 0;
   bool overflowed = false;
-  const unsigned long long limit_head = limit / 10ULL;
-  const unsigned long long limit_tail = limit % 10ULL;
 
   while (index < text.size() && is_decimal_digit(text[index])) {
-    const auto digit = static_cast<unsigned long long>(text[index] - '0');
+    const auto digit = static_cast<Acc>(text[index] - '0');
     if (value > limit_head || (value == limit_head && digit > limit_tail)) {
       overflowed = true;
     } else {
-      value = value * 10ULL + digit;
+      value = static_cast<Acc>(value * Acc{10} + digit);
     }
     ++index;
   }
-  return digit_run{value, index, overflowed};
+  return digit_run<Acc>{value, index, overflowed};
 }
 
-/// Fold hex digits from the front of @p text. Same shape as `fold_decimal`; the
-/// overflow test is a shift rather than a division because the base is a power
-/// of two.
-constexpr digit_run fold_hex(span<const char> text, unsigned long long limit) noexcept {
-  unsigned long long value = 0;
+/// Fold hex digits from the front of @p text. Same shape and the same
+/// pre-divided limit as `fold_decimal`.
+template <typename Acc>
+constexpr digit_run<Acc> fold_hex(span<const char> text, Acc limit_head, Acc limit_tail) noexcept {
+  Acc value = 0;
   std::size_t index = 0;
   bool overflowed = false;
-  const unsigned long long limit_head = limit / 16ULL;
-  const unsigned long long limit_tail = limit % 16ULL;
 
   while (index < text.size() && hex_digit_value(text[index]) < 16u) {
-    const auto digit = static_cast<unsigned long long>(hex_digit_value(text[index]));
+    const auto digit = static_cast<Acc>(hex_digit_value(text[index]));
     if (value > limit_head || (value == limit_head && digit > limit_tail)) {
       overflowed = true;
     } else {
-      value = value * 16ULL + digit;
+      value = static_cast<Acc>(value * Acc{16} + digit);
     }
     ++index;
   }
-  return digit_run{value, index, overflowed};
+  return digit_run<Acc>{value, index, overflowed};
 }
 
 /// The largest magnitude a negative `T` can represent, computed without ever
 /// negating the minimum -- `-std::numeric_limits<T>::min()` is undefined, which
 /// is the same hazard `metl/format.hpp`'s `magnitude_of` exists to avoid.
+///
+/// `parse_accumulator_t<T>` is never narrower than `T`'s unsigned counterpart,
+/// so `max() + 1` cannot wrap here.
 template <typename T>
-constexpr unsigned long long negative_limit_of() noexcept {
-  using unsigned_t = std::make_unsigned_t<T>;
-  return static_cast<unsigned long long>(static_cast<unsigned_t>(std::numeric_limits<T>::max())) + 1ULL;
+constexpr parse_accumulator_t<T> negative_limit_of() noexcept {
+  using accumulator_t = parse_accumulator_t<T>;
+  return static_cast<accumulator_t>(static_cast<accumulator_t>(std::numeric_limits<T>::max()) + 1);
 }
 
 }  // namespace detail
@@ -218,8 +239,14 @@ METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_uint(span<co
   if (text.empty()) {
     return unexpected<parse_error>(parse_error::empty);
   }
-  const auto limit = static_cast<unsigned long long>(std::numeric_limits<T>::max());
-  const detail::digit_run run = detail::fold_decimal(text, limit);
+  // Both `constexpr`, so the divide happens in the compiler and not in an
+  // ARMv6-M image that has no divide instruction. See `fold_decimal`.
+  using accumulator_t = detail::parse_accumulator_t<T>;
+  constexpr accumulator_t limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  constexpr accumulator_t limit_head = limit / accumulator_t{10};
+  constexpr accumulator_t limit_tail = limit % accumulator_t{10};
+
+  const auto run = detail::fold_decimal(text, limit_head, limit_tail);
   if (run.consumed == 0) {
     return unexpected<parse_error>(parse_error::not_a_number);
   }
@@ -275,9 +302,18 @@ METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_int(span<con
   const bool negative = text[0] == '-';
   const span<const char> digits = negative ? text.subspan(std::size_t{1}) : text;
 
-  const unsigned long long limit = negative ? detail::negative_limit_of<T>()
-                                            : static_cast<unsigned long long>(std::numeric_limits<T>::max());
-  const detail::digit_run run = detail::fold_decimal(digits, limit);
+  // Four `constexpr` constants and a runtime select between them, rather than a
+  // runtime divide. The two limits differ by one and must not be shared: the
+  // negative range is larger, which is what lets "-32768" parse as an int16_t.
+  using accumulator_t = detail::parse_accumulator_t<T>;
+  constexpr accumulator_t positive_limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  constexpr accumulator_t negative_limit = detail::negative_limit_of<T>();
+  const accumulator_t limit_head =
+      negative ? negative_limit / accumulator_t{10} : positive_limit / accumulator_t{10};
+  const accumulator_t limit_tail =
+      negative ? negative_limit % accumulator_t{10} : positive_limit % accumulator_t{10};
+
+  const auto run = detail::fold_decimal(digits, limit_head, limit_tail);
   if (run.consumed == 0) {
     return unexpected<parse_error>(parse_error::not_a_number);
   }
@@ -291,7 +327,7 @@ METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_int(span<con
   }
   // run.value is at most max()+1. Negating max() is fine; the extra one is the
   // minimum, which is returned directly because -min() does not exist.
-  if (run.value == detail::negative_limit_of<T>()) {
+  if (run.value == negative_limit) {
     return parsed<T>{std::numeric_limits<T>::min(), tail};
   }
   return parsed<T>{static_cast<T>(-static_cast<T>(run.value)), tail};
@@ -337,8 +373,12 @@ METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_hex(span<con
   if (text.empty()) {
     return unexpected<parse_error>(parse_error::empty);
   }
-  const auto limit = static_cast<unsigned long long>(std::numeric_limits<T>::max());
-  const detail::digit_run run = detail::fold_hex(text, limit);
+  using accumulator_t = detail::parse_accumulator_t<T>;
+  constexpr accumulator_t limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  constexpr accumulator_t limit_head = limit / accumulator_t{16};
+  constexpr accumulator_t limit_tail = limit % accumulator_t{16};
+
+  const auto run = detail::fold_hex(text, limit_head, limit_tail);
   if (run.consumed == 0) {
     return unexpected<parse_error>(parse_error::not_a_number);
   }
