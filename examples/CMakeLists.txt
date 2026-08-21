@@ -20,6 +20,7 @@ set(_metl_examples
   error_handling    # expected + optional + variant (no exceptions)
   callbacks         # function_ref / delegate / fixed_function / event_dispatcher / scope_exit
   log_line          # format.hpp int-to-text + fixed_string, no stdio formatting
+  wire_values       # parse.hpp text-to-int: boundary refusal, fixed point, round trip
   coroutine_task    # coro/protothread cooperative tasks
   deadline_tasks    # coro/deadline_scheduler + fixed_priority_queue
   blinky_fsm        # fsm + mmio + delegate

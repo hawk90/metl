@@ -124,6 +124,7 @@ Worked example: [`examples/callbacks.cpp`](../examples/callbacks.cpp).
 | Bit twiddling (popcount, log2, power-of-two) | [`bit`](../include/metl/bit.hpp) |
 | A DMA/UART region to fill in place | [`spsc_byte_ring<N>`](../include/metl/spsc_byte_ring.hpp) |
 | To turn a number into text without stdio | [`format`](../include/metl/format.hpp) |
+| To turn text back into a number without stdlib | [`parse`](../include/metl/parse.hpp) — takes a `span`, never a `const char*`, and refuses an out-of-range value instead of wrapping it |
 | To spin or idle politely | [`wait`](../include/metl/wait.hpp) — `cpu_relax()` to spin, `wait_for_event()` to actually idle |
 
 `spsc_byte_ring` hands out contiguous spans, which is the one thing `ring_buffer`

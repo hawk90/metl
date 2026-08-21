@@ -39,6 +39,7 @@
 #include <metl/format.hpp>
 #include <metl/handle_pool.hpp>
 #include <metl/object_pool.hpp>
+#include <metl/parse.hpp>
 #include <metl/span.hpp>
 #include <metl/spsc_byte_ring.hpp>
 #include <metl/spsc_queue.hpp>
@@ -175,6 +176,21 @@ void exercise_format() noexcept {
   sink(metl::try_format_uint(metl::span<char>(scratch, 1), 1000u).empty() ? 1u : 0u);
 }
 
+void exercise_parse() noexcept {
+  // Text-to-number without stdlib: strtol is locale-aware and drags in more than
+  // a freestanding image wants, which is the reason this path exists at all.
+  const char digits[] = {'4', '2', '9', '4', '9', '6', '7', '2', '9', '5'};
+  const metl::span<const char> text(digits, sizeof digits);
+  const auto unsigned_value = metl::try_parse_uint<std::uint32_t>(text);
+  sink(unsigned_value ? unsigned_value->value : 0u);
+  const auto signed_value = metl::try_parse_int<std::int32_t>(text.first(std::size_t{4}));
+  sink(signed_value ? static_cast<std::uint32_t>(signed_value->value) : 0u);
+  const auto hex_value = metl::try_parse_hex<std::uint16_t>(text.first(std::size_t{4}));
+  sink(hex_value ? hex_value->value : 0u);
+  // The refusal path has to be linked too: it is the one callers depend on.
+  sink(metl::try_parse_uint<std::uint8_t>(text).has_value() ? 1u : 0u);
+}
+
 void exercise_crc() noexcept {
   const std::uint8_t bytes[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
   sink(metl::crc32(metl::span<const std::uint8_t>{bytes, 16}));
@@ -193,6 +209,7 @@ extern "C" int probe_main(void) {
   exercise_priority_queue();
   exercise_byte_ring();
   exercise_format();
+  exercise_parse();
   exercise_crc();
   return static_cast<int>(g_sink);
 }
