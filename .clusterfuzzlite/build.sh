@@ -19,6 +19,9 @@ fuzz_byte_ring
 fuzz_format
 fuzz_flat_set
 fuzz_unordered_set
+fuzz_sequence
+fuzz_pools
+fuzz_vocab
 "
 
 for fuzzer in ${FUZZERS}; do

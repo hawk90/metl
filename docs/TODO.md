@@ -76,10 +76,16 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   `headers reached / 66` alongside it. `fuzz_parse` closed the
   worst gap (`parse.hpp` is the one header whose documented job is accepting
   bytes somebody else chose, and it shipped in #66 without a harness). Still
-  unfuzzed and worth it, roughly in order:
-  `ring_buffer`/`fixed_deque`/`fixed_queue`/`fixed_stack`, `object_pool`/
-  `handle_pool`, `expected`/`optional`/`variant`. **Landed**: `spsc_byte_ring`,
-  `format`, `flat_set` and `static_unordered_set` (2026-08-22). **Not fuzz targets, and not
+  **All of the ones worth having have now landed** (2026-08-22): `parse`,
+  `spsc_byte_ring`, `format`, `flat_set`, `static_unordered_set`, and then
+  `fuzz_sequence` (`ring_buffer`/`fixed_deque`/`fixed_queue`/`fixed_stack`),
+  `fuzz_pools` (`object_pool`/`handle_pool`) and `fuzz_vocab`
+  (`expected`/`optional`/`variant`). The last three use a payload type that
+  counts its own live instances, because these containers hold elements in
+  INLINE storage where a skipped or doubled destructor is invisible to ASan —
+  it is a live member of a live object, so there is nothing for a sanitizer to
+  report. Mutation-tested: nine deliberate defects, all killed, and a no-op
+  control that correctly survived. **Not fuzz targets, and not
   gaps**: the macro/trait/config headers (`config`, `attributes`, `compiler`,
   `optimization`, `in_place`, `version`, `type_traits`, `metl.hpp`), the
   hardware ones (`mmio`, `register_access`, `bitfield`), and the concurrency

@@ -21,6 +21,9 @@ set(_metl_fuzz_targets
   fuzz_format
   fuzz_flat_set
   fuzz_unordered_set
+  fuzz_sequence
+  fuzz_pools
+  fuzz_vocab
 )
 
 # libFuzzer + sanitizers. Fuzzer instrumentation must be applied to both compile
