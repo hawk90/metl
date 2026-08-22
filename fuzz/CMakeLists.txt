@@ -16,6 +16,7 @@ set(_metl_fuzz_targets
   fuzz_static_unordered_map
   fuzz_allocators
   fuzz_crc
+  fuzz_parse
 )
 
 # libFuzzer + sanitizers. Fuzzer instrumentation must be applied to both compile

@@ -63,6 +63,23 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   fields OSS-Fuzz requires, and `primary_contact` publishes a maintainer email
   in the google/oss-fuzz repository — a decision, not an edit. The build wiring
   itself is ready and is exercised on every PR.
+- [ ] **Fuzz harnesses for the headers nothing reaches.** The first coverage run
+  (2026-08-22, `cflite-cron`) measured 80.23% line coverage — over **the 18 of
+  66 headers the harnesses actually touch**. Reported without that denominator
+  it reads as "METL is 80% fuzzed", which is wrong. `fuzz_parse` closed the
+  worst gap (`parse.hpp` is the one header whose documented job is accepting
+  bytes somebody else chose, and it shipped in #66 without a harness). Still
+  unfuzzed and worth it, roughly in order: `spsc_byte_ring` (driver bytes),
+  `format` (size arithmetic into a caller's buffer — currently only reached
+  through `fuzz_parse`'s round trip), `flat_set`, `static_unordered_set`,
+  `ring_buffer`/`fixed_deque`/`fixed_queue`/`fixed_stack`, `object_pool`/
+  `handle_pool`, `expected`/`optional`/`variant`. **Not fuzz targets, and not
+  gaps**: the macro/trait/config headers (`config`, `attributes`, `compiler`,
+  `optimization`, `in_place`, `version`, `type_traits`, `metl.hpp`), the
+  hardware ones (`mmio`, `register_access`, `bitfield`), and the concurrency
+  ones (`spsc_queue`, `mpmc_queue`, `atomic_*`, `lock`, `wait`) — libFuzzer
+  drives one thread, so a harness there would exercise the uncontended path and
+  claim coverage it did not earn. TSan in `ci.yml` is what covers those.
 - [x] **SECURITY.md** — vulnerability disclosure policy (root).
 - [x] **CodeQL** security scan workflow (`.github/workflows/codeql.yml`), push/PR
   plus a weekly schedule so newly published queries reach the code without
