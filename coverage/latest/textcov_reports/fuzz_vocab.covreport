@@ -1,0 +1,1087 @@
+_ZN9metl_fuzz11byte_readerC2EPKhm:
+   31|    562|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
+_ZN9metl_fuzz11byte_reader4byteEv:
+   37|   163k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
+  ------------------
+  |  Branch (37:41): [True: 162k, False: 1.00k]
+  ------------------
+_ZNK9metl_fuzz11byte_reader5emptyEv:
+   34|  33.1k|  bool empty() const noexcept { return remaining() == 0; }
+_ZNK9metl_fuzz11byte_reader9remainingEv:
+   33|  33.1k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
+  ------------------
+  |  Branch (33:51): [True: 32.6k, False: 562]
+  ------------------
+_ZN9metl_fuzz11byte_reader7integerIjEET_v:
+   41|  32.6k|  UInt integer() noexcept {
+   42|  32.6k|    UInt value = 0;
+   43|   163k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
+  ------------------
+  |  Branch (43:29): [True: 130k, False: 32.6k]
+  ------------------
+   44|   130k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
+   45|   130k|    }
+   46|  32.6k|    return value;
+   47|  32.6k|  }
+
+LLVMFuzzerTestOneInput:
+  227|    562|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
+  228|    562|  metl_fuzz::byte_reader in(data, size);
+  229|       |
+  230|    562|  switch (in.byte() % 3u) {
+  231|    291|    case 0:
+  ------------------
+  |  Branch (231:5): [True: 291, False: 271]
+  ------------------
+  232|    291|      drive_optional(in);
+  233|    291|      break;
+  234|    129|    case 1:
+  ------------------
+  |  Branch (234:5): [True: 129, False: 433]
+  ------------------
+  235|    129|      drive_expected(in);
+  236|    129|      break;
+  237|    142|    default:
+  ------------------
+  |  Branch (237:5): [True: 142, False: 420]
+  ------------------
+  238|    142|      drive_variant(in);
+  239|    142|      break;
+  240|    562|  }
+  241|       |
+  242|       |  // Everything above went out of scope. Anything still counted is a payload the
+  243|       |  // destructor never reached.
+  244|    562|  if (g_live != 0 || g_live_other != 0) {
+  ------------------
+  |  Branch (244:7): [True: 0, False: 562]
+  |  Branch (244:22): [True: 0, False: 562]
+  ------------------
+  245|      0|    __builtin_trap();
+  246|      0|  }
+  247|    562|  return 0;
+  248|    562|}
+fuzz_vocab.cpp:_ZN12_GLOBAL__N_114drive_optionalERN9metl_fuzz11byte_readerE:
+   82|    291|void drive_optional(metl_fuzz::byte_reader& in) {
+   83|    291|  metl::optional<payload> opt;
+   84|    291|  metl::optional<payload> other;
+   85|       |
+   86|  20.6k|  while (!in.empty()) {
+  ------------------
+  |  Branch (86:10): [True: 20.3k, False: 291]
+  ------------------
+   87|  20.3k|    const std::uint32_t value = in.integer<std::uint32_t>();
+   88|  20.3k|    switch (in.byte() % 8u) {
+   89|  4.77k|      case 0:
+  ------------------
+  |  Branch (89:7): [True: 4.77k, False: 15.5k]
+  ------------------
+   90|  4.77k|        opt.emplace(value);
+   91|  4.77k|        break;
+   92|  1.39k|      case 1:
+  ------------------
+  |  Branch (92:7): [True: 1.39k, False: 18.9k]
+  ------------------
+   93|  1.39k|        opt.reset();
+   94|  1.39k|        break;
+   95|  1.00k|      case 2:
+  ------------------
+  |  Branch (95:7): [True: 1.00k, False: 19.3k]
+  ------------------
+   96|  1.00k|        opt = metl::optional<payload>(payload{value});
+   97|  1.00k|        break;
+   98|  1.46k|      case 3:
+  ------------------
+  |  Branch (98:7): [True: 1.46k, False: 18.8k]
+  ------------------
+   99|  1.46k|        opt = metl::nullopt;
+  100|  1.46k|        break;
+  101|  2.57k|      case 4:
+  ------------------
+  |  Branch (101:7): [True: 2.57k, False: 17.7k]
+  ------------------
+  102|  2.57k|        other.emplace(value);
+  103|  2.57k|        break;
+  104|  2.51k|      case 5:  // engaged <- disengaged and every other combination, which is
+  ------------------
+  |  Branch (104:7): [True: 2.51k, False: 17.8k]
+  ------------------
+  105|       |               // where the destroy/construct pairing has to be right
+  106|  2.51k|        opt = other;
+  107|  2.51k|        break;
+  108|  1.92k|      case 6:
+  ------------------
+  |  Branch (108:7): [True: 1.92k, False: 18.4k]
+  ------------------
+  109|  1.92k|        opt = static_cast<metl::optional<payload>&&>(other);
+  110|  1.92k|        break;
+  111|  4.69k|      default:
+  ------------------
+  |  Branch (111:7): [True: 4.69k, False: 15.6k]
+  ------------------
+  112|  4.69k|        opt.swap(other);
+  113|  4.69k|        break;
+  114|  20.3k|    }
+  115|       |
+  116|       |    // Exactly one live payload per engaged optional. Two optionals here, so the
+  117|       |    // count must be the number of them that are engaged -- no more, no less.
+  118|  20.3k|    const int engaged = (opt.has_value() ? 1 : 0) + (other.has_value() ? 1 : 0);
+  ------------------
+  |  Branch (118:26): [True: 11.9k, False: 8.34k]
+  |  Branch (118:54): [True: 11.5k, False: 8.74k]
+  ------------------
+  119|  20.3k|    if (g_live != engaged) {
+  ------------------
+  |  Branch (119:9): [True: 0, False: 20.3k]
+  ------------------
+  120|      0|      __builtin_trap();
+  121|      0|    }
+  122|  20.3k|    if (opt.has_value() && opt->value != opt.value().value) {
+  ------------------
+  |  Branch (122:9): [True: 11.9k, False: 8.34k]
+  |  Branch (122:28): [True: 0, False: 11.9k]
+  ------------------
+  123|      0|      __builtin_trap();
+  124|      0|    }
+  125|  20.3k|  }
+  126|    291|}
+fuzz_vocab.cpp:_ZN12_GLOBAL__N_17payloadC2Ej:
+   46|  14.4k|  explicit payload(std::uint32_t v) noexcept : value(v) { ++g_live; }
+fuzz_vocab.cpp:_ZN12_GLOBAL__N_17payloadC2EOS0_:
+   48|  11.4k|  payload(payload&& other) noexcept : value(other.value) { ++g_live; }
+fuzz_vocab.cpp:_ZN12_GLOBAL__N_17payloadaSEOS0_:
+   53|  6.40k|  payload& operator=(payload&& other) noexcept {
+   54|  6.40k|    value = other.value;
+   55|  6.40k|    return *this;
+   56|  6.40k|  }
+fuzz_vocab.cpp:_ZN12_GLOBAL__N_17payloadD2Ev:
+   57|  26.0k|  ~payload() { --g_live; }
+fuzz_vocab.cpp:_ZN12_GLOBAL__N_17payloadaSERKS0_:
+   49|    981|  payload& operator=(const payload& other) noexcept {
+   50|    981|    value = other.value;
+   51|    981|    return *this;
+   52|    981|  }
+fuzz_vocab.cpp:_ZN12_GLOBAL__N_17payloadC2ERKS0_:
+   47|    179|  payload(const payload& other) noexcept : value(other.value) { ++g_live; }
+fuzz_vocab.cpp:_ZN12_GLOBAL__N_114drive_expectedERN9metl_fuzz11byte_readerE:
+  128|    129|void drive_expected(metl_fuzz::byte_reader& in) {
+  129|    129|  using result = metl::expected<payload, other_payload>;
+  130|    129|  result r{payload{0}};
+  131|       |
+  132|  6.90k|  while (!in.empty()) {
+  ------------------
+  |  Branch (132:10): [True: 6.77k, False: 129]
+  ------------------
+  133|  6.77k|    const std::uint32_t value = in.integer<std::uint32_t>();
+  134|  6.77k|    switch (in.byte() % 5u) {
+  135|  2.35k|      case 0:
+  ------------------
+  |  Branch (135:7): [True: 2.35k, False: 4.41k]
+  ------------------
+  136|  2.35k|        r = result{payload{value}};
+  137|  2.35k|        break;
+  138|  1.75k|      case 1:  // value -> error and back: reinitialisation between DIFFERENT
+  ------------------
+  |  Branch (138:7): [True: 1.75k, False: 5.02k]
+  ------------------
+  139|       |               // types, the path with the most to get wrong
+  140|  1.75k|        r = result{metl::unexpected<other_payload>(other_payload{value})};
+  141|  1.75k|        break;
+  142|  1.43k|      case 2:
+  ------------------
+  |  Branch (142:7): [True: 1.43k, False: 5.34k]
+  ------------------
+  143|  1.43k|        r.emplace(value);
+  144|  1.43k|        break;
+  145|    593|      case 3:
+  ------------------
+  |  Branch (145:7): [True: 593, False: 6.18k]
+  ------------------
+  146|    593|        if (r.has_value() && r->value != r.value().value) {
+  ------------------
+  |  Branch (146:13): [True: 467, False: 126]
+  |  Branch (146:30): [True: 0, False: 467]
+  ------------------
+  147|      0|          __builtin_trap();
+  148|      0|        }
+  149|    593|        break;
+  150|    635|      default:
+  ------------------
+  |  Branch (150:7): [True: 635, False: 6.14k]
+  ------------------
+  151|    635|        if (!r.has_value() && r.error().value != value) {
+  ------------------
+  |  Branch (151:13): [True: 157, False: 478]
+  |  Branch (151:31): [True: 154, False: 3]
+  ------------------
+  152|       |          // Reading the error is legitimate here; the comparison is incidental.
+  153|       |          // What matters is that reading it at all does not disturb the state.
+  154|    154|        }
+  155|    635|        break;
+  156|  6.77k|    }
+  157|       |
+  158|       |    // Exactly one of the two alternatives is alive. A reinit that destroyed
+  159|       |    // neither, or both, lands here.
+  160|  6.77k|    if (r.has_value()) {
+  ------------------
+  |  Branch (160:9): [True: 4.73k, False: 2.03k]
+  ------------------
+  161|  4.73k|      if (g_live != 1 || g_live_other != 0) {
+  ------------------
+  |  Branch (161:11): [True: 0, False: 4.73k]
+  |  Branch (161:26): [True: 0, False: 4.73k]
+  ------------------
+  162|      0|        __builtin_trap();
+  163|      0|      }
+  164|  4.73k|    } else if (g_live != 0 || g_live_other != 1) {
+  ------------------
+  |  Branch (164:16): [True: 0, False: 2.03k]
+  |  Branch (164:31): [True: 0, False: 2.03k]
+  ------------------
+  165|      0|      __builtin_trap();
+  166|      0|    }
+  167|  6.77k|  }
+  168|    129|}
+fuzz_vocab.cpp:_ZN12_GLOBAL__N_113other_payloadaSEOS0_:
+   75|  1.14k|  other_payload& operator=(other_payload&& o) noexcept {
+   76|  1.14k|    value = o.value;
+   77|  1.14k|    return *this;
+   78|  1.14k|  }
+fuzz_vocab.cpp:_ZN12_GLOBAL__N_113other_payloadC2EOS0_:
+   70|  6.39k|  other_payload(other_payload&& o) noexcept : value(o.value) { ++g_live_other; }
+fuzz_vocab.cpp:_ZN12_GLOBAL__N_113other_payloadC2Em:
+   68|  3.67k|  explicit other_payload(std::uint64_t v) noexcept : value(v) { ++g_live_other; }
+fuzz_vocab.cpp:_ZN12_GLOBAL__N_113other_payloadD2Ev:
+   79|  10.0k|  ~other_payload() { --g_live_other; }
+fuzz_vocab.cpp:_ZN12_GLOBAL__N_113drive_variantERN9metl_fuzz11byte_readerE:
+  170|    142|void drive_variant(metl_fuzz::byte_reader& in) {
+  171|    142|  using var = metl::variant<payload, other_payload>;
+  172|    142|  var v{payload{0}};
+  173|       |
+  174|  5.65k|  while (!in.empty()) {
+  ------------------
+  |  Branch (174:10): [True: 5.51k, False: 142]
+  ------------------
+  175|  5.51k|    const std::uint32_t value = in.integer<std::uint32_t>();
+  176|  5.51k|    switch (in.byte() % 6u) {
+  177|  1.48k|      case 0:
+  ------------------
+  |  Branch (177:7): [True: 1.48k, False: 4.02k]
+  ------------------
+  178|  1.48k|        v = var{payload{value}};
+  179|  1.48k|        break;
+  180|  1.00k|      case 1:
+  ------------------
+  |  Branch (180:7): [True: 1.00k, False: 4.50k]
+  ------------------
+  181|  1.00k|        v = var{other_payload{value}};
+  182|  1.00k|        break;
+  183|    524|      case 2:
+  ------------------
+  |  Branch (183:7): [True: 524, False: 4.98k]
+  ------------------
+  184|    524|        v.template emplace<payload>(value);
+  185|    524|        break;
+  186|    918|      case 3:
+  ------------------
+  |  Branch (186:7): [True: 918, False: 4.59k]
+  ------------------
+  187|    918|        v.template emplace<other_payload>(value);
+  188|    918|        break;
+  189|  1.12k|      case 4: {
+  ------------------
+  |  Branch (189:7): [True: 1.12k, False: 4.39k]
+  ------------------
+  190|       |        // get_if is the total accessor; get<> asserts on the wrong alternative,
+  191|       |        // so it is only reached once get_if has proven which one is active.
+  192|  1.12k|        if (const payload* p = metl::get_if<payload>(&v)) {
+  ------------------
+  |  Branch (192:28): [True: 591, False: 529]
+  ------------------
+  193|    591|          if (p->value != metl::get<payload>(v).value) {
+  ------------------
+  |  Branch (193:15): [True: 0, False: 591]
+  ------------------
+  194|      0|            __builtin_trap();
+  195|      0|          }
+  196|    591|          if (v.index() != 0) {
+  ------------------
+  |  Branch (196:15): [True: 0, False: 591]
+  ------------------
+  197|      0|            __builtin_trap();
+  198|      0|          }
+  199|    591|        } else if (const other_payload* q = metl::get_if<other_payload>(&v)) {
+  ------------------
+  |  Branch (199:41): [True: 529, False: 0]
+  ------------------
+  200|    529|          if (q->value != metl::get<other_payload>(v).value || v.index() != 1) {
+  ------------------
+  |  Branch (200:15): [True: 0, False: 529]
+  |  Branch (200:64): [True: 0, False: 529]
+  ------------------
+  201|      0|            __builtin_trap();
+  202|      0|          }
+  203|    529|        }
+  204|  1.12k|        break;
+  205|  1.12k|      }
+  206|  1.12k|      default: {
+  ------------------
+  |  Branch (206:7): [True: 460, False: 5.05k]
+  ------------------
+  207|       |        // Self-assignment: the case where "destroy the old, construct the new"
+  208|       |        // destroys the thing it is about to read.
+  209|    460|        v = v;
+  210|    460|        break;
+  211|  1.12k|      }
+  212|  5.51k|    }
+  213|       |
+  214|  5.51k|    if (v.valueless_by_exception()) {
+  ------------------
+  |  Branch (214:9): [True: 0, False: 5.51k]
+  ------------------
+  215|      0|      __builtin_trap();  // unreachable without exceptions; if it happens, say so
+  216|      0|    }
+  217|       |    // Exactly one alternative alive, and it is the one `index()` claims.
+  218|  5.51k|    const bool first = v.index() == 0;
+  219|  5.51k|    if (g_live != (first ? 1 : 0) || g_live_other != (first ? 0 : 1)) {
+  ------------------
+  |  Branch (219:9): [True: 0, False: 5.51k]
+  |  Branch (219:20): [True: 2.86k, False: 2.64k]
+  |  Branch (219:38): [True: 0, False: 5.51k]
+  |  Branch (219:55): [True: 2.86k, False: 2.64k]
+  ------------------
+  220|      0|      __builtin_trap();
+  221|      0|    }
+  222|  5.51k|  }
+  223|    142|}
+
+fuzz_vocab.cpp:_ZN4metl6detail12construct_atIN12_GLOBAL__N_17payloadEJRKjEEEPT_S7_DpOT0_:
+   65|  7.34k|T* construct_at(T* location, Args&&... args) {
+   66|  7.34k|  return ::new (static_cast<void*>(location)) T(std::forward<Args>(args)...);
+   67|  7.34k|}
+fuzz_vocab.cpp:_ZN4metl6detail10destroy_atIN12_GLOBAL__N_17payloadEEEvPT_:
+   70|  11.0k|void destroy_at(T* location) noexcept {
+   71|  11.0k|  location->~T();
+   72|  11.0k|}
+fuzz_vocab.cpp:_ZN4metl6detail12construct_atIN12_GLOBAL__N_17payloadEJS3_EEEPT_S5_DpOT0_:
+   65|  3.49k|T* construct_at(T* location, Args&&... args) {
+   66|  3.49k|  return ::new (static_cast<void*>(location)) T(std::forward<Args>(args)...);
+   67|  3.49k|}
+fuzz_vocab.cpp:_ZN4metl6detail12construct_atIN12_GLOBAL__N_17payloadEJRKS3_EEEPT_S7_DpOT0_:
+   65|    179|T* construct_at(T* location, Args&&... args) {
+   66|    179|  return ::new (static_cast<void*>(location)) T(std::forward<Args>(args)...);
+   67|    179|}
+
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEEC2EOS2_:
+  186|  2.48k|  expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE13storage_unionC2Ev:
+  848|  4.24k|    storage_union() {}
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE15construct_valueIJS2_EEEvDpOT_:
+  693|  2.94k|  void construct_value(Args&&... args) {
+  694|  2.94k|    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
+  695|  2.94k|  }
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE13storage_unionD2Ev:
+  849|  4.24k|    ~storage_union() {}
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEEaSEOS4_:
+  261|  4.11k|                                                 std::is_nothrow_move_constructible_v<E>) {
+  262|  4.11k|    if (this == &other) {
+  ------------------
+  |  Branch (262:9): [True: 0, False: 4.11k]
+  ------------------
+  263|      0|      return *this;
+  264|      0|    }
+  265|       |
+  266|  4.11k|    if (other.has_value_) {
+  ------------------
+  |  Branch (266:9): [True: 2.35k, False: 1.75k]
+  ------------------
+  267|  2.35k|      assign_value_or_rebind(static_cast<T&&>(other.value_unchecked()));
+  268|  2.35k|    } else {
+  269|  1.75k|      assign_error_or_rebind(static_cast<E&&>(other.error_unchecked()));
+  270|  1.75k|    }
+  271|       |
+  272|  4.11k|    return *this;
+  273|  4.11k|  }
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE22assign_value_or_rebindIS2_EEvOT_:
+  711|  2.35k|  void assign_value_or_rebind(U&& value) {
+  712|  2.35k|    if (has_value_) {
+  ------------------
+  |  Branch (712:9): [True: 1.89k, False: 459]
+  ------------------
+  713|  1.89k|      *value_ptr() = std::forward<U>(value);
+  714|  1.89k|      return;
+  715|  1.89k|    }
+  716|       |    // Currently holds an error; switch to the value state exception-safely.
+  717|    459|    reinit_as_value(std::forward<U>(value));
+  718|    459|  }
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE9value_ptrEv:
+  680|  11.0k|  T* value_ptr() noexcept { return storage_.value_storage.ptr(); }
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE15reinit_as_valueIJS2_EEEvDpOT_:
+  735|    459|  void reinit_as_value(Args&&... args) {
+  736|    459|    if constexpr (std::is_nothrow_constructible_v<T, Args&&...>) {
+  737|    459|      error_ptr()->~E();
+  738|    459|      construct_value(std::forward<Args>(args)...);
+  739|       |    } else if constexpr (std::is_nothrow_move_constructible_v<T>) {
+  740|       |      // Build the new value first (may throw; error stays intact), then commit.
+  741|       |      T tmp(std::forward<Args>(args)...);
+  742|       |      error_ptr()->~E();
+  743|       |      construct_value(static_cast<T&&>(tmp));
+  744|       |    } else {
+  745|       |#if METL_NO_EXCEPTIONS
+  746|       |      error_ptr()->~E();
+  747|       |      construct_value(std::forward<Args>(args)...);
+  748|       |#else
+  749|       |      E backup(static_cast<E&&>(*error_ptr()));
+  750|       |      error_ptr()->~E();
+  751|       |      try {
+  752|       |        construct_value(std::forward<Args>(args)...);
+  753|       |      } catch (...) {
+  754|       |        construct_error(static_cast<E&&>(backup));  // restore the error state
+  755|       |        throw;
+  756|       |      }
+  757|       |#endif
+  758|       |    }
+  759|    459|    has_value_ = true;
+  760|    459|  }
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE9error_ptrEv:
+  683|  5.41k|  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE15value_uncheckedEv:
+  687|  2.35k|  T& value_unchecked() noexcept { return *value_ptr(); }
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE22assign_error_or_rebindIS3_EEvOT_:
+  721|  1.75k|  void assign_error_or_rebind(G&& error) {
+  722|  1.75k|    if (!has_value_) {
+  ------------------
+  |  Branch (722:9): [True: 1.14k, False: 613]
+  ------------------
+  723|  1.14k|      *error_ptr() = std::forward<G>(error);
+  724|  1.14k|      return;
+  725|  1.14k|    }
+  726|       |    // Currently holds a value; switch to the error state exception-safely.
+  727|    613|    reinit_as_error(std::forward<G>(error));
+  728|    613|  }
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE15reinit_as_errorIJS3_EEEvDpOT_:
+  764|    613|  void reinit_as_error(Args&&... args) {
+  765|    613|    if constexpr (std::is_nothrow_constructible_v<E, Args&&...>) {
+  766|    613|      value_ptr()->~T();
+  767|    613|      construct_error(std::forward<Args>(args)...);
+  768|       |    } else if constexpr (std::is_nothrow_move_constructible_v<E>) {
+  769|       |      E tmp(std::forward<Args>(args)...);
+  770|       |      value_ptr()->~T();
+  771|       |      construct_error(static_cast<E&&>(tmp));
+  772|       |    } else {
+  773|       |#if METL_NO_EXCEPTIONS
+  774|       |      value_ptr()->~T();
+  775|       |      construct_error(std::forward<Args>(args)...);
+  776|       |#else
+  777|       |      T backup(static_cast<T&&>(*value_ptr()));
+  778|       |      value_ptr()->~T();
+  779|       |      try {
+  780|       |        construct_error(std::forward<Args>(args)...);
+  781|       |      } catch (...) {
+  782|       |        construct_value(static_cast<T&&>(backup));  // restore the value state
+  783|       |        throw;
+  784|       |      }
+  785|       |#endif
+  786|       |    }
+  787|    613|    has_value_ = false;
+  788|    613|  }
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE15construct_errorIJS3_EEEvDpOT_:
+  698|  2.36k|  void construct_error(Args&&... args) {
+  699|  2.36k|    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
+  700|  2.36k|  }
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE15error_uncheckedEv:
+  689|  1.75k|  E& error_unchecked() noexcept { return *error_ptr(); }
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEED2Ev:
+  238|  4.24k|  ~expected() { destroy_active(); }
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE14destroy_activeEv:
+  702|  5.67k|  void destroy_active() noexcept {
+  703|  5.67k|    if (has_value_) {
+  ------------------
+  |  Branch (703:9): [True: 3.76k, False: 1.90k]
+  ------------------
+  704|  3.76k|      value_ptr()->~T();
+  705|  3.76k|    } else {
+  706|  1.90k|      error_ptr()->~E();
+  707|  1.90k|    }
+  708|  5.67k|  }
+fuzz_vocab.cpp:_ZN4metl10unexpectedIN12_GLOBAL__N_113other_payloadEEC2IS2_vEEOT_:
+   56|  1.75k|  constexpr explicit unexpected(Err&& e) : value_(std::forward<Err>(e)) {}
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEEC2IS3_vEEONS_10unexpectedIT_EE:
+  196|  1.75k|  expected(unexpected<G>&& u) : has_value_(false) {
+  197|  1.75k|    construct_error(static_cast<G&&>(u.error()));
+  198|  1.75k|  }
+fuzz_vocab.cpp:_ZNR4metl10unexpectedIN12_GLOBAL__N_113other_payloadEE5errorEv:
+   67|  1.75k|  constexpr E& error() & noexcept { return value_; }
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE7emplaceIJRKjEEERS2_DpOT_:
+  456|  1.43k|  T& emplace(Args&&... args) {
+  457|  1.43k|    destroy_active();
+  458|  1.43k|    construct_value(std::forward<Args>(args)...);
+  459|  1.43k|    has_value_ = true;
+  460|  1.43k|    return *value_ptr();
+  461|  1.43k|  }
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE15construct_valueIJRKjEEEvDpOT_:
+  693|  1.43k|  void construct_value(Args&&... args) {
+  694|  1.43k|    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
+  695|  1.43k|  }
+fuzz_vocab.cpp:_ZNK4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE9has_valueEv:
+  307|  8.00k|  METL_NODISCARD constexpr bool has_value() const noexcept { return has_value_; }
+fuzz_vocab.cpp:_ZN4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEEptEv:
+  320|    467|  METL_NODISCARD T* operator->() noexcept {
+  321|    467|    METL_ASSERT(has_value_);
+  ------------------
+  |  |   91|    467|  do {                                                             \
+  |  |   92|    467|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|    467|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 467]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|    467|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 467]
+  |  |  ------------------
+  ------------------
+  322|    467|    return value_ptr();
+  323|    467|  }
+fuzz_vocab.cpp:_ZNR4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE5valueEv:
+  361|    467|  METL_NODISCARD T& value() & noexcept {
+  362|    467|    METL_ASSERT(has_value_);
+  ------------------
+  |  |   91|    467|  do {                                                             \
+  |  |   92|    467|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|    467|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 467]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|    467|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 467]
+  |  |  ------------------
+  ------------------
+  363|    467|    return *value_ptr();
+  364|    467|  }
+fuzz_vocab.cpp:_ZNR4metl8expectedIN12_GLOBAL__N_17payloadENS1_13other_payloadEE5errorEv:
+  394|    157|  METL_NODISCARD E& error() & noexcept {
+  395|    157|    METL_ASSERT(!has_value_);
+  ------------------
+  |  |   91|    157|  do {                                                             \
+  |  |   92|    157|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|    157|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 157]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|    157|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 157]
+  |  |  ------------------
+  ------------------
+  396|    157|    return *error_ptr();
+  397|    157|  }
+
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEEC2Ev:
+   64|    582|  constexpr optional() noexcept : storage_{}, has_value_(false) {}
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEE13storage_unionC2Ev:
+  438|  1.58k|    constexpr storage_union() noexcept : empty_{} {}
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEE7emplaceIJRKjEEERS2_DpOT_:
+  279|  7.34k|  T& emplace(Args&&... args) {
+  280|  7.34k|    reset();
+  281|  7.34k|    construct(std::forward<Args>(args)...);
+  282|  7.34k|    return *data();
+  283|  7.34k|  }
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEE9constructIJRKjEEEvDpOT_:
+  449|  7.34k|  METL_CONSTEXPR20 void construct(Args&&... args) {
+  450|  7.34k|    detail::construct_at(&storage_.value_, std::forward<Args>(args)...);
+  451|  7.34k|    has_value_ = true;
+  452|  7.34k|  }
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEE4dataEv:
+  445|  51.8k|  METL_CONSTEXPR20 T* data() noexcept { return &storage_.value_; }
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEE5resetEv:
+  286|  16.1k|  METL_CONSTEXPR20 void reset() noexcept {
+  287|  16.1k|    if (!has_value_) {
+  ------------------
+  |  Branch (287:9): [True: 5.08k, False: 11.0k]
+  ------------------
+  288|  5.08k|      return;
+  289|  5.08k|    }
+  290|       |
+  291|  11.0k|    detail::destroy_at(data());
+  292|  11.0k|    has_value_ = false;
+  293|  11.0k|  }
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEEC2IS2_vEEOT_:
+   77|  1.00k|  constexpr optional(U&& v) : storage_{}, has_value_(false) {
+   78|  1.00k|    construct(std::forward<U>(v));
+   79|  1.00k|  }
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEE9constructIJS2_EEEvDpOT_:
+  449|  3.49k|  METL_CONSTEXPR20 void construct(Args&&... args) {
+  450|  3.49k|    detail::construct_at(&storage_.value_, std::forward<Args>(args)...);
+  451|  3.49k|    has_value_ = true;
+  452|  3.49k|  }
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEE13storage_unionD2Ev:
+  442|  1.58k|    METL_CONSTEXPR20 ~storage_union() {}
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEEaSEOS3_:
+  134|  2.92k|                                                 std::is_nothrow_move_constructible_v<T>) {
+  135|  2.92k|    if (this == &other) {
+  ------------------
+  |  Branch (135:9): [True: 0, False: 2.92k]
+  ------------------
+  136|      0|      return *this;
+  137|      0|    }
+  138|       |
+  139|  2.92k|    if (other.has_value_) {
+  ------------------
+  |  Branch (139:9): [True: 1.98k, False: 942]
+  ------------------
+  140|  1.98k|      assign_or_construct(static_cast<T&&>(*other));
+  141|  1.98k|    } else {
+  142|    942|      reset();
+  143|    942|    }
+  144|       |
+  145|  2.92k|    return *this;
+  146|  2.92k|  }
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEE19assign_or_constructIS2_EEvOT_:
+  455|  1.98k|  void assign_or_construct(U&& value) {
+  456|  1.98k|    if (has_value_) {
+  ------------------
+  |  Branch (456:9): [True: 1.50k, False: 473]
+  ------------------
+  457|  1.50k|      *data() = std::forward<U>(value);
+  458|  1.50k|      return;
+  459|  1.50k|    }
+  460|       |
+  461|    473|    construct(std::forward<U>(value));
+  462|    473|  }
+fuzz_vocab.cpp:_ZNR4metl8optionalIN12_GLOBAL__N_17payloadEEdeEv:
+  187|  1.98k|  METL_NODISCARD T& operator*() & noexcept {
+  188|  1.98k|    METL_ASSERT(has_value_);
+  ------------------
+  |  |   91|  1.98k|  do {                                                             \
+  |  |   92|  1.98k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|  1.98k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 1.98k]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|  1.98k|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 1.98k]
+  |  |  ------------------
+  ------------------
+  189|  1.98k|    return *data();
+  190|  1.98k|  }
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEED2Ev:
+  107|  1.58k|  METL_CONSTEXPR20 ~optional() { reset(); }
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEEaSENS_9nullopt_tE:
+  112|  1.46k|  optional& operator=(nullopt_t) noexcept {
+  113|  1.46k|    reset();
+  114|  1.46k|    return *this;
+  115|  1.46k|  }
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEEaSERKS3_:
+  118|  2.51k|  optional& operator=(const optional& other) {
+  119|  2.51k|    if (this == &other) {
+  ------------------
+  |  Branch (119:9): [True: 0, False: 2.51k]
+  ------------------
+  120|      0|      return *this;
+  121|      0|    }
+  122|       |
+  123|  2.51k|    if (other.has_value_) {
+  ------------------
+  |  Branch (123:9): [True: 1.16k, False: 1.35k]
+  ------------------
+  124|  1.16k|      assign_or_construct(*other);
+  125|  1.35k|    } else {
+  126|  1.35k|      reset();
+  127|  1.35k|    }
+  128|       |
+  129|  2.51k|    return *this;
+  130|  2.51k|  }
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEE19assign_or_constructIRKS2_EEvOT_:
+  455|  1.16k|  void assign_or_construct(U&& value) {
+  456|  1.16k|    if (has_value_) {
+  ------------------
+  |  Branch (456:9): [True: 981, False: 179]
+  ------------------
+  457|    981|      *data() = std::forward<U>(value);
+  458|    981|      return;
+  459|    981|    }
+  460|       |
+  461|    179|    construct(std::forward<U>(value));
+  462|    179|  }
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEE9constructIJRKS2_EEEvDpOT_:
+  449|    179|  METL_CONSTEXPR20 void construct(Args&&... args) {
+  450|    179|    detail::construct_at(&storage_.value_, std::forward<Args>(args)...);
+  451|    179|    has_value_ = true;
+  452|    179|  }
+fuzz_vocab.cpp:_ZNKR4metl8optionalIN12_GLOBAL__N_17payloadEEdeEv:
+  179|  1.16k|  METL_NODISCARD constexpr const T& operator*() const& noexcept {
+  180|  1.16k|    METL_ASSERT(has_value_);
+  ------------------
+  |  |   91|  1.16k|  do {                                                             \
+  |  |   92|  1.16k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|  1.16k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 1.16k]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|  1.16k|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 1.16k]
+  |  |  ------------------
+  ------------------
+  181|  1.16k|    return *data();
+  182|  1.16k|  }
+fuzz_vocab.cpp:_ZNK4metl8optionalIN12_GLOBAL__N_17payloadEE4dataEv:
+  446|  1.16k|  constexpr const T* data() const noexcept { return &storage_.value_; }
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEE4swapERS3_:
+  297|  4.69k|                                      std::is_nothrow_move_assignable_v<T>) {
+  298|  4.69k|    if (has_value_ && other.has_value_) {
+  ------------------
+  |  Branch (298:9): [True: 2.47k, False: 2.21k]
+  |  Branch (298:23): [True: 1.50k, False: 979]
+  ------------------
+  299|  1.50k|      using std::swap;
+  300|  1.50k|      swap(*data(), *other.data());
+  301|  3.19k|    } else if (has_value_ && !other.has_value_) {
+  ------------------
+  |  Branch (301:16): [True: 979, False: 2.21k]
+  |  Branch (301:30): [True: 979, False: 0]
+  ------------------
+  302|    979|      other.construct(static_cast<T&&>(*data()));
+  303|    979|      reset();
+  304|  2.21k|    } else if (!has_value_ && other.has_value_) {
+  ------------------
+  |  Branch (304:16): [True: 2.21k, False: 0]
+  |  Branch (304:31): [True: 1.04k, False: 1.16k]
+  ------------------
+  305|  1.04k|      construct(static_cast<T&&>(*other.data()));
+  306|  1.04k|      other.reset();
+  307|  1.04k|    }
+  308|       |    // both empty: nothing to do.
+  309|  4.69k|  }
+fuzz_vocab.cpp:_ZNK4metl8optionalIN12_GLOBAL__N_17payloadEE9has_valueEv:
+  211|  60.9k|  METL_NODISCARD constexpr bool has_value() const noexcept { return has_value_; }
+fuzz_vocab.cpp:_ZN4metl8optionalIN12_GLOBAL__N_17payloadEEptEv:
+  171|  11.9k|  METL_NODISCARD T* operator->() noexcept {
+  172|  11.9k|    METL_ASSERT(has_value_);
+  ------------------
+  |  |   91|  11.9k|  do {                                                             \
+  |  |   92|  11.9k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|  11.9k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 11.9k]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|  11.9k|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 11.9k]
+  |  |  ------------------
+  ------------------
+  173|  11.9k|    return data();
+  174|  11.9k|  }
+fuzz_vocab.cpp:_ZNR4metl8optionalIN12_GLOBAL__N_17payloadEE5valueEv:
+  217|  11.9k|  METL_NODISCARD T& value() & noexcept {
+  218|  11.9k|    METL_ASSERT(has_value_);
+  ------------------
+  |  |   91|  11.9k|  do {                                                             \
+  |  |   92|  11.9k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|  11.9k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 11.9k]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|  11.9k|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 11.9k]
+  |  |  ------------------
+  ------------------
+  219|  11.9k|    return *data();
+  220|  11.9k|  }
+
+fuzz_vocab.cpp:_ZN4metl11storage_forIN12_GLOBAL__N_17payloadEE4addrEv:
+   34|  4.38k|  void* addr() noexcept { return &bytes[0]; }
+fuzz_vocab.cpp:_ZN4metl11storage_forIN12_GLOBAL__N_17payloadEE3ptrEv:
+   24|  11.0k|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
+fuzz_vocab.cpp:_ZN4metl11storage_forIN12_GLOBAL__N_113other_payloadEE3ptrEv:
+   24|  5.41k|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
+fuzz_vocab.cpp:_ZN4metl11storage_forIN12_GLOBAL__N_113other_payloadEE4addrEv:
+   34|  2.36k|  void* addr() noexcept { return &bytes[0]; }
+
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEEC2IS2_S2_vvvEEOT_:
+  253|  1.62k|      : storage_{}, index_(variant_npos) {
+  254|  1.62k|    construct<Decayed>(std::forward<T>(value));
+  255|  1.62k|  }
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEE9constructIS2_JS2_EEERT_DpOT0_:
+  451|  1.62k|  T& construct(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>) {
+  452|  1.62k|    new (raw_addr()) T(std::forward<Args>(args)...);
+  453|  1.62k|    index_ = detail::index_of_type<T, Ts...>::value;
+  454|  1.62k|    return *std::launder(static_cast<T*>(raw_addr()));
+  455|  1.62k|  }
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEE8raw_addrEv:
+  440|  23.7k|  void* raw_addr() noexcept { return static_cast<void*>(&storage_.bytes[0]); }
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEEaSEOS4_:
+  329|  2.48k|  variant& operator=(variant&& other) noexcept(detail::all_nothrow_move_assignable<Ts...>::value) {
+  330|  2.48k|    if (this == &other) {
+  ------------------
+  |  Branch (330:9): [True: 0, False: 2.48k]
+  ------------------
+  331|      0|      return *this;
+  332|      0|    }
+  333|  2.48k|    if (other.index_ == variant_npos) {
+  ------------------
+  |  Branch (333:9): [True: 0, False: 2.48k]
+  ------------------
+  334|      0|      reset();
+  335|      0|      return *this;
+  336|      0|    }
+  337|  2.48k|    assign_from(static_cast<variant&&>(other));
+  338|  2.48k|    return *this;
+  339|  2.48k|  }
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEE5resetEv:
+  443|  2.06k|  void reset() noexcept(detail::all_nothrow_destructible<Ts...>::value) {
+  444|  2.06k|    if (index_ != variant_npos) {
+  ------------------
+  |  Branch (444:9): [True: 2.06k, False: 0]
+  ------------------
+  445|  2.06k|      destroy_ops()[index_](raw_addr());
+  446|  2.06k|      index_ = variant_npos;
+  447|  2.06k|    }
+  448|  2.06k|  }
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEE11destroy_opsEv:
+  425|  7.18k|  static const destroy_op* destroy_ops() noexcept {
+  426|  7.18k|    static constexpr destroy_op ops[] = {&detail::destroy_value<Ts>...};
+  427|  7.18k|    return ops;
+  428|  7.18k|  }
+fuzz_vocab.cpp:_ZN4metl6detail13destroy_valueIN12_GLOBAL__N_17payloadEEEvPv:
+  146|  3.99k|void destroy_value(void* storage) noexcept {
+  147|  3.99k|  std::launder(static_cast<T*>(storage))->~T();
+  148|  3.99k|}
+fuzz_vocab.cpp:_ZN4metl6detail13destroy_valueIN12_GLOBAL__N_113other_payloadEEEvPv:
+  146|  3.18k|void destroy_value(void* storage) noexcept {
+  147|  3.18k|  std::launder(static_cast<T*>(storage))->~T();
+  148|  3.18k|}
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEE11assign_fromEOS4_:
+  484|  2.48k|  void assign_from(variant&& other) {
+  485|  2.48k|    if (index_ == other.index_) {
+  ------------------
+  |  Branch (485:9): [True: 1.87k, False: 618]
+  ------------------
+  486|       |      // Same alternative: destroy + move-construct in place, valueless across
+  487|       |      // the (possibly throwing) move-construct — see assign_from(const&).
+  488|  1.87k|      const std::size_t active = index_;
+  489|  1.87k|      destroy_ops()[active](raw_addr());
+  490|  1.87k|      index_ = variant_npos;
+  491|  1.87k|      move_ops()[active](raw_addr(), other.raw_addr());
+  492|  1.87k|      index_ = active;
+  493|  1.87k|      return;
+  494|  1.87k|    }
+  495|       |    // Different alternative: move-construct backup first, then assign.
+  496|    618|    variant backup(static_cast<variant&&>(other));
+  497|    618|    reset();
+  498|    618|    move_ops()[backup.index_](raw_addr(), backup.raw_addr());
+  499|    618|    index_ = backup.index_;
+  500|    618|  }
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEE8move_opsEv:
+  435|  3.10k|  static const move_op* move_ops() noexcept {
+  436|  3.10k|    static constexpr move_op ops[] = {&detail::move_value<Ts>...};
+  437|  3.10k|    return ops;
+  438|  3.10k|  }
+fuzz_vocab.cpp:_ZN4metl6detail10move_valueIN12_GLOBAL__N_17payloadEEEvPvS4_:
+  156|  1.84k|void move_value(void* destination, void* source) noexcept(std::is_nothrow_move_constructible_v<T>) {
+  157|  1.84k|  new (destination) T(static_cast<T&&>(*std::launder(static_cast<T*>(source))));
+  158|  1.84k|}
+fuzz_vocab.cpp:_ZN4metl6detail10move_valueIN12_GLOBAL__N_113other_payloadEEEvPvS4_:
+  156|  1.26k|void move_value(void* destination, void* source) noexcept(std::is_nothrow_move_constructible_v<T>) {
+  157|  1.26k|  new (destination) T(static_cast<T&&>(*std::launder(static_cast<T*>(source))));
+  158|  1.26k|}
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEEC2EOS4_:
+  301|    618|      : storage_{}, index_(variant_npos) {
+  302|    618|    if (other.index_ != variant_npos) {
+  ------------------
+  |  Branch (302:9): [True: 618, False: 0]
+  ------------------
+  303|    618|      move_ops()[other.index_](raw_addr(), other.raw_addr());
+  304|    618|      index_ = other.index_;
+  305|    618|    }
+  306|    618|  }
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEED2Ev:
+  309|  3.24k|  ~variant() {
+  310|  3.24k|    if (index_ != variant_npos) {
+  ------------------
+  |  Branch (310:9): [True: 3.24k, False: 0]
+  ------------------
+  311|  3.24k|      destroy_ops()[index_](raw_addr());
+  312|  3.24k|    }
+  313|  3.24k|  }
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEEC2IS3_S3_vvvEEOT_:
+  253|  1.00k|      : storage_{}, index_(variant_npos) {
+  254|  1.00k|    construct<Decayed>(std::forward<T>(value));
+  255|  1.00k|  }
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEE9constructIS3_JS3_EEERT_DpOT0_:
+  451|  1.00k|  T& construct(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>) {
+  452|  1.00k|    new (raw_addr()) T(std::forward<Args>(args)...);
+  453|  1.00k|    index_ = detail::index_of_type<T, Ts...>::value;
+  454|  1.00k|    return *std::launder(static_cast<T*>(raw_addr()));
+  455|  1.00k|  }
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEE7emplaceIS2_JRKjEEERT_DpOT0_:
+  383|    524|                                      detail::all_nothrow_destructible<Ts...>::value) {
+  384|    524|    constexpr std::size_t target_index = detail::index_of_type<T, Ts...>::value;
+  385|    524|    static_assert(target_index != variant_npos, "type is not an alternative of this variant");
+  386|    524|    static_assert(detail::count_of_type<T, Ts...>::value == 1, "emplace<T> requires unique alternative type");
+  387|    524|    static_assert(std::is_constructible_v<T, Args&&...>, "T must be constructible from the given arguments");
+  388|       |
+  389|    524|    reset();
+  390|    524|    return construct<T>(std::forward<Args>(args)...);
+  391|    524|  }
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEE9constructIS2_JRKjEEERT_DpOT0_:
+  451|    524|  T& construct(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>) {
+  452|    524|    new (raw_addr()) T(std::forward<Args>(args)...);
+  453|    524|    index_ = detail::index_of_type<T, Ts...>::value;
+  454|    524|    return *std::launder(static_cast<T*>(raw_addr()));
+  455|    524|  }
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEE7emplaceIS3_JRKjEEERT_DpOT0_:
+  383|    918|                                      detail::all_nothrow_destructible<Ts...>::value) {
+  384|    918|    constexpr std::size_t target_index = detail::index_of_type<T, Ts...>::value;
+  385|    918|    static_assert(target_index != variant_npos, "type is not an alternative of this variant");
+  386|    918|    static_assert(detail::count_of_type<T, Ts...>::value == 1, "emplace<T> requires unique alternative type");
+  387|    918|    static_assert(std::is_constructible_v<T, Args&&...>, "T must be constructible from the given arguments");
+  388|       |
+  389|    918|    reset();
+  390|    918|    return construct<T>(std::forward<Args>(args)...);
+  391|    918|  }
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEE9constructIS3_JRKjEEERT_DpOT0_:
+  451|    918|  T& construct(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>) {
+  452|    918|    new (raw_addr()) T(std::forward<Args>(args)...);
+  453|    918|    index_ = detail::index_of_type<T, Ts...>::value;
+  454|    918|    return *std::launder(static_cast<T*>(raw_addr()));
+  455|    918|  }
+fuzz_vocab.cpp:_ZN4metl6get_ifIN12_GLOBAL__N_17payloadEJS2_NS1_13other_payloadEEEEPT_PNS_7variantIJDpT0_EEE:
+  530|  1.71k|METL_NODISCARD constexpr T* get_if(variant<Ts...>* value) noexcept {
+  531|  1.71k|  static_assert(detail::count_of_type<T, Ts...>::value == 1, "get_if<T> requires unique alternative type");
+  532|  1.71k|  if (value == nullptr || !value->template holds_alternative<T>()) {
+  ------------------
+  |  Branch (532:7): [True: 0, False: 1.71k]
+  |  Branch (532:27): [True: 529, False: 1.18k]
+  ------------------
+  533|    529|    return nullptr;
+  534|    529|  }
+  535|  1.18k|  return std::launder(static_cast<T*>(value->storage_ptr()));
+  536|  1.71k|}
+fuzz_vocab.cpp:_ZNK4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEE17holds_alternativeIS2_EEbv:
+  372|  1.71k|  METL_NODISCARD constexpr bool holds_alternative() const noexcept {
+  373|  1.71k|    return index_ != variant_npos && index_ == detail::index_of_type<T, Ts...>::value;
+  ------------------
+  |  Branch (373:12): [True: 1.71k, False: 0]
+  |  Branch (373:38): [True: 1.18k, False: 529]
+  ------------------
+  374|  1.71k|  }
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEE11storage_ptrEv:
+  416|  2.24k|  void* storage_ptr() noexcept { return raw_addr(); }
+fuzz_vocab.cpp:_ZN4metl3getIN12_GLOBAL__N_17payloadEJS2_NS1_13other_payloadEEEERT_RNS_7variantIJDpT0_EEE:
+  581|    591|METL_NODISCARD constexpr T& get(variant<Ts...>& value) {
+  582|    591|  T* pointer = get_if<T>(&value);
+  583|    591|  METL_ASSERT(pointer != nullptr);
+  ------------------
+  |  |   91|    591|  do {                                                             \
+  |  |   92|    591|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|    591|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 591]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|    591|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 591]
+  |  |  ------------------
+  ------------------
+  584|    591|  return *pointer;
+  585|    591|}
+fuzz_vocab.cpp:_ZNK4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEE5indexEv:
+  364|  6.63k|  METL_NODISCARD constexpr std::size_t index() const noexcept { return index_; }
+fuzz_vocab.cpp:_ZN4metl6get_ifIN12_GLOBAL__N_113other_payloadEJNS1_7payloadES2_EEEPT_PNS_7variantIJDpT0_EEE:
+  530|  1.05k|METL_NODISCARD constexpr T* get_if(variant<Ts...>* value) noexcept {
+  531|  1.05k|  static_assert(detail::count_of_type<T, Ts...>::value == 1, "get_if<T> requires unique alternative type");
+  532|  1.05k|  if (value == nullptr || !value->template holds_alternative<T>()) {
+  ------------------
+  |  Branch (532:7): [True: 0, False: 1.05k]
+  |  Branch (532:27): [True: 0, False: 1.05k]
+  ------------------
+  533|      0|    return nullptr;
+  534|      0|  }
+  535|  1.05k|  return std::launder(static_cast<T*>(value->storage_ptr()));
+  536|  1.05k|}
+fuzz_vocab.cpp:_ZNK4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEE17holds_alternativeIS3_EEbv:
+  372|  1.05k|  METL_NODISCARD constexpr bool holds_alternative() const noexcept {
+  373|  1.05k|    return index_ != variant_npos && index_ == detail::index_of_type<T, Ts...>::value;
+  ------------------
+  |  Branch (373:12): [True: 1.05k, False: 0]
+  |  Branch (373:38): [True: 1.05k, False: 0]
+  ------------------
+  374|  1.05k|  }
+fuzz_vocab.cpp:_ZN4metl3getIN12_GLOBAL__N_113other_payloadEJNS1_7payloadES2_EEERT_RNS_7variantIJDpT0_EEE:
+  581|    529|METL_NODISCARD constexpr T& get(variant<Ts...>& value) {
+  582|    529|  T* pointer = get_if<T>(&value);
+  583|    529|  METL_ASSERT(pointer != nullptr);
+  ------------------
+  |  |   91|    529|  do {                                                             \
+  |  |   92|    529|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|    529|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 529]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|    529|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 529]
+  |  |  ------------------
+  ------------------
+  584|    529|  return *pointer;
+  585|    529|}
+fuzz_vocab.cpp:_ZN4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEEaSERKS4_:
+  316|    460|  variant& operator=(const variant& other) noexcept(detail::all_nothrow_copy_assignable<Ts...>::value) {
+  317|    460|    if (this == &other) {
+  ------------------
+  |  Branch (317:9): [True: 460, False: 0]
+  ------------------
+  318|    460|      return *this;
+  319|    460|    }
+  320|      0|    if (other.index_ == variant_npos) {
+  ------------------
+  |  Branch (320:9): [True: 0, False: 0]
+  ------------------
+  321|      0|      reset();
+  322|      0|      return *this;
+  323|      0|    }
+  324|      0|    assign_from(other);
+  325|      0|    return *this;
+  326|      0|  }
+fuzz_vocab.cpp:_ZNK4metl7variantIJN12_GLOBAL__N_17payloadENS1_13other_payloadEEE22valueless_by_exceptionEv:
+  367|  5.51k|  METL_NODISCARD constexpr bool valueless_by_exception() const noexcept { return index_ == variant_npos; }
+

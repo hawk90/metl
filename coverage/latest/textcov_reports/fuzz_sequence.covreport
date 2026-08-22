@@ -1,0 +1,934 @@
+_ZN9metl_fuzz11byte_readerC2EPKhm:
+   31|    684|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
+_ZN9metl_fuzz11byte_reader4byteEv:
+   37|   193k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
+  ------------------
+  |  Branch (37:41): [True: 192k, False: 1.14k]
+  ------------------
+_ZNK9metl_fuzz11byte_reader5emptyEv:
+   34|  39.3k|  bool empty() const noexcept { return remaining() == 0; }
+_ZNK9metl_fuzz11byte_reader9remainingEv:
+   33|  39.3k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
+  ------------------
+  |  Branch (33:51): [True: 38.6k, False: 684]
+  ------------------
+_ZN9metl_fuzz11byte_reader7integerIjEET_v:
+   41|  38.6k|  UInt integer() noexcept {
+   42|  38.6k|    UInt value = 0;
+   43|   193k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
+  ------------------
+  |  Branch (43:29): [True: 154k, False: 38.6k]
+  ------------------
+   44|   154k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
+   45|   154k|    }
+   46|  38.6k|    return value;
+   47|  38.6k|  }
+
+LLVMFuzzerTestOneInput:
+  289|    684|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
+  290|    684|  metl_fuzz::byte_reader in(data, size);
+  291|       |
+  292|    684|  switch (in.byte() % 4u) {
+  293|    245|    case 0:
+  ------------------
+  |  Branch (293:5): [True: 245, False: 439]
+  ------------------
+  294|    245|      drive_deque(in);
+  295|    245|      break;
+  296|    171|    case 1:
+  ------------------
+  |  Branch (296:5): [True: 171, False: 513]
+  ------------------
+  297|    171|      drive_ring(in);
+  298|    171|      break;
+  299|    137|    case 2:
+  ------------------
+  |  Branch (299:5): [True: 137, False: 547]
+  ------------------
+  300|    137|      drive_queue(in);
+  301|    137|      break;
+  302|    131|    default:
+  ------------------
+  |  Branch (302:5): [True: 131, False: 553]
+  ------------------
+  303|    131|      drive_stack(in);
+  304|    131|      break;
+  305|    684|  }
+  306|       |
+  307|       |  // Everything went out of scope above, so nothing may still be alive. A
+  308|       |  // destructor that missed elements shows up here even if every intermediate
+  309|       |  // size check happened to agree.
+  310|    684|  if (g_live != 0) {
+  ------------------
+  |  Branch (310:7): [True: 0, False: 684]
+  ------------------
+  311|      0|    __builtin_trap();
+  312|      0|  }
+  313|    684|  return 0;
+  314|    684|}
+fuzz_sequence.cpp:_ZN12_GLOBAL__N_111drive_dequeERN9metl_fuzz11byte_readerE:
+  113|    245|void drive_deque(metl_fuzz::byte_reader& in) {
+  114|    245|  metl::fixed_deque<payload, kCapacity> deque;
+  115|    245|  fifo_model model;
+  116|       |
+  117|  16.9k|  while (!in.empty()) {
+  ------------------
+  |  Branch (117:10): [True: 16.6k, False: 245]
+  ------------------
+  118|  16.6k|    const std::uint32_t value = in.integer<std::uint32_t>();
+  119|  16.6k|    switch (in.byte() % 7u) {
+  120|  4.28k|      case 0:
+  ------------------
+  |  Branch (120:7): [True: 4.28k, False: 12.3k]
+  ------------------
+  121|  4.28k|        if (deque.try_emplace_back(payload{value})) {
+  ------------------
+  |  Branch (121:13): [True: 2.86k, False: 1.41k]
+  ------------------
+  122|  2.86k|          model.push_back(value);
+  123|  2.86k|        }
+  124|  4.28k|        break;
+  125|  3.34k|      case 1:
+  ------------------
+  |  Branch (125:7): [True: 3.34k, False: 13.3k]
+  ------------------
+  126|  3.34k|        if (deque.try_emplace_front(payload{value})) {
+  ------------------
+  |  Branch (126:13): [True: 2.16k, False: 1.17k]
+  ------------------
+  127|  2.16k|          model.push_front(value);
+  128|  2.16k|        }
+  129|  3.34k|        break;
+  130|  1.66k|      case 2:
+  ------------------
+  |  Branch (130:7): [True: 1.66k, False: 14.9k]
+  ------------------
+  131|  1.66k|        if (!deque.empty()) {
+  ------------------
+  |  Branch (131:13): [True: 647, False: 1.02k]
+  ------------------
+  132|    647|          if (deque.front().value != model.front()) {
+  ------------------
+  |  Branch (132:15): [True: 0, False: 647]
+  ------------------
+  133|      0|            __builtin_trap();
+  134|      0|          }
+  135|    647|          deque.pop_front();
+  136|    647|          model.pop_front();
+  137|    647|        }
+  138|  1.66k|        break;
+  139|  3.10k|      case 3:
+  ------------------
+  |  Branch (139:7): [True: 3.10k, False: 13.5k]
+  ------------------
+  140|  3.10k|        if (!deque.empty()) {
+  ------------------
+  |  Branch (140:13): [True: 1.94k, False: 1.15k]
+  ------------------
+  141|  1.94k|          if (deque.back().value != model.back()) {
+  ------------------
+  |  Branch (141:15): [True: 0, False: 1.94k]
+  ------------------
+  142|      0|            __builtin_trap();
+  143|      0|          }
+  144|  1.94k|          deque.pop_back();
+  145|  1.94k|          model.pop_back();
+  146|  1.94k|        }
+  147|  3.10k|        break;
+  148|  3.10k|      case 4:  // every element, in order -- catches a wrapped index reading the
+  ------------------
+  |  Branch (148:7): [True: 1.76k, False: 14.8k]
+  ------------------
+  149|       |               // wrong slot without changing any size
+  150|  7.39k|        for (std::size_t i = 0; i < deque.size(); ++i) {
+  ------------------
+  |  Branch (150:33): [True: 5.62k, False: 1.76k]
+  ------------------
+  151|  5.62k|          if (deque[i].value != model.at(i)) {
+  ------------------
+  |  Branch (151:15): [True: 0, False: 5.62k]
+  ------------------
+  152|      0|            __builtin_trap();
+  153|      0|          }
+  154|  5.62k|        }
+  155|  1.76k|        break;
+  156|  1.76k|      case 5:
+  ------------------
+  |  Branch (156:7): [True: 1.32k, False: 15.3k]
+  ------------------
+  157|  1.32k|        if (!deque.empty()) {
+  ------------------
+  |  Branch (157:13): [True: 952, False: 371]
+  ------------------
+  158|    952|          if (deque.front().value != model.front() || deque.back().value != model.back()) {
+  ------------------
+  |  Branch (158:15): [True: 0, False: 952]
+  |  Branch (158:55): [True: 0, False: 952]
+  ------------------
+  159|      0|            __builtin_trap();
+  160|      0|          }
+  161|    952|        }
+  162|  1.32k|        break;
+  163|  1.32k|      default:
+  ------------------
+  |  Branch (163:7): [True: 1.16k, False: 15.4k]
+  ------------------
+  164|  1.16k|        deque.clear();
+  165|  1.16k|        model.clear();
+  166|  1.16k|        break;
+  167|  16.6k|    }
+  168|  16.6k|    check(deque, model.size());
+  169|  16.6k|  }
+  170|    245|}
+fuzz_sequence.cpp:_ZN12_GLOBAL__N_17payloadC2EOS0_:
+   49|  13.5k|  payload(payload&& other) noexcept : value(other.value) { ++g_live; }
+fuzz_sequence.cpp:_ZN12_GLOBAL__N_17payloadC2Ej:
+   47|  18.0k|  explicit payload(std::uint32_t v) noexcept : value(v) { ++g_live; }
+fuzz_sequence.cpp:_ZN12_GLOBAL__N_17payloadD2Ev:
+   58|  31.5k|  ~payload() { --g_live; }
+fuzz_sequence.cpp:_ZN12_GLOBAL__N_110fifo_model9push_backEj:
+   87|  9.07k|  void push_back(std::uint32_t v) {
+   88|  9.07k|    data_[(head_ + size_) % kCapacity] = v;
+   89|  9.07k|    ++size_;
+   90|  9.07k|  }
+fuzz_sequence.cpp:_ZN12_GLOBAL__N_110fifo_model10push_frontEj:
+   91|  2.16k|  void push_front(std::uint32_t v) {
+   92|  2.16k|    head_ = (head_ + kCapacity - 1) % kCapacity;
+   93|  2.16k|    data_[head_] = v;
+   94|  2.16k|    ++size_;
+   95|  2.16k|  }
+fuzz_sequence.cpp:_ZNK12_GLOBAL__N_110fifo_model5frontEv:
+  101|  3.39k|  std::uint32_t front() const { return data_[head_]; }
+fuzz_sequence.cpp:_ZN12_GLOBAL__N_110fifo_model9pop_frontEv:
+   96|  3.00k|  void pop_front() {
+   97|  3.00k|    head_ = (head_ + 1) % kCapacity;
+   98|  3.00k|    --size_;
+   99|  3.00k|  }
+fuzz_sequence.cpp:_ZNK12_GLOBAL__N_110fifo_model4backEv:
+  102|  3.41k|  std::uint32_t back() const { return data_[(head_ + size_ - 1) % kCapacity]; }
+fuzz_sequence.cpp:_ZN12_GLOBAL__N_110fifo_model8pop_backEv:
+  100|  1.94k|  void pop_back() { --size_; }
+fuzz_sequence.cpp:_ZNK12_GLOBAL__N_110fifo_model2atEm:
+  103|  9.98k|  std::uint32_t at(std::size_t i) const { return data_[(head_ + i) % kCapacity]; }
+fuzz_sequence.cpp:_ZN12_GLOBAL__N_110fifo_model5clearEv:
+  104|  3.96k|  void clear() { size_ = 0; }
+fuzz_sequence.cpp:_ZN12_GLOBAL__N_15checkIN4metl11fixed_dequeINS_7payloadELm8EEEEEvRKT_m:
+   63|  16.6k|void check(const Container& container, std::size_t expected_size) {
+   64|  16.6k|  if (container.size() != expected_size) {
+  ------------------
+  |  Branch (64:7): [True: 0, False: 16.6k]
+  ------------------
+   65|      0|    __builtin_trap();
+   66|      0|  }
+   67|  16.6k|  if (container.size() > kCapacity) {
+  ------------------
+  |  Branch (67:7): [True: 0, False: 16.6k]
+  ------------------
+   68|      0|    __builtin_trap();
+   69|      0|  }
+   70|  16.6k|  if (container.empty() != (expected_size == 0)) {
+  ------------------
+  |  Branch (70:7): [True: 0, False: 16.6k]
+  ------------------
+   71|      0|    __builtin_trap();
+   72|      0|  }
+   73|  16.6k|  if (container.full() != (expected_size == kCapacity)) {
+  ------------------
+  |  Branch (73:7): [True: 0, False: 16.6k]
+  ------------------
+   74|      0|    __builtin_trap();
+   75|      0|  }
+   76|       |  // THE ONE THAT MATTERS. Elements live inline, so a leaked or double-run
+   77|       |  // destructor is invisible to ASan; only this counter sees it.
+   78|  16.6k|  if (g_live != static_cast<int>(expected_size)) {
+  ------------------
+  |  Branch (78:7): [True: 0, False: 16.6k]
+  ------------------
+   79|      0|    __builtin_trap();
+   80|      0|  }
+   81|  16.6k|}
+fuzz_sequence.cpp:_ZNK12_GLOBAL__N_110fifo_model4sizeEv:
+  105|  34.8k|  std::size_t size() const { return size_; }
+fuzz_sequence.cpp:_ZN12_GLOBAL__N_110drive_ringERN9metl_fuzz11byte_readerE:
+  172|    171|void drive_ring(metl_fuzz::byte_reader& in) {
+  173|    171|  metl::ring_buffer<payload, kCapacity> ring;
+  174|    171|  fifo_model model;
+  175|       |
+  176|  8.80k|  while (!in.empty()) {
+  ------------------
+  |  Branch (176:10): [True: 8.62k, False: 171]
+  ------------------
+  177|  8.62k|    const std::uint32_t value = in.integer<std::uint32_t>();
+  178|  8.62k|    switch (in.byte() % 5u) {
+  179|  3.30k|      case 0:  // the operation only ring_buffer has: overwrite the oldest
+  ------------------
+  |  Branch (179:7): [True: 3.30k, False: 5.32k]
+  ------------------
+  180|  3.30k|        if (model.size() == kCapacity) {
+  ------------------
+  |  Branch (180:13): [True: 1.20k, False: 2.09k]
+  ------------------
+  181|  1.20k|          model.pop_front();
+  182|  1.20k|        }
+  183|  3.30k|        ring.push_overwrite(payload{value});
+  184|  3.30k|        model.push_back(value);
+  185|  3.30k|        break;
+  186|  1.46k|      case 1:
+  ------------------
+  |  Branch (186:7): [True: 1.46k, False: 7.16k]
+  ------------------
+  187|  1.46k|        if (ring.try_emplace_back(payload{value})) {
+  ------------------
+  |  Branch (187:13): [True: 977, False: 487]
+  ------------------
+  188|    977|          model.push_back(value);
+  189|    977|        }
+  190|  1.46k|        break;
+  191|  1.13k|      case 2:
+  ------------------
+  |  Branch (191:7): [True: 1.13k, False: 7.49k]
+  ------------------
+  192|  1.13k|        if (!ring.empty()) {
+  ------------------
+  |  Branch (192:13): [True: 626, False: 504]
+  ------------------
+  193|    626|          if (ring.front().value != model.front()) {
+  ------------------
+  |  Branch (193:15): [True: 0, False: 626]
+  ------------------
+  194|      0|            __builtin_trap();
+  195|      0|          }
+  196|    626|          ring.pop_front();
+  197|    626|          model.pop_front();
+  198|    626|        }
+  199|  1.13k|        break;
+  200|  1.30k|      case 3:
+  ------------------
+  |  Branch (200:7): [True: 1.30k, False: 7.32k]
+  ------------------
+  201|  5.66k|        for (std::size_t i = 0; i < ring.size(); ++i) {
+  ------------------
+  |  Branch (201:33): [True: 4.36k, False: 1.30k]
+  ------------------
+  202|  4.36k|          if (ring[i].value != model.at(i)) {
+  ------------------
+  |  Branch (202:15): [True: 0, False: 4.36k]
+  ------------------
+  203|      0|            __builtin_trap();
+  204|      0|          }
+  205|  4.36k|        }
+  206|  1.30k|        break;
+  207|  1.42k|      default:
+  ------------------
+  |  Branch (207:7): [True: 1.42k, False: 7.20k]
+  ------------------
+  208|  1.42k|        ring.clear();
+  209|  1.42k|        model.clear();
+  210|  1.42k|        break;
+  211|  8.62k|    }
+  212|  8.62k|    check(ring, model.size());
+  213|  8.62k|  }
+  214|    171|}
+fuzz_sequence.cpp:_ZN12_GLOBAL__N_15checkIN4metl11ring_bufferINS_7payloadELm8EEEEEvRKT_m:
+   63|  8.62k|void check(const Container& container, std::size_t expected_size) {
+   64|  8.62k|  if (container.size() != expected_size) {
+  ------------------
+  |  Branch (64:7): [True: 0, False: 8.62k]
+  ------------------
+   65|      0|    __builtin_trap();
+   66|      0|  }
+   67|  8.62k|  if (container.size() > kCapacity) {
+  ------------------
+  |  Branch (67:7): [True: 0, False: 8.62k]
+  ------------------
+   68|      0|    __builtin_trap();
+   69|      0|  }
+   70|  8.62k|  if (container.empty() != (expected_size == 0)) {
+  ------------------
+  |  Branch (70:7): [True: 0, False: 8.62k]
+  ------------------
+   71|      0|    __builtin_trap();
+   72|      0|  }
+   73|  8.62k|  if (container.full() != (expected_size == kCapacity)) {
+  ------------------
+  |  Branch (73:7): [True: 0, False: 8.62k]
+  ------------------
+   74|      0|    __builtin_trap();
+   75|      0|  }
+   76|       |  // THE ONE THAT MATTERS. Elements live inline, so a leaked or double-run
+   77|       |  // destructor is invisible to ASan; only this counter sees it.
+   78|  8.62k|  if (g_live != static_cast<int>(expected_size)) {
+  ------------------
+  |  Branch (78:7): [True: 0, False: 8.62k]
+  ------------------
+   79|      0|    __builtin_trap();
+   80|      0|  }
+   81|  8.62k|}
+fuzz_sequence.cpp:_ZN12_GLOBAL__N_111drive_queueERN9metl_fuzz11byte_readerE:
+  216|    137|void drive_queue(metl_fuzz::byte_reader& in) {
+  217|    137|  metl::fixed_queue<payload, kCapacity> queue;
+  218|    137|  fifo_model model;
+  219|       |
+  220|  6.44k|  while (!in.empty()) {
+  ------------------
+  |  Branch (220:10): [True: 6.31k, False: 137]
+  ------------------
+  221|  6.31k|    const std::uint32_t value = in.integer<std::uint32_t>();
+  222|  6.31k|    switch (in.byte() % 4u) {
+  223|  2.57k|      case 0:
+  ------------------
+  |  Branch (223:7): [True: 2.57k, False: 3.73k]
+  ------------------
+  224|  2.57k|        if (queue.try_emplace(payload{value})) {
+  ------------------
+  |  Branch (224:13): [True: 1.93k, False: 639]
+  ------------------
+  225|  1.93k|          model.push_back(value);
+  226|  1.93k|        }
+  227|  2.57k|        break;
+  228|  1.10k|      case 1:
+  ------------------
+  |  Branch (228:7): [True: 1.10k, False: 5.20k]
+  ------------------
+  229|  1.10k|        if (!queue.empty()) {
+  ------------------
+  |  Branch (229:13): [True: 518, False: 591]
+  ------------------
+  230|    518|          if (queue.front().value != model.front() || queue.back().value != model.back()) {
+  ------------------
+  |  Branch (230:15): [True: 0, False: 518]
+  |  Branch (230:55): [True: 0, False: 518]
+  ------------------
+  231|      0|            __builtin_trap();
+  232|      0|          }
+  233|    518|          queue.pop();
+  234|    518|          model.pop_front();
+  235|    518|        }
+  236|  1.10k|        break;
+  237|  1.25k|      case 2:
+  ------------------
+  |  Branch (237:7): [True: 1.25k, False: 5.05k]
+  ------------------
+  238|  1.25k|        if (!queue.empty() && queue.front().value != model.front()) {
+  ------------------
+  |  Branch (238:13): [True: 647, False: 605]
+  |  Branch (238:31): [True: 0, False: 647]
+  ------------------
+  239|      0|          __builtin_trap();
+  240|      0|        }
+  241|  1.25k|        break;
+  242|  1.37k|      default:
+  ------------------
+  |  Branch (242:7): [True: 1.37k, False: 4.93k]
+  ------------------
+  243|  1.37k|        queue.clear();
+  244|  1.37k|        model.clear();
+  245|  1.37k|        break;
+  246|  6.31k|    }
+  247|  6.31k|    check(queue, model.size());
+  248|  6.31k|  }
+  249|    137|}
+fuzz_sequence.cpp:_ZN12_GLOBAL__N_15checkIN4metl11fixed_queueINS_7payloadELm8EEEEEvRKT_m:
+   63|  6.31k|void check(const Container& container, std::size_t expected_size) {
+   64|  6.31k|  if (container.size() != expected_size) {
+  ------------------
+  |  Branch (64:7): [True: 0, False: 6.31k]
+  ------------------
+   65|      0|    __builtin_trap();
+   66|      0|  }
+   67|  6.31k|  if (container.size() > kCapacity) {
+  ------------------
+  |  Branch (67:7): [True: 0, False: 6.31k]
+  ------------------
+   68|      0|    __builtin_trap();
+   69|      0|  }
+   70|  6.31k|  if (container.empty() != (expected_size == 0)) {
+  ------------------
+  |  Branch (70:7): [True: 0, False: 6.31k]
+  ------------------
+   71|      0|    __builtin_trap();
+   72|      0|  }
+   73|  6.31k|  if (container.full() != (expected_size == kCapacity)) {
+  ------------------
+  |  Branch (73:7): [True: 0, False: 6.31k]
+  ------------------
+   74|      0|    __builtin_trap();
+   75|      0|  }
+   76|       |  // THE ONE THAT MATTERS. Elements live inline, so a leaked or double-run
+   77|       |  // destructor is invisible to ASan; only this counter sees it.
+   78|  6.31k|  if (g_live != static_cast<int>(expected_size)) {
+  ------------------
+  |  Branch (78:7): [True: 0, False: 6.31k]
+  ------------------
+   79|      0|    __builtin_trap();
+   80|      0|  }
+   81|  6.31k|}
+fuzz_sequence.cpp:_ZN12_GLOBAL__N_111drive_stackERN9metl_fuzz11byte_readerE:
+  251|    131|void drive_stack(metl_fuzz::byte_reader& in) {
+  252|    131|  metl::fixed_stack<payload, kCapacity> stack;
+  253|    131|  std::uint32_t model[kCapacity] = {};
+  254|    131|  std::size_t depth = 0;
+  255|       |
+  256|  7.19k|  while (!in.empty()) {
+  ------------------
+  |  Branch (256:10): [True: 7.06k, False: 131]
+  ------------------
+  257|  7.06k|    const std::uint32_t value = in.integer<std::uint32_t>();
+  258|  7.06k|    switch (in.byte() % 4u) {
+  259|  3.07k|      case 0:
+  ------------------
+  |  Branch (259:7): [True: 3.07k, False: 3.98k]
+  ------------------
+  260|  3.07k|        if (stack.try_emplace(payload{value})) {
+  ------------------
+  |  Branch (260:13): [True: 2.26k, False: 811]
+  ------------------
+  261|  2.26k|          model[depth++] = value;
+  262|  2.26k|        }
+  263|  3.07k|        break;
+  264|  1.21k|      case 1:
+  ------------------
+  |  Branch (264:7): [True: 1.21k, False: 5.84k]
+  ------------------
+  265|  1.21k|        if (!stack.empty()) {
+  ------------------
+  |  Branch (265:13): [True: 616, False: 595]
+  ------------------
+  266|    616|          if (stack.top().value != model[depth - 1]) {
+  ------------------
+  |  Branch (266:15): [True: 0, False: 616]
+  ------------------
+  267|      0|            __builtin_trap();
+  268|      0|          }
+  269|    616|          stack.pop();
+  270|    616|          --depth;
+  271|    616|        }
+  272|  1.21k|        break;
+  273|  1.28k|      case 2:
+  ------------------
+  |  Branch (273:7): [True: 1.28k, False: 5.77k]
+  ------------------
+  274|  1.28k|        if (!stack.empty() && stack.top().value != model[depth - 1]) {
+  ------------------
+  |  Branch (274:13): [True: 767, False: 516]
+  |  Branch (274:31): [True: 0, False: 767]
+  ------------------
+  275|      0|          __builtin_trap();
+  276|      0|        }
+  277|  1.28k|        break;
+  278|  1.49k|      default:
+  ------------------
+  |  Branch (278:7): [True: 1.49k, False: 5.56k]
+  ------------------
+  279|  1.49k|        stack.clear();
+  280|  1.49k|        depth = 0;
+  281|  1.49k|        break;
+  282|  7.06k|    }
+  283|  7.06k|    check(stack, depth);
+  284|  7.06k|  }
+  285|    131|}
+fuzz_sequence.cpp:_ZN12_GLOBAL__N_15checkIN4metl11fixed_stackINS_7payloadELm8EEEEEvRKT_m:
+   63|  7.06k|void check(const Container& container, std::size_t expected_size) {
+   64|  7.06k|  if (container.size() != expected_size) {
+  ------------------
+  |  Branch (64:7): [True: 0, False: 7.06k]
+  ------------------
+   65|      0|    __builtin_trap();
+   66|      0|  }
+   67|  7.06k|  if (container.size() > kCapacity) {
+  ------------------
+  |  Branch (67:7): [True: 0, False: 7.06k]
+  ------------------
+   68|      0|    __builtin_trap();
+   69|      0|  }
+   70|  7.06k|  if (container.empty() != (expected_size == 0)) {
+  ------------------
+  |  Branch (70:7): [True: 0, False: 7.06k]
+  ------------------
+   71|      0|    __builtin_trap();
+   72|      0|  }
+   73|  7.06k|  if (container.full() != (expected_size == kCapacity)) {
+  ------------------
+  |  Branch (73:7): [True: 0, False: 7.06k]
+  ------------------
+   74|      0|    __builtin_trap();
+   75|      0|  }
+   76|       |  // THE ONE THAT MATTERS. Elements live inline, so a leaked or double-run
+   77|       |  // destructor is invisible to ASan; only this counter sees it.
+   78|  7.06k|  if (g_live != static_cast<int>(expected_size)) {
+  ------------------
+  |  Branch (78:7): [True: 0, False: 7.06k]
+  ------------------
+   79|      0|    __builtin_trap();
+   80|      0|  }
+   81|  7.06k|}
+
+fuzz_sequence.cpp:_ZN4metl6detail9ring_coreIN12_GLOBAL__N_17payloadELm8EEC2Ev:
+  161|    553|  constexpr ring_core() noexcept : head_(0), size_(0) {}
+fuzz_sequence.cpp:_ZN4metl6detail9ring_coreIN12_GLOBAL__N_17payloadELm8EE16try_emplace_backIJS3_EEEbDpOT_:
+  283|  11.6k|  METL_NODISCARD bool try_emplace_back(Args&&... args) {
+  284|  11.6k|    if (size_ == Capacity) {
+  ------------------
+  |  Branch (284:9): [True: 2.53k, False: 9.07k]
+  ------------------
+  285|  2.53k|      return false;
+  286|  2.53k|    }
+  287|       |
+  288|  9.07k|    new (storage_[physical_index(size_)].addr()) T(std::forward<Args>(args)...);
+  289|  9.07k|    ++size_;
+  290|  9.07k|    return true;
+  291|  11.6k|  }
+fuzz_sequence.cpp:_ZNK4metl6detail9ring_coreIN12_GLOBAL__N_17payloadELm8EE14physical_indexEm:
+  335|  27.7k|  constexpr size_type physical_index(size_type logical_index) const noexcept {
+  336|  27.7k|    return Capacity == 0 ? 0 : (head_ + logical_index) % Capacity;
+  ------------------
+  |  Branch (336:12): [Folded, False: 27.7k]
+  ------------------
+  337|  27.7k|  }
+fuzz_sequence.cpp:_ZNK4metl6detail9ring_coreIN12_GLOBAL__N_17payloadELm8EE7retreatEm:
+  331|  2.16k|  constexpr size_type retreat(size_type index) const noexcept {
+  332|  2.16k|    return Capacity == 0 ? 0 : (index == 0 ? Capacity - 1 : index - 1);
+  ------------------
+  |  Branch (332:12): [Folded, False: 2.16k]
+  |  Branch (332:33): [True: 352, False: 1.81k]
+  ------------------
+  333|  2.16k|  }
+fuzz_sequence.cpp:_ZN4metl6detail9ring_coreIN12_GLOBAL__N_17payloadELm8EE5frontEv:
+  211|  3.39k|  METL_NODISCARD reference front() noexcept {
+  212|  3.39k|    METL_ASSERT(size_ > 0);
+  ------------------
+  |  |   91|  3.39k|  do {                                                             \
+  |  |   92|  3.39k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|  3.39k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 3.39k]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|  3.39k|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 3.39k]
+  |  |  ------------------
+  ------------------
+  213|  3.39k|    return storage_at(head_);
+  214|  3.39k|  }
+fuzz_sequence.cpp:_ZN4metl6detail9ring_coreIN12_GLOBAL__N_17payloadELm8EE10storage_atEm:
+  339|  31.3k|  T& storage_at(size_type index) noexcept { return storage_[index].ref(); }
+fuzz_sequence.cpp:_ZN4metl6detail9ring_coreIN12_GLOBAL__N_17payloadELm8EE9pop_frontEv:
+  310|  9.29k|  void pop_front() noexcept {
+  311|  9.29k|    METL_ASSERT(size_ > 0);
+  ------------------
+  |  |   91|  9.29k|  do {                                                             \
+  |  |   92|  9.29k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|  9.29k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 9.29k]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|  9.29k|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 9.29k]
+  |  |  ------------------
+  ------------------
+  312|  9.29k|    storage_at(head_).~T();
+  313|  9.29k|    head_ = advance(head_);
+  314|  9.29k|    --size_;
+  315|  9.29k|  }
+fuzz_sequence.cpp:_ZNK4metl6detail9ring_coreIN12_GLOBAL__N_17payloadELm8EE7advanceEm:
+  327|  9.29k|  constexpr size_type advance(size_type index) const noexcept {
+  328|  9.29k|    return Capacity == 0 ? 0 : (index + 1) % Capacity;
+  ------------------
+  |  Branch (328:12): [Folded, False: 9.29k]
+  ------------------
+  329|  9.29k|  }
+fuzz_sequence.cpp:_ZN4metl6detail9ring_coreIN12_GLOBAL__N_17payloadELm8EE4backEv:
+  225|  6.72k|  METL_NODISCARD reference back() noexcept {
+  226|  6.72k|    METL_ASSERT(size_ > 0);
+  ------------------
+  |  |   91|  6.72k|  do {                                                             \
+  |  |   92|  6.72k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|  6.72k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 6.72k]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|  6.72k|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 6.72k]
+  |  |  ------------------
+  ------------------
+  227|  6.72k|    return storage_at(physical_index(size_ - 1));
+  228|  6.72k|  }
+fuzz_sequence.cpp:_ZN4metl6detail9ring_coreIN12_GLOBAL__N_17payloadELm8EEixEm:
+  252|  9.98k|  METL_NODISCARD reference operator[](size_type index) noexcept { return at(index); }
+fuzz_sequence.cpp:_ZN4metl6detail9ring_coreIN12_GLOBAL__N_17payloadELm8EE2atEm:
+  239|  9.98k|  METL_NODISCARD reference at(size_type index) noexcept {
+  240|  9.98k|    METL_ASSERT(index < size_);
+  ------------------
+  |  |   91|  9.98k|  do {                                                             \
+  |  |   92|  9.98k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|  9.98k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 9.98k]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|  9.98k|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 9.98k]
+  |  |  ------------------
+  ------------------
+  241|  9.98k|    return storage_at(physical_index(index));
+  242|  9.98k|  }
+fuzz_sequence.cpp:_ZN4metl6detail9ring_coreIN12_GLOBAL__N_17payloadELm8EE5clearEv:
+  318|  4.52k|  void clear() noexcept {
+  319|  10.8k|    while (size_ != 0) {
+  ------------------
+  |  Branch (319:12): [True: 6.29k, False: 4.52k]
+  ------------------
+  320|  6.29k|      pop_front();
+  321|  6.29k|    }
+  322|  4.52k|  }
+fuzz_sequence.cpp:_ZN4metl6detail9ring_coreIN12_GLOBAL__N_17payloadELm8EED2Ev:
+  163|    553|  ~ring_core() { clear(); }
+fuzz_sequence.cpp:_ZN4metl6detail9ring_coreIN12_GLOBAL__N_17payloadELm8EE12emplace_backIJS3_EEERS3_DpOT_:
+  296|  3.30k|  reference emplace_back(Args&&... args) {
+  297|  3.30k|    const bool inserted = try_emplace_back(std::forward<Args>(args)...);
+  298|  3.30k|    METL_ASSERT(inserted);
+  ------------------
+  |  |   91|  3.30k|  do {                                                             \
+  |  |   92|  3.30k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|  3.30k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 3.30k]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|  3.30k|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 3.30k]
+  |  |  ------------------
+  ------------------
+  299|  3.30k|    (void)inserted;
+  300|  3.30k|    return back();
+  301|  3.30k|  }
+
+fuzz_sequence.cpp:_ZN4metl11fixed_dequeIN12_GLOBAL__N_17payloadELm8EEC2Ev:
+   54|    245|  constexpr fixed_deque() noexcept = default;
+fuzz_sequence.cpp:_ZN4metl11fixed_dequeIN12_GLOBAL__N_17payloadELm8EE17try_emplace_frontIJS2_EEEbDpOT_:
+   66|  3.34k|  METL_NODISCARD bool try_emplace_front(Args&&... args) {
+   67|  3.34k|    if (full()) {
+  ------------------
+  |  Branch (67:9): [True: 1.17k, False: 2.16k]
+  ------------------
+   68|  1.17k|      return false;
+   69|  1.17k|    }
+   70|       |
+   71|  2.16k|    this->head_ = this->retreat(this->head_);
+   72|  2.16k|    new (this->storage_[this->head_].addr()) T(std::forward<Args>(args)...);
+   73|  2.16k|    ++this->size_;
+   74|  2.16k|    return true;
+   75|  3.34k|  }
+fuzz_sequence.cpp:_ZNK4metl11fixed_dequeIN12_GLOBAL__N_17payloadELm8EE4fullEv:
+   59|  19.9k|  METL_NODISCARD bool full() const noexcept { return this->size_ == Capacity; }
+fuzz_sequence.cpp:_ZNK4metl11fixed_dequeIN12_GLOBAL__N_17payloadELm8EE5emptyEv:
+   57|  22.7k|  METL_NODISCARD bool empty() const noexcept { return this->size_ == 0; }
+fuzz_sequence.cpp:_ZN4metl11fixed_dequeIN12_GLOBAL__N_17payloadELm8EE8pop_backEv:
+  103|  1.94k|  void pop_back() noexcept {
+  104|  1.94k|    METL_ASSERT(this->size_ > 0);
+  ------------------
+  |  |   91|  1.94k|  do {                                                             \
+  |  |   92|  1.94k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|  1.94k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 1.94k]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|  1.94k|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 1.94k]
+  |  |  ------------------
+  ------------------
+  105|  1.94k|    this->storage_at(this->physical_index(this->size_ - 1)).~T();
+  106|  1.94k|    --this->size_;
+  107|  1.94k|  }
+fuzz_sequence.cpp:_ZNK4metl11fixed_dequeIN12_GLOBAL__N_17payloadELm8EE4sizeEv:
+   61|  40.7k|  METL_NODISCARD size_type size() const noexcept { return this->size_; }
+
+fuzz_sequence.cpp:_ZN4metl11fixed_queueIN12_GLOBAL__N_17payloadELm8EEC2Ev:
+   46|    137|  constexpr fixed_queue() noexcept = default;
+fuzz_sequence.cpp:_ZN4metl11fixed_queueIN12_GLOBAL__N_17payloadELm8EE11try_emplaceIJS2_EEEbDpOT_:
+   74|  2.57k|  METL_NODISCARD bool try_emplace(Args&&... args) {
+   75|  2.57k|    return storage_.try_emplace_back(std::forward<Args>(args)...);
+   76|  2.57k|  }
+fuzz_sequence.cpp:_ZNK4metl11fixed_queueIN12_GLOBAL__N_17payloadELm8EE5emptyEv:
+   49|  8.67k|  METL_NODISCARD bool empty() const noexcept { return storage_.empty(); }
+fuzz_sequence.cpp:_ZN4metl11fixed_queueIN12_GLOBAL__N_17payloadELm8EE5frontEv:
+   59|  1.16k|  METL_NODISCARD reference front() noexcept { return storage_.front(); }
+fuzz_sequence.cpp:_ZN4metl11fixed_queueIN12_GLOBAL__N_17payloadELm8EE4backEv:
+   66|    518|  METL_NODISCARD reference back() noexcept { return storage_.back(); }
+fuzz_sequence.cpp:_ZN4metl11fixed_queueIN12_GLOBAL__N_17payloadELm8EE3popEv:
+   99|    518|  void pop() noexcept { storage_.pop_front(); }
+fuzz_sequence.cpp:_ZN4metl11fixed_queueIN12_GLOBAL__N_17payloadELm8EE5clearEv:
+  102|  1.37k|  void clear() noexcept { storage_.clear(); }
+fuzz_sequence.cpp:_ZNK4metl11fixed_queueIN12_GLOBAL__N_17payloadELm8EE4sizeEv:
+   53|  12.6k|  METL_NODISCARD size_type size() const noexcept { return storage_.size(); }
+fuzz_sequence.cpp:_ZNK4metl11fixed_queueIN12_GLOBAL__N_17payloadELm8EE4fullEv:
+   51|  6.31k|  METL_NODISCARD bool full() const noexcept { return storage_.full(); }
+
+fuzz_sequence.cpp:_ZN4metl11fixed_stackIN12_GLOBAL__N_17payloadELm8EEC2Ev:
+   44|    131|  constexpr fixed_stack() noexcept = default;
+fuzz_sequence.cpp:_ZN4metl11fixed_stackIN12_GLOBAL__N_17payloadELm8EE11try_emplaceIJS2_EEEbDpOT_:
+   65|  3.07k|  METL_NODISCARD bool try_emplace(Args&&... args) {
+   66|  3.07k|    return storage_.try_emplace_back(std::forward<Args>(args)...);
+   67|  3.07k|  }
+fuzz_sequence.cpp:_ZNK4metl11fixed_stackIN12_GLOBAL__N_17payloadELm8EE5emptyEv:
+   47|  9.55k|  METL_NODISCARD bool empty() const noexcept { return storage_.empty(); }
+fuzz_sequence.cpp:_ZN4metl11fixed_stackIN12_GLOBAL__N_17payloadELm8EE3topEv:
+   57|  1.38k|  METL_NODISCARD reference top() noexcept { return storage_.back(); }
+fuzz_sequence.cpp:_ZN4metl11fixed_stackIN12_GLOBAL__N_17payloadELm8EE3popEv:
+   90|    616|  void pop() noexcept { storage_.pop_back(); }
+fuzz_sequence.cpp:_ZN4metl11fixed_stackIN12_GLOBAL__N_17payloadELm8EE5clearEv:
+   93|  1.49k|  void clear() noexcept { storage_.clear(); }
+fuzz_sequence.cpp:_ZNK4metl11fixed_stackIN12_GLOBAL__N_17payloadELm8EE4sizeEv:
+   51|  14.1k|  METL_NODISCARD size_type size() const noexcept { return storage_.size(); }
+fuzz_sequence.cpp:_ZNK4metl11fixed_stackIN12_GLOBAL__N_17payloadELm8EE4fullEv:
+   49|  7.06k|  METL_NODISCARD bool full() const noexcept { return storage_.full(); }
+
+fuzz_sequence.cpp:_ZN4metl12fixed_vectorIN12_GLOBAL__N_17payloadELm8EEC2Ev:
+   73|    131|  constexpr fixed_vector() noexcept : size_(0) { asan_poison_tail_(); }
+fuzz_sequence.cpp:_ZN4metl12fixed_vectorIN12_GLOBAL__N_17payloadELm8EE17asan_poison_tail_Ev:
+  628|  4.65k|  constexpr void asan_poison_tail_() noexcept {}
+fuzz_sequence.cpp:_ZN4metl12fixed_vectorIN12_GLOBAL__N_17payloadELm8EE16try_emplace_backIJS2_EEEbDpOT_:
+  239|  3.07k|  METL_NODISCARD bool try_emplace_back(Args&&... args) {
+  240|  3.07k|    if (full()) {
+  ------------------
+  |  Branch (240:9): [True: 811, False: 2.26k]
+  ------------------
+  241|    811|      return false;
+  242|    811|    }
+  243|       |
+  244|  2.26k|    asan_unpoison_all_();
+  245|  2.26k|    ::new (static_cast<void*>(slot_(size_))) T(std::forward<Args>(args)...);
+  246|  2.26k|    ++size_;
+  247|  2.26k|    asan_poison_tail_();
+  248|  2.26k|    return true;
+  249|  3.07k|  }
+fuzz_sequence.cpp:_ZNK4metl12fixed_vectorIN12_GLOBAL__N_17payloadELm8EE4fullEv:
+  168|  10.1k|  METL_NODISCARD constexpr bool full() const noexcept { return size_ == Capacity; }
+fuzz_sequence.cpp:_ZN4metl12fixed_vectorIN12_GLOBAL__N_17payloadELm8EE18asan_unpoison_all_Ev:
+  629|  4.65k|  constexpr void asan_unpoison_all_() noexcept {}
+fuzz_sequence.cpp:_ZN4metl12fixed_vectorIN12_GLOBAL__N_17payloadELm8EE5slot_Em:
+  609|  2.26k|  void* slot_(size_type index) noexcept { return storage_[index].addr(); }
+fuzz_sequence.cpp:_ZNK4metl12fixed_vectorIN12_GLOBAL__N_17payloadELm8EE5emptyEv:
+  166|  9.55k|  METL_NODISCARD constexpr bool empty() const noexcept { return size_ == 0; }
+fuzz_sequence.cpp:_ZN4metl12fixed_vectorIN12_GLOBAL__N_17payloadELm8EE4backEv:
+  224|  1.38k|  METL_NODISCARD reference back() noexcept {
+  225|  1.38k|    METL_ASSERT(size_ > 0);
+  ------------------
+  |  |   91|  1.38k|  do {                                                             \
+  |  |   92|  1.38k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|  1.38k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 1.38k]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|  1.38k|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 1.38k]
+  |  |  ------------------
+  ------------------
+  226|  1.38k|    return data()[size_ - 1];
+  227|  1.38k|  }
+fuzz_sequence.cpp:_ZN4metl12fixed_vectorIN12_GLOBAL__N_17payloadELm8EE4dataEv:
+  158|  3.64k|  METL_NODISCARD pointer data() noexcept {
+  159|  3.64k|    return std::launder(reinterpret_cast<pointer>(storage_[0].addr()));
+  160|  3.64k|  }
+fuzz_sequence.cpp:_ZN4metl12fixed_vectorIN12_GLOBAL__N_17payloadELm8EE8pop_backEv:
+  276|  2.26k|  void pop_back() noexcept {
+  277|  2.26k|    METL_ASSERT(size_ > 0);
+  ------------------
+  |  |   91|  2.26k|  do {                                                             \
+  |  |   92|  2.26k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|  2.26k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 2.26k]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|  2.26k|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 2.26k]
+  |  |  ------------------
+  ------------------
+  278|  2.26k|    asan_unpoison_all_();
+  279|  2.26k|    data()[size_ - 1].~T();
+  280|  2.26k|    --size_;
+  281|  2.26k|    asan_poison_tail_();
+  282|  2.26k|  }
+fuzz_sequence.cpp:_ZN4metl12fixed_vectorIN12_GLOBAL__N_17payloadELm8EE5clearEv:
+  285|  1.62k|  void clear() noexcept {
+  286|  3.27k|    while (size_ > 0) {
+  ------------------
+  |  Branch (286:12): [True: 1.64k, False: 1.62k]
+  ------------------
+  287|  1.64k|      pop_back();
+  288|  1.64k|    }
+  289|  1.62k|  }
+fuzz_sequence.cpp:_ZNK4metl12fixed_vectorIN12_GLOBAL__N_17payloadELm8EE4sizeEv:
+  170|  14.1k|  METL_NODISCARD constexpr size_type size() const noexcept { return size_; }
+fuzz_sequence.cpp:_ZN4metl12fixed_vectorIN12_GLOBAL__N_17payloadELm8EED2Ev:
+  102|    131|  ~fixed_vector() {
+  103|    131|    clear();
+  104|       |    // Unpoison the whole buffer before the storage dies so no stale poison
+  105|       |    // outlives it (which would false-positive when the memory is reused).
+  106|    131|    asan_unpoison_all_();
+  107|    131|  }
+
+fuzz_sequence.cpp:_ZN4metl11ring_bufferIN12_GLOBAL__N_17payloadELm8EEC2Ev:
+   54|    308|  constexpr ring_buffer() noexcept = default;
+fuzz_sequence.cpp:_ZN4metl11ring_bufferIN12_GLOBAL__N_17payloadELm8EE14push_overwriteIJS2_EEERS2_DpOT_:
+   67|  3.30k|  reference push_overwrite(Args&&... args) {
+   68|  3.30k|    if (full()) {
+  ------------------
+  |  Branch (68:9): [True: 1.20k, False: 2.09k]
+  ------------------
+   69|  1.20k|      this->pop_front();
+   70|  1.20k|    }
+   71|       |
+   72|  3.30k|    return this->emplace_back(std::forward<Args>(args)...);
+   73|  3.30k|  }
+fuzz_sequence.cpp:_ZNK4metl11ring_bufferIN12_GLOBAL__N_17payloadELm8EE4fullEv:
+   59|  18.2k|  METL_NODISCARD constexpr bool full() const noexcept { return this->size_ == Capacity; }
+fuzz_sequence.cpp:_ZNK4metl11ring_bufferIN12_GLOBAL__N_17payloadELm8EE5emptyEv:
+   57|  18.4k|  METL_NODISCARD constexpr bool empty() const noexcept { return this->size_ == 0; }
+fuzz_sequence.cpp:_ZNK4metl11ring_bufferIN12_GLOBAL__N_17payloadELm8EE4sizeEv:
+   61|  35.5k|  METL_NODISCARD constexpr size_type size() const noexcept { return this->size_; }
+
+fuzz_sequence.cpp:_ZN4metl11storage_forIN12_GLOBAL__N_17payloadEE4addrEv:
+   34|  17.1k|  void* addr() noexcept { return &bytes[0]; }
+fuzz_sequence.cpp:_ZN4metl11storage_forIN12_GLOBAL__N_17payloadEE3refEv:
+   29|  31.3k|  T& ref() noexcept { return *ptr(); }
+fuzz_sequence.cpp:_ZN4metl11storage_forIN12_GLOBAL__N_17payloadEE3ptrEv:
+   24|  31.3k|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
+
