@@ -3,9 +3,18 @@ name: ClusterFuzzLite PR
 # Per-PR fuzzing with the OSS-Fuzz toolchain, run directly in GitHub Actions via
 # ClusterFuzzLite (no upstream registration required). Builds the harnesses from
 # .clusterfuzzlite/ and fuzzes the code touched by the PR for a short bounded
-# time. NON-BLOCKING: the whole job is continue-on-error because the Docker-based
-# build wiring can't be validated on the maintainer's machine; the blocking,
-# always-green memory-safety gate is the plain `fuzz-smoke` job in ci.yml.
+# time.
+#
+# THIS JOB BLOCKS. It used to be continue-on-error, on the stated grounds that
+# the Docker-based build wiring could not be validated on the maintainer's
+# machine. Its own history disproved that: across twenty consecutive runs of
+# this workflow and cflite-batch, zero steps failed. It has been validating
+# itself on every PR the whole time -- nobody was reading the result, because
+# the job could not report one.
+#
+# It also stays READ-ONLY. It reads the corpus the nightly batch run grows, and
+# must not be able to write to it: a PR's token writing to the corpus branch
+# would let an untrusted change poison every later run.
 on:
   pull_request:
     branches: [main]
@@ -17,7 +26,6 @@ jobs:
   fuzzing:
     name: cflite-pr
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 30
     strategy:
       fail-fast: false

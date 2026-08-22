@@ -116,12 +116,16 @@ metl is continuously exercised for memory safety:
   each on every push/PR. The harnesses drive the containers with **contract-
   valid operation streams only**, so any ASan/UBSan finding is a real defect.
 - **ClusterFuzzLite** — `.clusterfuzzlite/` plus the `cflite-*` workflows run
-  the OSS-Fuzz toolchain directly in GitHub Actions (per-PR fuzzing + a
-  scheduled batch run). No upstream registration is required.
-- **OSS-Fuzz (optional/future)** — the ClusterFuzzLite build (`build.sh` +
-  `Dockerfile`) is OSS-Fuzz-compatible, so upstream registration with
-  google/oss-fuzz for free 24/7 continuous fuzzing is a drop-in follow-up if
-  desired. See `docs/TODO.md`.
+  the OSS-Fuzz toolchain directly in GitHub Actions: per-PR fuzzing of the code
+  a change touches, and a nightly batch run that grows a corpus so the PR runs
+  start warm. Both **block**; neither did until 2026-08-22, and the nightly run
+  had been discarding its corpus for its entire history.
+- **OSS-Fuzz — not submitted, and not "pending".** OSS-Fuzz's stated bar is that
+  a project "must have a significant user base and/or be critical to the global
+  IT infrastructure". METL is pre-1.0 with no known dependents, so it does not
+  meet that bar, and the honest thing is to say so rather than leave it on a
+  list as if it were queued. The build wiring is ready and is exercised on every
+  PR; the project is not. Revisit when there are users to point at.
 
 You can run the harnesses locally with a libFuzzer-capable Clang:
 

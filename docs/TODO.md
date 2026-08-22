@@ -36,13 +36,26 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   any sanitizer finding is a real defect. Blocking `fuzz-smoke` CI job runs each
   per push/PR. No library bug found (200k+ runs/target clean).
 - [x] **Continuous fuzzing** — **ClusterFuzzLite** (OSS-Fuzz tech in GitHub
-  Actions, no upstream registration): `.clusterfuzzlite/` + non-blocking
-  `cflite-pr`/`cflite-batch` workflows. The `build.sh`/`Dockerfile` are
-  OSS-Fuzz-compatible.
-- [ ] **OSS-Fuzz upstream registration** — optional drop-in follow-up: PR the
-  (already OSS-Fuzz-compatible) `.clusterfuzzlite/` layout to google/oss-fuzz for
-  free 24/7 continuous fuzzing on Google infra. Requires a project config PR
-  upstream + a maintainer contact email.
+  Actions, no upstream registration): `.clusterfuzzlite/` + the `cflite-pr` and
+  `cflite-batch` workflows, **both blocking since 2026-08-22**. They were
+  `continue-on-error` before that, on the grounds that the Docker build could
+  not be validated locally — which their own history disproved: twenty
+  consecutive runs, zero failed steps. Removing it also surfaced that the
+  nightly batch run had **never persisted a corpus**: the `clusterfuzzlite`
+  storage branch did not exist, ClusterFuzzLite cannot create it, and it logs
+  that failure and returns success. Six targets × two sanitizers × ten minutes,
+  discarded nightly. Branch created; the job now fails if the corpus is empty.
+- [ ] **OSS-Fuzz upstream registration** — **not queued, and not blocked on us.**
+  OSS-Fuzz's stated bar is that a project "must have a significant user base
+  and/or be critical to the global IT infrastructure"
+  ([accepting new projects](https://google.github.io/oss-fuzz/getting-started/accepting-new-projects/)).
+  METL is pre-1.0 with no known dependents, so it does not meet that bar today,
+  and submitting anyway spends a reviewer's time on an answer that is already
+  knowable. Two mechanical gaps remain for whenever it does qualify:
+  `.clusterfuzzlite/project.yaml` lacks the `homepage` and `primary_contact`
+  fields OSS-Fuzz requires, and `primary_contact` publishes a maintainer email
+  in the google/oss-fuzz repository — a decision, not an edit. The build wiring
+  itself is ready and is exercised on every PR.
 - [x] **SECURITY.md** — vulnerability disclosure policy (root).
 - [x] **CodeQL** security scan workflow (`.github/workflows/codeql.yml`), push/PR
   plus a weekly schedule so newly published queries reach the code without
