@@ -14,6 +14,7 @@ fuzz_priority_queue
 fuzz_static_unordered_map
 fuzz_allocators
 fuzz_crc
+fuzz_parse
 "
 
 for fuzzer in ${FUZZERS}; do
