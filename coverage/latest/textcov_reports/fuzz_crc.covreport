@@ -1,0 +1,267 @@
+LLVMFuzzerTestOneInput:
+   33|     14|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
+   34|     14|  const auto whole = byte_span(data, size);
+   35|       |
+   36|       |  // --- crc32 ---
+   37|     14|  {
+   38|     14|    const metl::crc32_params seed{0xFFFFFFFFu, 0x00000000u};  // final_xor OFF for resumability
+   39|     14|    const std::uint32_t full = metl::crc32(whole, seed);
+   40|       |
+   41|       |    // Overload agreement (span vs raw pointer/size).
+   42|     14|    if (metl::crc32(data, size, seed) != full) {
+  ------------------
+  |  Branch (42:9): [True: 0, False: 14]
+  ------------------
+   43|      0|      __builtin_trap();
+   44|      0|    }
+   45|       |
+   46|       |    // Streaming: fold prefix, resume over the remainder.
+   47|     65|    for (std::size_t k = 0; k <= size; k += (size / 4) + 1) {
+  ------------------
+  |  Branch (47:29): [True: 51, False: 14]
+  ------------------
+   48|     51|      const std::uint32_t part = metl::crc32(byte_span(data, k), seed);
+   49|     51|      const std::uint32_t rest =
+   50|     51|          metl::crc32(byte_span(data + k, size - k), metl::crc32_params{part, 0x00000000u});
+   51|     51|      if (rest != full) {
+  ------------------
+  |  Branch (51:11): [True: 0, False: 51]
+  ------------------
+   52|      0|        __builtin_trap();
+   53|      0|      }
+   54|     51|    }
+   55|     14|  }
+   56|       |
+   57|       |  // --- crc16 ---
+   58|     14|  {
+   59|     14|    const metl::crc16_params seed{0xFFFFu, 0x0000u};
+   60|     14|    const std::uint16_t full = metl::crc16(whole, seed);
+   61|     14|    if (metl::crc16(data, size, seed) != full) {
+  ------------------
+  |  Branch (61:9): [True: 0, False: 14]
+  ------------------
+   62|      0|      __builtin_trap();
+   63|      0|    }
+   64|     65|    for (std::size_t k = 0; k <= size; k += (size / 4) + 1) {
+  ------------------
+  |  Branch (64:29): [True: 51, False: 14]
+  ------------------
+   65|     51|      const std::uint16_t part = metl::crc16(byte_span(data, k), seed);
+   66|     51|      const std::uint16_t rest =
+   67|     51|          metl::crc16(byte_span(data + k, size - k), metl::crc16_params{part, 0x0000u});
+   68|     51|      if (rest != full) {
+  ------------------
+  |  Branch (68:11): [True: 0, False: 51]
+  ------------------
+   69|      0|        __builtin_trap();
+   70|      0|      }
+   71|     51|    }
+   72|     14|  }
+   73|       |
+   74|       |  // --- crc8 ---
+   75|     14|  {
+   76|     14|    const metl::crc8_params seed{0x00u, 0x00u};
+   77|     14|    const std::uint8_t full = metl::crc8(whole, seed);
+   78|     14|    if (metl::crc8(data, size, seed) != full) {
+  ------------------
+  |  Branch (78:9): [True: 0, False: 14]
+  ------------------
+   79|      0|      __builtin_trap();
+   80|      0|    }
+   81|     65|    for (std::size_t k = 0; k <= size; k += (size / 4) + 1) {
+  ------------------
+  |  Branch (81:29): [True: 51, False: 14]
+  ------------------
+   82|     51|      const std::uint8_t part = metl::crc8(byte_span(data, k), seed);
+   83|     51|      const std::uint8_t rest = metl::crc8(byte_span(data + k, size - k), metl::crc8_params{part, 0x00u});
+   84|     51|      if (rest != full) {
+  ------------------
+  |  Branch (84:11): [True: 0, False: 51]
+  ------------------
+   85|      0|        __builtin_trap();
+   86|      0|      }
+   87|     51|    }
+   88|     14|  }
+   89|       |
+   90|     14|  return 0;
+   91|     14|}
+fuzz_crc.cpp:_ZN12_GLOBAL__N_19byte_spanIhEEN4metl4spanIKhLm18446744073709551615EEEPKT_m:
+   27|    320|metl::span<const std::uint8_t> byte_span(const T* p, std::size_t n) {
+   28|    320|  return metl::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t*>(p), n);
+   29|    320|}
+
+_ZN4metl5crc16ENS_4spanIKhLm18446744073709551615EEENS_12crc16_paramsE:
+   66|    130|                                             crc16_params params = {}) noexcept {
+   67|    130|  return detail::crc_fold(bytes, params.initial, params.final_xor, detail::crc16_update_byte);
+   68|    130|}
+_ZN4metl6detail17crc16_update_byteEth:
+   44|  2.66k|constexpr std::uint16_t crc16_update_byte(std::uint16_t crc, std::uint8_t byte) noexcept {
+   45|  2.66k|#if METL_CRC_TABLE
+   46|  2.66k|  return crc_update_byte_forward<std::uint16_t, crc16_polynomial>(crc, byte);
+   47|       |#else
+   48|       |  crc ^= static_cast<std::uint16_t>(byte) << 8u;
+   49|       |  for (int bit = 0; bit < 8; ++bit) {
+   50|       |    crc = (crc & 0x8000u) != 0u ? static_cast<std::uint16_t>((crc << 1u) ^ crc16_polynomial)
+   51|       |                                : static_cast<std::uint16_t>(crc << 1u);
+   52|       |  }
+   53|       |  return crc;
+   54|       |#endif
+   55|  2.66k|}
+_ZN4metl5crc16EPKvmNS_12crc16_paramsE:
+   77|     14|                                             crc16_params params = {}) noexcept {
+   78|     14|  return crc16(span<const std::uint8_t>(static_cast<const std::uint8_t*>(data), size), params);
+   79|     14|}
+
+_ZN4metl5crc32ENS_4spanIKhLm18446744073709551615EEENS_12crc32_paramsE:
+   66|    130|                                             crc32_params params = {}) noexcept {
+   67|    130|  return detail::crc_fold(bytes, params.initial, params.final_xor, detail::crc32_update_byte);
+   68|    130|}
+_ZN4metl6detail17crc32_update_byteEjh:
+   44|  2.66k|constexpr std::uint32_t crc32_update_byte(std::uint32_t crc, std::uint8_t byte) noexcept {
+   45|  2.66k|#if METL_CRC_TABLE
+   46|  2.66k|  return crc_update_byte_reflected<std::uint32_t, crc32_polynomial>(crc, byte);
+   47|       |#else
+   48|       |  crc ^= byte;
+   49|       |  for (int bit = 0; bit < 8; ++bit) {
+   50|       |    crc = (crc & 1u) != 0u ? (crc >> 1u) ^ crc32_polynomial : (crc >> 1u);
+   51|       |  }
+   52|       |  return crc;
+   53|       |#endif
+   54|  2.66k|}
+_ZN4metl5crc32EPKvmNS_12crc32_paramsE:
+   77|     14|                                             crc32_params params = {}) noexcept {
+   78|     14|  return crc32(span<const std::uint8_t>(static_cast<const std::uint8_t*>(data), size), params);
+   79|     14|}
+
+_ZN4metl4crc8ENS_4spanIKhLm18446744073709551615EEENS_11crc8_paramsE:
+   65|    130|METL_NODISCARD constexpr std::uint8_t crc8(span<const std::uint8_t> bytes, crc8_params params = {}) noexcept {
+   66|    130|  return detail::crc_fold(bytes, params.initial, params.final_xor, detail::crc8_update_byte);
+   67|    130|}
+_ZN4metl6detail16crc8_update_byteEhh:
+   44|  2.66k|constexpr std::uint8_t crc8_update_byte(std::uint8_t crc, std::uint8_t byte) noexcept {
+   45|  2.66k|#if METL_CRC_TABLE
+   46|  2.66k|  return crc_update_byte_forward<std::uint8_t, crc8_polynomial>(crc, byte);
+   47|       |#else
+   48|       |  crc ^= byte;
+   49|       |  for (int bit = 0; bit < 8; ++bit) {
+   50|       |    crc = (crc & 0x80u) != 0u ? static_cast<std::uint8_t>((crc << 1u) ^ crc8_polynomial)
+   51|       |                              : static_cast<std::uint8_t>(crc << 1u);
+   52|       |  }
+   53|       |  return crc;
+   54|       |#endif
+   55|  2.66k|}
+_ZN4metl4crc8EPKvmNS_11crc8_paramsE:
+   76|     14|                                           crc8_params params = {}) noexcept {
+   77|     14|  return crc8(span<const std::uint8_t>(static_cast<const std::uint8_t*>(data), size), params);
+   78|     14|}
+
+_ZN4metl6detail8crc_foldIjPDoFjjhEEET_NS_4spanIKhLm18446744073709551615EEES4_S4_T0_:
+  111|    130|constexpr Crc crc_fold(span<const std::uint8_t> bytes, Crc initial, Crc final_xor, Update update) noexcept {
+  112|    130|  Crc crc = initial;
+  113|  2.79k|  for (std::size_t i = 0; i < bytes.size(); ++i) {
+  ------------------
+  |  Branch (113:27): [True: 2.66k, False: 130]
+  ------------------
+  114|  2.66k|    crc = update(crc, bytes[i]);
+  115|  2.66k|  }
+  116|    130|  return static_cast<Crc>(crc ^ final_xor);
+  117|    130|}
+_ZN4metl6detail25crc_update_byte_reflectedIjTnT_Lj3988292384EEES2_S2_h:
+   77|  2.66k|constexpr Crc crc_update_byte_reflected(Crc crc, std::uint8_t byte) noexcept {
+   78|  2.66k|  constexpr auto table = make_crc_nibble_table_reflected<Crc, Polynomial>();
+   79|  2.66k|  crc = static_cast<Crc>(crc ^ byte);
+   80|  2.66k|  crc = static_cast<Crc>((crc >> 4u) ^ table.entries[crc & Crc{0x0F}]);
+   81|  2.66k|  crc = static_cast<Crc>((crc >> 4u) ^ table.entries[crc & Crc{0x0F}]);
+   82|  2.66k|  return crc;
+   83|  2.66k|}
+_ZN4metl6detail8crc_foldItPDoFtthEEET_NS_4spanIKhLm18446744073709551615EEES4_S4_T0_:
+  111|    130|constexpr Crc crc_fold(span<const std::uint8_t> bytes, Crc initial, Crc final_xor, Update update) noexcept {
+  112|    130|  Crc crc = initial;
+  113|  2.79k|  for (std::size_t i = 0; i < bytes.size(); ++i) {
+  ------------------
+  |  Branch (113:27): [True: 2.66k, False: 130]
+  ------------------
+  114|  2.66k|    crc = update(crc, bytes[i]);
+  115|  2.66k|  }
+  116|    130|  return static_cast<Crc>(crc ^ final_xor);
+  117|    130|}
+_ZN4metl6detail23crc_update_byte_forwardItTnT_Lt4129EEES2_S2_h:
+   87|  2.66k|constexpr Crc crc_update_byte_forward(Crc crc, std::uint8_t byte) noexcept {
+   88|  2.66k|  constexpr unsigned width = sizeof(Crc) * 8u;
+   89|  2.66k|  constexpr auto table = make_crc_nibble_table_forward<Crc, Polynomial>();
+   90|       |
+   91|  2.66k|  crc = static_cast<Crc>(crc ^ static_cast<Crc>(static_cast<Crc>(byte) << (width - 8u)));
+   92|  2.66k|  crc = static_cast<Crc>(static_cast<Crc>(crc << 4u) ^ table.entries[(crc >> (width - 4u)) & Crc{0x0F}]);
+   93|  2.66k|  crc = static_cast<Crc>(static_cast<Crc>(crc << 4u) ^ table.entries[(crc >> (width - 4u)) & Crc{0x0F}]);
+   94|  2.66k|  return crc;
+   95|  2.66k|}
+_ZN4metl6detail8crc_foldIhPDoFhhhEEET_NS_4spanIKhLm18446744073709551615EEES4_S4_T0_:
+  111|    130|constexpr Crc crc_fold(span<const std::uint8_t> bytes, Crc initial, Crc final_xor, Update update) noexcept {
+  112|    130|  Crc crc = initial;
+  113|  2.79k|  for (std::size_t i = 0; i < bytes.size(); ++i) {
+  ------------------
+  |  Branch (113:27): [True: 2.66k, False: 130]
+  ------------------
+  114|  2.66k|    crc = update(crc, bytes[i]);
+  115|  2.66k|  }
+  116|    130|  return static_cast<Crc>(crc ^ final_xor);
+  117|    130|}
+_ZN4metl6detail23crc_update_byte_forwardIhTnT_Lh7EEES2_S2_h:
+   87|  2.66k|constexpr Crc crc_update_byte_forward(Crc crc, std::uint8_t byte) noexcept {
+   88|  2.66k|  constexpr unsigned width = sizeof(Crc) * 8u;
+   89|  2.66k|  constexpr auto table = make_crc_nibble_table_forward<Crc, Polynomial>();
+   90|       |
+   91|  2.66k|  crc = static_cast<Crc>(crc ^ static_cast<Crc>(static_cast<Crc>(byte) << (width - 8u)));
+   92|  2.66k|  crc = static_cast<Crc>(static_cast<Crc>(crc << 4u) ^ table.entries[(crc >> (width - 4u)) & Crc{0x0F}]);
+   93|  2.66k|  crc = static_cast<Crc>(static_cast<Crc>(crc << 4u) ^ table.entries[(crc >> (width - 4u)) & Crc{0x0F}]);
+   94|  2.66k|  return crc;
+   95|  2.66k|}
+
+_ZNK4metl4spanIKhLm18446744073709551615EE4sizeEv:
+  200|  16.3k|  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size; }
+_ZNK4metl4spanIKhLm18446744073709551615EEixEm:
+  192|  7.98k|  constexpr reference operator[](size_type index) const noexcept {
+  193|  7.98k|    METL_ASSERT(index < size());
+  ------------------
+  |  |   91|  7.98k|  do {                                                             \
+  |  |   92|  7.98k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|  7.98k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 7.98k]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|  7.98k|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 7.98k]
+  |  |  ------------------
+  ------------------
+  194|  7.98k|    return storage_.data[index];
+  195|  7.98k|  }
+_ZN4metl4spanIKhLm18446744073709551615EEC2EPS1_m:
+  118|    362|  constexpr span(pointer ptr, size_type count) noexcept : storage_(ptr, count) {
+  119|    362|    METL_ASSERT(Extent == dynamic_extent || count == Extent);
+  ------------------
+  |  |   91|    362|  do {                                                             \
+  |  |   92|    362|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|    362|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [Folded, False: 362]
+  |  |  |  |  |  Branch (25:70): [True: 362, Folded]
+  |  |  |  |  |  Branch (25:70): [True: 0, False: 0]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|    362|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 362]
+  |  |  ------------------
+  ------------------
+  120|    362|  }
+_ZN4metl6detail12span_storageIKhLm18446744073709551615EEC2EPS2_m:
+   81|    362|  constexpr span_storage(T* ptr, std::size_t count) noexcept : data(ptr), size(count) {}
+

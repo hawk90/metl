@@ -1,0 +1,349 @@
+LLVMFuzzerTestOneInput:
+   38|    263|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
+   39|    263|  metl_fuzz::byte_reader in(data, size);
+   40|    263|  map_type map;
+   41|       |
+   42|  11.7k|  while (!in.empty()) {
+  ------------------
+  |  Branch (42:10): [True: 11.4k, False: 263]
+  ------------------
+   43|  11.4k|    const std::uint16_t key = in.integer<std::uint16_t>();
+   44|  11.4k|    switch (in.byte() % 7u) {
+   45|  3.52k|      case 0: {  // try_emplace — false on duplicate key or full (no assert)
+  ------------------
+  |  Branch (45:7): [True: 3.52k, False: 7.91k]
+  ------------------
+   46|  3.52k|        (void)map.try_emplace(key, in.integer<std::uint32_t>());
+   47|  3.52k|        break;
+   48|      0|      }
+   49|  1.78k|      case 1: {  // try_insert_or_assign — false only if a NEW key cannot fit
+  ------------------
+  |  Branch (49:7): [True: 1.78k, False: 9.64k]
+  ------------------
+   50|  1.78k|        (void)map.try_insert_or_assign(key, in.integer<std::uint32_t>());
+   51|  1.78k|        break;
+   52|      0|      }
+   53|  2.05k|      case 2: {  // erase — false if absent
+  ------------------
+  |  Branch (53:7): [True: 2.05k, False: 9.38k]
+  ------------------
+   54|  2.05k|        (void)map.erase(key);
+   55|  2.05k|        break;
+   56|      0|      }
+   57|  2.09k|      case 3: {  // find / contains consistency
+  ------------------
+  |  Branch (57:7): [True: 2.09k, False: 9.33k]
+  ------------------
+   58|  2.09k|        const std::uint32_t* v = map.find(key);
+   59|  2.09k|        if ((v != nullptr) != map.contains(key)) {
+  ------------------
+  |  Branch (59:13): [True: 0, False: 2.09k]
+  ------------------
+   60|      0|          __builtin_trap();
+   61|      0|        }
+   62|  2.09k|        break;
+   63|  2.09k|      }
+   64|  2.09k|      case 4: {  // positional access, always bounded
+  ------------------
+  |  Branch (64:7): [True: 459, False: 10.9k]
+  ------------------
+   65|    459|        if (!map.empty()) {
+  ------------------
+  |  Branch (65:13): [True: 233, False: 226]
+  ------------------
+   66|    233|          const std::size_t idx = in.byte() % map.size();
+   67|    233|          volatile std::uint32_t v = map.nth(idx).value;
+   68|    233|          (void)v;
+   69|    233|        }
+   70|    459|        break;
+   71|  2.09k|      }
+   72|    335|      case 5: {  // full iteration
+  ------------------
+  |  Branch (72:7): [True: 335, False: 11.1k]
+  ------------------
+   73|    335|        std::uint64_t acc = 0;
+   74|  1.21k|        for (const auto& item : map) {
+  ------------------
+  |  Branch (74:31): [True: 1.21k, False: 335]
+  ------------------
+   75|  1.21k|          acc += item.value;
+   76|  1.21k|        }
+   77|    335|        (void)acc;
+   78|    335|        break;
+   79|  2.09k|      }
+   80|  1.18k|      default: {  // clear
+  ------------------
+  |  Branch (80:7): [True: 1.18k, False: 10.2k]
+  ------------------
+   81|  1.18k|        map.clear();
+   82|  1.18k|        break;
+   83|  2.09k|      }
+   84|  11.4k|    }
+   85|  11.4k|    check_invariants(map);
+   86|  11.4k|  }
+   87|       |
+   88|    263|  return 0;
+   89|    263|}
+fuzz_flat_map.cpp:_ZN12_GLOBAL__N_116check_invariantsERKN4metl8flat_mapItjLm32ENSt3__14lessItEEEE:
+   24|  11.4k|void check_invariants(const map_type& map) {
+   25|  11.4k|  if (map.size() > map.capacity()) {
+  ------------------
+  |  Branch (25:7): [True: 0, False: 11.4k]
+  ------------------
+   26|      0|    __builtin_trap();
+   27|      0|  }
+   28|       |  // Elements must be in STRICTLY ascending key order (keys are unique).
+   29|  82.9k|  for (std::size_t i = 1; i < map.size(); ++i) {
+  ------------------
+  |  Branch (29:27): [True: 71.5k, False: 11.4k]
+  ------------------
+   30|  71.5k|    if (!(map[i - 1].key < map[i].key)) {
+  ------------------
+  |  Branch (30:9): [True: 0, False: 71.5k]
+  ------------------
+   31|      0|      __builtin_trap();
+   32|      0|    }
+   33|  71.5k|  }
+   34|  11.4k|}
+
+_ZN9metl_fuzz11byte_readerC2EPKhm:
+   31|    263|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
+_ZNK9metl_fuzz11byte_reader5emptyEv:
+   34|  11.7k|  bool empty() const noexcept { return remaining() == 0; }
+_ZNK9metl_fuzz11byte_reader9remainingEv:
+   33|  11.7k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
+  ------------------
+  |  Branch (33:51): [True: 11.4k, False: 263]
+  ------------------
+_ZN9metl_fuzz11byte_reader4byteEv:
+   37|  55.7k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
+  ------------------
+  |  Branch (37:41): [True: 55.0k, False: 745]
+  ------------------
+_ZN9metl_fuzz11byte_reader7integerItEET_v:
+   41|  11.4k|  UInt integer() noexcept {
+   42|  11.4k|    UInt value = 0;
+   43|  34.3k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
+  ------------------
+  |  Branch (43:29): [True: 22.8k, False: 11.4k]
+  ------------------
+   44|  22.8k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
+   45|  22.8k|    }
+   46|  11.4k|    return value;
+   47|  11.4k|  }
+_ZN9metl_fuzz11byte_reader7integerIjEET_v:
+   41|  5.30k|  UInt integer() noexcept {
+   42|  5.30k|    UInt value = 0;
+   43|  26.5k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
+  ------------------
+  |  Branch (43:29): [True: 21.2k, False: 5.30k]
+  ------------------
+   44|  21.2k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
+   45|  21.2k|    }
+   46|  5.30k|    return value;
+   47|  5.30k|  }
+
+_ZN4metl8flat_mapItjLm32ENSt3__14lessItEEEC2Ev:
+   65|    263|  constexpr flat_map() noexcept(std::is_nothrow_default_constructible_v<Compare>) : comp_(), size_(0) {}
+_ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEE8capacityEv:
+  139|  11.4k|  METL_NODISCARD size_type capacity() const noexcept { return Capacity; }
+_ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEEixEm:
+  158|   143k|  METL_NODISCARD const_reference operator[](size_type index) const noexcept {
+  159|   143k|    METL_ASSERT(index < size_);
+  ------------------
+  |  |   91|   143k|  do {                                                             \
+  |  |   92|   143k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|   143k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 143k]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|   143k|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 143k]
+  |  |  ------------------
+  ------------------
+  160|   143k|    return data()[index];
+  161|   143k|  }
+_ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEE4dataEv:
+  418|   170k|  const value_type* data() const noexcept {
+  419|   170k|    return std::launder(reinterpret_cast<const value_type*>(storage_[0].addr()));
+  420|   170k|  }
+_ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEE4sizeEv:
+  137|  94.6k|  METL_NODISCARD size_type size() const noexcept { return size_; }
+_ZN4metl8flat_mapItjLm32ENSt3__14lessItEEED2Ev:
+   89|    263|  ~flat_map() { clear(); }
+_ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE11try_emplaceIRKtjEEbOT_OT0_:
+  338|  3.52k|  METL_NODISCARD bool try_emplace(K&& key, V&& value) {
+  339|  3.52k|    const size_type index = lower_bound_index(key);
+  340|  3.52k|    if (index < size_ && !comp_(key, data()[index].key)) {
+  ------------------
+  |  Branch (340:9): [True: 2.58k, False: 936]
+  |  Branch (340:26): [True: 1.07k, False: 1.50k]
+  ------------------
+  341|  1.07k|      return false;
+  342|  1.07k|    }
+  343|       |
+  344|  2.44k|    return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
+  345|  3.52k|  }
+_ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEE17lower_bound_indexItEEmRKT_:
+  423|  11.5k|  size_type lower_bound_index(const K& key) const noexcept {
+  424|  11.5k|    size_type first = 0;
+  425|  11.5k|    size_type count = size_;
+  426|  37.7k|    while (count > 0) {
+  ------------------
+  |  Branch (426:12): [True: 26.1k, False: 11.5k]
+  ------------------
+  427|  26.1k|      const size_type step = count / 2;
+  428|  26.1k|      const size_type index = first + step;
+  429|  26.1k|      if (comp_(data()[index].key, key)) {
+  ------------------
+  |  Branch (429:11): [True: 12.6k, False: 13.5k]
+  ------------------
+  430|  12.6k|        first = index + 1;
+  431|  12.6k|        count -= step + 1;
+  432|  13.5k|      } else {
+  433|  13.5k|        count = step;
+  434|  13.5k|      }
+  435|  26.1k|    }
+  436|  11.5k|    return first;
+  437|  11.5k|  }
+_ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE4dataEv:
+  417|  30.0k|  value_type* data() noexcept { return std::launder(reinterpret_cast<value_type*>(storage_[0].addr())); }
+_ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE13try_insert_atIRKtjEEbmOT_OT0_:
+  474|  3.51k|  METL_NODISCARD bool try_insert_at(size_type index, K&& key, V&& value) {
+  475|  3.51k|    if (full()) {
+  ------------------
+  |  Branch (475:9): [True: 579, False: 2.93k]
+  ------------------
+  476|    579|      return false;
+  477|    579|    }
+  478|       |
+  479|  2.93k|    shift_right_from(index);
+  480|  2.93k|    new (storage_[index].addr()) value_type{std::forward<K>(key), std::forward<V>(value)};
+  481|  2.93k|    ++size_;
+  482|  2.93k|    return true;
+  483|  3.51k|  }
+_ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEE4fullEv:
+  135|  3.51k|  METL_NODISCARD bool full() const noexcept { return size_ == Capacity; }
+_ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE16shift_right_fromEm:
+  485|  2.93k|  void shift_right_from(size_type index) {
+  486|  11.5k|    for (size_type i = size_; i > index; --i) {
+  ------------------
+  |  Branch (486:31): [True: 8.62k, False: 2.93k]
+  ------------------
+  487|  8.62k|      new (storage_[i].addr()) value_type(static_cast<value_type&&>(data()[i - 1]));
+  488|  8.62k|      data()[i - 1].~value_type();
+  489|  8.62k|    }
+  490|  2.93k|  }
+_ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE20try_insert_or_assignIRKtjEEbOT_OT0_:
+  372|  1.78k|  METL_NODISCARD bool try_insert_or_assign(K&& key, V&& value) {
+  373|  1.78k|    const size_type index = lower_bound_index(key);
+  374|  1.78k|    if (index < size_ && !comp_(key, data()[index].key)) {
+  ------------------
+  |  Branch (374:9): [True: 1.37k, False: 413]
+  |  Branch (374:26): [True: 718, False: 658]
+  ------------------
+  375|    718|      data()[index].value = std::forward<V>(value);
+  376|    718|      return true;
+  377|    718|    }
+  378|       |
+  379|  1.07k|    return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
+  380|  1.78k|  }
+_ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE5eraseERKt:
+  399|  2.05k|  bool erase(const key_type& key) noexcept {
+  400|  2.05k|    const size_type index = lower_bound_index(key);
+  401|  2.05k|    if (index >= size_ || comp_(key, data()[index].key)) {
+  ------------------
+  |  Branch (401:9): [True: 909, False: 1.14k]
+  |  Branch (401:27): [True: 906, False: 241]
+  ------------------
+  402|  1.81k|      return false;
+  403|  1.81k|    }
+  404|       |
+  405|    241|    erase_at(index);
+  406|    241|    return true;
+  407|  2.05k|  }
+_ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE8erase_atEm:
+  492|  2.93k|  void erase_at(size_type index) noexcept {
+  493|  2.93k|    data()[index].~value_type();
+  494|  3.85k|    for (size_type i = index; i + 1 < size_; ++i) {
+  ------------------
+  |  Branch (494:31): [True: 917, False: 2.93k]
+  ------------------
+  495|    917|      new (storage_[i].addr()) value_type(static_cast<value_type&&>(data()[i + 1]));
+  496|    917|      data()[i + 1].~value_type();
+  497|    917|    }
+  498|  2.93k|    --size_;
+  499|  2.93k|  }
+_ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE4findERKt:
+  228|  2.09k|  METL_NODISCARD mapped_type* find(const key_type& key) noexcept {
+  229|  2.09k|    const size_type index = lower_bound_index(key);
+  230|  2.09k|    if (index < size_ && !comp_(key, data()[index].key)) {
+  ------------------
+  |  Branch (230:9): [True: 855, False: 1.24k]
+  |  Branch (230:26): [True: 444, False: 411]
+  ------------------
+  231|    444|      return &data()[index].value;
+  232|    444|    }
+  233|  1.65k|    return nullptr;
+  234|  2.09k|  }
+_ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEE8containsERKt:
+  224|  2.09k|  METL_NODISCARD bool contains(const key_type& key) const noexcept { return find(key) != nullptr; }
+_ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEE4findERKt:
+  236|  2.09k|  METL_NODISCARD const mapped_type* find(const key_type& key) const noexcept {
+  237|  2.09k|    const size_type index = lower_bound_index(key);
+  238|  2.09k|    if (index < size_ && !comp_(key, data()[index].key)) {
+  ------------------
+  |  Branch (238:9): [True: 855, False: 1.24k]
+  |  Branch (238:26): [True: 444, False: 411]
+  ------------------
+  239|    444|      return &data()[index].value;
+  240|    444|    }
+  241|  1.65k|    return nullptr;
+  242|  2.09k|  }
+_ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEE5emptyEv:
+  133|    459|  METL_NODISCARD bool empty() const noexcept { return size_ == 0; }
+_ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE3nthEm:
+  182|    233|  METL_NODISCARD reference nth(size_type index) noexcept {
+  183|    233|    METL_ASSERT(index < size_);
+  ------------------
+  |  |   91|    233|  do {                                                             \
+  |  |   92|    233|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|    233|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 233]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|    233|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 233]
+  |  |  ------------------
+  ------------------
+  184|    233|    return data()[index];
+  185|    233|  }
+_ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE5beginEv:
+  123|    335|  METL_NODISCARD iterator begin() noexcept { return data(); }
+_ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE3endEv:
+  128|    335|  METL_NODISCARD iterator end() noexcept { return data() + size_; }
+_ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE5clearEv:
+  410|  1.44k|  void clear() noexcept {
+  411|  4.13k|    while (size_ > 0) {
+  ------------------
+  |  Branch (411:12): [True: 2.69k, False: 1.44k]
+  ------------------
+  412|  2.69k|      erase_at(size_ - 1);
+  413|  2.69k|    }
+  414|  1.44k|  }
+
+_ZNK4metl11storage_forINS_8flat_mapItjLm32ENSt3__14lessItEEE10value_typeEE4addrEv:
+   36|   170k|  const void* addr() const noexcept { return &bytes[0]; }
+_ZN4metl11storage_forINS_8flat_mapItjLm32ENSt3__14lessItEEE10value_typeEE4addrEv:
+   34|  42.5k|  void* addr() noexcept { return &bytes[0]; }
+
