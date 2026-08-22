@@ -68,6 +68,45 @@ Accordingly:
   `try_*`/bounded operations and still getting a heap/stack overflow, UB, leak,
   or uninitialized read) **is** a security issue — please report it.
 
+## Verifying what you vendored
+
+metl is normally used by copying headers into your tree, which means that from
+the moment you copy them there is no package manager, checksum database, or
+update path standing behind the files. So every release publishes **build
+provenance**: a Sigstore-signed statement that the single-header artifact came
+out of this repository's release workflow, at a named commit, on GitHub's
+runners. It is signed with a short-lived certificate, so there is no long-lived
+key for this project to hold or lose.
+
+```sh
+gh attestation verify metl-<version>-single.hpp --repo hawk90/metl
+```
+
+Each release also attaches the attestation bundle
+(`metl-<version>-single.hpp.intoto.jsonl`) so the check still works offline,
+from a mirror, or if this repository is gone:
+
+```sh
+gh attestation verify metl-<version>-single.hpp \
+  --bundle metl-<version>-single.hpp.intoto.jsonl \
+  --repo hawk90/metl
+```
+
+Provenance says where a file came from. It does not say the code is correct —
+that is what everything else in this document and in CI is for.
+
+## Supply-chain posture
+
+- **Every GitHub Action is pinned to a commit SHA**, not a tag. A tag can be
+  moved; a SHA cannot.
+- **Dependabot** proposes action updates weekly, grouped into one PR.
+- **CodeQL** runs on every push and PR, and weekly so a newly published query
+  finds the code without waiting for a commit.
+- **OpenSSF Scorecard** runs weekly against this repository. Its results go to
+  the Security tab and are **not published** to the public OpenSSF API; the
+  `scorecard.yml` header explains what the score is and is not good for, and
+  which of its checks are wrong for a header-only library.
+
 ## Continuous fuzzing
 
 metl is continuously exercised for memory safety:

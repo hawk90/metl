@@ -26,6 +26,12 @@ jobs:
     permissions:
       # Required to create the release and upload assets.
       contents: write
+      # Required to record the provenance attestation.
+      attestations: write
+      # Required for the Sigstore signing certificate. This is the whole reason
+      # provenance needs no long-lived key: the runner proves its identity with
+      # a short-lived OIDC token instead.
+      id-token: write
 
     steps:
       - name: Checkout
@@ -129,7 +135,52 @@ jobs:
             echo "\`\`\`cpp"
             echo "#include \"metl-${version}-single.hpp\""
             echo "\`\`\`"
+            echo ""
+            echo "### Verifying it"
+            echo ""
+            echo "The header is published with build provenance: a Sigstore-signed"
+            echo "statement that this exact file came out of this repository's release"
+            echo "workflow, at this commit. Worth checking, because vendoring a header"
+            echo "leaves no package manager behind to check it for you later."
+            echo ""
+            echo "\`\`\`sh"
+            echo "gh attestation verify metl-${version}-single.hpp --repo ${GITHUB_REPOSITORY}"
+            echo "\`\`\`"
+            echo ""
+            echo "Offline, or from a mirror, use the attached bundle instead:"
+            echo ""
+            echo "\`\`\`sh"
+            echo "gh attestation verify metl-${version}-single.hpp \\"
+            echo "  --bundle metl-${version}-single.hpp.intoto.jsonl \\"
+            echo "  --repo ${GITHUB_REPOSITORY}"
+            echo "\`\`\`"
           } >> release-notes.md
+
+      # Build provenance: a signed statement that THIS file came out of THIS
+      # workflow, from this commit, on GitHub's runners. Signed with a short-lived
+      # Sigstore certificate, so there is no long-lived key for this project to
+      # keep or lose.
+      #
+      # It matters more here than for most projects. METL's primary distribution
+      # is vendoring -- somebody drops `metl-x.y.z-single.hpp` into their tree,
+      # and from that moment the file has no package manager, no checksum
+      # database, and no update path behind it. Provenance is the only thing that
+      # can answer "is this the file the project published, or one somebody
+      # edited on the way here" a year later.
+      - name: Attest the amalgamation
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
+        with:
+          subject-path: metl-${{ env.version }}-single.hpp
+
+      # Attach the bundle to the release as well as leaving it in GitHub's
+      # attestation store. The store is the convenient path (`gh attestation
+      # verify` needs nothing else); the attached file is the one that still
+      # works for somebody verifying offline, from a mirror, or after this
+      # repository has gone away -- which is the case the vendored-header user
+      # is actually in.
+      - name: Name the attestation bundle after what it attests
+        run: cp "${{ steps.attest.outputs.bundle-path }}" "metl-${version}-single.hpp.intoto.jsonl"
 
       - name: Create the release
         env:
@@ -141,4 +192,5 @@ jobs:
             --title "metl ${GITHUB_REF_NAME}" \
             --notes-file release-notes.md \
             ${prerelease} \
-            "metl-${version}-single.hpp"
+            "metl-${version}-single.hpp" \
+            "metl-${version}-single.hpp.intoto.jsonl"
