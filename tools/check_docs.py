@@ -79,6 +79,13 @@ SIZE_BUDGET_EXEMPT = {
     SIZE_BUDGET_SOURCE: "holds BUDGETS -- it is the single source",
     "tools/check_docs.py": "must contain the pattern to test for it: the regex "
                            "above and the self-test fixture below",
+    # Listed rather than relied upon. Its `"cortex-m0": 136,` happens not to
+    # match, because the quote sits where the regex wants whitespace -- which is
+    # luck, not a decision, and a comment in that file written any other way
+    # would fail a rule it is not the subject of. It holds the STACK budgets,
+    # which are its own single source for the same reason.
+    "tools/check_stack.py": "holds the stack-depth BUDGETS -- the single source "
+                            "for those, as check_size.py is for code size",
 }
 SIZE_SCANNED_SUFFIXES = (".md", ".yml", ".yaml", ".py", ".txt", ".sh")
 
