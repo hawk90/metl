@@ -15,6 +15,10 @@ fuzz_static_unordered_map
 fuzz_allocators
 fuzz_crc
 fuzz_parse
+fuzz_byte_ring
+fuzz_format
+fuzz_flat_set
+fuzz_unordered_set
 "
 
 for fuzzer in ${FUZZERS}; do
