@@ -66,7 +66,14 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [ ] **Fuzz harnesses for the headers nothing reaches.** The first coverage run
   (2026-08-22, `cflite-cron`) measured 80.23% line coverage — over **the 18 of
   66 headers the harnesses actually touch**. Reported without that denominator
-  it reads as "METL is 80% fuzzed", which is wrong. `fuzz_parse` closed the
+  it reads as "METL is 80% fuzzed", which is wrong.
+
+  **Read the denominator, not the percentage.** After four harnesses landed the
+  same day, the headers reached went 18 → **25 of 66** and the percentage went
+  80.23% → **63.33%**. Coverage improved and the number fell, because a new
+  harness pulls a whole header into the denominator while exercising part of it.
+  Anyone tracking the percentage alone will read progress as regression. Track
+  `headers reached / 66` alongside it. `fuzz_parse` closed the
   worst gap (`parse.hpp` is the one header whose documented job is accepting
   bytes somebody else chose, and it shipped in #66 without a harness). Still
   unfuzzed and worth it, roughly in order:
