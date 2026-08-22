@@ -629,6 +629,47 @@ jobs:
             --elf invariant_probe.elf \
             --cpu ${{ matrix.cpu }}
 
+      # Stack-depth ratchet. The size ratchet above measures FLASH; this
+      # measures what METL puts on the stack while it runs, which nothing here
+      # has ever looked at. See tests/embedded/stack_probe.cpp for why it needs
+      # its own probe rather than reusing invariant_probe.cpp: that one holds
+      # capacity 4-8 containers, and the regression this guards against — an
+      # operation that starts building into a local buffer — is invisible at
+      # that size and kilobytes at a realistic one.
+      #
+      # Compiled, not linked. -fstack-usage is a compile-stage flag and writes
+      # a .su file per TU, so there is nothing for a linker to contribute. The
+      # flags mirror METL_LINK_FLAGS' compile half; the --specs= and
+      # -nostartfiles entries are link-stage and deliberately absent.
+      - name: Compile the stack probe with -fstack-usage
+        run: |
+          set -euo pipefail
+          arm-none-eabi-g++ \
+            -std=c++17 -mcpu=${{ matrix.cpu }} -mthumb -Os \
+            -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti \
+            -fstack-usage \
+            -Iinclude -c tests/embedded/stack_probe.cpp -o stack_probe.o
+
+      - name: Stack ratchet must still bite (canary)
+        run: tools/check_stack.py --self-test
+
+      # --report, because BUDGETS is empty until this job has published real
+      # numbers — the same two-step check_size.py used, and for the same reason:
+      # there is no ARM toolchain on the development machine and local figures
+      # have disagreed with CI repeatedly.
+      #
+      # This is NOT a step that can only pass. The unbounded-allocation check
+      # (S2: no VLA, no alloca, which docs/SCOPE.md I3 forbids) is enforced in
+      # report mode too, and so is "no .su files were produced" — so the flag
+      # silently going missing fails the job rather than passing over nothing.
+      # Only the byte budget waits for its measurement.
+      - name: Probe stack depth (reporting; budgets set in the follow-up)
+        run: |
+          tools/check_stack.py \
+            --su-dir . \
+            --cpu ${{ matrix.cpu }} \
+            --report
+
   # ---------------------------------------------------------------------------
   # Tier 1 capability gate for METL's lock-free types — metl::atomic_handle and
   # metl::mpmc_queue (docs/SCOPE.md §3: a tier and its CI job arrive in the same
