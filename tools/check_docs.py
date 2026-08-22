@@ -20,6 +20,20 @@ can settle:
       under fuzz/; two hand-maintained lists is how that stops being true. A
       harness missing from build.sh still passes `fuzz-smoke` and is silently
       absent from every nightly run.
+  D5  no file outside tools/check_size.py states a per-Cortex-M byte figure.
+      Not "the copies agree" -- no copies. See below.
+
+D5 is a different shape from the others and the difference is the point. D1-D4
+check that two things agree; D5 forbids the second thing from existing. It was
+added after the size budgets were raised in #66 and the figures quoted in
+.github/workflows/ci.yml and docs/TODO.md were not, so the repository stated
+three answers to "what is the Cortex-M0 budget" and two of them were a
+measurement that no longer existed. Nothing failed, because nothing was
+checking; the ratchet itself was correct the whole time.
+
+A checker that verified the copies matched would have caught it. It would also
+have institutionalised the copies. tools/check_size.py holds BUDGETS, that is
+where the number is, and prose points at it -- so there is nothing to drift.
 
 What this deliberately does NOT do is compile the snippets. They are excerpts:
 they interleave top-level definitions with statements, call functions the prose
@@ -37,6 +51,7 @@ Usage:
 import argparse
 import pathlib
 import re
+import subprocess
 import sys
 
 DOCS = ["README.md", "docs/COOKBOOK.md", "docs/CHOOSING.md", "docs/SCOPE.md",
@@ -48,6 +63,24 @@ NOT_A_SYMBOL = {
     "bad_": "prose about the `metl::bad_*_access` exceptions METL does NOT have",
     "exp": "the planned Tier 2 opt-in namespace `metl::exp::`, not a type",
 }
+
+# D5: a byte figure attributed to a Cortex-M target -- `cortex-m3 9999`,
+# `m0 9999`, `m7: 9999` (deliberately impossible numbers here, so nothing in
+# this file can be mistaken for a budget). Narrow on purpose: it wants a target
+# name and a 3-to-5 digit number within a few characters of each other, so a
+# bare `4236` elsewhere is not a finding and neither is `-mcpu=cortex-m3` on its
+# own. Run across the whole tracked tree when it was written, it matched eight
+# lines and all eight were the drift it exists to catch.
+SIZE_FIGURE = re.compile(r"(?:cortex-)?\bm[0347]\+?\b[^\S\n]{0,4}[=:]?[^\S\n]{0,4}\d{3,5}\b", re.I)
+
+# Files allowed to state a figure, each with the reason it has to.
+SIZE_BUDGET_SOURCE = "tools/check_size.py"
+SIZE_BUDGET_EXEMPT = {
+    SIZE_BUDGET_SOURCE: "holds BUDGETS -- it is the single source",
+    "tools/check_docs.py": "must contain the pattern to test for it: the regex "
+                           "above and the self-test fixture below",
+}
+SIZE_SCANNED_SUFFIXES = (".md", ".yml", ".yaml", ".py", ".txt", ".sh")
 
 QUALIFIED = re.compile(r"\bmetl::([a-zA-Z_][a-zA-Z_0-9]*)")
 RELATIVE_LINK = re.compile(r"\]\(((?!https?:|#)[^)\s]+\.(?:cpp|hpp|md|py|yml|txt))[^)]*\)")
@@ -98,6 +131,23 @@ def fuzz_targets(repo_root):
 
     on_disk = {p.stem for p in (root / "fuzz").glob("fuzz_*.cpp")}
     return set(cmake_match.group(1).split()), set(buildsh_match.group(1).split()), on_disk
+
+
+def scannable_files(root):
+    """Tracked text files, relative to `root`.
+
+    `git ls-files` is asked first so the ~20 untracked build-* trees in a working
+    checkout are skipped without naming them. It fails in the self-test, which
+    builds its fixture outside any repository, so a plain walk is the fallback --
+    correct there because that tree contains only what the fixture put in it.
+    """
+    try:
+        listed = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True,
+                                text=True, check=True).stdout.split()
+        paths = [pathlib.Path(name) for name in listed]
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        paths = [p.relative_to(root) for p in pathlib.Path(root).rglob("*") if p.is_file()]
+    return [p for p in paths if p.suffix in SIZE_SCANNED_SUFFIXES]
 
 
 def check(repo_root="."):
@@ -159,6 +209,22 @@ def check(repo_root="."):
             problems.append(("D4", f".clusterfuzzlite/build.sh names {name}, which has no "
                                    f"fuzz/{name}.cpp"))
 
+    # D5: the size budgets live in one file. Anywhere else is a copy, and a copy
+    # is a number waiting to go stale -- which is exactly what it did.
+    for relative in sorted(scannable_files(root)):
+        if relative.as_posix() in SIZE_BUDGET_EXEMPT:
+            continue
+        try:
+            text = (root / relative).read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        for number, line in enumerate(text.splitlines(), 1):
+            match = SIZE_FIGURE.search(line)
+            if match:
+                problems.append(("D5", f"{relative.as_posix()}:{number}: states a size figure "
+                                       f"`{match.group(0).strip()}` -- the budgets live in "
+                                       f"{SIZE_BUDGET_SOURCE}. Point at it; do not restate it."))
+
     # D3, the other direction: an example on disk that CI does not build.
     examples_dir = root / "examples"
     if examples_dir.is_dir():
@@ -196,6 +262,11 @@ def self_test():
         (root / ".clusterfuzzlite").mkdir()
         (root / ".clusterfuzzlite" / "build.sh").write_text('FUZZERS="\nfuzz_kept\n"\n')
         (root / "examples" / "orphan.cpp").write_text("int main(){}\n")
+        # D5 fixture: the drift verbatim -- a workflow comment restating a budget
+        # the ratchet has since moved past. `-mcpu=cortex-m3` on the line above is
+        # the near miss that must NOT fire, or the rule is too blunt to keep.
+        (root / "restated.yml").write_text(
+            "# flags: -mcpu=cortex-m3 -mthumb\n#     cortex-m0  2780\n")
         (root / "docs").mkdir()
         (root / "README.md").write_text(
             "`metl::fixed_vector` is fine and `metl::ghost_type` is not.\n"
@@ -206,13 +277,22 @@ def self_test():
             (root / extra).write_text("nothing here\n")
 
         found = {rule for rule, _ in check(root)}
-        for rule in ("D1", "D2", "D3", "D4"):
+        for rule in ("D1", "D2", "D3", "D4", "D5"):
             if rule not in found:
                 failures.append(f"{rule} did not fire on a tree that violates it")
+
+        # D5 must have fired on the restated budget and NOT on the -mcpu flag.
+        d5 = [message for rule, message in check(root) if rule == "D5"]
+        if len(d5) != 1:
+            failures.append(f"D5 fired {len(d5)} times, expected exactly 1 (the "
+                            f"restated budget, not the -mcpu flag): {d5}")
 
         # And the clean case must stay clean.
         (root / "README.md").write_text("`metl::fixed_vector` is fine.\n")
         (root / "examples" / "orphan.cpp").unlink()
+        # The -mcpu line stays. A clean tree that still contains it is the proof
+        # D5 is narrow enough to live with.
+        (root / "restated.yml").write_text("# flags: -mcpu=cortex-m3 -mthumb\n")
         (root / ".clusterfuzzlite" / "build.sh").write_text(
             'FUZZERS="\nfuzz_kept\nfuzz_dropped\n"\n')
         remaining = check(root)
@@ -223,7 +303,7 @@ def self_test():
         for failure in failures:
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
-    print("self-test passed: D1-D4 each bite, and a clean tree is not flagged")
+    print("self-test passed: D1-D5 each bite, and a clean tree is not flagged")
     return 0
 
 
@@ -244,7 +324,8 @@ def main():
         print(f"\n{len(problems)} problem(s).")
         return 1
     print("docs OK: every metl:: name resolves, every relative link exists, "
-          "every example is built and run by CI")
+          "every example is built and run by CI, every fuzz harness is in both "
+          "lists, and the size budgets are stated in exactly one file")
     return 0
 
 
