@@ -44,6 +44,23 @@
 /// fired. Without it the reclaim could be deleted and nothing would notice -- the
 /// type stays correct, only slower, which no other test or fuzz harness can see.
 ///
+/// @par Memory footprint -- read this before picking a capacity
+/// `bucket_count` is `bit_ceil(Capacity * 2)`, so the table always holds at
+/// least **twice** the capacity you asked for, and every bucket carries a state
+/// byte alongside its slot. `static_unordered_map<uint32_t, uint64_t, 256>` is
+/// **8728 bytes** against the 3072 bytes of key-and-value it stores: 2.84x. The
+/// multiplier never drops below about 2.8x, and there is a cliff -- `bit_ceil`
+/// means capacity 128 gets 256 buckets and capacity **129 gets 512**, so one
+/// more element costs 4352 more bytes. **Pick a capacity at or just under a
+/// power of two.** `docs/CHOOSING.md` has the table and the comparison with
+/// `flat_map` (a flat 1.34x, no cliff); `tests/core/ram_footprint_test.cpp`
+/// asserts these numbers so the prose cannot drift away from the layout.
+///
+/// The elements live inline, so this is a real 8728-byte object: as a local it
+/// is an 8728-byte stack frame, and METL cannot tell you whether that fit. The
+/// recoverable API answers "is the container full", never "did the frame fit".
+/// Prefer static storage, or a member of something already in static storage.
+///
 /// Two bounds this header does not own: `Hash` and `KeyEqual` are called on the
 /// probe path, so an unbounded hash or comparison makes every operation above
 /// unbounded with it.

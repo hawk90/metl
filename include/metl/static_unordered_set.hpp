@@ -48,6 +48,20 @@
 /// probe path, so an unbounded hash or comparison makes every operation above
 /// unbounded with it.
 ///
+/// @par Memory footprint -- read this before picking a capacity
+/// `bucket_count` is `bit_ceil(Capacity * 2)`, so the table always holds at
+/// least **twice** the capacity you asked for, and every bucket carries a state
+/// byte alongside its slot. `static_unordered_set<uint32_t, 256>` is **2584
+/// bytes** against the 1024 bytes of keys it stores. There is also a cliff --
+/// capacity 128 gets 256 buckets and capacity **129 gets 512** -- so **pick a
+/// capacity at or just under a power of two**. `docs/CHOOSING.md` has the table
+/// and the comparison with `flat_set`; `tests/core/ram_footprint_test.cpp`
+/// asserts these numbers so the prose cannot drift away from the layout.
+///
+/// The elements live inline, so as a local this is a 2584-byte stack frame, and
+/// METL cannot tell you whether that fit: the recoverable API answers "is the
+/// container full", never "did the frame fit". Prefer static storage.
+///
 /// Single-threaded: this type does not synchronise.
 
 #include "metl/compiler.hpp"
