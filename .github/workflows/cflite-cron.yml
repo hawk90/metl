@@ -1,0 +1,125 @@
+name: ClusterFuzzLite Cron
+
+# The two scheduled ClusterFuzzLite tasks that are not fuzzing: pruning the
+# corpus, and measuring what the fuzzers actually reach.
+#
+# Both exist because the nightly batch run started persisting a corpus on
+# 2026-08-22. Before that it discarded everything it found, which made pruning
+# pointless and coverage meaningless -- there was nothing accumulating to prune,
+# and each night's coverage was whatever ten minutes from a cold start happened
+# to hit. Now that the corpus survives, it grows, and something has to bound it.
+#
+# PRUNE drops inputs that no longer add coverage. Without it the corpus grows
+# without limit, and the per-PR run gets slower every night while testing the
+# same code paths.
+#
+# COVERAGE answers the question the corpus makes askable: how much of METL do
+# these six harnesses actually reach? That is a different number from the
+# `coverage` job in ci.yml, which measures the unit tests. A fuzzer that covers
+# very little is not proven safe by running for a long time, and the only way to
+# know which one you have is to measure it.
+on:
+  schedule:
+    # 06:00 UTC, an hour after the batch run at 05:00, so the corpus this
+    # prunes and measures is the one that run just grew.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    name: cflite-prune
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    permissions:
+      # Required to push the pruned corpus back.
+      contents: write
+
+    steps:
+      - name: Build fuzzers
+        uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          language: c++
+          sanitizer: address
+
+      - name: Prune the corpus
+        uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fuzz-seconds: 600
+          mode: 'prune'
+          sanitizer: address
+          # Authenticated for the same reason as cflite-batch: ClusterFuzzLite
+          # pushes with a plain `git push`, and the runner has no credential
+          # helper, so an unauthenticated URL fails on the last line after
+          # everything that looks like success.
+          storage-repo: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          storage-repo-branch: clusterfuzzlite
+          storage-repo-branch-coverage: clusterfuzzlite-coverage
+
+      # A prune that pushed nothing leaves the old corpus in place, so this
+      # cannot tell "pruned correctly" from "failed to push". What it does catch
+      # is a prune that emptied the branch -- which is the outcome that would
+      # silently undo everything the nightly runs have accumulated. Stating the
+      # limit rather than pretending the check is stronger than it is.
+      - name: The corpus must still be there
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          blobs="$(gh api \
+            "repos/${{ github.repository }}/git/trees/clusterfuzzlite?recursive=1" \
+            --jq '[.tree[] | select(.type == "blob")] | length')"
+          echo "corpus branch holds ${blobs} file(s) after pruning"
+          if [[ "${blobs}" -le 1 ]]; then
+            echo "::error::Pruning left the corpus branch empty. Every input the nightly runs"
+            echo "::error::have accumulated is gone; check the prune step's log before the next"
+            echo "::error::batch run overwrites the evidence."
+            exit 1
+          fi
+
+  coverage:
+    name: cflite-coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    permissions:
+      # Required to push the coverage report.
+      contents: write
+
+    steps:
+      - name: Build fuzzers (coverage)
+        uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          language: c++
+          sanitizer: coverage
+
+      - name: Measure coverage
+        uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          mode: 'coverage'
+          sanitizer: coverage
+          storage-repo: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          storage-repo-branch: clusterfuzzlite
+          storage-repo-branch-coverage: clusterfuzzlite-coverage
+
+      # The `clusterfuzzlite-coverage` branch was created alongside the corpus
+      # branch and, until this job existed, nothing ever wrote to it -- a branch
+      # with no writer, which is the same shape of dead weight as a job that
+      # cannot fail. This check is what makes the branch's existence provable.
+      - name: The coverage report must actually have been saved
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          blobs="$(gh api \
+            "repos/${{ github.repository }}/git/trees/clusterfuzzlite-coverage?recursive=1" \
+            --jq '[.tree[] | select(.type == "blob")] | length')"
+          echo "coverage branch holds ${blobs} file(s)"
+          if [[ "${blobs}" -le 1 ]]; then
+            echo "::error::The clusterfuzzlite-coverage branch still holds only its README, so"
+            echo "::error::this run measured coverage and discarded the report."
+            exit 1
+          fi
