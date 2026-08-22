@@ -55,7 +55,21 @@ import sys
 # A budget goes DOWN freely. It goes UP only when the probe was deliberately
 # given more to do, and the commit that raises it has to say what and why --
 # never to make a red job green.
-BUDGETS = {}
+#
+# Measured by the `invariants` job on PR #79, run 32583708742. All four targets
+# agreed on 136 bytes over 39 frames, which is itself worth reading: the deepest
+# frame is the probe's OWN `churn_text`, which declares a 64-byte output buffer
+# because that is how `try_format_uint` works -- the caller supplies the span.
+# METL's own deepest frame is `static_unordered_map::rehash_in_place` at 72
+# bytes, and its set counterpart at 40. The reclaim really does rebuild in
+# place; rewriting it to build into a local array takes the same measurement to
+# 8784.
+BUDGETS = {
+    "cortex-m0": 136,
+    "cortex-m3": 136,
+    "cortex-m4": 136,
+    "cortex-m7": 136,
+}
 
 # Room for a toolchain that spills a little differently. Small on purpose: the
 # regression this exists to catch is measured in kilobytes, so a generous
