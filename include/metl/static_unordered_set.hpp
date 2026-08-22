@@ -6,20 +6,43 @@
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
 ///   | `find`, `contains`, `count` | wait-free, bounded by `bucket_count` probes |
-///   | `insert`, `emplace`, `erase` | wait-free, bounded by `bucket_count` probes |
+///   | `insert`, `emplace` | wait-free, bounded by `bucket_count` probes |
+///   | `erase` | wait-free, bounded by `bucket_count` probes **plus, occasionally, a full rebuild** |
 ///   | `clear`, iteration, copy, destructor | wait-free, bounded by `bucket_count` |
 ///
 /// Open addressing with linear probing: the worst case is a probe run the length of
 /// the table, and `bucket_count` is a power of two fixed at compile time.
 ///
-/// That worst case stays a worst case rather than drifting upward, and this is the
-/// part worth reading. A table that only ever marked erasures as tombstones would
-/// let negative lookups walk further and further as tombstones accumulated, which is
-/// `O(1) average` with an unbounded tail -- exactly what docs/SCOPE.md section 1
-/// refuses to call deterministic. So erasure reclaims in place: once tombstones pass
-/// one eighth of the table, `rehash_in_place` rebuilds it without allocating. That
-/// rebuild is itself bounded -- it visits each slot once, and its inner carry loop
-/// terminates because every iteration turns one more slot permanently occupied.
+/// That bound is the loop, not a consequence of good behaviour: the probe loop
+/// counts to `bucket_count` and stops. It holds no matter how the table has been
+/// used, and nothing below is needed to make it true. (An earlier version of this
+/// paragraph said the reclaim below is what keeps the worst case from "drifting
+/// upward". That was wrong, and worth correcting rather than quietly deleting: it
+/// credited a real mechanism with preventing a hazard this implementation never
+/// had, which makes the guarantee look contingent on an optimisation when it is
+/// not.)
+///
+/// What the reclaim actually protects is the TYPICAL cost under churn. Erasure
+/// leaves a tombstone, because clearing the slot would break the probe chain
+/// running through it. A tombstone does not end a negative lookup -- only an empty
+/// slot does -- so a table that only ever accumulated them would answer "not
+/// present" by walking further and further, until every miss cost the full
+/// `bucket_count`. Still bounded; steadily worse. So once tombstones pass one
+/// eighth of the table, `rehash_in_place` rebuilds it without allocating, and
+/// misses go back to stopping early.
+///
+/// The price is on `erase`, and it is why that row is split above. Most erases are
+/// a probe run. The one that crosses the threshold also move-constructs every live
+/// element -- up to `bucket_count` of them, plus the probing to re-place each. That
+/// rebuild is bounded (it visits each slot once, and its inner carry loop
+/// terminates because every iteration turns one more slot permanently occupied),
+/// but it is a latency spike on an operation that is otherwise cheap, and a caller
+/// with a deadline on `erase` needs to know it exists.
+///
+/// `tests/containers/unordered_reclaim_test.cpp` holds the reclaim to that: it
+/// counts moves of a key type through an erase, which is zero unless a rebuild
+/// fired. Without it the reclaim could be deleted and nothing would notice -- the
+/// type stays correct, only slower, which no other test or fuzz harness can see.
 ///
 /// Two bounds this header does not own: `Hash` and `KeyEqual` are called on the
 /// probe path, so an unbounded hash or comparison makes every operation above
