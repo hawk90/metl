@@ -81,28 +81,39 @@ jobs:
 
       # ClusterFuzzLite logs a failed corpus upload and returns success, which is
       # how this went unnoticed for as long as it did. So check the OUTCOME, not
-      # the log: after a run, the storage branch must hold more than the README
-      # it was created with.
+      # the log: after a run, EVERY harness must have a corpus directory on the
+      # storage branch.
       #
-      # What this catches is "the corpus was never persisted" -- the failure that
-      # actually happened, where the branch did not exist and every night's work
-      # was discarded. What it does not catch is "persisting stopped working
-      # after it once worked", because the branch would keep its old contents.
-      # A stricter check (the branch head must have moved this run) depends on
-      # whether ClusterFuzzLite pushes when nothing changed, and guessing at that
-      # buys either a spurious failure or a check that never fires. Stating the
-      # limit beats picking one.
-      - name: The corpus must actually have been saved
+      # Per-target rather than "the branch is non-empty", because the weaker
+      # version passes while a single harness silently contributes nothing -- it
+      # failed to build, or crashed at startup, or was dropped from build.sh.
+      # This is checkable rather than assumed: the first batch run after four
+      # harnesses were added produced a directory for all eleven, so "one per
+      # target" is an observed property and not a hope.
+      #
+      # The repository is read through the API rather than a checkout: the
+      # ClusterFuzzLite actions clone into their own subdirectory, so the
+      # workspace root has no fuzz/ to glob.
+      - name: Every harness must have saved a corpus
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          blobs="$(gh api \
+          expected="$(gh api \
+            "repos/${{ github.repository }}/contents/fuzz?ref=${{ github.sha }}" \
+            --jq '.[] | select(.name | startswith("fuzz_") and endswith(".cpp")) | .name | sub("\\.cpp$"; "")' \
+            | sort)"
+          actual="$(gh api \
             "repos/${{ github.repository }}/git/trees/clusterfuzzlite?recursive=1" \
-            --jq '[.tree[] | select(.type == "blob")] | length')"
-          echo "corpus branch holds ${blobs} file(s)"
-          if [[ "${blobs}" -le 1 ]]; then
-            echo "::error::The clusterfuzzlite branch still holds only its README, so this run"
-            echo "::error::fuzzed for ten minutes per target and discarded the result. Check that"
-            echo "::error::the branch exists and that this job still has contents: write."
+            --jq '[.tree[] | select(.type == "blob") | .path | select(startswith("corpus/"))
+                   | split("/")[1]] | unique | .[]' | sort)"
+
+          echo "harnesses:      $(echo "${expected}" | tr '\n' ' ')"
+          echo "with a corpus:  $(echo "${actual}" | tr '\n' ' ')"
+
+          missing="$(comm -23 <(echo "${expected}") <(echo "${actual}"))"
+          if [[ -n "${missing}" ]]; then
+            echo "::error::These harnesses saved no corpus: $(echo "${missing}" | tr '\n' ' ')"
+            echo "::error::A harness that is built and run but persists nothing is fuzzing from"
+            echo "::error::its seed corpus every night. Check the run's log for that target."
             exit 1
           fi
