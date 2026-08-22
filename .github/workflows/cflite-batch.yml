@@ -1,9 +1,19 @@
 name: ClusterFuzzLite Batch
 
 # Scheduled longer batch fuzzing with the OSS-Fuzz toolchain via ClusterFuzzLite.
-# Grows and persists a corpus (in the `clusterfuzzlite` branch) so PR runs start
-# warm, and surfaces regressions found over time. NON-BLOCKING: the whole job is
-# continue-on-error; the blocking memory-safety gate is `fuzz-smoke` in ci.yml.
+# Grows and persists a corpus in the `clusterfuzzlite` branch so PR runs start
+# warm, and surfaces regressions found over time.
+#
+# THIS JOB BLOCKS. It used to be continue-on-error, on the stated grounds that
+# the Docker-based build wiring could not be validated on the maintainer's
+# machine. Its own history disproved that: across twenty consecutive runs of
+# this workflow and cflite-pr, zero steps failed. The build works, and a job
+# that cannot fail is not a check -- it is a job that hides its own output,
+# which is exactly what happened here (see the corpus note below).
+#
+# `contents: write` is scoped to this job and is what the corpus push needs. The
+# per-PR workflow stays read-only: a PR must not be able to write to the corpus
+# branch.
 on:
   schedule:
     # Daily at 05:00 UTC.
@@ -17,8 +27,14 @@ jobs:
   batch-fuzzing:
     name: cflite-batch
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 60
+
+    permissions:
+      # Required to push the grown corpus to the `clusterfuzzlite` branch.
+      # Without it the upload 403s, and ClusterFuzzLite logs the failure and
+      # carries on -- so the run still reports success having saved nothing.
+      contents: write
+
     strategy:
       fail-fast: false
       matrix:
@@ -31,6 +47,13 @@ jobs:
           language: c++
           sanitizer: ${{ matrix.sanitizer }}
 
+      # The corpus branches (`clusterfuzzlite`, `clusterfuzzlite-coverage`) must
+      # already exist. ClusterFuzzLite cannot create them: its uploader runs
+      # `git checkout --orphan <branch>` against a branch it has just created
+      # locally, which fails with exit 128 every time. That failure is logged and
+      # swallowed, so for as long as the branches were missing this workflow
+      # fuzzed six targets for ten minutes each, twice over, every night, and
+      # threw all of it away while reporting success.
       - name: Run fuzzers (${{ matrix.sanitizer }})
         id: run
         uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
@@ -42,3 +65,31 @@ jobs:
           storage-repo: https://github.com/${{ github.repository }}.git
           storage-repo-branch: clusterfuzzlite
           storage-repo-branch-coverage: clusterfuzzlite-coverage
+
+      # ClusterFuzzLite logs a failed corpus upload and returns success, which is
+      # how this went unnoticed for as long as it did. So check the OUTCOME, not
+      # the log: after a run, the storage branch must hold more than the README
+      # it was created with.
+      #
+      # What this catches is "the corpus was never persisted" -- the failure that
+      # actually happened, where the branch did not exist and every night's work
+      # was discarded. What it does not catch is "persisting stopped working
+      # after it once worked", because the branch would keep its old contents.
+      # A stricter check (the branch head must have moved this run) depends on
+      # whether ClusterFuzzLite pushes when nothing changed, and guessing at that
+      # buys either a spurious failure or a check that never fires. Stating the
+      # limit beats picking one.
+      - name: The corpus must actually have been saved
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          blobs="$(gh api \
+            "repos/${{ github.repository }}/git/trees/clusterfuzzlite?recursive=1" \
+            --jq '[.tree[] | select(.type == "blob")] | length')"
+          echo "corpus branch holds ${blobs} file(s)"
+          if [[ "${blobs}" -le 1 ]]; then
+            echo "::error::The clusterfuzzlite branch still holds only its README, so this run"
+            echo "::error::fuzzed for ten minutes per target and discarded the result. Check that"
+            echo "::error::the branch exists and that this job still has contents: write."
+            exit 1
+          fi
