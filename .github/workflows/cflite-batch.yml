@@ -62,7 +62,20 @@ jobs:
           fuzz-seconds: 600
           mode: 'batch'
           sanitizer: ${{ matrix.sanitizer }}
-          storage-repo: https://github.com/${{ github.repository }}.git
+          # The token has to be IN the URL. ClusterFuzzLite pushes the corpus
+          # with a plain `git push`, which has no credential helper on the
+          # runner, so an unauthenticated https:// URL fails with "could not
+          # read Username" -- after committing the corpus locally, so the log
+          # looks like it worked right up until the last line.
+          #
+          # ClusterFuzzLite's docs call for a PERSONAL_ACCESS_TOKEN, and give
+          # the reason: "the default GitHub auth token is not able to write to
+          # other repositories". The storage repo here is THIS repository, so
+          # that reason does not apply and the job token is enough -- and it is
+          # the better credential anyway: it expires with the job and is scoped
+          # by the `contents: write` above, where a PAT would be long-lived and
+          # broader.
+          storage-repo: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           storage-repo-branch: clusterfuzzlite
           storage-repo-branch-coverage: clusterfuzzlite-coverage
 

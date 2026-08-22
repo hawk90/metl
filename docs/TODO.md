@@ -44,7 +44,14 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   nightly batch run had **never persisted a corpus**: the `clusterfuzzlite`
   storage branch did not exist, ClusterFuzzLite cannot create it, and it logs
   that failure and returns success. Six targets × two sanitizers × ten minutes,
-  discarded nightly. Branch created; the job now fails if the corpus is empty.
+  discarded nightly. Branch created, and the corpus push authenticated — the
+  `storage-repo` URL carried no token, so ClusterFuzzLite committed the corpus
+  locally and then failed on `git push` with "could not read Username". Their
+  docs ask for a PAT because the default token "is not able to write to other
+  repositories"; the storage repo here is this repository, so the job token
+  plus `contents: write` is enough and expires with the job. The job now fails
+  if the corpus branch is still empty afterwards, and that check fired on the
+  first real run — which is how the auth gap was found.
 - [ ] **OSS-Fuzz upstream registration** — **not queued, and not blocked on us.**
   OSS-Fuzz's stated bar is that a project "must have a significant user base
   and/or be critical to the global IT infrastructure"
