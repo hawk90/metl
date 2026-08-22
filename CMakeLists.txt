@@ -175,6 +175,7 @@ if(METL_BUILD_TESTS)
     containers/fixed_deque containers/fixed_queue containers/fixed_stack
     containers/ring_buffer containers/flat_map containers/flat_set
     containers/static_unordered_map containers/static_unordered_set
+    containers/unordered_reclaim
     containers/static_unordered_map_emplace containers/lookup_table
     containers/recoverable_api containers/fixed_priority_queue
     # memory/

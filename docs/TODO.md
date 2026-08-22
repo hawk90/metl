@@ -86,18 +86,21 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   ones (`spsc_queue`, `mpmc_queue`, `atomic_*`, `lock`, `wait`) — libFuzzer
   drives one thread, so a harness there would exercise the uncontended path and
   claim coverage it did not earn. TSan in `ci.yml` is what covers those.
-- [ ] **Nothing checks the tombstone reclaim.** `rehash_in_place` and
-  `reclaim_if_needed` (#18) are what the progress guarantees in #63 cite as the
-  reason `static_unordered_map`/`_set` keep a probe *bound* rather than an
-  `O(1) average` with an unbounded tail. Replacing the trigger with `if (false)`
-  in both headers leaves **the entire test suite green and every fuzz harness
-  clean** — measured 2026-08-22. That is not a fuzzing gap: disabling reclaim
-  keeps the type correct (the probe loop is bounded by `bucket_count` either
-  way) and only degrades the bound, which is a determinism property a fuzzer
-  cannot observe. It needs a test, and the honest blocker is that tombstone
-  density is not observable from outside the type — gating it means either a
-  public observer (`tombstone_count()`) or a test-only hook, and adding public
-  API for testability is a decision, not a chore.
+- [x] **The tombstone reclaim is held to its claim.** `rehash_in_place` /
+  `reclaim_if_needed` (#18) could be deleted and nothing would notice: replacing
+  the trigger with `if (false)` in both headers left the whole suite green and
+  every fuzz harness clean. Fixed two ways.
+  **The documentation was wrong first.** #63's prose credited the reclaim with
+  keeping the worst case from "drifting upward"; the worst case is the probe
+  loop's `bucket_count` limit and cannot drift, with or without it. What the
+  reclaim protects is the *typical* cost under churn, and its price is that
+  `erase` occasionally move-constructs every live element — a latency spike the
+  guarantee row did not mention. Both headers now say so.
+  **The gate needs no new API**, which was the blocker when this was written up:
+  `erase` moves nothing except when it triggers a rebuild, so a key type that
+  counts its own moves observes rebuilds exactly.
+  `tests/containers/unordered_reclaim_test.cpp` does that — a count, not a
+  duration, so there is nothing to be flaky on a shared runner.
 - [x] **SECURITY.md** — vulnerability disclosure policy (root).
 - [x] **CodeQL** security scan workflow (`.github/workflows/codeql.yml`), push/PR
   plus a weekly schedule so newly published queries reach the code without
