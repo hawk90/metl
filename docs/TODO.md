@@ -69,17 +69,28 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   it reads as "METL is 80% fuzzed", which is wrong. `fuzz_parse` closed the
   worst gap (`parse.hpp` is the one header whose documented job is accepting
   bytes somebody else chose, and it shipped in #66 without a harness). Still
-  unfuzzed and worth it, roughly in order: `spsc_byte_ring` (driver bytes),
-  `format` (size arithmetic into a caller's buffer — currently only reached
-  through `fuzz_parse`'s round trip), `flat_set`, `static_unordered_set`,
+  unfuzzed and worth it, roughly in order:
   `ring_buffer`/`fixed_deque`/`fixed_queue`/`fixed_stack`, `object_pool`/
-  `handle_pool`, `expected`/`optional`/`variant`. **Not fuzz targets, and not
+  `handle_pool`, `expected`/`optional`/`variant`. **Landed**: `spsc_byte_ring`,
+  `format`, `flat_set` and `static_unordered_set` (2026-08-22). **Not fuzz targets, and not
   gaps**: the macro/trait/config headers (`config`, `attributes`, `compiler`,
   `optimization`, `in_place`, `version`, `type_traits`, `metl.hpp`), the
   hardware ones (`mmio`, `register_access`, `bitfield`), and the concurrency
   ones (`spsc_queue`, `mpmc_queue`, `atomic_*`, `lock`, `wait`) — libFuzzer
   drives one thread, so a harness there would exercise the uncontended path and
   claim coverage it did not earn. TSan in `ci.yml` is what covers those.
+- [ ] **Nothing checks the tombstone reclaim.** `rehash_in_place` and
+  `reclaim_if_needed` (#18) are what the progress guarantees in #63 cite as the
+  reason `static_unordered_map`/`_set` keep a probe *bound* rather than an
+  `O(1) average` with an unbounded tail. Replacing the trigger with `if (false)`
+  in both headers leaves **the entire test suite green and every fuzz harness
+  clean** — measured 2026-08-22. That is not a fuzzing gap: disabling reclaim
+  keeps the type correct (the probe loop is bounded by `bucket_count` either
+  way) and only degrades the bound, which is a determinism property a fuzzer
+  cannot observe. It needs a test, and the honest blocker is that tombstone
+  density is not observable from outside the type — gating it means either a
+  public observer (`tombstone_count()`) or a test-only hook, and adding public
+  API for testability is a decision, not a chore.
 - [x] **SECURITY.md** — vulnerability disclosure policy (root).
 - [x] **CodeQL** security scan workflow (`.github/workflows/codeql.yml`), push/PR
   plus a weekly schedule so newly published queries reach the code without

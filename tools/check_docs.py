@@ -14,6 +14,12 @@ can settle:
       and every examples/*.cpp on disk is registered there too. An example that
       is not in that list is not built and not run, so pointing a reader at it
       is pointing them at something nothing verifies.
+  D4  every fuzz/*.cpp harness is registered in BOTH fuzz/CMakeLists.txt and
+      .clusterfuzzlite/build.sh, and the two lists agree. SECURITY.md says the
+      ClusterFuzzLite workflows "run the OSS-Fuzz toolchain" over the harnesses
+      under fuzz/; two hand-maintained lists is how that stops being true. A
+      harness missing from build.sh still passes `fuzz-smoke` and is silently
+      absent from every nightly run.
 
 What this deliberately does NOT do is compile the snippets. They are excerpts:
 they interleave top-level definitions with statements, call functions the prose
@@ -71,6 +77,29 @@ def registered_examples(cmake_path):
     return set(match.group(1).split())
 
 
+def fuzz_targets(repo_root):
+    """Return (cmake_list, buildsh_list, on_disk) or None for a list that would not parse."""
+    root = pathlib.Path(repo_root)
+
+    cmake_path = root / "fuzz" / "CMakeLists.txt"
+    buildsh_path = root / ".clusterfuzzlite" / "build.sh"
+    if not cmake_path.exists() or not buildsh_path.exists():
+        return None
+
+    cmake_text = "\n".join(
+        line.split("#")[0] for line in cmake_path.read_text(encoding="utf-8").splitlines())
+    cmake_match = re.search(r"set\(\s*_metl_fuzz_targets\b(.*?)\)", cmake_text, re.S)
+
+    # `FUZZERS="` ... `"` -- a plain shell string, one target per line.
+    buildsh_match = re.search(r'FUZZERS="\s*(.*?)"', buildsh_path.read_text(encoding="utf-8"), re.S)
+
+    if cmake_match is None or buildsh_match is None:
+        return None
+
+    on_disk = {p.stem for p in (root / "fuzz").glob("fuzz_*.cpp")}
+    return set(cmake_match.group(1).split()), set(buildsh_match.group(1).split()), on_disk
+
+
 def check(repo_root="."):
     """Return a list of (rule, message)."""
     root = pathlib.Path(repo_root)
@@ -110,6 +139,26 @@ def check(repo_root="."):
                                        f"in set(_metl_examples) -- CI neither builds nor "
                                        f"runs it"))
 
+    # D4: the two hand-maintained fuzz target lists, and what is actually there.
+    targets = fuzz_targets(root)
+    if targets is None:
+        problems.append(("D4", "could not read both fuzz target lists -- has "
+                               "set(_metl_fuzz_targets ...) or FUZZERS=\"...\" been renamed?"))
+    else:
+        cmake_targets, buildsh_targets, on_disk = targets
+        for name in sorted(on_disk - cmake_targets):
+            problems.append(("D4", f"fuzz/{name}.cpp is not in set(_metl_fuzz_targets) -- "
+                                   f"`fuzz-smoke` does not build it"))
+        for name in sorted(on_disk - buildsh_targets):
+            problems.append(("D4", f"fuzz/{name}.cpp is not in .clusterfuzzlite/build.sh -- "
+                                   f"no ClusterFuzzLite run will ever execute it"))
+        for name in sorted(cmake_targets - on_disk):
+            problems.append(("D4", f"set(_metl_fuzz_targets) names {name}, which has no "
+                                   f"fuzz/{name}.cpp"))
+        for name in sorted(buildsh_targets - on_disk):
+            problems.append(("D4", f".clusterfuzzlite/build.sh names {name}, which has no "
+                                   f"fuzz/{name}.cpp"))
+
     # D3, the other direction: an example on disk that CI does not build.
     examples_dir = root / "examples"
     if examples_dir.is_dir():
@@ -137,6 +186,15 @@ def self_test():
             "set(_metl_examples\n  good   # mmio + bitfield (fake peripheral)\n  also\n)\n")
         (root / "examples" / "good.cpp").write_text("int main(){}\n")
         (root / "examples" / "also.cpp").write_text("int main(){}\n")
+        # D4 fixture: one harness registered in both lists, one missing from
+        # build.sh -- the drift that silently drops it from every nightly run.
+        (root / "fuzz").mkdir()
+        (root / "fuzz" / "fuzz_kept.cpp").write_text("int main(){}\n")
+        (root / "fuzz" / "fuzz_dropped.cpp").write_text("int main(){}\n")
+        (root / "fuzz" / "CMakeLists.txt").write_text(
+            "set(_metl_fuzz_targets\n  fuzz_kept   # a comment with a paren )\n  fuzz_dropped\n)\n")
+        (root / ".clusterfuzzlite").mkdir()
+        (root / ".clusterfuzzlite" / "build.sh").write_text('FUZZERS="\nfuzz_kept\n"\n')
         (root / "examples" / "orphan.cpp").write_text("int main(){}\n")
         (root / "docs").mkdir()
         (root / "README.md").write_text(
@@ -148,13 +206,15 @@ def self_test():
             (root / extra).write_text("nothing here\n")
 
         found = {rule for rule, _ in check(root)}
-        for rule in ("D1", "D2", "D3"):
+        for rule in ("D1", "D2", "D3", "D4"):
             if rule not in found:
                 failures.append(f"{rule} did not fire on a tree that violates it")
 
         # And the clean case must stay clean.
         (root / "README.md").write_text("`metl::fixed_vector` is fine.\n")
         (root / "examples" / "orphan.cpp").unlink()
+        (root / ".clusterfuzzlite" / "build.sh").write_text(
+            'FUZZERS="\nfuzz_kept\nfuzz_dropped\n"\n')
         remaining = check(root)
         if remaining:
             failures.append(f"clean tree was flagged: {remaining}")
@@ -163,7 +223,7 @@ def self_test():
         for failure in failures:
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
-    print("self-test passed: D1, D2 and D3 each bite, and a clean tree is not flagged")
+    print("self-test passed: D1-D4 each bite, and a clean tree is not flagged")
     return 0
 
 
