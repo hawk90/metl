@@ -63,20 +63,21 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   fields OSS-Fuzz requires, and `primary_contact` publishes a maintainer email
   in the google/oss-fuzz repository — a decision, not an edit. The build wiring
   itself is ready and is exercised on every PR.
-- [ ] **Fuzz harnesses for the headers nothing reaches.** The first coverage run
-  (2026-08-22, `cflite-cron`) measured 80.23% line coverage — over **the 18 of
-  66 headers the harnesses actually touch**. Reported without that denominator
-  it reads as "METL is 80% fuzzed", which is wrong.
+- [x] **Fuzz harnesses for the headers nothing reaches** (2026-08-22, #71–#75).
+  The first coverage run (`cflite-cron`) measured 80.23% line coverage — over
+  **the 18 of 66 headers the harnesses actually touched**. Reported without that
+  denominator it reads as "METL is 80% fuzzed", which is wrong.
 
-  **Read the denominator, not the percentage.** After four harnesses landed the
-  same day, the headers reached went 18 → **25 of 66** and the percentage went
-  80.23% → **63.33%**. Coverage improved and the number fell, because a new
+  **Read the denominator, not the percentage.** The three measurements, in
+  order: **18 / 66 headers at 80.23%**, then **25 / 66 at 63.33%**, then
+  **36 / 66 at 82.66%** (14 targets, 15,439 corpus inputs). The middle one is
+  the trap — coverage improved and the headline number fell, because a new
   harness pulls a whole header into the denominator while exercising part of it.
-  Anyone tracking the percentage alone will read progress as regression. Track
+  Anyone tracking the percentage alone reads progress as regression. Track
   `headers reached / 66` alongside it. `fuzz_parse` closed the
   worst gap (`parse.hpp` is the one header whose documented job is accepting
-  bytes somebody else chose, and it shipped in #66 without a harness). Still
-  **All of the ones worth having have now landed** (2026-08-22): `parse`,
+  bytes somebody else chose, and it shipped in #66 without a harness).
+  **All of the ones worth having have now landed**: `parse`,
   `spsc_byte_ring`, `format`, `flat_set`, `static_unordered_set`, and then
   `fuzz_sequence` (`ring_buffer`/`fixed_deque`/`fixed_queue`/`fixed_stack`),
   `fuzz_pools` (`object_pool`/`handle_pool`) and `fuzz_vocab`
@@ -116,26 +117,41 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   almost nothing. The step builds the test suite precisely to instantiate the
   templates — if that build ever stops covering a header, this job keeps passing
   while covering less, so treat it as part of the gate, not scaffolding.
-- [ ] **OSSF Scorecard** (posture badge) + optionally SLSA/signed releases.
+- [x] **OSSF Scorecard + SLSA/provenance** (2026-08-22, #67).
+  `.github/workflows/scorecard.yml` runs weekly and on push, and reports to the
+  Security tab with **`publish_results: false`** — publishing sends the score to
+  the public OpenSSF API and is what enables the README badge, which is an
+  outward-facing act and so stays a deliberate one-line change (it also needs
+  `id-token: write` added when flipped). The first run reported exactly one
+  finding, Branch-Protection 0; `main` is protected now. Releases additionally
+  attest the amalgamation with `actions/attest-build-provenance` **and attach
+  the bundle as a release asset** — the attached copy is the point, because
+  METL's distribution is vendoring and the consumer has no package manager or
+  checksum database behind the file.
+  Not done, and not an oversight: `FROM gcr.io/oss-fuzz-base/base-builder` in
+  `.clusterfuzzlite/` stays unpinned. Scorecard's Pinned-Dependencies check
+  flags it, but OSS-Fuzz's docs specify exactly that untagged form and their
+  infrastructure rebuilds against a moving base. Pinning scores better and
+  breaks the thing the pin is for.
 
 ### 📦 Distribution / adoption
-- [ ] **First release.** Blocks the two items below, and nothing else blocks it:
-  `release.yml` makes it a one-tag operation, and the tag is checked against
-  `project(VERSION)` (0.1.0 today) before anything is published. Note that
-  `CHANGELOG.md` currently has a `0.1.0-alpha1` section but no `0.1.0` one, so a
-  `v0.1.0` tag would produce a release body saying no changelog section was
-  found — write the section, or tag `v0.1.0-alpha1`, which `release.yml` marks
-  as a pre-release automatically. **Deliberately not cut yet** (decision
-  2026-08-20): publishing is a public, effectively irreversible act and the API
-  is still moving.
+- [x] **First release** — `v0.1.0-alpha2`, 2026-08-21. Pre-release (the hyphen
+  makes `release.yml` pass `--prerelease` on its own), with
+  `metl-0.1.0-single.hpp` attached and attested. The version check compares the
+  tag with the suffix stripped, so `project(VERSION 0.1.0)` needed no edit.
+  The API is still moving and the alpha suffix says so; the point of cutting it
+  was to unblock the two items below, both of which need something to point at.
 - [ ] **vcpkg** port (`portfile.cmake` + `vcpkg.json`) → `vcpkg install metl`.
-  Waits on the release above, and not for convenience: `vcpkg_from_github` pins
-  the **SHA512 of a release tarball**, and there is no tag to hash. A port
-  carrying a placeholder hash would look finished and fail on a user's first
-  `vcpkg install`, which is worse than not shipping one.
+  **Unblocked as of the tag above**, and this was the reason it waited:
+  `vcpkg_from_github` pins the **SHA512 of a release tarball**, and until
+  2026-08-21 there was no tag to hash. A port carrying a placeholder hash would
+  look finished and fail on a user's first `vcpkg install`, which is worse than
+  not shipping one.
 - [ ] **conan-center-index submission.** The recipe and its consumer check are
   done and gated in CI (see below); what CCI additionally wants is a published
-  version to point at, so this waits on the release too.
+  version to point at, which `v0.1.0-alpha2` now is. **Unblocked**, though CCI
+  may well decline a pre-release — worth checking their policy before spending
+  a reviewer's time, the same question OSS-Fuzz already answered no to.
 - [x] **Conan** recipe (`conanfile.py` + `test_package/`), 2026-08-20, with a
   blocking `conan` CI job. The recipe reads its version from
   `project(VERSION)` in CMakeLists.txt rather than repeating it, so it cannot
@@ -223,10 +239,55 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   deterministic function of the source and a fixed cross toolchain. `bench-smoke`
   still asserts nothing about its numbers, and now says so; the gated performance
   claim is `tools/check_size.py`, a `.text` ratchet on the linked
-  `invariant_probe.elf` per Cortex-M target in the `invariants` job. Budgets were
-  filled from what that job reported (run 32467860630) and never from a local
-  figure: **m0 2780, m3 3536, m4 3544, m7 3556** bytes, +512 tolerance for
-  toolchain drift. Enforcing, not reporting.
+  `invariant_probe.elf` per Cortex-M target in the `invariants` job. Budgets are
+  filled from what that job reports and never from a local figure, with a +512
+  tolerance for toolchain drift. Enforcing, not reporting. **The numbers live in
+  `tools/check_size.py` and are not repeated here** — this sentence used to
+  repeat them, #66 raised them, and the copy stayed behind for nine PRs;
+  `check_docs.py` rule D5 now rejects any restatement.
+  **What it does not cover: RAM.** `.text` and `.rodata` are flash. `.bss`,
+  `.data` and the stack are not measured anywhere in this repository — the next
+  item.
+- [ ] **Measure RAM: `.bss`/`.data` and stack depth.** The ratchet above gates
+  **flash**. The resource METL actually moved the cost onto is **RAM**, and
+  nothing in this repository has ever measured it: no `-fstack-usage`, no
+  `-Wstack-usage`, and `check_size.py` parses `.bss`/`.data` out of the ELF and
+  then discards them.
+
+  **I1 is the invariant that creates the exposure.** "No heap" is enforced by a
+  symbol audit, which proves `malloc` is absent from the image and says nothing
+  about what replaced it. What replaced it is inline storage sized by the
+  caller's template argument. Measured locally at `-O2` (host, so indicative
+  rather than a budget — the real numbers must come from the cross job, as
+  always):
+
+  | type | `sizeof` | frame |
+  |---|---|---|
+  | `static_unordered_map<u32,u64,128>` | 4376 | 4432 |
+  | `fixed_vector<u32,256>` | 1032 | 1056 |
+
+  One ordinary call takes **over half the SRAM of a Cortex-M0+ with 8 KB**. No
+  gate, no warning, and no line in `docs/` that tells a caller to put it in
+  static storage instead.
+
+  The sharpest way to put it: **the heap has a failure signal and the stack does
+  not.** `malloc` returns null, and METL's whole recoverable-API contract (§9)
+  is built on answering "did it fit" — `try_push_back` returns false at
+  capacity. The one resource METL hands to the caller is the one with no `try_`,
+  and on an MCU without an MMU, overflowing it quietly rewrites `.bss`.
+
+  `docs/RFP.md` listed **"Predictable memory usage"** as an objective and
+  **"Stack usage"** first among its benchmark metrics. Every other requirement
+  in that document became an invariant and a CI job. This one never got a
+  number.
+
+  **The naive fix would be theatre, so do not ship it.** `invariant_probe.cpp`
+  uses capacity 4–8 containers, so a `.bss` or stack ratchet bolted onto today's
+  probe would measure approximately nothing and pass forever — the exact shape
+  this repo has spent months removing. Capacity is the *caller's* parameter, so
+  the probe that gates flash structurally cannot gate RAM. This needs a second
+  probe with realistic capacities, and its budgets set from what CI reports,
+  never from the host figures above.
 - [x] **Host coverage measurement + blocking floor** (#35) — `tools/coverage.sh`
   and the `coverage` job report `include/metl` only (llvm-cov's default total
   also counts the test sources, which measures how well the tests cover
