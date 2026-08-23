@@ -1494,20 +1494,30 @@ jobs:
       - name: Instruction ratchet must still bite (canary)
         run: tools/check_instructions.py --self-test
 
-      # --report on this PR. The budgets get set from THIS job's output in a
-      # follow-up commit, never from a local figure -- the development machine
-      # has a different libc and a different compiler, and local numbers have
-      # disagreed with CI repeatedly. Same two-step as check_size.py and
-      # check_stack.py.
+      # ENFORCING. The budgets in tools/check_instructions.py came from this
+      # job's own --report output earlier in this PR (run 32612187131) and never
+      # from a local figure -- the development machine has a different libc and
+      # a different compiler, and local numbers have disagreed with CI
+      # repeatedly. Same two-step as check_size.py and check_stack.py.
       #
-      # Note what --report does NOT excuse: a missing valgrind, zero benchmark
-      # binaries, and a benchmark whose process exits non-zero all still fail
-      # here. Those are the ways this step could become one that only passes.
+      # The numbers themselves are not repeated here; that is the mistake #76
+      # fixed for the size budgets.
+      #
+      # --iterations is passed explicitly because a budget is a count of work at
+      # ONE iteration count. Changing the tool's default would otherwise compare
+      # unrelated numbers and read as a clean 2x regression rather than as a
+      # mistake; the checker refuses the mismatch outright.
+      #
+      # Note what --report would NOT have excused either: a missing valgrind,
+      # zero benchmark binaries, a benchmark whose process exits non-zero, and a
+      # benchmark whose body was optimised away. Those are the ways this step
+      # could become one that only passes -- and the last one was not
+      # hypothetical, it caught ring_buffer push+pop twice in this PR.
       - name: Count instructions per benchmark
         run: |
           tools/check_instructions.py \
             --bench-dir build-bench \
-            --report
+            --iterations 5000
 
   # ---------------------------------------------------------------------------
   # Examples — build every example under -Wall -Wextra -Werror and run them.

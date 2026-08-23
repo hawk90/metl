@@ -70,7 +70,38 @@ import sys
 #
 # A budget goes DOWN freely -- a faster implementation should tighten it. It
 # goes UP only when the commit says what got more expensive and why.
-BUDGETS = {}
+# Measured by the `bench-smoke` job on PR #81, run 32612187131, at
+# --iterations 5000. Two CI runs of the same source agreed to within 28
+# instructions on every entry -- at most 0.06%, and on the larger ones exactly
+# zero. That is where TOLERANCE_FRACTION's headroom comes from: it is ~80x the
+# observed run-to-run spread, and still 1/20th of the smallest regression this
+# gate exists to catch.
+BUDGETS = {
+    "metl_bench_containers::crc32 over 1 KiB": 58_915_554,
+    "metl_bench_containers::fixed_vector<64> fill + clear": 1_150_326,
+    "metl_bench_containers::flat_map<256> find (hit)": 498_727,
+    "metl_bench_containers::flat_map<256> find (miss)": 644_710,
+    "metl_bench_containers::ring_buffer<64> push + pop": 100_666,
+    "metl_bench_containers::ring_buffer<64> push_overwrite": 50_315,
+    "metl_bench_containers::static_unordered_map<256> find (hit)": 191_374,
+    "metl_bench_containers::static_unordered_map<256> find (miss)": 208_924,
+    "metl_bench_mpmc::mpmc_queue push + pop": 183_047,
+    "metl_bench_mpmc::spsc_queue push + pop": 120_253,
+    "metl_bench_pools::handle_pool<1024> alloc+free": 216_589,
+    "metl_bench_pools::handle_pool<4>  alloc+free": 180_303,
+    "metl_bench_pools::handle_pool<64> alloc+free": 182_208,
+    "metl_bench_pools::handle_pool<64> get()": 50_668,
+    "metl_bench_pools::object_pool<1024> alloc+free": 15_675_139,
+    "metl_bench_pools::object_pool<4>  alloc+free": 165_328,
+    "metl_bench_pools::object_pool<64> alloc+free": 1_013_044,
+    "metl_bench_spsc::push + pop round trip": 120_150,
+}
+
+# The budgets above are counts of work at ONE iteration count. Comparing them
+# against a run at any other one would be arithmetic on unrelated numbers, and
+# it would look like a 2x regression or a 2x win rather than a mistake. So the
+# value is recorded next to them and enforcing refuses to proceed without it.
+BUDGET_ITERATIONS = 5000
 
 # Instruction counts move a little with the compiler and the C library: an
 # inlining decision here, a different memcpy path there. 5% is far tighter than
@@ -170,9 +201,16 @@ def measure(bench_dir, iterations, runner):
     return measured, notes
 
 
-def compare(measured, report):
+def compare(measured, report, iterations=BUDGET_ITERATIONS):
     """Return (exit_code, lines_to_print)."""
     out = []
+
+    if not report and iterations != BUDGET_ITERATIONS:
+        out.append(f"::error::the budgets were measured at --iterations "
+                   f"{BUDGET_ITERATIONS} and this run used {iterations}. Comparing "
+                   f"them would be arithmetic on unrelated numbers. Re-measure with "
+                   f"--report and record BUDGET_ITERATIONS alongside the new figures.")
+        return 1, out
 
     if not measured:
         out.append("::error::no countable benchmarks were measured. A check over "
@@ -317,6 +355,23 @@ def self_test():
         if code != 0:
             failures.append("rejected a benchmark exactly at MIN_MEANINGFUL_COUNT")
         del BUDGETS["b::thin but real"]
+
+        # Budgets are counts of work at one iteration count. Enforcing against a
+        # run at a different one is arithmetic on unrelated numbers, and it would
+        # read as a clean 2x regression rather than as a mistake.
+        BUDGETS["b::y"] = 1_000_000
+        code, out = compare({"b::y": 1_000_000}, report=False,
+                            iterations=BUDGET_ITERATIONS * 2)
+        if code == 0:
+            failures.append("enforced budgets against a different --iterations")
+        if not any("unrelated numbers" in line for line in out):
+            failures.append("the iteration-count mismatch did not say why it matters")
+        code, _ = compare({"b::y": 1_000_000}, report=True,
+                          iterations=BUDGET_ITERATIONS * 2)
+        if code != 0:
+            failures.append("--report refused a different --iterations, but "
+                            "re-measuring is exactly what --report is for")
+        del BUDGETS["b::y"]
     finally:
         BUDGETS.clear()
         BUDGETS.update(saved)
@@ -325,9 +380,10 @@ def self_test():
         for failure in failures:
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
-    print("self-test passed: over-budget, unbudgeted, empty and optimised-away "
-          "measurements are rejected -- the last two even under --report; "
-          "at-budget, at-tolerance and at-floor counts are accepted")
+    print("self-test passed: over-budget, unbudgeted, empty, optimised-away and "
+          "wrong-iteration-count measurements are rejected -- the empty and "
+          "optimised-away cases even under --report; at-budget, at-tolerance and "
+          "at-floor counts are accepted")
     return 0
 
 
@@ -365,7 +421,7 @@ def main():
     print(f"instructions per benchmark (--fixed {args.iterations}, baseline subtracted)")
     for note in notes:
         print(note)
-    code, lines = compare(measured, args.report)
+    code, lines = compare(measured, args.report, args.iterations)
     for line in lines:
         print(line)
     return code
