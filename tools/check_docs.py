@@ -240,6 +240,29 @@ def check(repo_root="."):
                 problems.append(("D3", f"examples/{source.name} exists but is not in "
                                        f"set(_metl_examples) -- it is neither built nor run"))
 
+    # D6: the gate table in SCOPE.md is complete in both directions. A new
+    # checker cannot ship without appearing there, and the table cannot name a
+    # tool that has been deleted or renamed.
+    scope = root / "docs" / "SCOPE.md"
+    if not scope.exists():
+        problems.append(("D6", "docs/SCOPE.md is missing; the gate table lives there"))
+    else:
+        scope_text = scope.read_text(encoding="utf-8")
+        on_disk = {path.name for path in sorted((root / "tools").glob("check_*.py"))}
+        if not on_disk:
+            problems.append(("D6", "no tools/check_*.py found at all -- a check over "
+                                   "nothing would report success"))
+        listed = set(re.findall(r"\.\./tools/(check_[a-z_]+\.py)", scope_text))
+        for tool in sorted(on_disk - listed):
+            problems.append(("D6", f"tools/{tool} is not in the gate table in "
+                                   f"docs/SCOPE.md section 8. A gate nobody lists is "
+                                   f"a gate a reader cannot know about, and the list "
+                                   f"is how a stale claim about measurement gets "
+                                   f"noticed."))
+        for tool in sorted(listed - on_disk):
+            problems.append(("D6", f"the gate table names tools/{tool}, which does "
+                                   f"not exist. Renamed or deleted?"))
+
     return problems
 
 
@@ -282,9 +305,20 @@ def self_test():
         for extra in DOCS[1:]:
             (root / extra).parent.mkdir(parents=True, exist_ok=True)
             (root / extra).write_text("nothing here\n")
+        # SCOPE.md carries the gate table D6 reads. It lists one tool that
+        # exists, one that does not, and omits one that does.
+        (root / "docs" / "SCOPE.md").write_text(
+            "| [`check_listed.py`](../tools/check_listed.py) | x | y |\n"
+            "| [`check_ghost.py`](../tools/check_ghost.py) | x | y |\n")
+
+        # D6 fixture: one checker on disk that the gate table omits, and one the
+        # table names that does not exist. Both directions in one tree.
+        (root / "tools").mkdir()
+        (root / "tools" / "check_listed.py").write_text("# listed\n")
+        (root / "tools" / "check_forgotten.py").write_text("# not in the table\n")
 
         found = {rule for rule, _ in check(root)}
-        for rule in ("D1", "D2", "D3", "D4", "D5"):
+        for rule in ("D1", "D2", "D3", "D4", "D5", "D6"):
             if rule not in found:
                 failures.append(f"{rule} did not fire on a tree that violates it")
 
@@ -302,6 +336,10 @@ def self_test():
         (root / "restated.yml").write_text("# flags: -mcpu=cortex-m3 -mthumb\n")
         (root / ".clusterfuzzlite" / "build.sh").write_text(
             'FUZZERS="\nfuzz_kept\nfuzz_dropped\n"\n')
+        # D6's clean case: the table names exactly the tools that exist.
+        (root / "docs" / "SCOPE.md").write_text(
+            "| [`check_listed.py`](../tools/check_listed.py) | x | y |\n"
+            "| [`check_forgotten.py`](../tools/check_forgotten.py) | x | y |\n")
         remaining = check(root)
         if remaining:
             failures.append(f"clean tree was flagged: {remaining}")
@@ -310,7 +348,7 @@ def self_test():
         for failure in failures:
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
-    print("self-test passed: D1-D5 each bite, and a clean tree is not flagged")
+    print("self-test passed: D1-D6 each bite, and a clean tree is not flagged")
     return 0
 
 
@@ -332,7 +370,8 @@ def main():
         return 1
     print("docs OK: every metl:: name resolves, every relative link exists, "
           "every example is built and run by CI, every fuzz harness is in both "
-          "lists, and the size budgets are stated in exactly one file")
+          "lists, the size budgets are stated in exactly one file, and every\n"
+          "      gate is listed in SCOPE.md section 8")
     return 0
 
 
