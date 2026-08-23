@@ -46,21 +46,36 @@ class byte_reader {
     return value;
   }
 
-  /// Consumes a length-prefixed slice, copying up to `capacity - 1` bytes into
-  /// `out` and NUL-terminating it. Returns the number of copied characters.
-  /// The result is always a valid, NUL-terminated C string.
-  std::size_t c_string(char* out, std::size_t capacity) noexcept {
-    if (capacity == 0) {
-      return 0;
-    }
+  /// Consumes a length-prefixed slice into `out`, NUL-terminated. Returns the
+  /// number of characters copied; the result is always a valid C string.
+  ///
+  /// Takes the array BY REFERENCE rather than a pointer and a length, so `N` is
+  /// a compile-time constant. That is not only tidier -- it is what makes the
+  /// bound provable.
+  ///
+  /// With a runtime `capacity`, Ubuntu's gcc vectorises the copy, loses the
+  /// clamp, and reports
+  ///
+  ///   error: writing 16 bytes into a region of size 15
+  ///   note: at offset [50, 65] into destination object 'buf' of size 65
+  ///
+  /// on a 65-byte buffer whose highest written index is 64. Restating the bound
+  /// in the loop condition did not help; the analysis has to stop being a range
+  /// problem. It also removes a caller mistake the old signature allowed --
+  /// passing a length that does not match the array.
+  template <std::size_t N>
+  std::size_t c_string(char (&out)[N]) noexcept {
+    static_assert(N > 0, "c_string needs room for at least the NUL terminator");
+    constexpr std::size_t room = N - 1;
+
     std::size_t want = byte();
-    const std::size_t room = capacity - 1;
     if (want > room) {
       want = room;
     }
     if (want > remaining()) {
       want = remaining();
     }
+
     std::size_t i = 0;
     for (; i < want; ++i) {
       out[i] = static_cast<char>(byte());

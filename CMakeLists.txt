@@ -257,6 +257,68 @@ if(METL_BUILD_TESTS)
   )
 
   # -------------------------------------------------------------------------
+  # Fuzz-harness replay.
+  #
+  # The harnesses under fuzz/ hold the only reference models in the tree -- #82
+  # put a std::map oracle behind flat_map and static_unordered_map, and the set
+  # harnesses carry hand-rolled ones. Until now those oracles ran in exactly two
+  # places: the `fuzz-smoke` job (Ubuntu, clang, libFuzzer) and ClusterFuzzLite.
+  # They did not run on macOS, on gcc, on any cross target, or under QEMU,
+  # because libFuzzer was needed to invoke them at all.
+  #
+  # Nothing about a harness needs libFuzzer: LLVMFuzzerTestOneInput takes bytes.
+  # fuzz/replay_main.cpp supplies them from a fixed seed, which gives up the
+  # coverage guidance and keeps the oracles. Not a replacement for fuzzing --
+  # a PRNG does not reach what coverage-guided mutation reaches, and the
+  # accumulated corpus is worth more than any seed.
+  #
+  # GLOBbed rather than listed. A second copy of the harness list is exactly
+  # what check_docs.py rule D4 exists to prevent, and a harness silently missing
+  # from this list would be a harness whose oracle silently stops running.
+  # CONFIGURE_DEPENDS re-globs on build, so a new harness is picked up without
+  # anyone remembering to.
+  # -------------------------------------------------------------------------
+  file(GLOB _metl_fuzz_harnesses CONFIGURE_DEPENDS
+       "${CMAKE_CURRENT_SOURCE_DIR}/fuzz/fuzz_*.cpp")
+  if(NOT _metl_fuzz_harnesses)
+    message(FATAL_ERROR
+      "no fuzz/fuzz_*.cpp found -- a replay suite over nothing would pass silently")
+  endif()
+  foreach(_h IN LISTS _metl_fuzz_harnesses)
+    get_filename_component(_hn "${_h}" NAME_WE)
+    # -Wno-stringop-overflow, on GNU, on these targets only, and the reason is
+    # not "it was noisy".
+    #
+    # Ubuntu's gcc reports `writing 16 bytes into a region of size 15` on
+    # byte_reader::c_string with the note `at offset [50, 65] into destination
+    # object 'buf' of size 65`. The buffer is 65 bytes and the highest index
+    # written is 64: gcc vectorises the copy and widens its range for the
+    # length past what the clamp allows. Two attempts to make the bound
+    # provable -- restating it in the loop condition, then taking the array by
+    # reference so the size is a compile-time constant -- did not move it.
+    #
+    # What settles it is not the third attempt but the evidence: this code is
+    # ALREADY covered by AddressSanitizer and UndefinedBehaviorSanitizer at
+    # runtime, in `fuzz-smoke` and in every ClusterFuzzLite run, over the
+    # accumulated corpus. A runtime sanitizer over hostile input is strictly
+    # stronger than a static heuristic that mis-ranges a loop, so switching the
+    # heuristic off HERE costs no real detection.
+    #
+    # Scoped to the replay targets so the harnesses keep the warning everywhere
+    # else, and expressed in the build rather than as a pragma in the header,
+    # which would follow the code into the real fuzz builds too.
+    metl_cc_test(
+      NAME metl_replay_${_hn}
+      SRCS ${_h} fuzz/replay_main.cpp
+      DEPS metl::metl_test_options
+      INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/fuzz
+      DEFINES METL_REPLAY_ROUNDS=500
+      COPTS $<$<CXX_COMPILER_ID:GNU>:-Wno-stringop-overflow>
+      LABELS "metl;replay"
+    )
+  endforeach()
+
+  # -------------------------------------------------------------------------
   # Header hygiene checks
   #   (a) self-containment: every public header compiles as its own TU
   #   (b) umbrella completeness: metl.hpp includes every other public header
