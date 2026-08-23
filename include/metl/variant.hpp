@@ -663,6 +663,58 @@ template <typename Visitor, typename... Ts>
 using visit_result_const_rvalue_t =
     decltype(std::declval<Visitor>()(std::declval<const variant_alternative_t<0, variant<Ts...>>&&>()));
 
+// Every alias above deduces the result from alternative ZERO, and `visit_impl`
+// then returns `Result` for all of them -- so an alternative whose invocation
+// yields a different type is CONVERTED to alternative zero's, silently.
+//
+// That is not a stylistic difference from the standard. [variant.visit] makes
+// the call ill-formed unless the invocation has the same type and value category
+// for every alternative, and libc++ says so in as many words: "`std::visit`
+// requires the visitor to have a single return type." METL compiled the same
+// code and returned the wrong number:
+//
+//     variant<int32_t, int64_t> v = int64_t{5'000'000'000};
+//     metl::visit([](auto x) { return x; }, v);   // -> 705032704
+//
+// No warning at default flags, no assert, no trace. For a library whose whole
+// argument is that failures are visible, a silent truncation is the worst
+// available outcome -- so these traits turn it into a compile error, which is
+// what the caller would have got from std::visit.
+template <typename Visitor, typename... Ts>
+inline constexpr bool visit_single_result_lvalue_v =
+    (std::is_same_v<visit_result_lvalue_t<Visitor, Ts...>,
+                    decltype(std::declval<Visitor>()(std::declval<Ts&>()))> &&
+     ...);
+
+template <typename Visitor, typename... Ts>
+inline constexpr bool visit_single_result_const_lvalue_v =
+    (std::is_same_v<visit_result_const_lvalue_t<Visitor, Ts...>,
+                    decltype(std::declval<Visitor>()(std::declval<const Ts&>()))> &&
+     ...);
+
+template <typename Visitor, typename... Ts>
+inline constexpr bool visit_single_result_rvalue_v =
+    (std::is_same_v<visit_result_rvalue_t<Visitor, Ts...>,
+                    decltype(std::declval<Visitor>()(std::declval<Ts&&>()))> &&
+     ...);
+
+template <typename Visitor, typename... Ts>
+inline constexpr bool visit_single_result_const_rvalue_v =
+    (std::is_same_v<visit_result_const_rvalue_t<Visitor, Ts...>,
+                    decltype(std::declval<Visitor>()(std::declval<const Ts&&>()))> &&
+     ...);
+
+// One message, four call sites. Naming the usual cause is the point: a generic
+// lambda over alternatives of different widths is how this happens in practice,
+// and `-> common type` on the lambda is the one-line fix.
+#define METL_DETAIL_VISIT_SINGLE_RESULT_MESSAGE                                      \
+  "metl::visit requires the visitor to return the SAME type for every alternative, " \
+  "as std::visit does. A generic lambda over alternatives of different widths -- "   \
+  "variant<int32_t, int64_t> with [](auto x) { return x; } -- deduces the result "   \
+  "from the FIRST alternative and would silently convert the others. Give the "      \
+  "lambda an explicit return type (-> std::int64_t) or return a common type from "   \
+  "every branch."
+
 template <typename Result, std::size_t Index, typename Visitor, typename... Ts>
 constexpr Result visit_impl(Visitor&& visitor, variant<Ts...>& value) {
   if constexpr (Index >= sizeof...(Ts)) {
@@ -727,6 +779,8 @@ constexpr Result visit_impl(Visitor&& visitor, const variant<Ts...>&& value) {
 template <typename Visitor, typename... Ts>
 constexpr decltype(auto) visit(Visitor&& visitor, variant<Ts...>& value) {
   METL_ASSERT(!value.valueless_by_exception());
+  static_assert(detail::visit_single_result_lvalue_v<Visitor&&, Ts...>,
+                METL_DETAIL_VISIT_SINGLE_RESULT_MESSAGE);
   using result_type = detail::visit_result_lvalue_t<Visitor&&, Ts...>;
   return detail::visit_impl<result_type, 0>(std::forward<Visitor>(visitor), value);
 }
@@ -734,6 +788,8 @@ constexpr decltype(auto) visit(Visitor&& visitor, variant<Ts...>& value) {
 template <typename Visitor, typename... Ts>
 constexpr decltype(auto) visit(Visitor&& visitor, const variant<Ts...>& value) {
   METL_ASSERT(!value.valueless_by_exception());
+  static_assert(detail::visit_single_result_const_lvalue_v<Visitor&&, Ts...>,
+                METL_DETAIL_VISIT_SINGLE_RESULT_MESSAGE);
   using result_type = detail::visit_result_const_lvalue_t<Visitor&&, Ts...>;
   return detail::visit_impl<result_type, 0>(std::forward<Visitor>(visitor), value);
 }
@@ -741,6 +797,8 @@ constexpr decltype(auto) visit(Visitor&& visitor, const variant<Ts...>& value) {
 template <typename Visitor, typename... Ts>
 constexpr decltype(auto) visit(Visitor&& visitor, variant<Ts...>&& value) {
   METL_ASSERT(!value.valueless_by_exception());
+  static_assert(detail::visit_single_result_rvalue_v<Visitor&&, Ts...>,
+                METL_DETAIL_VISIT_SINGLE_RESULT_MESSAGE);
   using result_type = detail::visit_result_rvalue_t<Visitor&&, Ts...>;
   return detail::visit_impl<result_type, 0>(std::forward<Visitor>(visitor),
                                             static_cast<variant<Ts...>&&>(value));
@@ -749,6 +807,8 @@ constexpr decltype(auto) visit(Visitor&& visitor, variant<Ts...>&& value) {
 template <typename Visitor, typename... Ts>
 constexpr decltype(auto) visit(Visitor&& visitor, const variant<Ts...>&& value) {
   METL_ASSERT(!value.valueless_by_exception());
+  static_assert(detail::visit_single_result_const_rvalue_v<Visitor&&, Ts...>,
+                METL_DETAIL_VISIT_SINGLE_RESULT_MESSAGE);
   using result_type = detail::visit_result_const_rvalue_t<Visitor&&, Ts...>;
   return detail::visit_impl<result_type, 0>(std::forward<Visitor>(visitor),
                                             static_cast<const variant<Ts...>&&>(value));
