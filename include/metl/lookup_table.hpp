@@ -14,7 +14,7 @@
 /// nothing at run time at all.
 ///
 /// `Size` is small by construction; if it is not, a `metl::flat_map` searches the
-/// same data in `log2(Size)` comparisons instead.
+/// same data in `log2(Size) + 2` comparisons instead.
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"

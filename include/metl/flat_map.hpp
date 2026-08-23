@@ -5,12 +5,19 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | lookup: `find`, `contains`, `lower_bound`, `at` | wait-free, `log2(Capacity)` comparisons |
+///   | lookup: `find`, `contains`, `lower_bound`, `at` | wait-free, `log2(Capacity) + 2` comparisons |
 ///   | `insert`, `try_emplace`, `erase` | wait-free, bounded by `Capacity` moves |
 ///   | `clear`, iteration, copy, destructor | wait-free, bounded by `size()` |
 ///
 /// Storage is one sorted array, so lookup is a binary search and modification
 /// shifts the tail to keep it sorted. Both bounds are compile-time known.
+///
+/// The `+ 2` is not slack. `lower_bound` over n elements performs
+/// `floor(log2(n)) + 1` comparisons, and `find` performs one more to decide
+/// whether the position it landed on actually holds the key. This table said
+/// plain `log2(Capacity)` until it was measured; `tests/containers/
+/// operation_count_test.cpp` now counts the comparisons and holds them here, so
+/// the figure cannot drift from the code again.
 ///
 /// Two things this header does not bound, and cannot: `Compare` must itself be
 /// bounded -- a comparator that loops on the key makes every operation above
