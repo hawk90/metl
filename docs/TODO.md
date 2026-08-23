@@ -245,14 +245,27 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   `tools/check_size.py` and are not repeated here** — this sentence used to
   repeat them, #66 raised them, and the copy stayed behind for nine PRs;
   `check_docs.py` rule D5 now rejects any restatement.
-  **What it does not cover: RAM.** `.text` and `.rodata` are flash. `.bss`,
-  `.data` and the stack are not measured anywhere in this repository — the next
-  item.
-- [ ] **Measure RAM: `.bss`/`.data` and stack depth.** The ratchet above gates
-  **flash**. The resource METL actually moved the cost onto is **RAM**, and
-  nothing in this repository has ever measured it: no `-fstack-usage`, no
-  `-Wstack-usage`, and `check_size.py` parses `.bss`/`.data` out of the ELF and
-  then discards them.
+  **`.rodata` is gated too, since #83.** It had been measured and printed by
+  this step from the start and compared against nothing — a step that could only
+  pass, inside the tool whose header argues against exactly that. #28 made CRC's
+  nibble table the default, which is a deliberate trade of `.rodata` for speed,
+  so the space is not idle.
+- [x] **Measure RAM: `sizeof`, stack depth, and `.bss`/`.data`** (#77, #79/#80,
+  #83). The ratchet above gates **flash**. The resource METL actually moved the
+  cost onto is **RAM**, and for a long time nothing here measured it: no
+  `-fstack-usage`, no `-Wstack-usage`, and `check_size.py` parsed `.bss`/`.data`
+  out of the ELF and discarded them.
+
+  All three halves are now gated. `tests/core/ram_footprint_test.cpp` pins
+  `sizeof` per container with `static_assert`, so it runs on every cross-syntax
+  target too (#77). `tools/check_stack.py` measures the deepest frame and
+  rejects any `dynamic` one outright (#79, enforcing since #80).
+  `check_size.py --ram-object` sums `.bss` + `.data` from the stack probe's
+  object file (#83).
+
+  **This entry claimed "not measured anywhere" for three PRs after they landed.**
+  D5 was written because a *number* went stale; this was a claim about a GATE
+  going stale, which D5 does not cover and nothing else did either.
 
   **I1 is the invariant that creates the exposure.** "No heap" is enforced by a
   symbol audit, which proves `malloc` is absent from the image and says nothing
@@ -281,13 +294,16 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   in that document became an invariant and a CI job. This one never got a
   number.
 
-  **The naive fix would be theatre, so do not ship it.** `invariant_probe.cpp`
-  uses capacity 4–8 containers, so a `.bss` or stack ratchet bolted onto today's
-  probe would measure approximately nothing and pass forever — the exact shape
-  this repo has spent months removing. Capacity is the *caller's* parameter, so
-  the probe that gates flash structurally cannot gate RAM. This needs a second
-  probe with realistic capacities, and its budgets set from what CI reports,
-  never from the host figures above.
+  **The naive fix would have been theatre, and was not shipped.**
+  `invariant_probe.cpp` uses capacity 4–8 containers, so a `.bss` or stack
+  ratchet bolted onto it would have measured approximately nothing and passed
+  forever — the exact shape this repo has spent months removing. Capacity is the
+  *caller's* parameter, so the probe that gates flash structurally cannot gate
+  RAM. `tests/embedded/stack_probe.cpp` (#79) is the second probe that was
+  needed: realistic capacities, containers in static storage. It was built for
+  the stack measurement and turned out to be exactly what the `.bss` ratchet
+  needed as well — which is why #83 adds no new artifact, only a `size -A` over
+  the object file that job already produces.
 - [x] **Host coverage measurement + blocking floor** (#35) — `tools/coverage.sh`
   and the `coverage` job report `include/metl` only (llvm-cov's default total
   also counts the test sources, which measures how well the tests cover

@@ -623,7 +623,13 @@ jobs:
       - name: Probe code-size ratchet must still bite (canary)
         run: tools/check_size.py --self-test
 
-      - name: Probe code size against its budget
+      # Gates .text AND .rodata now. .rodata had been measured and printed by
+      # this very step since it was written, and compared against nothing --
+      # the "step that can only pass" shape, inside the tool whose header
+      # argues against it. It is not idle space either: #28 made CRC's nibble
+      # table the default, which is a deliberate trade of .rodata for speed,
+      # and a repository that gates one and not the other calls that trade free.
+      - name: Probe code size (.text and .rodata) against its budgets
         run: |
           tools/check_size.py \
             --elf invariant_probe.elf \
@@ -665,6 +671,26 @@ jobs:
         run: |
           tools/check_stack.py \
             --su-dir . \
+            --cpu ${{ matrix.cpu }}
+
+      # Static RAM, the last unmeasured corner of the memory question. #77 pins
+      # `sizeof` per container with static_assert and #79 measures the stack;
+      # neither can see a hidden static inside a header, a function-local static
+      # and its guard variable, or a table that moved from .rodata into .data.
+      #
+      # No new artifact: stack_probe.o was compiled two steps up, and that probe
+      # already holds realistic-capacity containers in STATIC storage -- which is
+      # exactly what a .bss ratchet needs. docs/TODO.md said a .bss ratchet had
+      # no suitable probe, and that stopped being true when #79 landed.
+      #
+      # ENFORCING. The budgets came from this job's own --report output earlier
+      # in this PR (run 32613760217), never from a local figure -- the numbers
+      # themselves live in tools/check_size.py and are deliberately not repeated
+      # here, which is the mistake #76 fixed for the size budgets.
+      - name: Probe static RAM (.bss + .data) against its budget
+        run: |
+          tools/check_size.py \
+            --ram-object stack_probe.o \
             --cpu ${{ matrix.cpu }}
 
   # ---------------------------------------------------------------------------
