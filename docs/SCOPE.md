@@ -304,7 +304,37 @@ fails; this is what it looks like when it succeeds.
 
 ---
 
-## 8. How the invariant gate works
+## 8. The gates
+
+Every machine-checked claim in this repository is one of these. The table is
+enforced: `tools/check_docs.py` rule **D6** fails the build if a
+`tools/check_*.py` is missing from it, or if it names one that does not exist.
+
+That rule exists because of a specific failure. `docs/TODO.md` said "`.bss`,
+`.data` and the stack are not measured anywhere in this repository" for three
+PRs *after* they were — #77 pinned `sizeof`, #79/#80 gated stack depth, #83
+gated `.bss`. Rule D5 was written because a **number** went stale; this was a
+claim about a **gate** going stale, and nothing was checking those.
+
+| Gate | What it measures | Proves it still bites |
+|---|---|---|
+| [`check_invariants.py`](../tools/check_invariants.py) | I1/I2: no `malloc`, no throw path, no RTTI, in a linked ARM image | a canary TU that must FAIL the audit |
+| [`check_size.py`](../tools/check_size.py) | `.text`, `.rodata`, and `.bss`+`.data` against per-target budgets | `--self-test` |
+| [`check_stack.py`](../tools/check_stack.py) | deepest stack frame; rejects any `dynamic` frame outright | `--self-test` |
+| [`check_instructions.py`](../tools/check_instructions.py) | instructions executed per benchmark, via cachegrind | `--self-test` |
+| [`check_api_contract.py`](../tools/check_api_contract.py) | §9 R2/R3 across every public header | `--self-test` |
+| [`check_progress_guarantee.py`](../tools/check_progress_guarantee.py) | I3: every public header states a progress guarantee | `--self-test` |
+| [`check_docs.py`](../tools/check_docs.py) | D1–D6: the documentation claims a machine can settle | `--self-test` |
+| [`check_compile_fail.py`](../tools/check_compile_fail.py) | that the public `static_assert`s actually fire | `--self-test` |
+| [`check_mutants.py`](../tools/check_mutants.py) | that the gates above notice a deliberately broken library | `--self-test` |
+
+Not in the table because they are not scripts: the `sizeof` ratchet
+(`tests/core/ram_footprint_test.cpp`), the comparison-count bound
+(`tests/containers/operation_count_test.cpp`), the coverage floor
+(`tools/coverage.sh`), the clang-tidy finding ratchet, and the
+consumer-warning matrix in `ci.yml`.
+
+### How the invariant gate works
 
 `tools/check_invariants.py` reads the **symbol table of a fully linked image**
 (`nm`) and fails if forbidden symbols are present. It does not run the binary.
