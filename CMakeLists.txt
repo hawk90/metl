@@ -257,6 +257,46 @@ if(METL_BUILD_TESTS)
   )
 
   # -------------------------------------------------------------------------
+  # Fuzz-harness replay.
+  #
+  # The harnesses under fuzz/ hold the only reference models in the tree -- #82
+  # put a std::map oracle behind flat_map and static_unordered_map, and the set
+  # harnesses carry hand-rolled ones. Until now those oracles ran in exactly two
+  # places: the `fuzz-smoke` job (Ubuntu, clang, libFuzzer) and ClusterFuzzLite.
+  # They did not run on macOS, on gcc, on any cross target, or under QEMU,
+  # because libFuzzer was needed to invoke them at all.
+  #
+  # Nothing about a harness needs libFuzzer: LLVMFuzzerTestOneInput takes bytes.
+  # fuzz/replay_main.cpp supplies them from a fixed seed, which gives up the
+  # coverage guidance and keeps the oracles. Not a replacement for fuzzing --
+  # a PRNG does not reach what coverage-guided mutation reaches, and the
+  # accumulated corpus is worth more than any seed.
+  #
+  # GLOBbed rather than listed. A second copy of the harness list is exactly
+  # what check_docs.py rule D4 exists to prevent, and a harness silently missing
+  # from this list would be a harness whose oracle silently stops running.
+  # CONFIGURE_DEPENDS re-globs on build, so a new harness is picked up without
+  # anyone remembering to.
+  # -------------------------------------------------------------------------
+  file(GLOB _metl_fuzz_harnesses CONFIGURE_DEPENDS
+       "${CMAKE_CURRENT_SOURCE_DIR}/fuzz/fuzz_*.cpp")
+  if(NOT _metl_fuzz_harnesses)
+    message(FATAL_ERROR
+      "no fuzz/fuzz_*.cpp found -- a replay suite over nothing would pass silently")
+  endif()
+  foreach(_h IN LISTS _metl_fuzz_harnesses)
+    get_filename_component(_hn "${_h}" NAME_WE)
+    metl_cc_test(
+      NAME metl_replay_${_hn}
+      SRCS ${_h} fuzz/replay_main.cpp
+      DEPS metl::metl_test_options
+      INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/fuzz
+      DEFINES METL_REPLAY_ROUNDS=500
+      LABELS "metl;replay"
+    )
+  endforeach()
+
+  # -------------------------------------------------------------------------
   # Header hygiene checks
   #   (a) self-containment: every public header compiles as its own TU
   #   (b) umbrella completeness: metl.hpp includes every other public header

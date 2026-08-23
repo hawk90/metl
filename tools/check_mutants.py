@@ -17,8 +17,11 @@ catches which class of defect. It is not what anyone would guess.
 
     flat_map::find -> neighbour        killed by unit tests, NOT by the fuzzer
                                        before #82 added a reference model
-    flat_set::nth(i) -> i+1            killed ONLY by the fuzzer; survives all
-                                       90 ctest targets
+    flat_set::nth(i) -> i+1            killed ONLY by the fuzz harness's oracle.
+                                       It survived every other ctest target, and
+                                       was unreachable from here at all until
+                                       fuzz/replay_main.cpp let the harnesses run
+                                       without libFuzzer.
     binary search -> linear scan       killed ONLY by the operation-count test;
                                        results are identical, so correctness
                                        tests and the fuzz oracle both pass
@@ -126,6 +129,22 @@ MUTANTS = [
       storage_[size_ + i] = text[i];
     }
 """,
+    },
+    {
+        "name": "flat_set_nth_off_by_one",
+        "file": "include/metl/flat_set.hpp",
+        "why": "positional access returns the NEXT element. This one survives "
+               "all ctest targets except the replay -- the harness oracle is "
+               "the only thing that looks at what nth() returns.",
+        "kills": "ctest:replay_fuzz_flat_set",
+        "old": """  METL_NODISCARD const_reference nth(size_type index) const noexcept {
+    METL_ASSERT(index < size_);
+    return data()[index];
+  }""",
+        "new": """  METL_NODISCARD const_reference nth(size_type index) const noexcept {
+    METL_ASSERT(index < size_);
+    return data()[index + 1 < size_ ? index + 1 : index];
+  }""",
     },
     {
         "name": "spsc_capacity_assert_always_true",
