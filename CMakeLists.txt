@@ -178,6 +178,7 @@ if(METL_BUILD_TESTS)
     containers/unordered_reclaim
     containers/static_unordered_map_emplace containers/lookup_table
     containers/recoverable_api containers/fixed_priority_queue
+    containers/operation_count
     # memory/
     memory/arena_allocator memory/static_allocator memory/monotonic_buffer
     memory/object_pool memory/allocator_overflow

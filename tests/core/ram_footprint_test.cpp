@@ -43,6 +43,7 @@
 #include <metl/fixed_vector.hpp>
 #include <metl/flat_map.hpp>
 #include <metl/flat_set.hpp>
+#include <metl/function_ref.hpp>
 #include <metl/ring_buffer.hpp>
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
@@ -211,6 +212,22 @@ static_assert(!fits<too_fat>(256 * sizeof(u32), 1),
               "it cannot fail, so none of the assertions above mean anything");
 static_assert(fits<too_fat>(256 * sizeof(u32), 3),
               "fits<> rejected a container that is exactly within its budget");
+
+// #17 shrank function_ref to a two-pointer union layout ("perf(function_ref):
+// shrink to 2-pointer union layout (P0792)"). That is a claim about sizeof, and
+// it is the only claim of its kind in the log that nothing here was holding --
+// this file pins eleven containers and did not pin the type whose whole commit
+// was about its size.
+//
+// Stated as an exact equality rather than a bound: two pointers is the design,
+// and one more word would be a regression worth a conversation even though it
+// would still "fit".
+static_assert(sizeof(metl::function_ref<void()>) == 2 * sizeof(void*),
+              "function_ref is a two-pointer union (P0792); #17 shrank it to this");
+static_assert(sizeof(metl::function_ref<int(int, int)>) == 2 * sizeof(void*),
+              "the signature must not change the footprint -- it is erased");
+static_assert(alignof(metl::function_ref<void()>) == alignof(void*),
+              "a two-pointer union aligns like a pointer");
 
 }  // namespace
 
