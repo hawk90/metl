@@ -24,6 +24,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settle: every `metl::` name resolves, every relative link exists, and every
   example the docs point at is registered in `examples/CMakeLists.txt`.
 
+### Fixed
+
+- **`metl::visit` silently truncated a visitor's result** when the visitor
+  returned a different type per alternative. The result type was deduced from
+  alternative **zero** and every other alternative was converted to it, so
+  `metl::visit([](auto x) { return x; }, v)` on a
+  `variant<std::int32_t, std::int64_t>` holding `5'000'000'000` returned
+  `705032704` — no warning at default flags, no assert. `std::visit` rejects the
+  same code at compile time (*"`std::visit` requires the visitor to have a
+  single return type"*), and METL now does too, with a message naming the
+  one-line fix. **Source-breaking** for callers who relied on the conversion:
+  give the visitor an explicit return type.
+
 ### Changed
 
 - The code-size ratchet now **enforces** per-target `.text` budgets measured by

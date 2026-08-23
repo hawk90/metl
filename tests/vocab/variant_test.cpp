@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <type_traits>
 
 #include <metl/in_place.hpp>
@@ -48,13 +49,67 @@ bool runtime_checks() {
     return false;
   }
 
-  return metl::visit([](auto input) { return input + 1; }, value) == 43L;
+  // The explicit `-> long` is the point of this line, not decoration. Without
+  // it a generic lambda over variant<int, long> deduces its result from the
+  // FIRST alternative and every other one is converted to `int` on the way out.
+  // This test used to be written without it and passed by luck: 43 fits in an
+  // int, so the truncation had nothing to cut.
+  return metl::visit([](auto input) -> long { return input + 1; }, value) == 43L;
 }
+
+// The value the old spelling would have lost. 5,000,000,000 does not fit in a
+// 32-bit int, so a result deduced from alternative zero returns 705032704.
+bool visit_does_not_truncate_a_wide_alternative() {
+  metl::variant<std::int32_t, std::int64_t> value;
+  value.emplace<std::int64_t>(5'000'000'000LL);
+
+  const auto result = metl::visit([](auto input) -> std::int64_t { return input; }, value);
+  static_assert(std::is_same_v<decltype(result), const std::int64_t>,
+                "visit must return the visitor's declared type, not alternative zero's");
+  return result == 5'000'000'000LL;
+}
+
+// A visitor whose result type differs per alternative. metl::visit must refuse
+// it, as std::visit does -- and the TRAIT is what refuses, so the trait is what
+// can be tested here. Instantiating metl::visit with such a visitor is a hard
+// error by design, so the check stops one level short of the call; this
+// repository has no compile-failure harness (docs/TODO.md).
+//
+// Named structs rather than lambdas: a lambda in an unevaluated operand is C++20
+// and METL's baseline is C++17.
+struct truncating_visitor {
+  template <typename T>
+  T operator()(T input) const {
+    return input;
+  }
+};
+
+struct declared_visitor {
+  template <typename T>
+  std::int64_t operator()(T input) const {
+    return static_cast<std::int64_t>(input);
+  }
+};
+
+static_assert(!metl::detail::visit_single_result_lvalue_v<truncating_visitor&&, std::int32_t, std::int64_t>,
+              "the guard must REJECT a visitor that returns a different type per "
+              "alternative -- otherwise metl::visit silently truncates");
+
+static_assert(metl::detail::visit_single_result_lvalue_v<declared_visitor&&, std::int32_t, std::int64_t>,
+              "the guard must ACCEPT a visitor with one declared return type");
+
+// ...and it must not fire where there is nothing to disagree about.
+static_assert(metl::detail::visit_single_result_lvalue_v<truncating_visitor&&, int>,
+              "the guard must not reject a single-alternative variant");
 
 }  // namespace
 
 int main() {
   if (!runtime_checks()) {
+    return 1;
+  }
+
+  if (!visit_does_not_truncate_a_wide_alternative()) {
     return 1;
   }
 
