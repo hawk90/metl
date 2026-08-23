@@ -35,22 +35,38 @@ void ring_buffer_push_overwrite(std::uint64_t iterations) {
   }
 }
 
-// The `do_not_optimize` calls here are load-bearing, and the first version of
-// this benchmark proved it: it discarded try_push_back's result and anchored on
-// `ring.size()`, which is invariantly 0 after a matched push and pop. The
-// compiler proved the ring stays empty and deleted both operations, leaving a
-// counting loop. Nothing noticed for as long as it had been there -- the
-// wall-clock number was simply very good. tools/check_instructions.py measured
-// 2.06 instructions per iteration and MIN_MEANINGFUL_COUNT now fails the build
-// on a benchmark this thin, so the class of mistake cannot come back quietly.
+// This benchmark took two tries to make real, and the instruction counter
+// rejected both of the wrong ones -- which is the whole argument for having it.
+//
+// v1 discarded try_push_back's result and anchored on `ring.size()`, which is
+// invariantly 0 after a matched push and pop. The compiler proved the ring
+// stays empty and deleted both operations: 2.06 instructions per iteration.
+//
+// v2 kept both results alive with do_not_optimize. Still 3.07 per iteration,
+// because an empty ring means push writes slot i and front() reads slot i in
+// the same iteration, so the store forwards straight to the load and the buffer
+// itself never has to exist. A `clobber_memory()` at the END of the body is too
+// late to stop that.
+//
+// v3 pre-fills to half capacity, so `front()` returns an element pushed 32
+// iterations ago and the forwarding would have to survive 32 rounds of
+// unrolling, and the barrier sits between the write and the read. It is also
+// the more honest workload: a ring in steady state is a partly full ring, not
+// one that is empty at every iteration boundary.
 void ring_buffer_push_pop(std::uint64_t iterations) {
   metl::ring_buffer<std::uint32_t, 64> ring;
+  for (std::uint32_t i = 0; i < 32; ++i) {
+    (void)ring.try_push_back(i);
+  }
+
+  std::uint64_t sink = 0;
   for (std::uint64_t n = 0; n < iterations; ++n) {
     metl_bench::do_not_optimize(ring.try_push_back(static_cast<std::uint32_t>(n)));
-    metl_bench::do_not_optimize(ring.front());
-    ring.pop_front();
     metl_bench::clobber_memory();
+    sink += ring.front();
+    ring.pop_front();
   }
+  metl_bench::do_not_optimize(sink);
 }
 
 // Lookup benchmarks are split hit/miss on purpose: a miss walks the whole probe
