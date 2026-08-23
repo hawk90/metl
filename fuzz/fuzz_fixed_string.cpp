@@ -50,7 +50,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
       }
       case 2: {  // try_assign from a bounded, NUL-terminated slice
         char buf[kCapacity + 1];
-        in.c_string(buf, sizeof(buf));
+        in.c_string(buf);
         const bool ok = str.try_assign(buf);
         if (ok) {
           // On success the contents must equal the source exactly.
@@ -62,7 +62,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
       }
       case 3: {  // try_append from a bounded, NUL-terminated slice
         char buf[kCapacity + 1];
-        in.c_string(buf, sizeof(buf));
+        in.c_string(buf);
         // Reports overflow via bool; contents unchanged on false. The plain
         // `append` asserts instead, so it is NOT contract-valid on fuzz input.
         (void)str.try_append(buf);

@@ -46,38 +46,38 @@ class byte_reader {
     return value;
   }
 
-  /// Consumes a length-prefixed slice, copying up to `capacity - 1` bytes into
-  /// `out` and NUL-terminating it. Returns the number of copied characters.
-  /// The result is always a valid, NUL-terminated C string.
-  std::size_t c_string(char* out, std::size_t capacity) noexcept {
-    if (capacity == 0) {
-      return 0;
-    }
+  /// Consumes a length-prefixed slice into `out`, NUL-terminated. Returns the
+  /// number of characters copied; the result is always a valid C string.
+  ///
+  /// Takes the array BY REFERENCE rather than a pointer and a length, so `N` is
+  /// a compile-time constant. That is not only tidier -- it is what makes the
+  /// bound provable.
+  ///
+  /// With a runtime `capacity`, Ubuntu's gcc vectorises the copy, loses the
+  /// clamp, and reports
+  ///
+  ///   error: writing 16 bytes into a region of size 15
+  ///   note: at offset [50, 65] into destination object 'buf' of size 65
+  ///
+  /// on a 65-byte buffer whose highest written index is 64. Restating the bound
+  /// in the loop condition did not help; the analysis has to stop being a range
+  /// problem. It also removes a caller mistake the old signature allowed --
+  /// passing a length that does not match the array.
+  template <std::size_t N>
+  std::size_t c_string(char (&out)[N]) noexcept {
+    static_assert(N > 0, "c_string needs room for at least the NUL terminator");
+    constexpr std::size_t room = N - 1;
+
     std::size_t want = byte();
-    const std::size_t room = capacity - 1;
     if (want > room) {
       want = room;
     }
     if (want > remaining()) {
       want = remaining();
     }
+
     std::size_t i = 0;
-    // `i < room` is redundant: `want <= room` two lines up already bounds the
-    // loop, and `room == capacity - 1` leaves the terminator's slot free.
-    //
-    // It is here because Ubuntu's gcc loses that bound once it vectorises the
-    // loop, and says so with a range the clamp makes unreachable:
-    //
-    //   error: writing 16 bytes into a region of size 15
-    //   note: at offset [50, 65] into destination object 'buf' of size 65
-    //
-    // `buf` is 65 bytes, `room` is 64, the highest index written is 64. The
-    // diagnostic is wrong, but arguing with an optimiser is not a fix and
-    // suppressing a memory-safety warning is worse than restating a bound. Tying
-    // the loop condition to `capacity` directly puts it where the vectoriser
-    // cannot drop it. Local g++-16 does not reproduce this at any -O level, so
-    // CI is the only place it can be verified.
-    for (; i < want && i < room; ++i) {
+    for (; i < want; ++i) {
       out[i] = static_cast<char>(byte());
     }
     out[i] = '\0';
