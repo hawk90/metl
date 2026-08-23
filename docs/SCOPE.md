@@ -441,7 +441,7 @@ R2 and R3 are mechanical and are checked by the **`api-contract`** job
 (`tools/check_api_contract.py`), which also has a `--self-test` canary — a gate
 that cannot fail is not a gate, the same argument as §8's `invariant_canary`. The
 forward-iterator constraint in R1 is proved by compiling
-`tests/containers/forward_iterator_contract.cpp` both ways and requiring the
+`tests/compile_fail/forward_iterator_required.cpp` both ways and requiring the
 single-pass arm to fail, the same shape as the `handle-atomics` capability gate.
 
 R1's "both forms exist" half needs a human and is on the §4 checklist.
