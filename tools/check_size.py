@@ -113,11 +113,21 @@ RODATA_BUDGETS = {
 }
 RODATA_TOLERANCE_BYTES = 64
 
-# Budgets for `.bss` + `.data` of the stack probe's object file. EMPTY ON
-# PURPOSE: this is a new measurement and CI has never printed it, so it goes
-# through the same two-step every other ratchet here did -- --report first, the
-# numbers written down from that output afterwards.
-RAM_BUDGETS = {}
+# Budgets for `.bss` + `.data` of the stack probe's object file. Measured by the
+# `invariants` job on PR #83, run 32613760217. All four targets report the same
+# number, and they should: static storage is a sum of `sizeof`, which is an ABI
+# property, and these are four ARM32 targets with the same one. A DIFFERENCE
+# between them would itself be the finding.
+#
+# The figure is large -- more than a Cortex-M0+ with 8 KB of SRAM has -- because
+# the probe deliberately holds realistic-capacity containers. That is the point:
+# at capacity 4-8 the measurement would be noise. It is a probe, not a product.
+RAM_BUDGETS = {
+    "cortex-m0": 24_304,
+    "cortex-m3": 24_304,
+    "cortex-m4": 24_304,
+    "cortex-m7": 24_304,
+}
 RAM_TOLERANCE_BYTES = 64
 
 SECTION_LINE = re.compile(r"^(\.\S+)\s+(\d+)\s+")
