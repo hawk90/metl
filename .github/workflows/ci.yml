@@ -1269,6 +1269,68 @@ jobs:
           echo "clean under $METL_CONSUMER_WARNINGS"
 
   # ---------------------------------------------------------------------------
+  # Mutation testing.
+  #
+  # Coverage says a line RAN. It does not say a test would notice if the line
+  # were WRONG, and this repository has a live example: flat_set::nth(i)
+  # returning element i+1 survives all 90 ctest targets. The line is covered.
+  # Nothing checks what it returns.
+  #
+  # The argument is already made everywhere else here -- every checker under
+  # tools/ has a --self-test because "a gate that cannot fail is not a gate",
+  # and tests/compile_fail exists because an always-true static_assert is
+  # invisible. Both are mutation testing applied to the checkers and to the
+  # contracts. This applies it to the library.
+  #
+  # What it produces is a map of which gate catches which defect, and it is not
+  # what anyone would guess: the linear-scan mutant is caught ONLY by the
+  # operation-count test, the always-true assert ONLY by the compile-failure
+  # cases, and flat_set::nth ONLY by the fuzzer. No layer dominates another.
+  # ---------------------------------------------------------------------------
+  mutants:
+    name: mutants
+    runs-on: ubuntu-latest
+    needs: preflight
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Install build deps
+        uses: ./.github/actions/apt-install
+        with:
+          packages: build-essential clang
+          cache-key: build-essential-clang
+
+      - name: Configure
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -B build-mutants -S . \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DMETL_INSTALL=OFF
+
+      - name: Build the baseline
+        run: cmake --build build-mutants -j
+
+      - name: The mutation driver must still bite (canary)
+        run: tools/check_mutants.py --self-test
+
+      # Every mutant must be KILLED. A survivor is a missing test, not something
+      # to add to an allowlist -- there is no allowlist.
+      #
+      # The driver bumps each mutated file's mtime ten seconds into the future
+      # before building. Without that, mutate/build/revert/mutate happens well
+      # inside make's one-second timestamp granularity, the second build is
+      # skipped, and the verdict comes from the PREVIOUS binaries -- every
+      # mutant after the first reports SURVIVED. That was observed, not
+      # theorised.
+      - name: Break the library on purpose; the gates must notice
+        run: tools/check_mutants.py --build-dir build-mutants
+
+  # ---------------------------------------------------------------------------
   # clang-tidy (blocking deduplicated ratchet)
   #
   # 142 is the distinct-finding count this exact job reported on this runner
