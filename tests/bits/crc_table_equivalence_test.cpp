@@ -22,19 +22,21 @@
 namespace {
 
 constexpr std::uint8_t reference8(std::uint8_t crc, std::uint8_t byte) noexcept {
-  crc ^= byte;
+  // `crc ^= byte` promotes both to int and narrows on the way back, which is a
+  // -Wconversion diagnostic even though the value cannot exceed 8 bits.
+  crc = static_cast<std::uint8_t>(crc ^ byte);
   for (int bit = 0; bit < 8; ++bit) {
-    crc = (crc & 0x80u) != 0u ? static_cast<std::uint8_t>((crc << 1u) ^ 0x07u)
-                              : static_cast<std::uint8_t>(crc << 1u);
+    crc = (crc & 0x80u) != 0u ? static_cast<std::uint8_t>((static_cast<unsigned>(crc) << 1u) ^ 0x07u)
+                              : static_cast<std::uint8_t>(static_cast<unsigned>(crc) << 1u);
   }
   return crc;
 }
 
 constexpr std::uint16_t reference16(std::uint16_t crc, std::uint8_t byte) noexcept {
-  crc ^= static_cast<std::uint16_t>(static_cast<std::uint16_t>(byte) << 8u);
+  crc = static_cast<std::uint16_t>(crc ^ static_cast<std::uint16_t>(static_cast<std::uint16_t>(byte) << 8u));
   for (int bit = 0; bit < 8; ++bit) {
-    crc = (crc & 0x8000u) != 0u ? static_cast<std::uint16_t>((crc << 1u) ^ 0x1021u)
-                                : static_cast<std::uint16_t>(crc << 1u);
+    crc = (crc & 0x8000u) != 0u ? static_cast<std::uint16_t>((static_cast<unsigned>(crc) << 1u) ^ 0x1021u)
+                                : static_cast<std::uint16_t>(static_cast<unsigned>(crc) << 1u);
   }
   return crc;
 }

@@ -94,7 +94,7 @@ int main() {
     std::uint32_t next_pop = 0;
 
     for (int round = 0; round < 16; ++round) {
-      const std::size_t burst = (round % 3) + 1;  // 1, 2, 3, 1, ...
+      const std::size_t burst = static_cast<std::size_t>((round % 3) + 1);  // 1, 2, 3, 1, ...
       for (std::size_t i = 0; i < burst; ++i) {
         CHECK(queue.try_push(next_push++));
       }

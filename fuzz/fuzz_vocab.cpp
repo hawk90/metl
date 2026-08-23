@@ -205,8 +205,18 @@ void drive_variant(metl_fuzz::byte_reader& in) {
       }
       default: {
         // Self-assignment: the case where "destroy the old, construct the new"
-        // destroys the thing it is about to read.
+        // destroys the thing it is about to read. Writing it as `v = v` is the
+        // point of the test, so the diagnostic that objects to it is suppressed
+        // HERE and nowhere wider -- a file-level or build-level suppression
+        // would also hide a real accidental self-assignment.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wself-assign-overloaded"
+#endif
         v = v;
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
         break;
       }
     }

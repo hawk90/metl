@@ -1193,6 +1193,82 @@ jobs:
         run: tools/check_compile_fail.py --cxx clang++ --std c++20
 
   # ---------------------------------------------------------------------------
+  # Consumer warning flags.
+  #
+  # METL is HEADER-ONLY, so its headers are compiled with the CONSUMER's flags,
+  # not with METL's. The project builds its own tests under -Wall -Wextra
+  # -Wpedantic and friends; nothing checked what happens under the stricter sets
+  # an embedded shop actually uses. -Wconversion in particular is close to
+  # standard practice in MISRA-adjacent work.
+  #
+  # It is not shielded by CMake either: CMakeLists.txt exports the include
+  # directory WITHOUT `SYSTEM`, so `find_package(metl)` consumers compile these
+  # headers under their own -Werror. Measuring it found one real diagnostic in
+  # include/metl/bit.hpp and three in tests; all four are fixed in the same
+  # commit as this job.
+  #
+  # The flag list is the claim: every one of these is free today, and this job is
+  # what keeps it free. Adding to it is welcome; removing one needs a reason.
+  # ---------------------------------------------------------------------------
+  consumer-warnings:
+    name: consumer-warnings / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    needs: preflight
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "clang / c++17", cxx: clang++, std: c++17, pkgs: "clang" }
+          - { name: "clang / c++20", cxx: clang++, std: c++20, pkgs: "clang" }
+          - { name: "gcc / c++17", cxx: g++, std: c++17, pkgs: "build-essential" }
+          - { name: "gcc / c++20", cxx: g++, std: c++20, pkgs: "build-essential" }
+
+    env:
+      METL_CONSUMER_WARNINGS: >-
+        -Wall -Wextra -Wconversion -Wsign-conversion -Wshadow -Wold-style-cast
+        -Wcast-qual -Wswitch-enum -Wundef -Wextra-semi
+        -Wzero-as-null-pointer-constant -Wfloat-equal -Wredundant-decls
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Install build deps
+        uses: ./.github/actions/apt-install
+        with:
+          packages: ${{ matrix.pkgs }}
+          cache-key: ${{ matrix.pkgs }}
+
+      - name: Compile every TU under a consumer's flags, as errors
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          files=(tests/**/*.cpp fuzz/*.cpp examples/*.cpp)
+          # tests/embedded is cross-only and tests/compile_fail is SUPPOSED to
+          # fail; both are excluded deliberately and the exclusion is visible.
+          keep=()
+          for f in "${files[@]}"; do
+            case "$f" in
+              tests/embedded/*|tests/compile_fail/*) continue ;;
+            esac
+            keep+=("$f")
+          done
+          if [ "${#keep[@]}" -lt 100 ]; then
+            echo "::error::only ${#keep[@]} translation units matched — the glob is"
+            echo "::error::wrong and a check over almost nothing would pass silently."
+            exit 1
+          fi
+          echo "compiling ${#keep[@]} TUs with ${{ matrix.cxx }} -std=${{ matrix.std }}"
+          # shellcheck disable=SC2086  # METL_CONSUMER_WARNINGS is a deliberate word list
+          for f in "${keep[@]}"; do
+            ${{ matrix.cxx }} -std=${{ matrix.std }} -fsyntax-only \
+              -Iinclude -Itests -Ifuzz \
+              $METL_CONSUMER_WARNINGS -Werror "$f"
+          done
+          echo "clean under $METL_CONSUMER_WARNINGS"
+
+  # ---------------------------------------------------------------------------
   # clang-tidy (blocking deduplicated ratchet)
   #
   # 142 is the distinct-finding count this exact job reported on this runner
