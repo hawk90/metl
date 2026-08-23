@@ -66,7 +66,7 @@ void handle_pool_resolve(std::uint64_t iterations) {
 
 int main(int argc, char** argv) {
   const auto cfg = metl_bench::config::from_args(argc, argv);
-  metl_bench::header("pools — alloc/free churn at the tail (object_pool's worst case)");
+  metl_bench::header(cfg, "pools — alloc/free churn at the tail (object_pool's worst case)");
 
   metl_bench::run("object_pool<4>  alloc+free", cfg, object_pool_tail_churn<4>);
   metl_bench::run("handle_pool<4>  alloc+free", cfg, handle_pool_tail_churn<4>);
@@ -77,8 +77,8 @@ int main(int argc, char** argv) {
   metl_bench::run("object_pool<1024> alloc+free", cfg, object_pool_tail_churn<1024>);
   metl_bench::run("handle_pool<1024> alloc+free", cfg, handle_pool_tail_churn<1024>);
 
-  metl_bench::header("pools — handle resolution (the cost of use-after-free detection)");
+  metl_bench::header(cfg, "pools — handle resolution (the cost of use-after-free detection)");
   metl_bench::run("handle_pool<64> get()", cfg, handle_pool_resolve<64>);
 
-  return 0;
+  return metl_bench::require_selection(cfg);
 }

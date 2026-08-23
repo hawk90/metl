@@ -35,13 +35,38 @@ void ring_buffer_push_overwrite(std::uint64_t iterations) {
   }
 }
 
+// This benchmark took two tries to make real, and the instruction counter
+// rejected both of the wrong ones -- which is the whole argument for having it.
+//
+// v1 discarded try_push_back's result and anchored on `ring.size()`, which is
+// invariantly 0 after a matched push and pop. The compiler proved the ring
+// stays empty and deleted both operations: 2.06 instructions per iteration.
+//
+// v2 kept both results alive with do_not_optimize. Still 3.07 per iteration,
+// because an empty ring means push writes slot i and front() reads slot i in
+// the same iteration, so the store forwards straight to the load and the buffer
+// itself never has to exist. A `clobber_memory()` at the END of the body is too
+// late to stop that.
+//
+// v3 pre-fills to half capacity, so `front()` returns an element pushed 32
+// iterations ago and the forwarding would have to survive 32 rounds of
+// unrolling, and the barrier sits between the write and the read. It is also
+// the more honest workload: a ring in steady state is a partly full ring, not
+// one that is empty at every iteration boundary.
 void ring_buffer_push_pop(std::uint64_t iterations) {
   metl::ring_buffer<std::uint32_t, 64> ring;
-  for (std::uint64_t n = 0; n < iterations; ++n) {
-    (void)ring.try_push_back(static_cast<std::uint32_t>(n));
-    ring.pop_front();
-    metl_bench::do_not_optimize(ring.size());
+  for (std::uint32_t i = 0; i < 32; ++i) {
+    (void)ring.try_push_back(i);
   }
+
+  std::uint64_t sink = 0;
+  for (std::uint64_t n = 0; n < iterations; ++n) {
+    metl_bench::do_not_optimize(ring.try_push_back(static_cast<std::uint32_t>(n)));
+    metl_bench::clobber_memory();
+    sink += ring.front();
+    ring.pop_front();
+  }
+  metl_bench::do_not_optimize(sink);
 }
 
 // Lookup benchmarks are split hit/miss on purpose: a miss walks the whole probe
@@ -104,17 +129,17 @@ void crc32_1kib(std::uint64_t iterations) {
 int main(int argc, char** argv) {
   const auto cfg = metl_bench::config::from_args(argc, argv);
 
-  metl_bench::header("containers — bulk operations (per whole operation, not per element)");
+  metl_bench::header(cfg, "containers — bulk operations (per whole operation, not per element)");
   metl_bench::run("fixed_vector<64> fill + clear", cfg, fixed_vector_fill_clear);
   metl_bench::run("ring_buffer<64> push + pop", cfg, ring_buffer_push_pop);
   metl_bench::run("ring_buffer<64> push_overwrite", cfg, ring_buffer_push_overwrite);
   metl_bench::run("crc32 over 1 KiB", cfg, crc32_1kib);
 
-  metl_bench::header("lookup — hit and miss reported separately");
+  metl_bench::header(cfg, "lookup — hit and miss reported separately");
   metl_bench::run("flat_map<256> find (hit)", cfg, flat_map_find_hit);
   metl_bench::run("flat_map<256> find (miss)", cfg, flat_map_find_miss);
   metl_bench::run("static_unordered_map<256> find (hit)", cfg, unordered_map_find_hit);
   metl_bench::run("static_unordered_map<256> find (miss)", cfg, unordered_map_find_miss);
 
-  return 0;
+  return metl_bench::require_selection(cfg);
 }
