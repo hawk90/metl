@@ -1164,23 +1164,33 @@ jobs:
       - name: Doc claims that a machine can settle
         run: tools/check_docs.py
 
-      - name: A forward-iterator range is accepted
-        run: |
-          clang++ -std=c++17 -Wall -Wextra -Werror -Iinclude \
-            -DMETL_ITERATOR_KIND=0 \
-            -c tests/containers/forward_iterator_contract.cpp -o forward.o
+      # Compile-time contracts. METL's public headers carry 17 user-facing
+      # static_asserts, and until now NONE of them was verified to fire -- a
+      # static_assert whose condition goes accidentally always-true compiles,
+      # never complains, and stops enforcing anything. Every checker under
+      # tools/ has a --self-test proving the CHECKER bites; nothing proved the
+      # CONTRACTS did. Mutation-checked: making spsc_queue's power-of-two assert
+      # always true leaves 89/89 ctest green and fails only this step.
+      #
+      # This replaces the two inline steps that compiled
+      # forward_iterator_contract.cpp both ways. They checked that the second
+      # compile FAILED and not why, so a typo in that file would have satisfied
+      # them forever. It is now tests/compile_fail/forward_iterator_required.cpp
+      # and its diagnostic has to match.
+      - name: The compile-failure harness must still bite (canary)
+        run: tools/check_compile_fail.py --cxx clang++ --self-test
 
-      - name: A single-pass range must NOT compile
-        run: |
-          set -uo pipefail
-          if clang++ -std=c++17 -Wall -Wextra -Werror -Iinclude \
-               -DMETL_ITERATOR_KIND=1 \
-               -c tests/containers/forward_iterator_contract.cpp -o input.o 2>/dev/null; then
-            echo "::error::try_assign accepted a single-pass iterator — it can no longer"
-            echo "::error::promise 'contents unchanged on failure'. The constraint is gone."
-            exit 1
-          fi
-          echo "single-pass range correctly rejected at compile time"
+      - name: Compile-time contracts still fire (clang, C++17)
+        run: tools/check_compile_fail.py --cxx clang++ --std c++17
+
+      # Both compilers and both standards: a static_assert can be defeated by a
+      # constant-folding difference, and the diagnostic text differs between
+      # them, so matching the message on only one proves less than it looks.
+      - name: Compile-time contracts still fire (g++, C++17)
+        run: tools/check_compile_fail.py --cxx g++ --std c++17
+
+      - name: Compile-time contracts still fire (clang, C++20)
+        run: tools/check_compile_fail.py --cxx clang++ --std c++20
 
   # ---------------------------------------------------------------------------
   # clang-tidy (blocking deduplicated ratchet)

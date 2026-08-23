@@ -209,7 +209,7 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   where std's means *was it inserted rather than assigned*.
   Rules R1–R5 are now written down (`docs/SCOPE.md` §9); R2/R3 are enforced by the
   **`api-contract`** job with a `--self-test` canary, and R1's forward-iterator
-  half by compiling `forward_iterator_contract.cpp` both ways and requiring the
+  half by compiling `forward_iterator_required.cpp` both ways and requiring the
   single-pass arm to fail. `fixed_vector` gained the nine missing `try_*` forms.
   Measured: 88/88 ctest, clang-tidy **down 1** distinct locally (351 → 350, same
   toolchain both sides), coverage **up** to 90.39% lines / 76.19% branches.
