@@ -89,11 +89,11 @@ int main(int argc, char** argv) {
   const auto cfg = metl_bench::config::from_args(argc, argv);
   const bool quick = cfg.target_seconds < 0.01;
 
-  metl_bench::header("single thread — the per-operation cost, uncontended");
+  metl_bench::header(cfg, "single thread — the per-operation cost, uncontended");
   metl_bench::run("spsc_queue push + pop", cfg, spsc_single_thread_round_trip);
   metl_bench::run("mpmc_queue push + pop", cfg, mpmc_single_thread_round_trip);
 
-  metl_bench::header("contended throughput (producers x consumers)");
+  metl_bench::header(cfg, "contended throughput (producers x consumers)");
   const std::uint64_t per_producer = quick ? 50'000 : 1'000'000;
   metl_bench::run_scenario(
       "mpmc_queue 1p x 1c", cfg, [per_producer] { return mpmc_throughput(1, 1, per_producer); });
@@ -102,5 +102,5 @@ int main(int argc, char** argv) {
   metl_bench::run_scenario(
       "mpmc_queue 4p x 4c", cfg, [per_producer] { return mpmc_throughput(4, 4, per_producer / 4); });
 
-  return 0;
+  return metl_bench::require_selection(cfg);
 }

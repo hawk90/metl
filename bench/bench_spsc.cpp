@@ -75,15 +75,15 @@ std::uint64_t spsc_two_thread_throughput(std::uint64_t items) {
 int main(int argc, char** argv) {
   const auto cfg = metl_bench::config::from_args(argc, argv);
 
-  metl_bench::header("spsc_queue — single thread (no coherence traffic; a floor)");
+  metl_bench::header(cfg, "spsc_queue — single thread (no coherence traffic; a floor)");
   metl_bench::run("push + pop round trip", cfg, spsc_single_thread_round_trip);
 
-  metl_bench::header("spsc_queue — two threads (where the cached index pays)");
+  metl_bench::header(cfg, "spsc_queue — two threads (where the cached index pays)");
   // Fewer items under --quick: this scenario cannot auto-tune, so the workload
   // has to shrink explicitly for CI.
   const std::uint64_t items = (cfg.target_seconds < 0.01) ? 200'000 : 5'000'000;
   metl_bench::run_scenario(
       "producer/consumer throughput", cfg, [items] { return spsc_two_thread_throughput(items); });
 
-  return 0;
+  return metl_bench::require_selection(cfg);
 }

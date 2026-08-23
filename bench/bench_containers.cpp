@@ -104,17 +104,17 @@ void crc32_1kib(std::uint64_t iterations) {
 int main(int argc, char** argv) {
   const auto cfg = metl_bench::config::from_args(argc, argv);
 
-  metl_bench::header("containers — bulk operations (per whole operation, not per element)");
+  metl_bench::header(cfg, "containers — bulk operations (per whole operation, not per element)");
   metl_bench::run("fixed_vector<64> fill + clear", cfg, fixed_vector_fill_clear);
   metl_bench::run("ring_buffer<64> push + pop", cfg, ring_buffer_push_pop);
   metl_bench::run("ring_buffer<64> push_overwrite", cfg, ring_buffer_push_overwrite);
   metl_bench::run("crc32 over 1 KiB", cfg, crc32_1kib);
 
-  metl_bench::header("lookup — hit and miss reported separately");
+  metl_bench::header(cfg, "lookup — hit and miss reported separately");
   metl_bench::run("flat_map<256> find (hit)", cfg, flat_map_find_hit);
   metl_bench::run("flat_map<256> find (miss)", cfg, flat_map_find_miss);
   metl_bench::run("static_unordered_map<256> find (hit)", cfg, unordered_map_find_hit);
   metl_bench::run("static_unordered_map<256> find (miss)", cfg, unordered_map_find_miss);
 
-  return 0;
+  return metl_bench::require_selection(cfg);
 }

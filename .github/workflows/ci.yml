@@ -1421,14 +1421,20 @@ jobs:
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
-  # Benchmark smoke — build the micro-benchmarks and run each with --quick.
+  # Benchmark smoke — build the micro-benchmarks, run each with --quick, and
+  # ratchet the instructions they execute.
   #
-  # Deliberately NOT a performance gate. A threshold on a shared GitHub runner
-  # either fires spuriously or is loose enough never to fire; either way it
-  # trains people to ignore it. What this job protects is that the benchmarks
-  # still compile and still run, so they cannot rot the way the previous
-  # google/benchmark stub did (it silently skipped whenever the dependency was
-  # absent, which was always). Real numbers come from running them by hand.
+  # The wall-clock half is still NOT a gate, for the reason it never was: a
+  # threshold on a shared GitHub runner either fires spuriously or is loose
+  # enough never to fire, and either way it trains people to ignore it.
+  #
+  # That argument is about TIME, and until now it had been taken to cover
+  # performance as a whole — so six `perf(...)` commits shipped with nothing
+  # gating any of them, including #18, whose subject line is "bound lookup
+  # latency". An instruction count is not a time: cachegrind returns the same
+  # number on a loaded runner and an idle one, because it counts what the
+  # program executed rather than how long the machine took. See
+  # tools/check_instructions.py for what that does and does not cover.
   # ---------------------------------------------------------------------------
   bench-smoke:
     name: bench-smoke
@@ -1443,8 +1449,8 @@ jobs:
       - name: Install build deps
         uses: ./.github/actions/apt-install
         with:
-          packages: build-essential clang
-          cache-key: build-essential-clang
+          packages: build-essential clang valgrind
+          cache-key: build-essential-clang-valgrind
 
       - name: Configure (benchmarks on)
         env:
@@ -1463,17 +1469,45 @@ jobs:
       - name: Run each benchmark (--quick)
         run: ctest --test-dir build-bench -L bench --output-on-failure
 
-      # Deliberately asserts nothing. A wall-clock threshold on a shared runner
-      # either fires spuriously or never fires (docs/TODO.md), so this job proves
-      # the benchmarks BUILD and RUN, and nothing about their numbers. The
-      # performance claim that is actually gated is code size, in the
-      # `invariants` job -- see tools/check_size.py.
-      - name: Show the numbers (informational only)
+      # The wall-clock numbers stay informational, for the reason above.
+      #
+      # The glob used to be `build-bench/metl_bench_*`, and CMake puts the
+      # binaries in `build-bench/bench/`. It therefore matched nothing, `[ -x ]`
+      # was false for the unexpanded pattern, and the loop printed no benchmarks
+      # and exited 0 -- for however long it had been there. The `shopt -s
+      # nullglob` and the count check below are why it cannot happen again: a
+      # loop over nothing has to be an error, not a quiet success.
+      - name: Show the wall-clock numbers (informational only)
         run: |
-          for b in build-bench/metl_bench_*; do
-            [ -x "$b" ] || continue
+          set -euo pipefail
+          shopt -s nullglob
+          bins=(build-bench/bench/metl_bench_*)
+          if [ "${#bins[@]}" -eq 0 ]; then
+            echo "::error::no benchmark binaries found under build-bench/bench/"
+            exit 1
+          fi
+          for b in "${bins[@]}"; do
             "$b" --quick
           done
+
+      # ...and the instruction counts are the half that IS gated.
+      - name: Instruction ratchet must still bite (canary)
+        run: tools/check_instructions.py --self-test
+
+      # --report on this PR. The budgets get set from THIS job's output in a
+      # follow-up commit, never from a local figure -- the development machine
+      # has a different libc and a different compiler, and local numbers have
+      # disagreed with CI repeatedly. Same two-step as check_size.py and
+      # check_stack.py.
+      #
+      # Note what --report does NOT excuse: a missing valgrind, zero benchmark
+      # binaries, and a benchmark whose process exits non-zero all still fail
+      # here. Those are the ways this step could become one that only passes.
+      - name: Count instructions per benchmark
+        run: |
+          tools/check_instructions.py \
+            --bench-dir build-bench \
+            --report
 
   # ---------------------------------------------------------------------------
   # Examples — build every example under -Wall -Wextra -Werror and run them.
