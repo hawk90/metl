@@ -234,7 +234,12 @@ METL_NODISCARD constexpr T bit_ceil(T value) noexcept {
     return 0;
   }
 
-  return T{1} << width;
+  // The cast is not cosmetic. For a narrow T the shift operand is promoted to
+  // `int`, so `T{1} << width` has type `int` and the return narrows it -- which
+  // is correct here (the width check above bounds it) but is a diagnostic in
+  // every consumer building with -Wconversion, and METL is header-only, so it
+  // is the CONSUMER's flags these headers are compiled under.
+  return static_cast<T>(T{1} << width);
 }
 
 }  // namespace metl
