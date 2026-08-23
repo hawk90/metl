@@ -79,10 +79,22 @@ BUDGETS = {}
 # to survive a toolchain bump.
 TOLERANCE_FRACTION = 0.05
 
-# Below this, the subtraction is dominated by process noise and the percentage
-# tolerance is worth only a handful of instructions. Benchmarks this cheap
-# should be given a larger --fixed count instead of a special case.
-MIN_MEANINGFUL_COUNT = 10_000
+# A benchmark whose whole run costs less than this is not measuring its subject.
+# At the default --fixed 5000 it works out to two instructions per iteration:
+# a loop counter and a branch.
+#
+# This is not a tuning knob, it is a check. The first run of this gate found
+# `ring_buffer<64> push + pop` at 10,326 instructions -- 2.06 per iteration --
+# because the benchmark discarded try_push_back's result and anchored on
+# `ring.size()`, which is invariantly 0 after a matched push and pop. The
+# compiler proved the ring stays empty and deleted both operations. The
+# wall-clock number that came out of that was excellent, and no one could have
+# known, because nothing counted.
+#
+# So: too low is a FAILURE, not a note. An optimised-away benchmark is a gate
+# that cannot fail wearing a performance number, and its budget would lock the
+# emptiness in.
+MIN_MEANINGFUL_COUNT = 20_000
 
 IREFS = re.compile(r"^==\d+==\s+I\s+refs:\s+([\d,]+)", re.M)
 
@@ -168,9 +180,28 @@ def compare(measured, report):
                    "exists to prevent.")
         return 1, out
 
-    failures = []
+    # Two kinds of failure, and only one of them is about a budget.
+    #
+    # `hard` is "this measurement is not valid" -- an optimised-away benchmark.
+    # It is enforced even under --report, because --report exists so the budgets
+    # can be read off a real measurement, and reading a budget off an empty loop
+    # is precisely how the emptiness would become permanent. Same reasoning as
+    # check_stack.py's S2.
+    hard, failures = [], []
     for key in sorted(measured):
         count = measured[key]
+
+        if count < MIN_MEANINGFUL_COUNT:
+            hard.append(
+                f"::error::{key} executed only {count:,} instructions. That is "
+                f"below MIN_MEANINGFUL_COUNT ({MIN_MEANINGFUL_COUNT:,}) and means "
+                f"the benchmark body was optimised away -- check that every "
+                f"result is passed to do_not_optimize() and that the loop's "
+                f"observable state actually changes. Raising --fixed hides this "
+                f"rather than fixing it."
+            )
+            continue
+
         budget = BUDGETS.get(key)
         if budget is None:
             out.append(f"  {count:12,}  {key}   (no budget recorded)")
@@ -199,8 +230,13 @@ def compare(measured, report):
             out.append(f"      NOTE: {budget - count:,} fewer than the budget. "
                        f"Lower BUDGETS['{key}'] to {count} so the ratchet keeps its grip.")
 
+    # Invalid measurements first, and they are not excused by --report.
+    if hard:
+        out.extend(hard)
+        return 1, out
+
     if report:
-        out.append("  --report: printing only, not enforcing")
+        out.append("  --report: printing only, not enforcing budgets")
         return 0, out
 
     if failures:
@@ -255,6 +291,32 @@ def self_test():
         code, _ = compare({}, report=True)
         if code == 0:
             failures.append("an empty measurement passed under --report")
+
+        # An optimised-away benchmark must fail even under --report, and even
+        # when a budget was set for it. This is the real case that started it:
+        # ring_buffer<64> push + pop measured 10,326 instructions because the
+        # compiler deleted the loop body.
+        thin = {"b::optimised away": 10_326}
+        code, out = compare(thin, report=False)
+        if code == 0:
+            failures.append("accepted a benchmark whose body was optimised away")
+        if not any("optimised away" in line and "do_not_optimize" in line for line in out):
+            failures.append("the thin-benchmark error did not say how to fix it")
+        code, _ = compare(thin, report=True)
+        if code == 0:
+            failures.append("--report excused an optimised-away benchmark")
+        BUDGETS["b::optimised away"] = 10_326
+        code, _ = compare(thin, report=False)
+        if code == 0:
+            failures.append("a recorded budget let an optimised-away benchmark pass")
+        del BUDGETS["b::optimised away"]
+
+        # ...and a benchmark just above the floor is fine.
+        BUDGETS["b::thin but real"] = MIN_MEANINGFUL_COUNT
+        code, _ = compare({"b::thin but real": MIN_MEANINGFUL_COUNT}, report=False)
+        if code != 0:
+            failures.append("rejected a benchmark exactly at MIN_MEANINGFUL_COUNT")
+        del BUDGETS["b::thin but real"]
     finally:
         BUDGETS.clear()
         BUDGETS.update(saved)
@@ -263,8 +325,9 @@ def self_test():
         for failure in failures:
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
-    print("self-test passed: over-budget, unbudgeted and empty measurements are "
-          "rejected; at-budget and at-tolerance counts are accepted")
+    print("self-test passed: over-budget, unbudgeted, empty and optimised-away "
+          "measurements are rejected -- the last two even under --report; "
+          "at-budget, at-tolerance and at-floor counts are accepted")
     return 0
 
 

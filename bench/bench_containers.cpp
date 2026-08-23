@@ -35,12 +35,21 @@ void ring_buffer_push_overwrite(std::uint64_t iterations) {
   }
 }
 
+// The `do_not_optimize` calls here are load-bearing, and the first version of
+// this benchmark proved it: it discarded try_push_back's result and anchored on
+// `ring.size()`, which is invariantly 0 after a matched push and pop. The
+// compiler proved the ring stays empty and deleted both operations, leaving a
+// counting loop. Nothing noticed for as long as it had been there -- the
+// wall-clock number was simply very good. tools/check_instructions.py measured
+// 2.06 instructions per iteration and MIN_MEANINGFUL_COUNT now fails the build
+// on a benchmark this thin, so the class of mistake cannot come back quietly.
 void ring_buffer_push_pop(std::uint64_t iterations) {
   metl::ring_buffer<std::uint32_t, 64> ring;
   for (std::uint64_t n = 0; n < iterations; ++n) {
-    (void)ring.try_push_back(static_cast<std::uint32_t>(n));
+    metl_bench::do_not_optimize(ring.try_push_back(static_cast<std::uint32_t>(n)));
+    metl_bench::do_not_optimize(ring.front());
     ring.pop_front();
-    metl_bench::do_not_optimize(ring.size());
+    metl_bench::clobber_memory();
   }
 }
 
