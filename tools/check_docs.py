@@ -22,6 +22,12 @@ can settle:
       absent from every nightly run.
   D5  no file outside tools/check_size.py states a per-Cortex-M byte figure.
       Not "the copies agree" -- no copies. See below.
+  D6  every tools/check_*.py appears in the gate table in docs/SCOPE.md section
+      8, and the table names no checker that has been deleted or renamed.
+  D7  every "N tests" figure in README.md is a count tools/run_qemu_tests.sh
+      still produces, asked of the runner itself via `--plan`. The figure is
+      derived from a glob over tests/, so it moves whenever a test is added:
+      README said 71 and 68 where the runner produced 76 and 72.
 
 D5 is a different shape from the others and the difference is the point. D1-D4
 check that two things agree; D5 forbids the second thing from existing. It was
@@ -88,6 +94,29 @@ SIZE_BUDGET_EXEMPT = {
                             "for those, as check_size.py is for code size",
 }
 SIZE_SCANNED_SUFFIXES = (".md", ".yml", ".yaml", ".py", ".txt", ".sh")
+
+# D7: a test-suite size stated in prose. README said "71 tests per core" and
+# "68 tests" for the M0 build; the real figures were 76 and 72 and had been for
+# some time. Nothing was wrong with the runner -- the number is DERIVED from a
+# glob over tests/, so it moves every time a test is added, and no reader can
+# tell a current figure from a stale one.
+#
+# Same shape as D5 in that the fix is to stop having a second copy, but the
+# opposite remedy: a byte budget can live in one file and be pointed at, while
+# this figure has no file to live in -- it is a property of the tree. So the
+# rule is that any such figure must be one a machine can currently produce.
+QEMU_RUNNER = "tools/run_qemu_tests.sh"
+QEMU_WORKFLOW = ".github/workflows/ci.yml"
+TEST_COUNT_FIGURE = re.compile(r"(?<![-\w.])(\d+)\s+tests\b")
+# The matrix rows of the qemu-conformance job: a cpu, then the tests that must
+# fail to build on it. Read from the workflow rather than restated here, or this
+# checker becomes the copy it exists to forbid.
+QEMU_MATRIX_ROW = re.compile(
+    r"-\s+cpu:\s*(cortex-m\d+)\s*\n"
+    r"(?:\s*\n|\s*#[^\n]*\n)*"
+    r"\s+machine:[^\n]*\n"
+    r"(?:\s*\n|\s*#[^\n]*\n)*"
+    r"\s+expect_build_fail:\s*\"([^\"]*)\"")
 
 QUALIFIED = re.compile(r"\bmetl::([a-zA-Z_][a-zA-Z_0-9]*)")
 RELATIVE_LINK = re.compile(r"\]\(((?!https?:|#)[^)\s]+\.(?:cpp|hpp|md|py|yml|txt))[^)]*\)")
@@ -263,6 +292,77 @@ def check(repo_root="."):
             problems.append(("D6", f"the gate table names tools/{tool}, which does "
                                    f"not exist. Renamed or deleted?"))
 
+    # D7: every test-count figure in the docs is one the tooling can currently
+    # produce. Asked of the runner itself, not recomputed here -- a second
+    # implementation of "which tests run on target" would drift from the first
+    # and report agreement between two wrong numbers.
+    problems.extend(check_test_counts(root))
+
+    return problems
+
+
+def qemu_run_counts(root):
+    """The per-cpu test count the qemu job would produce, asked of the runner.
+
+    Returns (counts, error). `counts` maps cpu -> would-run. A failure here is
+    an error, never an empty set quietly treated as "nothing to check": a rule
+    that stops running is indistinguishable from a rule that passes.
+    """
+    runner = root / QEMU_RUNNER
+    workflow = root / QEMU_WORKFLOW
+    if not runner.exists():
+        return {}, f"{QEMU_RUNNER} is missing -- the counts cannot be derived"
+    if not workflow.exists():
+        return {}, f"{QEMU_WORKFLOW} is missing -- the qemu matrix cannot be read"
+
+    rows = QEMU_MATRIX_ROW.findall(workflow.read_text(encoding="utf-8"))
+    if not rows:
+        return {}, (f"no qemu-conformance matrix rows found in {QEMU_WORKFLOW} -- "
+                    f"has the matrix been renamed or reshaped?")
+
+    counts = {}
+    for cpu, expect_build_fail in rows:
+        command = ["bash", str(runner), "--plan", "--cpu", cpu,
+                   "--expect-build-fail", expect_build_fail]
+        try:
+            completed = subprocess.run(command, cwd=root, capture_output=True,
+                                       text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return {}, f"could not run `{QEMU_RUNNER} --plan` for {cpu}: {exc}"
+        if completed.returncode != 0:
+            return {}, (f"`{QEMU_RUNNER} --plan --cpu {cpu}` exited "
+                        f"{completed.returncode}: {completed.stderr.strip()}")
+        match = re.search(r"^would-run:\s*(\d+)$", completed.stdout, re.M)
+        if not match:
+            return {}, (f"`{QEMU_RUNNER} --plan --cpu {cpu}` printed no "
+                        f"`would-run:` line")
+        counts[cpu] = int(match.group(1))
+    return counts, None
+
+
+def check_test_counts(root):
+    root = pathlib.Path(root)
+    problems = []
+
+    counts, error = qemu_run_counts(root)
+    if error:
+        return [("D7", error)]
+
+    allowed = set(counts.values())
+    readme = root / "README.md"
+    if not readme.exists():
+        return problems
+    for number, line in enumerate(readme.read_text(encoding="utf-8").splitlines(), 1):
+        for match in TEST_COUNT_FIGURE.finditer(line):
+            stated = int(match.group(1))
+            if stated not in allowed:
+                problems.append(("D7", f"README.md:{number}: states `{match.group(0)}`, "
+                                       f"which is not a count the tooling produces "
+                                       f"{sorted(allowed)}. Run "
+                                       f"`{QEMU_RUNNER} --plan --cpu <cpu>` for the "
+                                       f"current figure. If this is a different kind "
+                                       f"of test count, teach D7 where to get it -- "
+                                       f"do not retype it."))
     return problems
 
 
@@ -317,8 +417,26 @@ def self_test():
         (root / "tools" / "check_listed.py").write_text("# listed\n")
         (root / "tools" / "check_forgotten.py").write_text("# not in the table\n")
 
+        # D7 fixture: a runner that reports 5, a matrix that asks it once, and a
+        # README that says 9. The stub is deliberately a real subprocess -- the
+        # thing D7 must not do is compute the answer itself.
+        (root / ".github" / "workflows").mkdir(parents=True)
+        (root / ".github" / "workflows" / "ci.yml").write_text(
+            "        include:\n"
+            "          - cpu: cortex-m3\n"
+            "            machine: fake-board\n"
+            "            expect_build_fail: \"\"\n")
+        runner = root / "tools" / "run_qemu_tests.sh"
+        runner.write_text("#!/usr/bin/env bash\necho 'would-run:    5'\n")
+        runner.chmod(0o755)
+        readme_broken = ("`metl::fixed_vector` is fine and `metl::ghost_type` is not.\n"
+                         "[missing](docs/nope.md)\n"
+                         "[unbuilt](examples/never.cpp)\n"
+                         "runs 9 tests per core\n")
+        (root / "README.md").write_text(readme_broken)
+
         found = {rule for rule, _ in check(root)}
-        for rule in ("D1", "D2", "D3", "D4", "D5", "D6"):
+        for rule in ("D1", "D2", "D3", "D4", "D5", "D6", "D7"):
             if rule not in found:
                 failures.append(f"{rule} did not fire on a tree that violates it")
 
@@ -328,8 +446,18 @@ def self_test():
             failures.append(f"D5 fired {len(d5)} times, expected exactly 1 (the "
                             f"restated budget, not the -mcpu flag): {d5}")
 
+        # D7 must ERROR, not pass, when it cannot derive the counts. A rule that
+        # goes quiet on a missing runner is the failure mode this whole file is
+        # about: silence reads as agreement.
+        runner.unlink()
+        if not any(rule == "D7" for rule, _ in check(root)):
+            failures.append("D7 did not fire when the runner it asks was missing")
+        runner.write_text("#!/usr/bin/env bash\necho 'would-run:    5'\n")
+        runner.chmod(0o755)
+
         # And the clean case must stay clean.
-        (root / "README.md").write_text("`metl::fixed_vector` is fine.\n")
+        (root / "README.md").write_text("`metl::fixed_vector` is fine.\n"
+                                        "runs 5 tests per core\n")
         (root / "examples" / "orphan.cpp").unlink()
         # The -mcpu line stays. A clean tree that still contains it is the proof
         # D5 is narrow enough to live with.
@@ -348,7 +476,7 @@ def self_test():
         for failure in failures:
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
-    print("self-test passed: D1-D6 each bite, and a clean tree is not flagged")
+    print("self-test passed: D1-D7 each bite, and a clean tree is not flagged")
     return 0
 
 
@@ -370,8 +498,9 @@ def main():
         return 1
     print("docs OK: every metl:: name resolves, every relative link exists, "
           "every example is built and run by CI, every fuzz harness is in both "
-          "lists, the size budgets are stated in exactly one file, and every\n"
-          "      gate is listed in SCOPE.md section 8")
+          "lists, the size budgets are stated in exactly one file, every\n"
+          "      gate is listed in SCOPE.md section 8, and every test count in "
+          "the README is one the runner still produces")
     return 0
 
 

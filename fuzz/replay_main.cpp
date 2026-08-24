@@ -14,10 +14,21 @@
 //
 // This is NOT a replacement for fuzzing. Coverage-guided mutation reaches states
 // a PRNG will not, and the corpus ClusterFuzzLite has accumulated is worth more
-// than any seed. What this adds is that the oracles now run everywhere the test
-// suite runs, on every platform and every toolchain, and that a mutation whose
-// only killer is a harness can be caught by tools/check_mutants.py without
-// libFuzzer on the machine.
+// than any seed. What this adds is that the oracles now run wherever ctest runs
+// -- Linux, macOS and Windows, gcc, clang and MSVC, under the sanitizers, under
+// LTO, through the amalgamation -- and that a mutation whose only killer is a
+// harness can be caught by tools/check_mutants.py without libFuzzer on the
+// machine.
+//
+// STATED LIMIT, because the first version of this comment overstated it: "every
+// platform" does NOT include the cross targets. tools/run_qemu_tests.sh
+// discovers `tests/**/*_test.cpp`, and these targets are not tests/, so no
+// oracle runs on Cortex-M. That is the interesting half -- 32-bit size_type and
+// a different ABI are where a container's index arithmetic would differ from
+// the host -- and it is open, not covered. The obstacle is not the driver: the
+// oracles are std::map, which allocates, and this file uses <random> and
+// std::vector, so a freestanding build is real work rather than a glob change.
+// docs/TODO.md carries it.
 //
 // Determinism is the point, so nothing here may consult the clock, the
 // environment, or an unseeded generator: the same binary must fail on the same
