@@ -165,6 +165,16 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [ ] Submit to the ESP-IDF Component Registry (component manifest already present).
 
 ### 📊 Quality / claims
+- [ ] **Close the compile-time-contract gap: 57 of 72 still unpinned.** The
+  census in `tools/check_compile_fail.py` counts 72 distinct user-facing
+  `static_assert` messages across the public headers; 13 cases pin 15 of them.
+  The ratchet stops the gap growing, which is the part that had to exist first,
+  but it does not shrink it. Highest value next: the remaining `bitfield`
+  preconditions, `atomic_ref`'s size and trivially-copyable requirements,
+  `handle_pool`'s Capacity-fits-the-index-field bound, and the `parse`/`format`
+  signedness assertions — each is a contract whose silent loss is a wrong
+  answer rather than a compile error. Cheap: one file each, two `-fsyntax-only`
+  compiles, and every one lowers `MAX_UNCOVERED` by one.
 - [x] **`format.hpp` — bounded int-to-text** (2026-08-21) — the last of the four
   planned feature PRs. Narrow on purpose: no format-string parser, ever. Landed
   alongside a refinement of `docs/SCOPE.md`'s caller rule, since this and
