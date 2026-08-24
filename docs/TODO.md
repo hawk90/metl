@@ -377,6 +377,18 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   nothing.
 
 ### 🛠️ CI/CD polish (finish #18)
+- [ ] **Run the fuzz-harness oracles on a cross target.** `fuzz/replay_main.cpp`
+  (#90) made them runnable without libFuzzer, and they now run wherever ctest
+  runs — but `tools/run_qemu_tests.sh` discovers `tests/**/*_test.cpp`, so
+  nothing under `fuzz/` reaches Cortex-M. That is the half worth having: a
+  reference model compares METL against `std::map` on a 32-bit `size_type` and a
+  different ABI, which is exactly where index arithmetic would diverge from the
+  host. Not a glob change — `fuzz/fuzz_model.hpp` uses `std::map` (allocates) and
+  `replay_main.cpp` uses `<random>` and `std::vector`, so a freestanding build
+  means either a fixed-capacity model or letting picolibc's heap serve the test
+  (which the library itself still may not touch — the `invariants` job would
+  catch that). The claim in `replay_main.cpp` was corrected to say so rather than
+  left overstated.
 - [ ] README badges (add a docs/Pages badge; CI + license already present).
 - [x] **Release automation** (2026-08-20) — `tools/amalgamate.py` flattens the 60
   public headers into one file; `.github/workflows/release.yml` turns a `vX.Y.Z`
