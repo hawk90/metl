@@ -165,16 +165,25 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [ ] Submit to the ESP-IDF Component Registry (component manifest already present).
 
 ### 📊 Quality / claims
-- [ ] **Close the compile-time-contract gap: 57 of 72 still unpinned.** The
+- [ ] **Close the compile-time-contract gap: 41 of 72 still unpinned.** The
   census in `tools/check_compile_fail.py` counts 72 distinct user-facing
-  `static_assert` messages across the public headers; 13 cases pin 15 of them.
-  The ratchet stops the gap growing, which is the part that had to exist first,
-  but it does not shrink it. Highest value next: the remaining `bitfield`
-  preconditions, `atomic_ref`'s size and trivially-copyable requirements,
-  `handle_pool`'s Capacity-fits-the-index-field bound, and the `parse`/`format`
-  signedness assertions — each is a contract whose silent loss is a wrong
-  answer rather than a compile error. Cheap: one file each, two `-fsyntax-only`
-  compiles, and every one lowers `MAX_UNCOVERED` by one.
+  `static_assert` messages across the public headers; 29 cases pin 31 of them
+  (up from 8 pinning 10). The ratchet stops the gap growing, which is the part
+  that had to exist first, but it does not shrink it. Remaining, roughly in
+  value order: `intrusive_ptr`'s two requirements, `arena_allocator` and
+  `monotonic_buffer` alignment, `fixed_priority_queue`'s move-constructible /
+  move-assignable / capacity-overflow trio, `hash.hpp`'s object-representation
+  precondition, and the rest of the `parse`/`format` integer constraints. Cheap:
+  one file each, two `-fsyntax-only` compiles, and every one lowers
+  `MAX_UNCOVERED` by one.
+- [ ] **`variant.hpp`'s `emplace<I> index out of range` is unreachable.** Found
+  while writing a case for it: `emplace<I>` returns
+  `variant_alternative_t<I, variant>&`, so instantiating the declaration fires
+  `variant_alternative index out of range` before the body's assertion is ever
+  reached. The caller still gets a correct diagnostic — from the other
+  assertion — so this is dead code rather than a hole, and the census will
+  count it uncovered forever because nothing can pin it. Either delete it or
+  reorder so it can fire; do not add a case, it cannot pass.
 - [x] **`format.hpp` — bounded int-to-text** (2026-08-21) — the last of the four
   planned feature PRs. Narrow on purpose: no format-string parser, ever. Landed
   alongside a refinement of `docs/SCOPE.md`'s caller rule, since this and
