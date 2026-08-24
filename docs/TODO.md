@@ -165,27 +165,26 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [ ] Submit to the ESP-IDF Component Registry (component manifest already present).
 
 ### 📊 Quality / claims
-- [ ] **Close the compile-time-contract gap: 29 of 72 still unpinned.** The
-  census in `tools/check_compile_fail.py` counts 72 distinct user-facing
-  `static_assert` messages across the public headers; 41 cases pin 43 of them
-  (up from 8 pinning 10). The ratchet stops the gap growing, which is the part
-  that had to exist first, but it does not shrink it. What is left is mostly
-  harder to reach rather than less important: `intrusive_ptr`'s
-  final-or-virtual-destructor requirement, the `nothrow move` requirements on
-  the two queues, the remaining `expected<void, E>` monadic constraints, and
-  the `variant` constructibility messages. Several more are **target-dependent**
-  (`mpmc_queue` and `atomic_handle` want a lock-free CAS, `atomic_ref` wants
-  `sizeof(std::atomic<T>) == sizeof(T)`) and cannot fail on a host compiler at
-  all — those are pinned by the `handle-atomics` job instead, and counting them
-  here will always overstate the gap by a few.
-- [ ] **`variant.hpp`'s `emplace<I> index out of range` is unreachable.** Found
-  while writing a case for it: `emplace<I>` returns
-  `variant_alternative_t<I, variant>&`, so instantiating the declaration fires
-  `variant_alternative index out of range` before the body's assertion is ever
-  reached. The caller still gets a correct diagnostic — from the other
-  assertion — so this is dead code rather than a hole, and the census will
-  count it uncovered forever because nothing can pin it. Either delete it or
-  reorder so it can fire; do not add a case, it cannot pass.
+- [x] **Compile-time contracts: 65 of 72 pinned, and the remaining 7 cannot be**
+  (2026-08-24, #92/#94/#95/#96). 8 cases pinning 10 → **63 cases pinning 65**;
+  `MAX_UNCOVERED` 62 → 7, which is the floor. Of the seven: four are
+  **target-dependent** (`mpmc_queue`, `atomic_handle` and the atomic
+  `intrusive_ref_counter` require a lock-free CAS; `atomic_ref` requires
+  `sizeof(std::atomic<T>) == sizeof(T)`) — a host has all of them, so the
+  assertion cannot fail there and the `handle-atomics` job pins them instead;
+  one is **derived** (`static_unordered_map`'s `bucket_count` is
+  `bit_ceil(2 * Capacity)`, so no caller can make it a non-power-of-two); and
+  two are the unreachable pair below. Lowering the ratchet further means
+  changing the library, not adding a case.
+- [ ] **`variant.hpp` has two unreachable `static_assert`s, same cause.**
+  `emplace<I> index out of range` and `get_if<I> index out of range` both sit
+  in the body of a function whose **return type** is
+  `variant_alternative_t<I, variant>`, which asserts `variant_alternative index
+  out of range` first. Found by writing cases for them: the harness rejected
+  both for failing with the wrong diagnostic. The caller still gets a correct
+  message, so this is dead code rather than a hole — but the census will count
+  both uncovered forever. Either delete them or restructure so they can fire;
+  do not add cases, they cannot pass.
 - [x] **`format.hpp` — bounded int-to-text** (2026-08-21) — the last of the four
   planned feature PRs. Narrow on purpose: no format-string parser, ever. Landed
   alongside a refinement of `docs/SCOPE.md`'s caller rule, since this and

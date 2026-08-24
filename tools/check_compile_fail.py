@@ -79,7 +79,28 @@ GUARD = "METL_COMPILE_FAIL"
 # with nothing to prove it fires. Ratcheting the total instead would make every
 # new assertion a checker edit, and a gate that cries on correct work gets
 # raised until it stops meaning anything.
-MAX_UNCOVERED = 29
+#
+# IT DOES NOT GO TO ZERO, and the reason is worth reading before trying. Seven
+# messages cannot be pinned by a case on a host compiler:
+#
+#   four are TARGET-DEPENDENT -- mpmc_queue, atomic_handle and the atomic
+#   intrusive counter require a lock-free CAS, and atomic_ref requires
+#   sizeof(std::atomic<T>) == sizeof(T). A host has them, so the assertion
+#   cannot fail there. The `handle-atomics` job pins these instead, on the
+#   targets where they are false.
+#
+#   one is DERIVED -- static_unordered_map's bucket_count is bit_ceil(2 *
+#   Capacity), so no caller can make it a non-power-of-two.
+#
+#   two are UNREACHABLE, and that is a finding rather than a limitation:
+#   variant's `emplace<I> index out of range` and `get_if<I> index out of
+#   range` both sit in the body of a function whose RETURN TYPE is
+#   variant_alternative_t<I, ...>, which asserts `variant_alternative index out
+#   of range` first. The caller still gets a correct diagnostic, so nothing is
+#   broken -- but those two lines can never run. See docs/TODO.md.
+#
+# So the floor is 7. Lowering it means changing the library, not adding a case.
+MAX_UNCOVERED = 7
 
 # A message is user-facing if a caller can trigger it: a `static_assert` in a
 # public header, outside `namespace detail`. Those inside are invariants the
