@@ -79,7 +79,7 @@ GUARD = "METL_COMPILE_FAIL"
 # with nothing to prove it fires. Ratcheting the total instead would make every
 # new assertion a checker edit, and a gate that cries on correct work gets
 # raised until it stops meaning anything.
-MAX_UNCOVERED = 41
+MAX_UNCOVERED = 29
 
 # A message is user-facing if a caller can trigger it: a `static_assert` in a
 # public header, outside `namespace detail`. Those inside are invariants the

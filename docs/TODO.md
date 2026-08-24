@@ -165,17 +165,19 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [ ] Submit to the ESP-IDF Component Registry (component manifest already present).
 
 ### 📊 Quality / claims
-- [ ] **Close the compile-time-contract gap: 41 of 72 still unpinned.** The
+- [ ] **Close the compile-time-contract gap: 29 of 72 still unpinned.** The
   census in `tools/check_compile_fail.py` counts 72 distinct user-facing
-  `static_assert` messages across the public headers; 29 cases pin 31 of them
+  `static_assert` messages across the public headers; 41 cases pin 43 of them
   (up from 8 pinning 10). The ratchet stops the gap growing, which is the part
-  that had to exist first, but it does not shrink it. Remaining, roughly in
-  value order: `intrusive_ptr`'s two requirements, `arena_allocator` and
-  `monotonic_buffer` alignment, `fixed_priority_queue`'s move-constructible /
-  move-assignable / capacity-overflow trio, `hash.hpp`'s object-representation
-  precondition, and the rest of the `parse`/`format` integer constraints. Cheap:
-  one file each, two `-fsyntax-only` compiles, and every one lowers
-  `MAX_UNCOVERED` by one.
+  that had to exist first, but it does not shrink it. What is left is mostly
+  harder to reach rather than less important: `intrusive_ptr`'s
+  final-or-virtual-destructor requirement, the `nothrow move` requirements on
+  the two queues, the remaining `expected<void, E>` monadic constraints, and
+  the `variant` constructibility messages. Several more are **target-dependent**
+  (`mpmc_queue` and `atomic_handle` want a lock-free CAS, `atomic_ref` wants
+  `sizeof(std::atomic<T>) == sizeof(T)`) and cannot fail on a host compiler at
+  all — those are pinned by the `handle-atomics` job instead, and counting them
+  here will always overstate the gap by a few.
 - [ ] **`variant.hpp`'s `emplace<I> index out of range` is unreachable.** Found
   while writing a case for it: `emplace<I>` returns
   `variant_alternative_t<I, variant>&`, so instantiating the declaration fires
