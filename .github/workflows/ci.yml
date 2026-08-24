@@ -551,6 +551,15 @@ jobs:
           arm-none-eabi-g++ $METL_LINK_FLAGS -Wl,-Map=invariant_probe.map \
             -Iinclude "$METL_INVARIANT_PROBE_SRC" -o invariant_probe.elf
 
+      # The canary below proves the audit CAN fail -- but it is linked with the
+      # probe's flags, which are -fno-exceptions -fno-rtti, so it can only
+      # violate `heap`. A typo in an `exceptions` or `rtti` regex would leave
+      # the canary failing for its heap reason and every clean image passing,
+      # with two thirds of this gate dead and nothing to say so. This covers
+      # those, one representative symbol per pattern, with no toolchain.
+      - name: The invariant audit must still bite (canary)
+        run: python3 tools/check_invariants.py --self-test
+
       - name: Audit the probe's symbol table
         run: |
           set -uo pipefail

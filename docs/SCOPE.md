@@ -318,7 +318,7 @@ claim about a **gate** going stale, and nothing was checking those.
 
 | Gate | What it measures | Proves it still bites |
 |---|---|---|
-| [`check_invariants.py`](../tools/check_invariants.py) | I1/I2: no `malloc`, no throw path, no RTTI, in a linked ARM image | a canary TU that must FAIL the audit |
+| [`check_invariants.py`](../tools/check_invariants.py) | I1/I2: no `malloc`, no throw path, no RTTI, in a linked ARM image | a canary TU that must FAIL the audit, **and** `--self-test` — the canary is built `-fno-exceptions -fno-rtti` alongside the probe, so it can only violate `heap`; the self-test is what proves the other two categories still bite |
 | [`check_size.py`](../tools/check_size.py) | `.text`, `.rodata`, and `.bss`+`.data` against per-target budgets | `--self-test` |
 | [`check_stack.py`](../tools/check_stack.py) | deepest stack frame; rejects any `dynamic` frame outright | `--self-test` |
 | [`check_instructions.py`](../tools/check_instructions.py) | instructions executed per benchmark, via cachegrind | `--self-test` |
