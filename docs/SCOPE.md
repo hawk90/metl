@@ -327,6 +327,17 @@ claim about a **gate** going stale, and nothing was checking those.
 | [`check_docs.py`](../tools/check_docs.py) | D1–D7: the documentation claims a machine can settle | `--self-test` |
 | [`check_compile_fail.py`](../tools/check_compile_fail.py) | that the public `static_assert`s actually fire, and that the gap between how many there are and how many are pinned only shrinks | `--self-test` |
 | [`check_mutants.py`](../tools/check_mutants.py) | that the gates above notice a deliberately broken library | `--self-test` |
+| [`check_ci_gate.py`](../tools/check_ci_gate.py) | G1–G5: that every gate above can actually stop a merge — each `ci.yml` job is inside the `ci-gate` fan-in, and each context in `.github/required-checks.txt` still reports on a pull request | `--self-test` |
+
+`check_ci_gate.py` is last for a reason: it is the gate on the gates. Every
+other row in this table was **advisory at the merge boundary** until 2026-08-25,
+because `main` carried no `required_status_checks` at all. One context is
+required now — `ci-gate` — and the only way that stops meaning "everything
+passed" is a job left out of its `needs:`, which is what G1 refuses. The two
+sharp edges are written down in the checker: a matrix-derived name cannot be
+required (editing the matrix would leave the branch pending forever), and a
+*skipped* required check counts as **passing**, which is why G3 insists on
+`if: always()` and G5 refuses to require anything that skips on a pull request.
 
 Not in the table because they are not scripts: the `sizeof` ratchet
 (`tests/core/ram_footprint_test.cpp`), the comparison-count bound

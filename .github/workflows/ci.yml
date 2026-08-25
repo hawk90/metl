@@ -1173,6 +1173,15 @@ jobs:
       - name: Doc claims that a machine can settle
         run: tools/check_docs.py
 
+      # The merge boundary. `ci-gate` is the only ci.yml context in branch
+      # protection, so a job outside its `needs:` blocks nothing — a hole that
+      # looks like nothing at all in the workflow file.
+      - name: The merge-boundary checker must still bite (canary)
+        run: tools/check_ci_gate.py --self-test
+
+      - name: Every job blocks a merge, and every required check can report
+        run: tools/check_ci_gate.py
+
       # Compile-time contracts. METL's public headers carry user-facing
       # static_asserts, and until #85 NONE of them was verified to fire -- a
       # static_assert whose condition goes accidentally always-true compiles,
@@ -2059,6 +2068,85 @@ jobs:
           esp_idf_version: v5.3.3
           target: ${{ matrix.target }}
           path: samples/esp-idf/metl_hello
+
+  # ---------------------------------------------------------------------------
+  # THE MERGE BOUNDARY. This is the only ci.yml check in branch protection's
+  # required list (see .github/required-checks.txt), so a job missing from the
+  # `needs:` below is a job that does not block a merge — it still runs, still
+  # reports, and still cannot stop anything. tools/check_ci_gate.py fails the
+  # build on exactly that, which is why the list is safe to maintain by hand.
+  #
+  # Requiring the 64 individual check names instead does not work: they are
+  # derived from matrices, so editing a matrix row deletes a required context
+  # and leaves every PR pending forever on a name nobody typed.
+  #
+  # `if: always()` is load-bearing. Without it this job is SKIPPED when a
+  # dependency fails — and GitHub counts a skipped required check as PASSING, so
+  # the gate would go green precisely when CI is red.
+  # ---------------------------------------------------------------------------
+  ci-gate:
+    name: ci-gate
+    needs:
+      - preflight
+      - host-test
+      - release-werror
+      - lto
+      - sanitizers
+      - arm-cross
+      - cross-syntax
+      - big-endian
+      - newlib-link
+      - invariants
+      - handle-atomics
+      - picolibc-qemu
+      - qemu-conformance
+      - config-matrix
+      - coverage
+      - header-checks
+      - api-contract
+      - consumer-warnings
+      - mutants
+      - clang-tidy
+      - amalgamation
+      - conan
+      - clang-format
+      - fuzz-smoke
+      - bench-smoke
+      - examples
+      - docs
+      - install-check
+      - zephyr
+      - esp-idf
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      # `skipped` and `cancelled` are failures here. When preflight dies every
+      # other job is skipped, and that must not read as thirty successes.
+      - name: Every job must have succeeded
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+
+          results = json.loads(os.environ["RESULTS"])
+
+          # A `needs:` list that got emptied would otherwise pass vacuously —
+          # the one way this job could stop being a gate without failing.
+          if len(results) < 30:
+              sys.exit(f"::error::ci-gate is watching {len(results)} job(s), "
+                       f"expected at least 30. Was a needs: entry deleted?")
+
+          bad = {name: r["result"] for name, r in results.items()
+                 if r["result"] != "success"}
+          for name, result in sorted(bad.items()):
+              print(f"::error::{name}: {result}")
+          if bad:
+              sys.exit(f"{len(bad)} of {len(results)} job(s) did not succeed")
+          print(f"all {len(results)} jobs succeeded")
+          PY
 
   # ---------------------------------------------------------------------------
   # Deploy the Doxygen API docs to GitHub Pages.
