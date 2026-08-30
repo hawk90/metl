@@ -1,546 +1,546 @@
 _ZN9metl_fuzz11byte_readerC2EPKhm:
-   31|    236|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
+   31|    244|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
 _ZN9metl_fuzz11byte_reader4byteEv:
-   37|  51.8k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
+   37|  57.6k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
   ------------------
-  |  Branch (37:41): [True: 51.4k, False: 382]
+  |  Branch (37:41): [True: 57.2k, False: 383]
   ------------------
 _ZNK9metl_fuzz11byte_reader5emptyEv:
-   34|  10.0k|  bool empty() const noexcept { return remaining() == 0; }
+   34|  11.3k|  bool empty() const noexcept { return remaining() == 0; }
 _ZNK9metl_fuzz11byte_reader9remainingEv:
-   33|  10.0k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
+   33|  11.3k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
   ------------------
-  |  Branch (33:51): [True: 9.85k, False: 236]
+  |  Branch (33:51): [True: 11.0k, False: 244]
   ------------------
 _ZN9metl_fuzz11byte_reader7integerIjEET_v:
-   41|  9.85k|  UInt integer() noexcept {
-   42|  9.85k|    UInt value = 0;
-   43|  49.2k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
+   41|  11.0k|  UInt integer() noexcept {
+   42|  11.0k|    UInt value = 0;
+   43|  55.3k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
   ------------------
-  |  Branch (43:29): [True: 39.4k, False: 9.85k]
+  |  Branch (43:29): [True: 44.2k, False: 11.0k]
   ------------------
-   44|  39.4k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
-   45|  39.4k|    }
-   46|  9.85k|    return value;
-   47|  9.85k|  }
+   44|  44.2k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
+   45|  44.2k|    }
+   46|  11.0k|    return value;
+   47|  11.0k|  }
 
 LLVMFuzzerTestOneInput:
-  230|    236|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
-  231|    236|  metl_fuzz::byte_reader in(data, size);
+  230|    244|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
+  231|    244|  metl_fuzz::byte_reader in(data, size);
   232|       |
-  233|    236|  if ((in.byte() & 1u) != 0u) {
+  233|    244|  if ((in.byte() & 1u) != 0u) {
   ------------------
-  |  Branch (233:7): [True: 163, False: 73]
+  |  Branch (233:7): [True: 167, False: 77]
   ------------------
-  234|    163|    drive_handle_pool(in);
-  235|    163|  } else {
-  236|     73|    drive_object_pool(in);
-  237|     73|  }
+  234|    167|    drive_handle_pool(in);
+  235|    167|  } else {
+  236|     77|    drive_object_pool(in);
+  237|     77|  }
   238|       |
-  239|    236|  if (g_live != 0) {
+  239|    244|  if (g_live != 0) {
   ------------------
-  |  Branch (239:7): [True: 0, False: 236]
+  |  Branch (239:7): [True: 0, False: 244]
   ------------------
   240|      0|    __builtin_trap();
   241|      0|  }
-  242|    236|  return 0;
-  243|    236|}
+  242|    244|  return 0;
+  243|    244|}
 fuzz_pools.cpp:_ZN12_GLOBAL__N_117drive_handle_poolERN9metl_fuzz11byte_readerE:
-   62|    163|void drive_handle_pool(metl_fuzz::byte_reader& in) {
-   63|    163|  pool_type pool;
+   62|    167|void drive_handle_pool(metl_fuzz::byte_reader& in) {
+   63|    167|  pool_type pool;
    64|       |
    65|       |  // More slots than the pool has, so slots are reused many times over and stale
    66|       |  // handles pile up behind live ones.
-   67|    163|  constexpr std::size_t kTracked = 64;
-   68|    163|  record seen[kTracked];
-   69|    163|  std::size_t count = 0;
-   70|    163|  std::size_t live_count = 0;
+   67|    167|  constexpr std::size_t kTracked = 64;
+   68|    167|  record seen[kTracked];
+   69|    167|  std::size_t count = 0;
+   70|    167|  std::size_t live_count = 0;
    71|       |
-   72|    163|  auto recheck_all = [&]() {
-   73|    163|    for (std::size_t i = 0; i < count; ++i) {
-   74|    163|      const record& r = seen[i];
-   75|    163|      const payload* resolved = pool.get(r.handle);
-   76|    163|      if (r.live) {
+   72|    167|  auto recheck_all = [&]() {
+   73|    167|    for (std::size_t i = 0; i < count; ++i) {
+   74|    167|      const record& r = seen[i];
+   75|    167|      const payload* resolved = pool.get(r.handle);
+   76|    167|      if (r.live) {
    77|       |        // A live handle must resolve, and to ITS value -- not to whatever now
    78|       |        // occupies the slot.
-   79|    163|        if (resolved == nullptr || resolved->value != r.value) {
-   80|    163|          __builtin_trap();
-   81|    163|        }
-   82|    163|        if (!pool.contains(r.handle)) {
-   83|    163|          __builtin_trap();
-   84|    163|        }
-   85|    163|      } else {
+   79|    167|        if (resolved == nullptr || resolved->value != r.value) {
+   80|    167|          __builtin_trap();
+   81|    167|        }
+   82|    167|        if (!pool.contains(r.handle)) {
+   83|    167|          __builtin_trap();
+   84|    167|        }
+   85|    167|      } else {
    86|       |        // THE POINT OF THE TYPE. A destroyed handle must never resolve again,
    87|       |        // however many times its slot has been recycled since.
-   88|    163|        if (resolved != nullptr || pool.contains(r.handle)) {
-   89|    163|          __builtin_trap();
-   90|    163|        }
-   91|    163|      }
-   92|    163|    }
-   93|    163|    if (pool.size() != live_count) {
-   94|    163|      __builtin_trap();
-   95|    163|    }
-   96|    163|    if (g_live != static_cast<int>(live_count)) {
-   97|    163|      __builtin_trap();
-   98|    163|    }
-   99|    163|    if (pool.available() != kCapacity - live_count) {
-  100|    163|      __builtin_trap();
-  101|    163|    }
-  102|    163|  };
+   88|    167|        if (resolved != nullptr || pool.contains(r.handle)) {
+   89|    167|          __builtin_trap();
+   90|    167|        }
+   91|    167|      }
+   92|    167|    }
+   93|    167|    if (pool.size() != live_count) {
+   94|    167|      __builtin_trap();
+   95|    167|    }
+   96|    167|    if (g_live != static_cast<int>(live_count)) {
+   97|    167|      __builtin_trap();
+   98|    167|    }
+   99|    167|    if (pool.available() != kCapacity - live_count) {
+  100|    167|      __builtin_trap();
+  101|    167|    }
+  102|    167|  };
   103|       |
-  104|  6.80k|  while (!in.empty()) {
+  104|  7.57k|  while (!in.empty()) {
   ------------------
-  |  Branch (104:10): [True: 6.64k, False: 163]
+  |  Branch (104:10): [True: 7.40k, False: 167]
   ------------------
-  105|  6.64k|    const std::uint32_t value = in.integer<std::uint32_t>();
-  106|  6.64k|    switch (in.byte() % 4u) {
-  107|  2.47k|      case 0: {  // acquire
+  105|  7.40k|    const std::uint32_t value = in.integer<std::uint32_t>();
+  106|  7.40k|    switch (in.byte() % 4u) {
+  107|  3.11k|      case 0: {  // acquire
   ------------------
-  |  Branch (107:7): [True: 2.47k, False: 4.16k]
+  |  Branch (107:7): [True: 3.11k, False: 4.29k]
   ------------------
-  108|  2.47k|        const handle_type handle = pool.try_emplace(payload{value});
-  109|  2.47k|        if (handle.valid()) {
+  108|  3.11k|        const handle_type handle = pool.try_emplace(payload{value});
+  109|  3.11k|        if (handle.valid()) {
   ------------------
-  |  Branch (109:13): [True: 2.15k, False: 329]
+  |  Branch (109:13): [True: 2.76k, False: 347]
   ------------------
-  110|  2.15k|          if (live_count >= kCapacity) {
+  110|  2.76k|          if (live_count >= kCapacity) {
   ------------------
-  |  Branch (110:15): [True: 0, False: 2.15k]
+  |  Branch (110:15): [True: 0, False: 2.76k]
   ------------------
   111|      0|            __builtin_trap();  // handed out a slot it did not have
   112|      0|          }
-  113|  2.15k|          ++live_count;
-  114|  2.15k|          if (count < kTracked) {
+  113|  2.76k|          ++live_count;
+  114|  2.76k|          if (count < kTracked) {
   ------------------
-  |  Branch (114:15): [True: 1.69k, False: 459]
+  |  Branch (114:15): [True: 2.04k, False: 719]
   ------------------
-  115|  1.69k|            seen[count++] = record{handle, value, true};
-  116|  1.69k|          }
-  117|  2.15k|        } else if (live_count != kCapacity) {
+  115|  2.04k|            seen[count++] = record{handle, value, true};
+  116|  2.04k|          }
+  117|  2.76k|        } else if (live_count != kCapacity) {
   ------------------
-  |  Branch (117:20): [True: 0, False: 329]
+  |  Branch (117:20): [True: 0, False: 347]
   ------------------
   118|      0|          __builtin_trap();  // refused while it had room
   119|      0|        }
-  120|  2.47k|        break;
-  121|  2.47k|      }
-  122|  2.47k|      case 1: {  // release one we believe is live
+  120|  3.11k|        break;
+  121|  3.11k|      }
+  122|  3.11k|      case 1: {  // release one we believe is live
   ------------------
-  |  Branch (122:7): [True: 1.65k, False: 4.99k]
+  |  Branch (122:7): [True: 1.15k, False: 6.24k]
   ------------------
-  123|  1.65k|        if (count == 0) {
+  123|  1.15k|        if (count == 0) {
   ------------------
-  |  Branch (123:13): [True: 345, False: 1.30k]
+  |  Branch (123:13): [True: 213, False: 943]
   ------------------
-  124|    345|          break;
-  125|    345|        }
-  126|  1.30k|        const std::size_t pick = in.byte() % count;
-  127|  1.30k|        record& r = seen[pick];
-  128|  1.30k|        const bool destroyed = pool.destroy(r.handle);
-  129|  1.30k|        if (destroyed != r.live) {
+  124|    213|          break;
+  125|    213|        }
+  126|    943|        const std::size_t pick = in.byte() % count;
+  127|    943|        record& r = seen[pick];
+  128|    943|        const bool destroyed = pool.destroy(r.handle);
+  129|    943|        if (destroyed != r.live) {
   ------------------
-  |  Branch (129:13): [True: 0, False: 1.30k]
+  |  Branch (129:13): [True: 0, False: 943]
   ------------------
   130|      0|          __builtin_trap();  // destroy() must answer "was this a live slot"
   131|      0|        }
-  132|  1.30k|        if (destroyed) {
+  132|    943|        if (destroyed) {
   ------------------
-  |  Branch (132:13): [True: 162, False: 1.14k]
+  |  Branch (132:13): [True: 153, False: 790]
   ------------------
-  133|    162|          r.live = false;
-  134|    162|          --live_count;
-  135|    162|        }
-  136|  1.30k|        break;
-  137|  1.30k|      }
-  138|  1.03k|      case 2: {  // release something we already released -- double free
+  133|    153|          r.live = false;
+  134|    153|          --live_count;
+  135|    153|        }
+  136|    943|        break;
+  137|    943|      }
+  138|  1.14k|      case 2: {  // release something we already released -- double free
   ------------------
-  |  Branch (138:7): [True: 1.03k, False: 5.61k]
+  |  Branch (138:7): [True: 1.14k, False: 6.25k]
   ------------------
-  139|  1.03k|        if (count == 0) {
+  139|  1.14k|        if (count == 0) {
   ------------------
-  |  Branch (139:13): [True: 235, False: 800]
+  |  Branch (139:13): [True: 230, False: 918]
   ------------------
-  140|    235|          break;
-  141|    235|        }
-  142|    800|        const std::size_t pick = in.byte() % count;
-  143|    800|        if (!seen[pick].live && pool.destroy(seen[pick].handle)) {
+  140|    230|          break;
+  141|    230|        }
+  142|    918|        const std::size_t pick = in.byte() % count;
+  143|    918|        if (!seen[pick].live && pool.destroy(seen[pick].handle)) {
   ------------------
-  |  Branch (143:13): [True: 542, False: 258]
-  |  Branch (143:33): [True: 0, False: 542]
+  |  Branch (143:13): [True: 693, False: 225]
+  |  Branch (143:33): [True: 0, False: 693]
   ------------------
   144|      0|          __builtin_trap();  // a second destroy must be refused, not repeated
   145|      0|        }
-  146|    800|        break;
-  147|    800|      }
-  148|  1.47k|      default: {
+  146|    918|        break;
+  147|    918|      }
+  148|  1.99k|      default: {
   ------------------
-  |  Branch (148:7): [True: 1.47k, False: 5.16k]
+  |  Branch (148:7): [True: 1.99k, False: 5.41k]
   ------------------
-  149|  1.47k|        pool.clear();
-  150|  17.6k|        for (std::size_t i = 0; i < count; ++i) {
+  149|  1.99k|        pool.clear();
+  150|  23.8k|        for (std::size_t i = 0; i < count; ++i) {
   ------------------
-  |  Branch (150:33): [True: 16.2k, False: 1.47k]
+  |  Branch (150:33): [True: 21.8k, False: 1.99k]
   ------------------
-  151|  16.2k|          seen[i].live = false;
-  152|  16.2k|        }
-  153|  1.47k|        live_count = 0;
-  154|  1.47k|        break;
-  155|    800|      }
-  156|  6.64k|    }
-  157|  6.64k|    recheck_all();
-  158|  6.64k|  }
-  159|    163|}
+  151|  21.8k|          seen[i].live = false;
+  152|  21.8k|        }
+  153|  1.99k|        live_count = 0;
+  154|  1.99k|        break;
+  155|    918|      }
+  156|  7.40k|    }
+  157|  7.40k|    recheck_all();
+  158|  7.40k|  }
+  159|    167|}
 fuzz_pools.cpp:_ZN12_GLOBAL__N_17payloadC2EOS0_:
-   46|  3.18k|  payload(payload&& other) noexcept : value(other.value) { ++g_live; }
+   46|  4.31k|  payload(payload&& other) noexcept : value(other.value) { ++g_live; }
 fuzz_pools.cpp:_ZN12_GLOBAL__N_17payloadC2Ej:
-   44|  4.01k|  explicit payload(std::uint32_t v) noexcept : value(v) { ++g_live; }
+   44|  5.16k|  explicit payload(std::uint32_t v) noexcept : value(v) { ++g_live; }
 fuzz_pools.cpp:_ZN12_GLOBAL__N_17payloadD2Ev:
-   49|  7.19k|  ~payload() { --g_live; }
+   49|  9.48k|  ~payload() { --g_live; }
 fuzz_pools.cpp:_ZZN12_GLOBAL__N_117drive_handle_poolERN9metl_fuzz11byte_readerEENK3$_0clEv:
-   72|  6.64k|  auto recheck_all = [&]() {
-   73|   112k|    for (std::size_t i = 0; i < count; ++i) {
+   72|  7.40k|  auto recheck_all = [&]() {
+   73|   151k|    for (std::size_t i = 0; i < count; ++i) {
   ------------------
-  |  Branch (73:29): [True: 105k, False: 6.64k]
+  |  Branch (73:29): [True: 144k, False: 7.40k]
   ------------------
-   74|   105k|      const record& r = seen[i];
-   75|   105k|      const payload* resolved = pool.get(r.handle);
-   76|   105k|      if (r.live) {
+   74|   144k|      const record& r = seen[i];
+   75|   144k|      const payload* resolved = pool.get(r.handle);
+   76|   144k|      if (r.live) {
   ------------------
-  |  Branch (76:11): [True: 17.2k, False: 88.2k]
+  |  Branch (76:11): [True: 17.8k, False: 126k]
   ------------------
    77|       |        // A live handle must resolve, and to ITS value -- not to whatever now
    78|       |        // occupies the slot.
-   79|  17.2k|        if (resolved == nullptr || resolved->value != r.value) {
+   79|  17.8k|        if (resolved == nullptr || resolved->value != r.value) {
   ------------------
-  |  Branch (79:13): [True: 0, False: 17.2k]
-  |  Branch (79:36): [True: 0, False: 17.2k]
+  |  Branch (79:13): [True: 0, False: 17.8k]
+  |  Branch (79:36): [True: 0, False: 17.8k]
   ------------------
    80|      0|          __builtin_trap();
    81|      0|        }
-   82|  17.2k|        if (!pool.contains(r.handle)) {
+   82|  17.8k|        if (!pool.contains(r.handle)) {
   ------------------
-  |  Branch (82:13): [True: 0, False: 17.2k]
+  |  Branch (82:13): [True: 0, False: 17.8k]
   ------------------
    83|      0|          __builtin_trap();
    84|      0|        }
-   85|  88.2k|      } else {
+   85|   126k|      } else {
    86|       |        // THE POINT OF THE TYPE. A destroyed handle must never resolve again,
    87|       |        // however many times its slot has been recycled since.
-   88|  88.2k|        if (resolved != nullptr || pool.contains(r.handle)) {
+   88|   126k|        if (resolved != nullptr || pool.contains(r.handle)) {
   ------------------
-  |  Branch (88:13): [True: 0, False: 88.2k]
-  |  Branch (88:36): [True: 0, False: 88.2k]
+  |  Branch (88:13): [True: 0, False: 126k]
+  |  Branch (88:36): [True: 0, False: 126k]
   ------------------
    89|      0|          __builtin_trap();
    90|      0|        }
-   91|  88.2k|      }
-   92|   105k|    }
-   93|  6.64k|    if (pool.size() != live_count) {
+   91|   126k|      }
+   92|   144k|    }
+   93|  7.40k|    if (pool.size() != live_count) {
   ------------------
-  |  Branch (93:9): [True: 0, False: 6.64k]
+  |  Branch (93:9): [True: 0, False: 7.40k]
   ------------------
    94|      0|      __builtin_trap();
    95|      0|    }
-   96|  6.64k|    if (g_live != static_cast<int>(live_count)) {
+   96|  7.40k|    if (g_live != static_cast<int>(live_count)) {
   ------------------
-  |  Branch (96:9): [True: 0, False: 6.64k]
+  |  Branch (96:9): [True: 0, False: 7.40k]
   ------------------
    97|      0|      __builtin_trap();
    98|      0|    }
-   99|  6.64k|    if (pool.available() != kCapacity - live_count) {
+   99|  7.40k|    if (pool.available() != kCapacity - live_count) {
   ------------------
-  |  Branch (99:9): [True: 0, False: 6.64k]
+  |  Branch (99:9): [True: 0, False: 7.40k]
   ------------------
   100|      0|      __builtin_trap();
   101|      0|    }
-  102|  6.64k|  };
+  102|  7.40k|  };
 fuzz_pools.cpp:_ZN12_GLOBAL__N_117drive_object_poolERN9metl_fuzz11byte_readerE:
-  161|     73|void drive_object_pool(metl_fuzz::byte_reader& in) {
-  162|     73|  metl::object_pool<payload, kCapacity> pool;
+  161|     77|void drive_object_pool(metl_fuzz::byte_reader& in) {
+  162|     77|  metl::object_pool<payload, kCapacity> pool;
   163|       |
   164|       |  // Pointers we currently believe are live, and the value each should hold.
-  165|     73|  payload* held[kCapacity] = {};
-  166|     73|  std::uint32_t expected[kCapacity] = {};
-  167|     73|  std::size_t count = 0;
+  165|     77|  payload* held[kCapacity] = {};
+  166|     77|  std::uint32_t expected[kCapacity] = {};
+  167|     77|  std::size_t count = 0;
   168|       |
-  169|     73|  auto recheck_all = [&]() {
-  170|     73|    for (std::size_t i = 0; i < count; ++i) {
-  171|     73|      if (held[i] == nullptr || held[i]->value != expected[i]) {
-  172|     73|        __builtin_trap();
-  173|     73|      }
-  174|     73|      if (!pool.contains(held[i])) {
-  175|     73|        __builtin_trap();
-  176|     73|      }
-  177|     73|    }
-  178|     73|    if (pool.size() != count || g_live != static_cast<int>(count)) {
-  179|     73|      __builtin_trap();
-  180|     73|    }
-  181|     73|    if (pool.available() != kCapacity - count) {
-  182|     73|      __builtin_trap();
-  183|     73|    }
-  184|     73|  };
+  169|     77|  auto recheck_all = [&]() {
+  170|     77|    for (std::size_t i = 0; i < count; ++i) {
+  171|     77|      if (held[i] == nullptr || held[i]->value != expected[i]) {
+  172|     77|        __builtin_trap();
+  173|     77|      }
+  174|     77|      if (!pool.contains(held[i])) {
+  175|     77|        __builtin_trap();
+  176|     77|      }
+  177|     77|    }
+  178|     77|    if (pool.size() != count || g_live != static_cast<int>(count)) {
+  179|     77|      __builtin_trap();
+  180|     77|    }
+  181|     77|    if (pool.available() != kCapacity - count) {
+  182|     77|      __builtin_trap();
+  183|     77|    }
+  184|     77|  };
   185|       |
-  186|  3.28k|  while (!in.empty()) {
+  186|  3.74k|  while (!in.empty()) {
   ------------------
-  |  Branch (186:10): [True: 3.20k, False: 73]
+  |  Branch (186:10): [True: 3.66k, False: 77]
   ------------------
-  187|  3.20k|    const std::uint32_t value = in.integer<std::uint32_t>();
-  188|  3.20k|    switch (in.byte() % 3u) {
-  189|  1.53k|      case 0: {
+  187|  3.66k|    const std::uint32_t value = in.integer<std::uint32_t>();
+  188|  3.66k|    switch (in.byte() % 3u) {
+  189|  2.05k|      case 0: {
   ------------------
-  |  Branch (189:7): [True: 1.53k, False: 1.67k]
+  |  Branch (189:7): [True: 2.05k, False: 1.60k]
   ------------------
-  190|  1.53k|        payload* p = pool.try_emplace(payload{value});
-  191|  1.53k|        if (p != nullptr) {
+  190|  2.05k|        payload* p = pool.try_emplace(payload{value});
+  191|  2.05k|        if (p != nullptr) {
   ------------------
-  |  Branch (191:13): [True: 1.03k, False: 501]
+  |  Branch (191:13): [True: 1.55k, False: 504]
   ------------------
-  192|  1.03k|          if (count >= kCapacity) {
+  192|  1.55k|          if (count >= kCapacity) {
   ------------------
-  |  Branch (192:15): [True: 0, False: 1.03k]
+  |  Branch (192:15): [True: 0, False: 1.55k]
   ------------------
   193|      0|            __builtin_trap();
   194|      0|          }
-  195|  1.03k|          held[count] = p;
-  196|  1.03k|          expected[count] = value;
-  197|  1.03k|          ++count;
-  198|  1.03k|        } else if (count != kCapacity) {
+  195|  1.55k|          held[count] = p;
+  196|  1.55k|          expected[count] = value;
+  197|  1.55k|          ++count;
+  198|  1.55k|        } else if (count != kCapacity) {
   ------------------
-  |  Branch (198:20): [True: 0, False: 501]
+  |  Branch (198:20): [True: 0, False: 504]
   ------------------
   199|      0|          __builtin_trap();
   200|      0|        }
-  201|  1.53k|        break;
-  202|  1.53k|      }
-  203|  1.53k|      case 1: {
+  201|  2.05k|        break;
+  202|  2.05k|      }
+  203|  2.05k|      case 1: {
   ------------------
-  |  Branch (203:7): [True: 450, False: 2.75k]
+  |  Branch (203:7): [True: 481, False: 3.18k]
   ------------------
-  204|    450|        if (count == 0) {
+  204|    481|        if (count == 0) {
   ------------------
-  |  Branch (204:13): [True: 220, False: 230]
+  |  Branch (204:13): [True: 248, False: 233]
   ------------------
-  205|    220|          break;
-  206|    220|        }
-  207|    230|        const std::size_t pick = in.byte() % count;
-  208|    230|        if (!pool.destroy(held[pick])) {
+  205|    248|          break;
+  206|    248|        }
+  207|    233|        const std::size_t pick = in.byte() % count;
+  208|    233|        if (!pool.destroy(held[pick])) {
   ------------------
-  |  Branch (208:13): [True: 0, False: 230]
+  |  Branch (208:13): [True: 0, False: 233]
   ------------------
   209|      0|          __builtin_trap();  // we believed it was live
   210|      0|        }
   211|       |        // No stale-pointer check here, deliberately: object_pool CANNOT detect
   212|       |        // one, which is the whole reason handle_pool exists. Checking for it
   213|       |        // would be asserting a guarantee the type does not make.
-  214|    230|        held[pick] = held[count - 1];
-  215|    230|        expected[pick] = expected[count - 1];
-  216|    230|        --count;
-  217|    230|        break;
-  218|    230|      }
-  219|  1.22k|      default:
+  214|    233|        held[pick] = held[count - 1];
+  215|    233|        expected[pick] = expected[count - 1];
+  216|    233|        --count;
+  217|    233|        break;
+  218|    233|      }
+  219|  1.12k|      default:
   ------------------
-  |  Branch (219:7): [True: 1.22k, False: 1.98k]
+  |  Branch (219:7): [True: 1.12k, False: 2.53k]
   ------------------
-  220|  1.22k|        pool.clear();
-  221|  1.22k|        count = 0;
-  222|  1.22k|        break;
-  223|  3.20k|    }
-  224|  3.20k|    recheck_all();
-  225|  3.20k|  }
-  226|     73|}
+  220|  1.12k|        pool.clear();
+  221|  1.12k|        count = 0;
+  222|  1.12k|        break;
+  223|  3.66k|    }
+  224|  3.66k|    recheck_all();
+  225|  3.66k|  }
+  226|     77|}
 fuzz_pools.cpp:_ZZN12_GLOBAL__N_117drive_object_poolERN9metl_fuzz11byte_readerEENK3$_0clEv:
-  169|  3.20k|  auto recheck_all = [&]() {
-  170|  11.7k|    for (std::size_t i = 0; i < count; ++i) {
+  169|  3.66k|  auto recheck_all = [&]() {
+  170|  13.8k|    for (std::size_t i = 0; i < count; ++i) {
   ------------------
-  |  Branch (170:29): [True: 8.52k, False: 3.20k]
+  |  Branch (170:29): [True: 10.2k, False: 3.66k]
   ------------------
-  171|  8.52k|      if (held[i] == nullptr || held[i]->value != expected[i]) {
+  171|  10.2k|      if (held[i] == nullptr || held[i]->value != expected[i]) {
   ------------------
-  |  Branch (171:11): [True: 0, False: 8.52k]
-  |  Branch (171:33): [True: 0, False: 8.52k]
+  |  Branch (171:11): [True: 0, False: 10.2k]
+  |  Branch (171:33): [True: 0, False: 10.2k]
   ------------------
   172|      0|        __builtin_trap();
   173|      0|      }
-  174|  8.52k|      if (!pool.contains(held[i])) {
+  174|  10.2k|      if (!pool.contains(held[i])) {
   ------------------
-  |  Branch (174:11): [True: 0, False: 8.52k]
+  |  Branch (174:11): [True: 0, False: 10.2k]
   ------------------
   175|      0|        __builtin_trap();
   176|      0|      }
-  177|  8.52k|    }
-  178|  3.20k|    if (pool.size() != count || g_live != static_cast<int>(count)) {
+  177|  10.2k|    }
+  178|  3.66k|    if (pool.size() != count || g_live != static_cast<int>(count)) {
   ------------------
-  |  Branch (178:9): [True: 0, False: 3.20k]
-  |  Branch (178:33): [True: 0, False: 3.20k]
+  |  Branch (178:9): [True: 0, False: 3.66k]
+  |  Branch (178:33): [True: 0, False: 3.66k]
   ------------------
   179|      0|      __builtin_trap();
   180|      0|    }
-  181|  3.20k|    if (pool.available() != kCapacity - count) {
+  181|  3.66k|    if (pool.available() != kCapacity - count) {
   ------------------
-  |  Branch (181:9): [True: 0, False: 3.20k]
+  |  Branch (181:9): [True: 0, False: 3.66k]
   ------------------
   182|      0|      __builtin_trap();
   183|      0|    }
-  184|  3.20k|  };
+  184|  3.66k|  };
 
 fuzz_pools.cpp:_ZN4metl11handle_poolIN12_GLOBAL__N_17payloadELm8EtEC2Ev:
-  101|    163|  handle_pool() noexcept : free_head_(0), size_(0) {
-  102|  1.46k|    for (size_type i = 0; i < Capacity; ++i) {
+  101|    167|  handle_pool() noexcept : free_head_(0), size_(0) {
+  102|  1.50k|    for (size_type i = 0; i < Capacity; ++i) {
   ------------------
-  |  Branch (102:27): [True: 1.30k, False: 163]
+  |  Branch (102:27): [True: 1.33k, False: 167]
   ------------------
-  103|  1.30k|      next_[i] = static_cast<index_type>(i + 1);  // last one points at `Capacity` == end
-  104|  1.30k|      generation_[i] = generation_type{1};        // 0 is reserved for the null handle
-  105|  1.30k|      active_[i] = false;
-  106|  1.30k|    }
-  107|    163|  }
+  103|  1.33k|      next_[i] = static_cast<index_type>(i + 1);  // last one points at `Capacity` == end
+  104|  1.33k|      generation_[i] = generation_type{1};        // 0 is reserved for the null handle
+  105|  1.33k|      active_[i] = false;
+  106|  1.33k|    }
+  107|    167|  }
 fuzz_pools.cpp:_ZN4metl11handle_poolIN12_GLOBAL__N_17payloadELm8EtE11try_emplaceIJS2_EEENS_16versioned_handleIS3_ttEEDpOT_:
-  120|  2.47k|  METL_NODISCARD handle_type try_emplace(Args&&... args) {
-  121|  2.47k|    if (free_head_ >= Capacity) {
+  120|  3.11k|  METL_NODISCARD handle_type try_emplace(Args&&... args) {
+  121|  3.11k|    if (free_head_ >= Capacity) {
   ------------------
-  |  Branch (121:9): [True: 329, False: 2.15k]
+  |  Branch (121:9): [True: 347, False: 2.76k]
   ------------------
-  122|    329|      return handle_type{};
-  123|    329|    }
+  122|    347|      return handle_type{};
+  123|    347|    }
   124|       |
-  125|  2.15k|    const size_type index = free_head_;
-  126|  2.15k|    new (storage_[index].addr()) T(std::forward<Args>(args)...);
-  127|  2.15k|    free_head_ = next_[index];
-  128|  2.15k|    active_[index] = true;
-  129|  2.15k|    ++size_;
-  130|  2.15k|    return handle_type{static_cast<index_type>(index), generation_[index]};
-  131|  2.47k|  }
+  125|  2.76k|    const size_type index = free_head_;
+  126|  2.76k|    new (storage_[index].addr()) T(std::forward<Args>(args)...);
+  127|  2.76k|    free_head_ = next_[index];
+  128|  2.76k|    active_[index] = true;
+  129|  2.76k|    ++size_;
+  130|  2.76k|    return handle_type{static_cast<index_type>(index), generation_[index]};
+  131|  3.11k|  }
 fuzz_pools.cpp:_ZN4metl11handle_poolIN12_GLOBAL__N_17payloadELm8EtE7destroyENS_16versioned_handleIS3_ttEE:
-  163|  1.84k|  bool destroy(handle_type handle) noexcept {
-  164|  1.84k|    const size_type index = live_index(handle);
-  165|  1.84k|    if (index >= Capacity) {
+  163|  1.63k|  bool destroy(handle_type handle) noexcept {
+  164|  1.63k|    const size_type index = live_index(handle);
+  165|  1.63k|    if (index >= Capacity) {
   ------------------
-  |  Branch (165:9): [True: 1.68k, False: 162]
+  |  Branch (165:9): [True: 1.48k, False: 153]
   ------------------
-  166|  1.68k|      return false;
-  167|  1.68k|    }
+  166|  1.48k|      return false;
+  167|  1.48k|    }
   168|       |
-  169|    162|    release(index);
-  170|    162|    return true;
-  171|  1.84k|  }
+  169|    153|    release(index);
+  170|    153|    return true;
+  171|  1.63k|  }
 fuzz_pools.cpp:_ZNK4metl11handle_poolIN12_GLOBAL__N_17payloadELm8EtE10live_indexENS_16versioned_handleIS3_ttEE:
-  210|   212k|  size_type live_index(handle_type handle) const noexcept {
-  211|   212k|    if (!handle.valid()) {
+  210|   289k|  size_type live_index(handle_type handle) const noexcept {
+  211|   289k|    if (!handle.valid()) {
   ------------------
-  |  Branch (211:9): [True: 0, False: 212k]
+  |  Branch (211:9): [True: 0, False: 289k]
   ------------------
   212|      0|      return Capacity;
   213|      0|    }
   214|       |
-  215|   212k|    const size_type index = handle.index();
-  216|   212k|    if (index >= Capacity || !active_[index] || generation_[index] != handle.generation()) {
+  215|   289k|    const size_type index = handle.index();
+  216|   289k|    if (index >= Capacity || !active_[index] || generation_[index] != handle.generation()) {
   ------------------
-  |  Branch (216:9): [True: 0, False: 212k]
-  |  Branch (216:30): [True: 98.0k, False: 114k]
-  |  Branch (216:49): [True: 80.0k, False: 34.7k]
+  |  Branch (216:9): [True: 0, False: 289k]
+  |  Branch (216:30): [True: 136k, False: 152k]
+  |  Branch (216:49): [True: 116k, False: 35.8k]
   ------------------
-  217|   178k|      return Capacity;
-  218|   178k|    }
+  217|   253k|      return Capacity;
+  218|   253k|    }
   219|       |
-  220|  34.7k|    return index;
-  221|   212k|  }
+  220|  35.8k|    return index;
+  221|   289k|  }
 fuzz_pools.cpp:_ZN4metl11handle_poolIN12_GLOBAL__N_17payloadELm8EtE7releaseEm:
-  225|  2.15k|  void release(size_type index) noexcept {
-  226|  2.15k|    slot_ptr(index)->~T();
-  227|  2.15k|    active_[index] = false;
+  225|  2.76k|  void release(size_type index) noexcept {
+  226|  2.76k|    slot_ptr(index)->~T();
+  227|  2.76k|    active_[index] = false;
   228|       |
   229|       |    // Skip 0 on wraparound: generation 0 is the null-handle marker, and a slot
   230|       |    // sitting at generation 0 would make every stale handle to it compare equal
   231|       |    // to null rather than to the slot.
-  232|  2.15k|    generation_[index] = static_cast<generation_type>(generation_[index] + generation_type{1});
-  233|  2.15k|    if (generation_[index] == generation_type{0}) {
+  232|  2.76k|    generation_[index] = static_cast<generation_type>(generation_[index] + generation_type{1});
+  233|  2.76k|    if (generation_[index] == generation_type{0}) {
   ------------------
-  |  Branch (233:9): [True: 0, False: 2.15k]
+  |  Branch (233:9): [True: 0, False: 2.76k]
   ------------------
   234|      0|      generation_[index] = generation_type{1};
   235|      0|    }
   236|       |
-  237|  2.15k|    next_[index] = static_cast<index_type>(free_head_);
-  238|  2.15k|    free_head_ = index;
-  239|  2.15k|    --size_;
-  240|  2.15k|  }
+  237|  2.76k|    next_[index] = static_cast<index_type>(free_head_);
+  238|  2.76k|    free_head_ = index;
+  239|  2.76k|    --size_;
+  240|  2.76k|  }
 fuzz_pools.cpp:_ZN4metl11handle_poolIN12_GLOBAL__N_17payloadELm8EtE8slot_ptrEm:
-  204|  19.4k|  pointer slot_ptr(size_type index) noexcept { return storage_[index].ptr(); }
+  204|  20.6k|  pointer slot_ptr(size_type index) noexcept { return storage_[index].ptr(); }
 fuzz_pools.cpp:_ZN4metl11handle_poolIN12_GLOBAL__N_17payloadELm8EtE5clearEv:
-  175|  1.64k|  void clear() noexcept {
-  176|  14.7k|    for (size_type i = 0; i < Capacity; ++i) {
+  175|  2.15k|  void clear() noexcept {
+  176|  19.4k|    for (size_type i = 0; i < Capacity; ++i) {
   ------------------
-  |  Branch (176:27): [True: 13.1k, False: 1.64k]
+  |  Branch (176:27): [True: 17.2k, False: 2.15k]
   ------------------
-  177|  13.1k|      if (active_[i]) {
+  177|  17.2k|      if (active_[i]) {
   ------------------
-  |  Branch (177:11): [True: 1.98k, False: 11.1k]
+  |  Branch (177:11): [True: 2.61k, False: 14.6k]
   ------------------
-  178|  1.98k|        release(i);
-  179|  1.98k|      }
-  180|  13.1k|    }
-  181|  1.64k|  }
+  178|  2.61k|        release(i);
+  179|  2.61k|      }
+  180|  17.2k|    }
+  181|  2.15k|  }
 fuzz_pools.cpp:_ZN4metl11handle_poolIN12_GLOBAL__N_17payloadELm8EtE3getENS_16versioned_handleIS3_ttEE:
-  146|   105k|  METL_NODISCARD pointer get(handle_type handle) noexcept {
-  147|   105k|    const size_type index = live_index(handle);
-  148|   105k|    return index < Capacity ? slot_ptr(index) : nullptr;
+  146|   144k|  METL_NODISCARD pointer get(handle_type handle) noexcept {
+  147|   144k|    const size_type index = live_index(handle);
+  148|   144k|    return index < Capacity ? slot_ptr(index) : nullptr;
   ------------------
-  |  Branch (148:12): [True: 17.2k, False: 88.2k]
+  |  Branch (148:12): [True: 17.8k, False: 126k]
   ------------------
-  149|   105k|  }
+  149|   144k|  }
 fuzz_pools.cpp:_ZNK4metl11handle_poolIN12_GLOBAL__N_17payloadELm8EtE8containsENS_16versioned_handleIS3_ttEE:
-  158|   105k|  METL_NODISCARD bool contains(handle_type handle) const noexcept { return live_index(handle) < Capacity; }
+  158|   144k|  METL_NODISCARD bool contains(handle_type handle) const noexcept { return live_index(handle) < Capacity; }
 fuzz_pools.cpp:_ZNK4metl11handle_poolIN12_GLOBAL__N_17payloadELm8EtE4sizeEv:
-  188|  6.64k|  METL_NODISCARD size_type size() const noexcept { return size_; }
+  188|  7.40k|  METL_NODISCARD size_type size() const noexcept { return size_; }
 fuzz_pools.cpp:_ZNK4metl11handle_poolIN12_GLOBAL__N_17payloadELm8EtE9availableEv:
-  192|  6.64k|  METL_NODISCARD size_type available() const noexcept { return Capacity - size_; }
+  192|  7.40k|  METL_NODISCARD size_type available() const noexcept { return Capacity - size_; }
 fuzz_pools.cpp:_ZN4metl11handle_poolIN12_GLOBAL__N_17payloadELm8EtED2Ev:
-  109|    163|  ~handle_pool() { clear(); }
+  109|    167|  ~handle_pool() { clear(); }
 
 fuzz_pools.cpp:_ZN4metl11object_poolIN12_GLOBAL__N_17payloadELm8EEC2Ev:
-   53|     73|  constexpr object_pool() noexcept : active_{}, size_(0) {}
+   53|     77|  constexpr object_pool() noexcept : active_{}, size_(0) {}
 fuzz_pools.cpp:_ZN4metl11object_poolIN12_GLOBAL__N_17payloadELm8EE11try_emplaceIJS2_EEEPS2_DpOT_:
-   65|  1.53k|  METL_NODISCARD pointer try_emplace(Args&&... args) {
-   66|  8.16k|    for (size_type i = 0; i < Capacity; ++i) {
+   65|  2.05k|  METL_NODISCARD pointer try_emplace(Args&&... args) {
+   66|  9.90k|    for (size_type i = 0; i < Capacity; ++i) {
   ------------------
-  |  Branch (66:27): [True: 7.66k, False: 501]
+  |  Branch (66:27): [True: 9.40k, False: 504]
   ------------------
-   67|  7.66k|      if (!active_[i]) {
+   67|  9.40k|      if (!active_[i]) {
   ------------------
-  |  Branch (67:11): [True: 1.03k, False: 6.63k]
+  |  Branch (67:11): [True: 1.55k, False: 7.84k]
   ------------------
-   68|  1.03k|        new (storage_[i].addr()) T(std::forward<Args>(args)...);
-   69|  1.03k|        active_[i] = true;
-   70|  1.03k|        ++size_;
-   71|  1.03k|        return slot_ptr(i);
-   72|  1.03k|      }
-   73|  7.66k|    }
+   68|  1.55k|        new (storage_[i].addr()) T(std::forward<Args>(args)...);
+   69|  1.55k|        active_[i] = true;
+   70|  1.55k|        ++size_;
+   71|  1.55k|        return slot_ptr(i);
+   72|  1.55k|      }
+   73|  9.40k|    }
    74|       |
-   75|    501|    return nullptr;
-   76|  1.53k|  }
+   75|    504|    return nullptr;
+   76|  2.05k|  }
 fuzz_pools.cpp:_ZN4metl11object_poolIN12_GLOBAL__N_17payloadELm8EE8slot_ptrEm:
-  134|  2.06k|  pointer slot_ptr(size_type index) noexcept { return storage_[index].ptr(); }
+  134|  3.10k|  pointer slot_ptr(size_type index) noexcept { return storage_[index].ptr(); }
 fuzz_pools.cpp:_ZN4metl11object_poolIN12_GLOBAL__N_17payloadELm8EE7destroyEPS2_:
-   91|    230|  bool destroy(pointer object) noexcept {
-   92|    230|    const size_type index = index_of(object);
-   93|    230|    if (index >= Capacity || !active_[index]) {
+   91|    233|  bool destroy(pointer object) noexcept {
+   92|    233|    const size_type index = index_of(object);
+   93|    233|    if (index >= Capacity || !active_[index]) {
   ------------------
-  |  Branch (93:9): [True: 0, False: 230]
-  |  Branch (93:30): [True: 0, False: 230]
+  |  Branch (93:9): [True: 0, False: 233]
+  |  Branch (93:30): [True: 0, False: 233]
   ------------------
    94|      0|      return false;
    95|      0|    }
    96|       |
-   97|    230|    slot_ptr(index)->~T();
-   98|    230|    active_[index] = false;
-   99|    230|    --size_;
-  100|    230|    return true;
-  101|    230|  }
+   97|    233|    slot_ptr(index)->~T();
+   98|    233|    active_[index] = false;
+   99|    233|    --size_;
+  100|    233|    return true;
+  101|    233|  }
 fuzz_pools.cpp:_ZNK4metl11object_poolIN12_GLOBAL__N_17payloadELm8EE8index_ofEPKS2_:
-  137|  8.75k|  size_type index_of(const_pointer object) const noexcept {
-  138|  8.75k|    if (object == nullptr) {
+  137|  10.4k|  size_type index_of(const_pointer object) const noexcept {
+  138|  10.4k|    if (object == nullptr) {
   ------------------
-  |  Branch (138:9): [True: 0, False: 8.75k]
+  |  Branch (138:9): [True: 0, False: 10.4k]
   ------------------
   139|      0|      return Capacity;
   140|      0|    }
@@ -550,74 +550,74 @@ fuzz_pools.cpp:_ZNK4metl11object_poolIN12_GLOBAL__N_17payloadELm8EE8index_ofEPKS
   144|       |    // different objects are UB, so compare on integer addresses instead — on the
   145|       |    // flat-memory targets this library serves that is exactly the intended
   146|       |    // containment test, with no <functional>/std::less dependency.
-  147|  8.75k|    const_pointer begin = slot_ptr(0);
-  148|  8.75k|    const auto addr = reinterpret_cast<std::uintptr_t>(object);
-  149|  8.75k|    const auto lo = reinterpret_cast<std::uintptr_t>(begin);
-  150|  8.75k|    const auto hi = reinterpret_cast<std::uintptr_t>(begin + Capacity);
-  151|  8.75k|    if (addr < lo || addr >= hi) {
+  147|  10.4k|    const_pointer begin = slot_ptr(0);
+  148|  10.4k|    const auto addr = reinterpret_cast<std::uintptr_t>(object);
+  149|  10.4k|    const auto lo = reinterpret_cast<std::uintptr_t>(begin);
+  150|  10.4k|    const auto hi = reinterpret_cast<std::uintptr_t>(begin + Capacity);
+  151|  10.4k|    if (addr < lo || addr >= hi) {
   ------------------
-  |  Branch (151:9): [True: 0, False: 8.75k]
-  |  Branch (151:22): [True: 0, False: 8.75k]
+  |  Branch (151:9): [True: 0, False: 10.4k]
+  |  Branch (151:22): [True: 0, False: 10.4k]
   ------------------
   152|      0|      return Capacity;
   153|      0|    }
   154|       |
-  155|  8.75k|    return static_cast<size_type>(object - begin);
-  156|  8.75k|  }
+  155|  10.4k|    return static_cast<size_type>(object - begin);
+  156|  10.4k|  }
 fuzz_pools.cpp:_ZNK4metl11object_poolIN12_GLOBAL__N_17payloadELm8EE8slot_ptrEm:
-  135|  8.75k|  const_pointer slot_ptr(size_type index) const noexcept { return storage_[index].ptr(); }
+  135|  10.4k|  const_pointer slot_ptr(size_type index) const noexcept { return storage_[index].ptr(); }
 fuzz_pools.cpp:_ZN4metl11object_poolIN12_GLOBAL__N_17payloadELm8EE5clearEv:
-  104|  1.29k|  void clear() noexcept {
-  105|  11.6k|    for (size_type i = 0; i < Capacity; ++i) {
+  104|  1.20k|  void clear() noexcept {
+  105|  10.8k|    for (size_type i = 0; i < Capacity; ++i) {
   ------------------
-  |  Branch (105:27): [True: 10.3k, False: 1.29k]
+  |  Branch (105:27): [True: 9.62k, False: 1.20k]
   ------------------
-  106|  10.3k|      if (active_[i]) {
+  106|  9.62k|      if (active_[i]) {
   ------------------
-  |  Branch (106:11): [True: 802, False: 9.58k]
+  |  Branch (106:11): [True: 1.32k, False: 8.30k]
   ------------------
-  107|    802|        slot_ptr(i)->~T();
-  108|    802|        active_[i] = false;
-  109|    802|      }
-  110|  10.3k|    }
-  111|  1.29k|    size_ = 0;
-  112|  1.29k|  }
+  107|  1.32k|        slot_ptr(i)->~T();
+  108|  1.32k|        active_[i] = false;
+  109|  1.32k|      }
+  110|  9.62k|    }
+  111|  1.20k|    size_ = 0;
+  112|  1.20k|  }
 fuzz_pools.cpp:_ZNK4metl11object_poolIN12_GLOBAL__N_17payloadELm8EE8containsEPKS2_:
-  115|  8.52k|  METL_NODISCARD bool contains(const_pointer object) const noexcept {
-  116|  8.52k|    const size_type index = index_of(object);
-  117|  8.52k|    return index < Capacity && active_[index];
+  115|  10.2k|  METL_NODISCARD bool contains(const_pointer object) const noexcept {
+  116|  10.2k|    const size_type index = index_of(object);
+  117|  10.2k|    return index < Capacity && active_[index];
   ------------------
-  |  Branch (117:12): [True: 8.52k, False: 0]
-  |  Branch (117:32): [True: 8.52k, False: 0]
+  |  Branch (117:12): [True: 10.2k, False: 0]
+  |  Branch (117:32): [True: 10.2k, False: 0]
   ------------------
-  118|  8.52k|  }
+  118|  10.2k|  }
 fuzz_pools.cpp:_ZNK4metl11object_poolIN12_GLOBAL__N_17payloadELm8EE4sizeEv:
-  125|  3.20k|  METL_NODISCARD constexpr size_type size() const noexcept { return size_; }
+  125|  3.66k|  METL_NODISCARD constexpr size_type size() const noexcept { return size_; }
 fuzz_pools.cpp:_ZNK4metl11object_poolIN12_GLOBAL__N_17payloadELm8EE9availableEv:
-  129|  3.20k|  METL_NODISCARD constexpr size_type available() const noexcept { return Capacity - size_; }
+  129|  3.66k|  METL_NODISCARD constexpr size_type available() const noexcept { return Capacity - size_; }
 fuzz_pools.cpp:_ZN4metl11object_poolIN12_GLOBAL__N_17payloadELm8EED2Ev:
-   55|     73|  ~object_pool() { clear(); }
+   55|     77|  ~object_pool() { clear(); }
 
 fuzz_pools.cpp:_ZN4metl11storage_forIN12_GLOBAL__N_17payloadEE4addrEv:
-   34|  3.18k|  void* addr() noexcept { return &bytes[0]; }
+   34|  4.31k|  void* addr() noexcept { return &bytes[0]; }
 fuzz_pools.cpp:_ZN4metl11storage_forIN12_GLOBAL__N_17payloadEE3ptrEv:
-   24|  21.5k|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
+   24|  23.7k|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
 fuzz_pools.cpp:_ZNK4metl11storage_forIN12_GLOBAL__N_17payloadEE3ptrEv:
-   26|  8.75k|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
+   26|  10.4k|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
 
 fuzz_pools.cpp:_ZN4metl16versioned_handleINS_11handle_poolIN12_GLOBAL__N_17payloadELm8EtEEttEC2Ev:
-  111|  10.7k|  constexpr versioned_handle() noexcept : value_(0) {}
+  111|  11.0k|  constexpr versioned_handle() noexcept : value_(0) {}
 fuzz_pools.cpp:_ZN4metl16versioned_handleINS_11handle_poolIN12_GLOBAL__N_17payloadELm8EtEEttEC2Ett:
-  117|  2.15k|      : value_(static_cast<packed_type>(static_cast<packed_type>(index) |
-  118|  2.15k|                                        (static_cast<packed_type>(generation) << index_bits))) {}
+  117|  2.76k|      : value_(static_cast<packed_type>(static_cast<packed_type>(index) |
+  118|  2.76k|                                        (static_cast<packed_type>(generation) << index_bits))) {}
 fuzz_pools.cpp:_ZNK4metl16versioned_handleINS_11handle_poolIN12_GLOBAL__N_17payloadELm8EtEEttE5validEv:
-  144|   215k|  METL_NODISCARD constexpr bool valid() const noexcept { return generation() != 0; }
+  144|   292k|  METL_NODISCARD constexpr bool valid() const noexcept { return generation() != 0; }
 fuzz_pools.cpp:_ZNK4metl16versioned_handleINS_11handle_poolIN12_GLOBAL__N_17payloadELm8EtEEttE10generationEv:
-  138|   330k|  METL_NODISCARD constexpr generation_type generation() const noexcept {
-  139|   330k|    return static_cast<generation_type>(value_ >> index_bits);
-  140|   330k|  }
+  138|   445k|  METL_NODISCARD constexpr generation_type generation() const noexcept {
+  139|   445k|    return static_cast<generation_type>(value_ >> index_bits);
+  140|   445k|  }
 fuzz_pools.cpp:_ZNK4metl16versioned_handleINS_11handle_poolIN12_GLOBAL__N_17payloadELm8EtEEttE5indexEv:
-  133|   212k|  METL_NODISCARD constexpr index_type index() const noexcept {
-  134|   212k|    return static_cast<index_type>(value_ & static_cast<packed_type>(max_index));
-  135|   212k|  }
+  133|   289k|  METL_NODISCARD constexpr index_type index() const noexcept {
+  134|   289k|    return static_cast<index_type>(value_ & static_cast<packed_type>(max_index));
+  135|   289k|  }
 
