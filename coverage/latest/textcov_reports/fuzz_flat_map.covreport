@@ -1,483 +1,483 @@
 LLVMFuzzerTestOneInput:
-   77|    587|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
-   78|    587|  metl_fuzz::byte_reader in(data, size);
-   79|    587|  map_type map;
-   80|    587|  oracle_type oracle(map);
+   77|    856|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
+   78|    856|  metl_fuzz::byte_reader in(data, size);
+   79|    856|  map_type map;
+   80|    856|  oracle_type oracle(map);
    81|       |
-   82|  60.0k|  while (!in.empty()) {
+   82|   109k|  while (!in.empty()) {
   ------------------
-  |  Branch (82:10): [True: 59.4k, False: 587]
+  |  Branch (82:10): [True: 108k, False: 856]
   ------------------
-   83|  59.4k|    const key_type key = static_cast<key_type>(in.integer<key_type>() % kKeySpace);
-   84|  59.4k|    switch (in.byte() % 8u) {
-   85|  25.6k|      case 0: {  // try_emplace — false on duplicate key or full (no assert)
+   83|   108k|    const key_type key = static_cast<key_type>(in.integer<key_type>() % kKeySpace);
+   84|   108k|    switch (in.byte() % 8u) {
+   85|  48.2k|      case 0: {  // try_emplace — false on duplicate key or full (no assert)
   ------------------
-  |  Branch (85:7): [True: 25.6k, False: 33.8k]
+  |  Branch (85:7): [True: 48.2k, False: 60.6k]
   ------------------
-   86|  25.6k|        oracle.try_emplace(key, in.integer<mapped_type>());
-   87|  25.6k|        break;
+   86|  48.2k|        oracle.try_emplace(key, in.integer<mapped_type>());
+   87|  48.2k|        break;
    88|      0|      }
-   89|  10.8k|      case 1: {  // try_insert_or_assign — false only if a NEW key cannot fit
+   89|  18.4k|      case 1: {  // try_insert_or_assign — false only if a NEW key cannot fit
   ------------------
-  |  Branch (89:7): [True: 10.8k, False: 48.5k]
+  |  Branch (89:7): [True: 18.4k, False: 90.4k]
   ------------------
-   90|  10.8k|        oracle.try_insert_or_assign(key, in.integer<mapped_type>());
-   91|  10.8k|        break;
+   90|  18.4k|        oracle.try_insert_or_assign(key, in.integer<mapped_type>());
+   91|  18.4k|        break;
    92|      0|      }
-   93|  3.34k|      case 2: {  // erase — false if absent
+   93|  6.17k|      case 2: {  // erase — false if absent
   ------------------
-  |  Branch (93:7): [True: 3.34k, False: 56.1k]
+  |  Branch (93:7): [True: 6.17k, False: 102k]
   ------------------
-   94|  3.34k|        oracle.erase(key);
-   95|  3.34k|        break;
+   94|  6.17k|        oracle.erase(key);
+   95|  6.17k|        break;
    96|      0|      }
-   97|  4.48k|      case 3: {  // find / contains, and the VALUE behind them
+   97|  8.08k|      case 3: {  // find / contains, and the VALUE behind them
   ------------------
-  |  Branch (97:7): [True: 4.48k, False: 54.9k]
+  |  Branch (97:7): [True: 8.08k, False: 100k]
   ------------------
-   98|  4.48k|        oracle.lookup(key);
-   99|  4.48k|        break;
+   98|  8.08k|        oracle.lookup(key);
+   99|  8.08k|        break;
   100|      0|      }
-  101|  3.98k|      case 4: {  // positional access, always bounded
+  101|  6.86k|      case 4: {  // positional access, always bounded
   ------------------
-  |  Branch (101:7): [True: 3.98k, False: 55.4k]
+  |  Branch (101:7): [True: 6.86k, False: 102k]
   ------------------
-  102|  3.98k|        if (!map.empty()) {
+  102|  6.86k|        if (!map.empty()) {
   ------------------
-  |  Branch (102:13): [True: 3.53k, False: 452]
+  |  Branch (102:13): [True: 6.15k, False: 709]
   ------------------
-  103|  3.53k|          const std::size_t idx = in.byte() % map.size();
+  103|  6.15k|          const std::size_t idx = in.byte() % map.size();
   104|       |          // nth(i) must name the same element the model has at position i.
   105|       |          // Sorted order is the whole reason a caller would index into this
   106|       |          // container rather than look a key up.
-  107|  3.53k|          auto expected = oracle.model().begin();
-  108|  3.53k|          std::advance(expected, static_cast<std::ptrdiff_t>(idx));
-  109|  3.53k|          metl_fuzz::require(map.nth(idx).key == expected->first);
-  110|  3.53k|          metl_fuzz::require(map.nth(idx).value == expected->second);
-  111|  3.53k|        }
-  112|  3.98k|        break;
+  107|  6.15k|          auto expected = oracle.model().begin();
+  108|  6.15k|          std::advance(expected, static_cast<std::ptrdiff_t>(idx));
+  109|  6.15k|          metl_fuzz::require(map.nth(idx).key == expected->first);
+  110|  6.15k|          metl_fuzz::require(map.nth(idx).value == expected->second);
+  111|  6.15k|        }
+  112|  6.86k|        break;
   113|      0|      }
-  114|  3.55k|      case 5: {  // full iteration
+  114|  6.69k|      case 5: {  // full iteration
   ------------------
-  |  Branch (114:7): [True: 3.55k, False: 55.8k]
+  |  Branch (114:7): [True: 6.69k, False: 102k]
   ------------------
-  115|  3.55k|        std::uint64_t acc = 0;
-  116|  26.5k|        for (const auto& item : map) {
+  115|  6.69k|        std::uint64_t acc = 0;
+  116|  49.8k|        for (const auto& item : map) {
   ------------------
-  |  Branch (116:31): [True: 26.5k, False: 3.55k]
+  |  Branch (116:31): [True: 49.8k, False: 6.69k]
   ------------------
-  117|  26.5k|          acc += item.value;
-  118|  26.5k|        }
-  119|  3.55k|        std::uint64_t expected = 0;
-  120|  26.5k|        for (const auto& entry : oracle.model()) {
+  117|  49.8k|          acc += item.value;
+  118|  49.8k|        }
+  119|  6.69k|        std::uint64_t expected = 0;
+  120|  49.8k|        for (const auto& entry : oracle.model()) {
   ------------------
-  |  Branch (120:32): [True: 26.5k, False: 3.55k]
+  |  Branch (120:32): [True: 49.8k, False: 6.69k]
   ------------------
-  121|  26.5k|          expected += entry.second;
-  122|  26.5k|        }
-  123|  3.55k|        metl_fuzz::require(acc == expected);
-  124|  3.55k|        break;
+  121|  49.8k|          expected += entry.second;
+  122|  49.8k|        }
+  123|  6.69k|        metl_fuzz::require(acc == expected);
+  124|  6.69k|        break;
   125|      0|      }
-  126|  4.18k|      case 6: {  // erase_run — consecutive erases, walking the shift path
+  126|  7.97k|      case 6: {  // erase_run — consecutive erases, walking the shift path
   ------------------
-  |  Branch (126:7): [True: 4.18k, False: 55.2k]
+  |  Branch (126:7): [True: 7.97k, False: 100k]
   ------------------
-  127|  4.18k|        const std::size_t run = 1u + (in.byte() % kMaxEraseRun);
-  128|  89.9k|        for (std::size_t i = 0; i < run; ++i) {
+  127|  7.97k|        const std::size_t run = 1u + (in.byte() % kMaxEraseRun);
+  128|   171k|        for (std::size_t i = 0; i < run; ++i) {
   ------------------
-  |  Branch (128:33): [True: 85.7k, False: 4.18k]
+  |  Branch (128:33): [True: 163k, False: 7.97k]
   ------------------
-  129|  85.7k|          oracle.erase(static_cast<key_type>((key + i) % kKeySpace));
-  130|  85.7k|        }
-  131|  4.18k|        break;
+  129|   163k|          oracle.erase(static_cast<key_type>((key + i) % kKeySpace));
+  130|   163k|        }
+  131|  7.97k|        break;
   132|      0|      }
-  133|  3.39k|      default: {  // clear
+  133|  6.41k|      default: {  // clear
   ------------------
-  |  Branch (133:7): [True: 3.39k, False: 56.0k]
+  |  Branch (133:7): [True: 6.41k, False: 102k]
   ------------------
-  134|  3.39k|        oracle.clear();
-  135|  3.39k|        break;
+  134|  6.41k|        oracle.clear();
+  135|  6.41k|        break;
   136|      0|      }
-  137|  59.4k|    }
-  138|  59.4k|    check_sorted(map);
-  139|  59.4k|  }
+  137|   108k|    }
+  138|   108k|    check_sorted(map);
+  139|   108k|  }
   140|       |
-  141|    587|  oracle.verify();
-  142|    587|  return 0;
-  143|    587|}
+  141|    856|  oracle.verify();
+  142|    856|  return 0;
+  143|    856|}
 fuzz_flat_map.cpp:_ZN12_GLOBAL__N_112check_sortedERKN4metl8flat_mapItjLm32ENSt3__14lessItEEEE:
-   68|  59.4k|void check_sorted(const map_type& map) {
-   69|  59.4k|  metl_fuzz::require(map.size() <= map.capacity());
-   70|   407k|  for (std::size_t i = 1; i < map.size(); ++i) {
+   68|   108k|void check_sorted(const map_type& map) {
+   69|   108k|  metl_fuzz::require(map.size() <= map.capacity());
+   70|   751k|  for (std::size_t i = 1; i < map.size(); ++i) {
   ------------------
-  |  Branch (70:27): [True: 347k, False: 59.4k]
+  |  Branch (70:27): [True: 642k, False: 108k]
   ------------------
-   71|   347k|    metl_fuzz::require(map[i - 1].key < map[i].key);
-   72|   347k|  }
-   73|  59.4k|}
+   71|   642k|    metl_fuzz::require(map[i - 1].key < map[i].key);
+   72|   642k|  }
+   73|   108k|}
 
 _ZN9metl_fuzz11byte_readerC2EPKhm:
-   31|    587|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
+   31|    856|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
 _ZNK9metl_fuzz11byte_reader5emptyEv:
-   34|  60.0k|  bool empty() const noexcept { return remaining() == 0; }
+   34|   109k|  bool empty() const noexcept { return remaining() == 0; }
 _ZNK9metl_fuzz11byte_reader9remainingEv:
-   33|  60.0k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
+   33|   109k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
   ------------------
-  |  Branch (33:51): [True: 59.4k, False: 587]
+  |  Branch (33:51): [True: 108k, False: 856]
   ------------------
 _ZN9metl_fuzz11byte_reader4byteEv:
-   37|   332k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
+   37|   607k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
   ------------------
-  |  Branch (37:41): [True: 330k, False: 1.76k]
+  |  Branch (37:41): [True: 605k, False: 2.64k]
   ------------------
 _ZN9metl_fuzz11byte_reader7integerItEET_v:
-   41|  59.4k|  UInt integer() noexcept {
-   42|  59.4k|    UInt value = 0;
-   43|   178k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
+   41|   108k|  UInt integer() noexcept {
+   42|   108k|    UInt value = 0;
+   43|   326k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
   ------------------
-  |  Branch (43:29): [True: 118k, False: 59.4k]
+  |  Branch (43:29): [True: 217k, False: 108k]
   ------------------
-   44|   118k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
-   45|   118k|    }
-   46|  59.4k|    return value;
-   47|  59.4k|  }
+   44|   217k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
+   45|   217k|    }
+   46|   108k|    return value;
+   47|   108k|  }
 _ZN9metl_fuzz11byte_reader7integerIjEET_v:
-   41|  36.4k|  UInt integer() noexcept {
-   42|  36.4k|    UInt value = 0;
-   43|   182k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
+   41|  66.7k|  UInt integer() noexcept {
+   42|  66.7k|    UInt value = 0;
+   43|   333k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
   ------------------
-  |  Branch (43:29): [True: 145k, False: 36.4k]
+  |  Branch (43:29): [True: 266k, False: 66.7k]
   ------------------
-   44|   145k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
-   45|   145k|    }
-   46|  36.4k|    return value;
-   47|  36.4k|  }
+   44|   266k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
+   45|   266k|    }
+   46|  66.7k|    return value;
+   47|  66.7k|  }
 
 _ZN9metl_fuzz7requireEb:
-   43|  5.58M|inline void require(bool condition) noexcept {
-   44|  5.58M|  if (!condition) {
+   43|  10.4M|inline void require(bool condition) noexcept {
+   44|  10.4M|  if (!condition) {
   ------------------
-  |  Branch (44:7): [True: 0, False: 5.58M]
+  |  Branch (44:7): [True: 0, False: 10.4M]
   ------------------
    45|      0|    __builtin_trap();
    46|      0|  }
-   47|  5.58M|}
+   47|  10.4M|}
 _ZN9metl_fuzz10map_oracleIN4metl8flat_mapItjLm32ENSt3__14lessItEEEEtjLb1EEC2ERS6_:
-   61|    587|  explicit map_oracle(Map& map) noexcept : map_(map) {}
+   61|    856|  explicit map_oracle(Map& map) noexcept : map_(map) {}
 _ZN9metl_fuzz10map_oracleIN4metl8flat_mapItjLm32ENSt3__14lessItEEEEtjLb1EE11try_emplaceEtj:
-   63|  25.6k|  void try_emplace(Key key, Value value) {
-   64|  25.6k|    const bool absent = model_.find(key) == model_.end();
-   65|  25.6k|    const bool room = model_.size() < map_.capacity();
-   66|  25.6k|    const bool expected = absent && room;
+   63|  48.2k|  void try_emplace(Key key, Value value) {
+   64|  48.2k|    const bool absent = model_.find(key) == model_.end();
+   65|  48.2k|    const bool room = model_.size() < map_.capacity();
+   66|  48.2k|    const bool expected = absent && room;
   ------------------
-  |  Branch (66:27): [True: 14.3k, False: 11.2k]
-  |  Branch (66:37): [True: 14.3k, False: 70]
+  |  Branch (66:27): [True: 27.3k, False: 20.9k]
+  |  Branch (66:37): [True: 27.1k, False: 151]
   ------------------
    67|       |
-   68|  25.6k|    require(map_.try_emplace(Key{key}, Value{value}) == expected);
-   69|  25.6k|    if (expected) {
+   68|  48.2k|    require(map_.try_emplace(Key{key}, Value{value}) == expected);
+   69|  48.2k|    if (expected) {
   ------------------
-  |  Branch (69:9): [True: 14.3k, False: 11.3k]
+  |  Branch (69:9): [True: 27.1k, False: 21.0k]
   ------------------
-   70|  14.3k|      model_.emplace(key, value);
-   71|  14.3k|    }
-   72|  25.6k|    verify();
-   73|  25.6k|  }
+   70|  27.1k|      model_.emplace(key, value);
+   71|  27.1k|    }
+   72|  48.2k|    verify();
+   73|  48.2k|  }
 _ZN9metl_fuzz10map_oracleIN4metl8flat_mapItjLm32ENSt3__14lessItEEEEtjLb1EE20try_insert_or_assignEtj:
-   75|  10.8k|  void try_insert_or_assign(Key key, Value value) {
-   76|  10.8k|    const bool present = model_.find(key) != model_.end();
-   77|  10.8k|    const bool room = model_.size() < map_.capacity();
+   75|  18.4k|  void try_insert_or_assign(Key key, Value value) {
+   76|  18.4k|    const bool present = model_.find(key) != model_.end();
+   77|  18.4k|    const bool room = model_.size() < map_.capacity();
    78|       |    // Assigning over an existing key always fits; only a NEW key can be
    79|       |    // refused. Getting this backwards is exactly the kind of contract detail a
    80|       |    // hand-written invariant check does not notice.
-   81|  10.8k|    const bool expected = present || room;
+   81|  18.4k|    const bool expected = present || room;
   ------------------
-  |  Branch (81:27): [True: 5.24k, False: 5.62k]
-  |  Branch (81:38): [True: 5.55k, False: 70]
+  |  Branch (81:27): [True: 8.68k, False: 9.74k]
+  |  Branch (81:38): [True: 9.56k, False: 178]
   ------------------
    82|       |
-   83|  10.8k|    require(map_.try_insert_or_assign(Key{key}, Value{value}) == expected);
-   84|  10.8k|    if (expected) {
+   83|  18.4k|    require(map_.try_insert_or_assign(Key{key}, Value{value}) == expected);
+   84|  18.4k|    if (expected) {
   ------------------
-  |  Branch (84:9): [True: 10.8k, False: 70]
+  |  Branch (84:9): [True: 18.2k, False: 178]
   ------------------
-   85|  10.8k|      model_[key] = value;
-   86|  10.8k|    }
-   87|  10.8k|    verify();
-   88|  10.8k|  }
+   85|  18.2k|      model_[key] = value;
+   86|  18.2k|    }
+   87|  18.4k|    verify();
+   88|  18.4k|  }
 _ZN9metl_fuzz10map_oracleIN4metl8flat_mapItjLm32ENSt3__14lessItEEEEtjLb1EE5eraseEt:
-   90|  89.1k|  void erase(Key key) {
-   91|  89.1k|    const bool expected = model_.erase(key) != 0;
-   92|  89.1k|    require(map_.erase(key) == expected);
-   93|  89.1k|    verify();
-   94|  89.1k|  }
+   90|   169k|  void erase(Key key) {
+   91|   169k|    const bool expected = model_.erase(key) != 0;
+   92|   169k|    require(map_.erase(key) == expected);
+   93|   169k|    verify();
+   94|   169k|  }
 _ZNK9metl_fuzz10map_oracleIN4metl8flat_mapItjLm32ENSt3__14lessItEEEEtjLb1EE6lookupEt:
-   96|  4.48k|  void lookup(Key key) const {
-   97|  4.48k|    const auto entry = model_.find(key);
-   98|  4.48k|    const Value* found = map_.find(key);
+   96|  8.08k|  void lookup(Key key) const {
+   97|  8.08k|    const auto entry = model_.find(key);
+   98|  8.08k|    const Value* found = map_.find(key);
    99|       |
-  100|  4.48k|    require((found != nullptr) == (entry != model_.end()));
-  101|  4.48k|    require(map_.contains(key) == (entry != model_.end()));
+  100|  8.08k|    require((found != nullptr) == (entry != model_.end()));
+  101|  8.08k|    require(map_.contains(key) == (entry != model_.end()));
   102|       |    // The check the old harness could not make: not just THAT the key is there,
   103|       |    // but that the value stored under it is the one that was put there.
-  104|  4.48k|    if (found != nullptr) {
+  104|  8.08k|    if (found != nullptr) {
   ------------------
-  |  Branch (104:9): [True: 1.51k, False: 2.97k]
+  |  Branch (104:9): [True: 2.55k, False: 5.53k]
   ------------------
-  105|  1.51k|      require(*found == entry->second);
-  106|  1.51k|    }
-  107|  4.48k|  }
+  105|  2.55k|      require(*found == entry->second);
+  106|  2.55k|    }
+  107|  8.08k|  }
 _ZNK9metl_fuzz10map_oracleIN4metl8flat_mapItjLm32ENSt3__14lessItEEEEtjLb1EE5modelEv:
-  150|  7.09k|  const std::map<Key, Value>& model() const noexcept { return model_; }
+  150|  12.8k|  const std::map<Key, Value>& model() const noexcept { return model_; }
 _ZN9metl_fuzz10map_oracleIN4metl8flat_mapItjLm32ENSt3__14lessItEEEEtjLb1EE5clearEv:
-  109|  3.39k|  void clear() {
-  110|  3.39k|    map_.clear();
-  111|  3.39k|    model_.clear();
-  112|  3.39k|    verify();
-  113|  3.39k|  }
+  109|  6.41k|  void clear() {
+  110|  6.41k|    map_.clear();
+  111|  6.41k|    model_.clear();
+  112|  6.41k|    verify();
+  113|  6.41k|  }
 _ZNK9metl_fuzz10map_oracleIN4metl8flat_mapItjLm32ENSt3__14lessItEEEEtjLb1EE6verifyEv:
-  118|   129k|  void verify() const {
-  119|   129k|    require(map_.size() == model_.size());
-  120|   129k|    require(map_.empty() == model_.empty());
-  121|   129k|    require(map_.size() <= map_.capacity());
+  118|   243k|  void verify() const {
+  119|   243k|    require(map_.size() == model_.size());
+  120|   243k|    require(map_.empty() == model_.empty());
+  121|   243k|    require(map_.size() <= map_.capacity());
   122|       |
   123|       |    // Model -> container: everything that should be there is, with the right
   124|       |    // value.
-  125|   644k|    for (const auto& entry : model_) {
+  125|  1.19M|    for (const auto& entry : model_) {
   ------------------
-  |  Branch (125:28): [True: 644k, False: 129k]
+  |  Branch (125:28): [True: 1.19M, False: 243k]
   ------------------
-  126|   644k|      const Value* found = map_.find(entry.first);
-  127|   644k|      require(found != nullptr);
-  128|   644k|      require(*found == entry.second);
-  129|   644k|    }
+  126|  1.19M|      const Value* found = map_.find(entry.first);
+  127|  1.19M|      require(found != nullptr);
+  128|  1.19M|      require(*found == entry.second);
+  129|  1.19M|    }
   130|       |
   131|       |    // Container -> model: nothing extra, and iteration agrees with lookup. With
   132|       |    // equal sizes and both directions clean, the two are exactly equal.
-  133|   129k|    std::size_t seen = 0;
-  134|   129k|    auto expected = model_.begin();
-  135|   644k|    for (const auto& item : map_) {
+  133|   243k|    std::size_t seen = 0;
+  134|   243k|    auto expected = model_.begin();
+  135|  1.19M|    for (const auto& item : map_) {
   ------------------
-  |  Branch (135:27): [True: 644k, False: 129k]
+  |  Branch (135:27): [True: 1.19M, False: 243k]
   ------------------
-  136|   644k|      const auto entry = model_.find(item.key);
-  137|   644k|      require(entry != model_.end());
-  138|   644k|      require(item.value == entry->second);
-  139|   644k|      if (Ordered) {
+  136|  1.19M|      const auto entry = model_.find(item.key);
+  137|  1.19M|      require(entry != model_.end());
+  138|  1.19M|      require(item.value == entry->second);
+  139|  1.19M|      if (Ordered) {
   ------------------
-  |  Branch (139:11): [True: 644k, Folded]
+  |  Branch (139:11): [True: 1.19M, Folded]
   ------------------
-  140|   644k|        require(expected != model_.end());
-  141|   644k|        require(item.key == expected->first);
-  142|   644k|        require(item.value == expected->second);
-  143|   644k|        ++expected;
-  144|   644k|      }
-  145|   644k|      ++seen;
-  146|   644k|    }
-  147|   129k|    require(seen == model_.size());
-  148|   129k|  }
+  140|  1.19M|        require(expected != model_.end());
+  141|  1.19M|        require(item.key == expected->first);
+  142|  1.19M|        require(item.value == expected->second);
+  143|  1.19M|        ++expected;
+  144|  1.19M|      }
+  145|  1.19M|      ++seen;
+  146|  1.19M|    }
+  147|   243k|    require(seen == model_.size());
+  148|   243k|  }
 
 _ZN4metl8flat_mapItjLm32ENSt3__14lessItEEEC2Ev:
-   72|    587|  constexpr flat_map() noexcept(std::is_nothrow_default_constructible_v<Compare>) : comp_(), size_(0) {}
+   72|    856|  constexpr flat_map() noexcept(std::is_nothrow_default_constructible_v<Compare>) : comp_(), size_(0) {}
 _ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEE8capacityEv:
-  146|   225k|  METL_NODISCARD size_type capacity() const noexcept { return Capacity; }
+  146|   419k|  METL_NODISCARD size_type capacity() const noexcept { return Capacity; }
 _ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEEixEm:
-  165|   695k|  METL_NODISCARD const_reference operator[](size_type index) const noexcept {
-  166|   695k|    METL_ASSERT(index < size_);
+  165|  1.28M|  METL_NODISCARD const_reference operator[](size_type index) const noexcept {
+  166|  1.28M|    METL_ASSERT(index < size_);
   ------------------
-  |  |   91|   695k|  do {                                                             \
-  |  |   92|   695k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|  1.28M|  do {                                                             \
+  |  |   92|  1.28M|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|   695k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  1.28M|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 695k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 1.28M]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|   695k|  } while (false)
+  |  |   95|  1.28M|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 695k]
+  |  |  |  Branch (95:12): [Folded, False: 1.28M]
   |  |  ------------------
   ------------------
-  167|   695k|    return data()[index];
-  168|   695k|  }
+  167|  1.28M|    return data()[index];
+  168|  1.28M|  }
 _ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEE4dataEv:
-  425|  3.15M|  const value_type* data() const noexcept {
-  426|  3.15M|    return std::launder(reinterpret_cast<const value_type*>(storage_[0].addr()));
-  427|  3.15M|  }
+  425|  5.84M|  const value_type* data() const noexcept {
+  426|  5.84M|    return std::launder(reinterpret_cast<const value_type*>(storage_[0].addr()));
+  427|  5.84M|  }
 _ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEE4sizeEv:
-  144|   729k|  METL_NODISCARD size_type size() const noexcept { return size_; }
+  144|  1.35M|  METL_NODISCARD size_type size() const noexcept { return size_; }
 _ZN4metl8flat_mapItjLm32ENSt3__14lessItEEED2Ev:
-   96|    587|  ~flat_map() { clear(); }
+   96|    856|  ~flat_map() { clear(); }
 _ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE5clearEv:
-  417|  3.98k|  void clear() noexcept {
-  418|  14.3k|    while (size_ > 0) {
+  417|  7.26k|  void clear() noexcept {
+  418|  26.4k|    while (size_ > 0) {
   ------------------
-  |  Branch (418:12): [True: 10.3k, False: 3.98k]
+  |  Branch (418:12): [True: 19.2k, False: 7.26k]
   ------------------
-  419|  10.3k|      erase_at(size_ - 1);
-  420|  10.3k|    }
-  421|  3.98k|  }
+  419|  19.2k|      erase_at(size_ - 1);
+  420|  19.2k|    }
+  421|  7.26k|  }
 _ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE8erase_atEm:
-  499|  19.8k|  void erase_at(size_type index) noexcept {
-  500|  19.8k|    data()[index].~value_type();
-  501|  70.8k|    for (size_type i = index; i + 1 < size_; ++i) {
+  499|  36.7k|  void erase_at(size_type index) noexcept {
+  500|  36.7k|    data()[index].~value_type();
+  501|   129k|    for (size_type i = index; i + 1 < size_; ++i) {
   ------------------
-  |  Branch (501:31): [True: 50.9k, False: 19.8k]
+  |  Branch (501:31): [True: 92.2k, False: 36.7k]
   ------------------
-  502|  50.9k|      new (storage_[i].addr()) value_type(static_cast<value_type&&>(data()[i + 1]));
-  503|  50.9k|      data()[i + 1].~value_type();
-  504|  50.9k|    }
-  505|  19.8k|    --size_;
-  506|  19.8k|  }
+  502|  92.2k|      new (storage_[i].addr()) value_type(static_cast<value_type&&>(data()[i + 1]));
+  503|  92.2k|      data()[i + 1].~value_type();
+  504|  92.2k|    }
+  505|  36.7k|    --size_;
+  506|  36.7k|  }
 _ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE4dataEv:
-  424|  1.88M|  value_type* data() noexcept { return std::launder(reinterpret_cast<value_type*>(storage_[0].addr())); }
+  424|  3.51M|  value_type* data() noexcept { return std::launder(reinterpret_cast<value_type*>(storage_[0].addr())); }
 _ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE11try_emplaceItjEEbOT_OT0_:
-  345|  25.6k|  METL_NODISCARD bool try_emplace(K&& key, V&& value) {
-  346|  25.6k|    const size_type index = lower_bound_index(key);
-  347|  25.6k|    if (index < size_ && !comp_(key, data()[index].key)) {
+  345|  48.2k|  METL_NODISCARD bool try_emplace(K&& key, V&& value) {
+  346|  48.2k|    const size_type index = lower_bound_index(key);
+  347|  48.2k|    if (index < size_ && !comp_(key, data()[index].key)) {
   ------------------
-  |  Branch (347:9): [True: 22.0k, False: 3.60k]
-  |  Branch (347:26): [True: 11.2k, False: 10.7k]
+  |  Branch (347:9): [True: 41.2k, False: 6.98k]
+  |  Branch (347:26): [True: 20.9k, False: 20.3k]
   ------------------
-  348|  11.2k|      return false;
-  349|  11.2k|    }
+  348|  20.9k|      return false;
+  349|  20.9k|    }
   350|       |
-  351|  14.3k|    return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
-  352|  25.6k|  }
+  351|  27.3k|    return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
+  352|  48.2k|  }
 _ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEE17lower_bound_indexItEEmRKT_:
-  430|   779k|  size_type lower_bound_index(const K& key) const noexcept {
-  431|   779k|    size_type first = 0;
-  432|   779k|    size_type count = size_;
-  433|  3.22M|    while (count > 0) {
+  430|  1.45M|  size_type lower_bound_index(const K& key) const noexcept {
+  431|  1.45M|    size_type first = 0;
+  432|  1.45M|    size_type count = size_;
+  433|  6.00M|    while (count > 0) {
   ------------------
-  |  Branch (433:12): [True: 2.44M, False: 779k]
+  |  Branch (433:12): [True: 4.55M, False: 1.45M]
   ------------------
-  434|  2.44M|      const size_type step = count / 2;
-  435|  2.44M|      const size_type index = first + step;
-  436|  2.44M|      if (comp_(data()[index].key, key)) {
+  434|  4.55M|      const size_type step = count / 2;
+  435|  4.55M|      const size_type index = first + step;
+  436|  4.55M|      if (comp_(data()[index].key, key)) {
   ------------------
-  |  Branch (436:11): [True: 971k, False: 1.47M]
+  |  Branch (436:11): [True: 1.81M, False: 2.74M]
   ------------------
-  437|   971k|        first = index + 1;
-  438|   971k|        count -= step + 1;
-  439|  1.47M|      } else {
-  440|  1.47M|        count = step;
-  441|  1.47M|      }
-  442|  2.44M|    }
-  443|   779k|    return first;
-  444|   779k|  }
+  437|  1.81M|        first = index + 1;
+  438|  1.81M|        count -= step + 1;
+  439|  2.74M|      } else {
+  440|  2.74M|        count = step;
+  441|  2.74M|      }
+  442|  4.55M|    }
+  443|  1.45M|    return first;
+  444|  1.45M|  }
 _ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE13try_insert_atItjEEbmOT_OT0_:
-  481|  20.0k|  METL_NODISCARD bool try_insert_at(size_type index, K&& key, V&& value) {
-  482|  20.0k|    if (full()) {
+  481|  37.0k|  METL_NODISCARD bool try_insert_at(size_type index, K&& key, V&& value) {
+  482|  37.0k|    if (full()) {
   ------------------
-  |  Branch (482:9): [True: 140, False: 19.8k]
+  |  Branch (482:9): [True: 329, False: 36.7k]
   ------------------
-  483|    140|      return false;
-  484|    140|    }
+  483|    329|      return false;
+  484|    329|    }
   485|       |
-  486|  19.8k|    shift_right_from(index);
-  487|  19.8k|    new (storage_[index].addr()) value_type{std::forward<K>(key), std::forward<V>(value)};
-  488|  19.8k|    ++size_;
-  489|  19.8k|    return true;
-  490|  20.0k|  }
+  486|  36.7k|    shift_right_from(index);
+  487|  36.7k|    new (storage_[index].addr()) value_type{std::forward<K>(key), std::forward<V>(value)};
+  488|  36.7k|    ++size_;
+  489|  36.7k|    return true;
+  490|  37.0k|  }
 _ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEE4fullEv:
-  142|  20.0k|  METL_NODISCARD bool full() const noexcept { return size_ == Capacity; }
+  142|  37.0k|  METL_NODISCARD bool full() const noexcept { return size_ == Capacity; }
 _ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE16shift_right_fromEm:
-  492|  19.8k|  void shift_right_from(size_type index) {
-  493|  77.6k|    for (size_type i = size_; i > index; --i) {
+  492|  36.7k|  void shift_right_from(size_type index) {
+  493|   142k|    for (size_type i = size_; i > index; --i) {
   ------------------
-  |  Branch (493:31): [True: 57.7k, False: 19.8k]
+  |  Branch (493:31): [True: 105k, False: 36.7k]
   ------------------
-  494|  57.7k|      new (storage_[i].addr()) value_type(static_cast<value_type&&>(data()[i - 1]));
-  495|  57.7k|      data()[i - 1].~value_type();
-  496|  57.7k|    }
-  497|  19.8k|  }
+  494|   105k|      new (storage_[i].addr()) value_type(static_cast<value_type&&>(data()[i - 1]));
+  495|   105k|      data()[i - 1].~value_type();
+  496|   105k|    }
+  497|  36.7k|  }
 _ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE20try_insert_or_assignItjEEbOT_OT0_:
-  379|  10.8k|  METL_NODISCARD bool try_insert_or_assign(K&& key, V&& value) {
-  380|  10.8k|    const size_type index = lower_bound_index(key);
-  381|  10.8k|    if (index < size_ && !comp_(key, data()[index].key)) {
+  379|  18.4k|  METL_NODISCARD bool try_insert_or_assign(K&& key, V&& value) {
+  380|  18.4k|    const size_type index = lower_bound_index(key);
+  381|  18.4k|    if (index < size_ && !comp_(key, data()[index].key)) {
   ------------------
-  |  Branch (381:9): [True: 8.58k, False: 2.29k]
-  |  Branch (381:26): [True: 5.24k, False: 3.33k]
+  |  Branch (381:9): [True: 14.5k, False: 3.86k]
+  |  Branch (381:26): [True: 8.68k, False: 5.88k]
   ------------------
-  382|  5.24k|      data()[index].value = std::forward<V>(value);
-  383|  5.24k|      return true;
-  384|  5.24k|    }
+  382|  8.68k|      data()[index].value = std::forward<V>(value);
+  383|  8.68k|      return true;
+  384|  8.68k|    }
   385|       |
-  386|  5.62k|    return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
-  387|  10.8k|  }
+  386|  9.74k|    return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
+  387|  18.4k|  }
 _ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE5eraseERKt:
-  406|  89.1k|  bool erase(const key_type& key) noexcept {
-  407|  89.1k|    const size_type index = lower_bound_index(key);
-  408|  89.1k|    if (index >= size_ || comp_(key, data()[index].key)) {
+  406|   169k|  bool erase(const key_type& key) noexcept {
+  407|   169k|    const size_type index = lower_bound_index(key);
+  408|   169k|    if (index >= size_ || comp_(key, data()[index].key)) {
   ------------------
-  |  Branch (408:9): [True: 40.4k, False: 48.6k]
-  |  Branch (408:27): [True: 39.1k, False: 9.52k]
+  |  Branch (408:9): [True: 79.1k, False: 90.8k]
+  |  Branch (408:27): [True: 73.3k, False: 17.5k]
   ------------------
-  409|  79.6k|      return false;
-  410|  79.6k|    }
+  409|   152k|      return false;
+  410|   152k|    }
   411|       |
-  412|  9.52k|    erase_at(index);
-  413|  9.52k|    return true;
-  414|  89.1k|  }
+  412|  17.5k|    erase_at(index);
+  413|  17.5k|    return true;
+  414|   169k|  }
 _ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE4findERKt:
-  235|   649k|  METL_NODISCARD mapped_type* find(const key_type& key) noexcept {
-  236|   649k|    const size_type index = lower_bound_index(key);
-  237|   649k|    if (index < size_ && !comp_(key, data()[index].key)) {
+  235|  1.20M|  METL_NODISCARD mapped_type* find(const key_type& key) noexcept {
+  236|  1.20M|    const size_type index = lower_bound_index(key);
+  237|  1.20M|    if (index < size_ && !comp_(key, data()[index].key)) {
   ------------------
-  |  Branch (237:9): [True: 648k, False: 962]
-  |  Branch (237:26): [True: 646k, False: 2.00k]
+  |  Branch (237:9): [True: 1.20M, False: 1.74k]
+  |  Branch (237:26): [True: 1.20M, False: 3.78k]
   ------------------
-  238|   646k|      return &data()[index].value;
-  239|   646k|    }
-  240|  2.97k|    return nullptr;
-  241|   649k|  }
+  238|  1.20M|      return &data()[index].value;
+  239|  1.20M|    }
+  240|  5.53k|    return nullptr;
+  241|  1.20M|  }
 _ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEE8containsERKt:
-  231|  4.48k|  METL_NODISCARD bool contains(const key_type& key) const noexcept { return find(key) != nullptr; }
+  231|  8.08k|  METL_NODISCARD bool contains(const key_type& key) const noexcept { return find(key) != nullptr; }
 _ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEE4findERKt:
-  243|  4.48k|  METL_NODISCARD const mapped_type* find(const key_type& key) const noexcept {
-  244|  4.48k|    const size_type index = lower_bound_index(key);
-  245|  4.48k|    if (index < size_ && !comp_(key, data()[index].key)) {
+  243|  8.08k|  METL_NODISCARD const mapped_type* find(const key_type& key) const noexcept {
+  244|  8.08k|    const size_type index = lower_bound_index(key);
+  245|  8.08k|    if (index < size_ && !comp_(key, data()[index].key)) {
   ------------------
-  |  Branch (245:9): [True: 3.52k, False: 962]
-  |  Branch (245:26): [True: 1.51k, False: 2.00k]
+  |  Branch (245:9): [True: 6.33k, False: 1.74k]
+  |  Branch (245:26): [True: 2.55k, False: 3.78k]
   ------------------
-  246|  1.51k|      return &data()[index].value;
-  247|  1.51k|    }
-  248|  2.97k|    return nullptr;
-  249|  4.48k|  }
+  246|  2.55k|      return &data()[index].value;
+  247|  2.55k|    }
+  248|  5.53k|    return nullptr;
+  249|  8.08k|  }
 _ZNK4metl8flat_mapItjLm32ENSt3__14lessItEEE5emptyEv:
-  140|   133k|  METL_NODISCARD bool empty() const noexcept { return size_ == 0; }
+  140|   250k|  METL_NODISCARD bool empty() const noexcept { return size_ == 0; }
 _ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE3nthEm:
-  189|  7.06k|  METL_NODISCARD reference nth(size_type index) noexcept {
-  190|  7.06k|    METL_ASSERT(index < size_);
+  189|  12.3k|  METL_NODISCARD reference nth(size_type index) noexcept {
+  190|  12.3k|    METL_ASSERT(index < size_);
   ------------------
-  |  |   91|  7.06k|  do {                                                             \
-  |  |   92|  7.06k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|  12.3k|  do {                                                             \
+  |  |   92|  12.3k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|  7.06k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  12.3k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 7.06k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 12.3k]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|  7.06k|  } while (false)
+  |  |   95|  12.3k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 7.06k]
+  |  |  |  Branch (95:12): [Folded, False: 12.3k]
   |  |  ------------------
   ------------------
-  191|  7.06k|    return data()[index];
-  192|  7.06k|  }
+  191|  12.3k|    return data()[index];
+  192|  12.3k|  }
 _ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE5beginEv:
-  130|   133k|  METL_NODISCARD iterator begin() noexcept { return data(); }
+  130|   250k|  METL_NODISCARD iterator begin() noexcept { return data(); }
 _ZN4metl8flat_mapItjLm32ENSt3__14lessItEEE3endEv:
-  135|   133k|  METL_NODISCARD iterator end() noexcept { return data() + size_; }
+  135|   250k|  METL_NODISCARD iterator end() noexcept { return data() + size_; }
 
 _ZNK4metl11storage_forINS_8flat_mapItjLm32ENSt3__14lessItEEE10value_typeEE4addrEv:
-   36|  3.15M|  const void* addr() const noexcept { return &bytes[0]; }
+   36|  5.84M|  const void* addr() const noexcept { return &bytes[0]; }
 _ZN4metl11storage_forINS_8flat_mapItjLm32ENSt3__14lessItEEE10value_typeEE4addrEv:
-   34|  2.01M|  void* addr() noexcept { return &bytes[0]; }
+   34|  3.74M|  void* addr() noexcept { return &bytes[0]; }
 
