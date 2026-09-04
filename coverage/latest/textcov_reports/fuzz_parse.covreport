@@ -1,162 +1,162 @@
 _ZN9metl_fuzz11byte_readerC2EPKhm:
-   31|    193|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
+   31|    190|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
 _ZN9metl_fuzz11byte_reader7integerImEET_v:
-   41|    579|  UInt integer() noexcept {
-   42|    579|    UInt value = 0;
-   43|  5.21k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
+   41|    570|  UInt integer() noexcept {
+   42|    570|    UInt value = 0;
+   43|  5.13k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
   ------------------
-  |  Branch (43:29): [True: 4.63k, False: 579]
+  |  Branch (43:29): [True: 4.56k, False: 570]
   ------------------
-   44|  4.63k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
-   45|  4.63k|    }
-   46|    579|    return value;
-   47|    579|  }
+   44|  4.56k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
+   45|  4.56k|    }
+   46|    570|    return value;
+   47|    570|  }
 _ZN9metl_fuzz11byte_reader4byteEv:
-   37|  4.82k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
+   37|  4.75k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
   ------------------
-  |  Branch (37:41): [True: 2.93k, False: 1.88k]
+  |  Branch (37:41): [True: 2.88k, False: 1.87k]
   ------------------
 
 LLVMFuzzerTestOneInput:
-  209|    193|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
+  209|    190|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
   210|       |  // An exact-size copy with no terminator. Under ASan the byte one past the end
   211|       |  // is poisoned, so a parser that scanned for a NUL would crash here instead of
   212|       |  // reading whatever happened to follow the fuzz buffer.
-  213|    193|  char* text_storage = size > 0 ? new char[size] : nullptr;
+  213|    190|  char* text_storage = size > 0 ? new char[size] : nullptr;
   ------------------
-  |  Branch (213:24): [True: 193, False: 0]
+  |  Branch (213:24): [True: 190, False: 0]
   ------------------
-  214|  6.30k|  for (std::size_t i = 0; i < size; ++i) {
+  214|  6.19k|  for (std::size_t i = 0; i < size; ++i) {
   ------------------
-  |  Branch (214:27): [True: 6.11k, False: 193]
+  |  Branch (214:27): [True: 6.00k, False: 190]
   ------------------
-  215|  6.11k|    text_storage[i] = static_cast<char>(data[i]);
-  216|  6.11k|  }
-  217|    193|  const metl::span<const char> text(text_storage, size);
+  215|  6.00k|    text_storage[i] = static_cast<char>(data[i]);
+  216|  6.00k|  }
+  217|    190|  const metl::span<const char> text(text_storage, size);
   218|       |
-  219|    193|  check_unsigned_width<std::uint8_t>(text);
-  220|    193|  check_unsigned_width<std::uint16_t>(text);
-  221|    193|  check_unsigned_width<std::uint32_t>(text);
+  219|    190|  check_unsigned_width<std::uint8_t>(text);
+  220|    190|  check_unsigned_width<std::uint16_t>(text);
+  221|    190|  check_unsigned_width<std::uint32_t>(text);
   222|       |
-  223|    193|  check_signed_width<std::int8_t>(text);
-  224|    193|  check_signed_width<std::int16_t>(text);
-  225|    193|  check_signed_width<std::int32_t>(text);
+  223|    190|  check_signed_width<std::int8_t>(text);
+  224|    190|  check_signed_width<std::int16_t>(text);
+  225|    190|  check_signed_width<std::int32_t>(text);
   226|       |
-  227|    193|  check_hex_width<std::uint8_t>(text);
-  228|    193|  check_hex_width<std::uint16_t>(text);
-  229|    193|  check_hex_width<std::uint32_t>(text);
+  227|    190|  check_hex_width<std::uint8_t>(text);
+  228|    190|  check_hex_width<std::uint16_t>(text);
+  229|    190|  check_hex_width<std::uint32_t>(text);
   230|       |
   231|       |  // Scanning a stream: parse, then keep parsing from the tail. This is the
   232|       |  // usage examples/wire_values.cpp is built on, and it is where a tail that is
   233|       |  // not a strict suffix would loop forever or walk backwards.
-  234|    193|  {
-  235|    193|    metl::span<const char> rest = text;
-  236|  1.22k|    for (int step = 0; step < 8 && !rest.empty(); ++step) {
+  234|    190|  {
+  235|    190|    metl::span<const char> rest = text;
+  236|  1.20k|    for (int step = 0; step < 8 && !rest.empty(); ++step) {
   ------------------
-  |  Branch (236:24): [True: 1.12k, False: 104]
-  |  Branch (236:36): [True: 1.03k, False: 89]
+  |  Branch (236:24): [True: 1.09k, False: 102]
+  |  Branch (236:36): [True: 1.01k, False: 88]
   ------------------
-  237|  1.03k|      const auto next = metl::try_parse_uint<std::uint32_t>(rest);
-  238|  1.03k|      if (!next) {
+  237|  1.01k|      const auto next = metl::try_parse_uint<std::uint32_t>(rest);
+  238|  1.01k|      if (!next) {
   ------------------
-  |  Branch (238:11): [True: 929, False: 103]
+  |  Branch (238:11): [True: 910, False: 101]
   ------------------
   239|       |        // Not a number here; skip one character and try again, exactly as a
   240|       |        // field scanner would.
-  241|    929|        rest = rest.subspan(std::size_t{1});
-  242|    929|        continue;
-  243|    929|      }
-  244|    103|      check_tail(rest, next->tail);
-  245|    103|      if (next->tail.size() >= rest.size()) {
+  241|    910|        rest = rest.subspan(std::size_t{1});
+  242|    910|        continue;
+  243|    910|      }
+  244|    101|      check_tail(rest, next->tail);
+  245|    101|      if (next->tail.size() >= rest.size()) {
   ------------------
-  |  Branch (245:11): [True: 0, False: 103]
+  |  Branch (245:11): [True: 0, False: 101]
   ------------------
   246|      0|        __builtin_trap();  // consumed nothing while reporting success
   247|      0|      }
-  248|    103|      rest = next->tail;
-  249|    103|    }
-  250|    193|  }
+  248|    101|      rest = next->tail;
+  249|    101|    }
+  250|    190|  }
   251|       |
-  252|    193|  delete[] text_storage;
+  252|    190|  delete[] text_storage;
   253|       |
-  254|    193|  metl_fuzz::byte_reader reader(data, size);
-  255|    193|  check_round_trip(reader);
-  256|    193|  return 0;
-  257|    193|}
+  254|    190|  metl_fuzz::byte_reader reader(data, size);
+  255|    190|  check_round_trip(reader);
+  256|    190|  return 0;
+  257|    190|}
 fuzz_parse.cpp:_ZN12_GLOBAL__N_110check_tailEN4metl4spanIKcLm18446744073709551615EEES3_:
-   49|    402|void check_tail(metl::span<const char> text, metl::span<const char> tail) {
-   50|    402|  if (tail.size() > text.size()) {
+   49|    397|void check_tail(metl::span<const char> text, metl::span<const char> tail) {
+   50|    397|  if (tail.size() > text.size()) {
   ------------------
-  |  Branch (50:7): [True: 0, False: 402]
+  |  Branch (50:7): [True: 0, False: 397]
   ------------------
    51|      0|    __builtin_trap();
    52|      0|  }
-   53|    402|  if (tail.data() + tail.size() != text.data() + text.size()) {
+   53|    397|  if (tail.data() + tail.size() != text.data() + text.size()) {
   ------------------
-  |  Branch (53:7): [True: 0, False: 402]
+  |  Branch (53:7): [True: 0, False: 397]
   ------------------
    54|      0|    __builtin_trap();
    55|      0|  }
-   56|    402|}
+   56|    397|}
 fuzz_parse.cpp:_ZN12_GLOBAL__N_116check_round_tripERN9metl_fuzz11byte_readerE:
-  174|    193|void check_round_trip(metl_fuzz::byte_reader& reader) {
-  175|    193|  char scratch[32];
-  176|    193|  const metl::span<char> out(scratch, sizeof scratch);
+  174|    190|void check_round_trip(metl_fuzz::byte_reader& reader) {
+  175|    190|  char scratch[32];
+  176|    190|  const metl::span<char> out(scratch, sizeof scratch);
   177|       |
-  178|    193|  {
-  179|    193|    const auto value = reader.integer<std::uint64_t>();
-  180|    193|    const metl::span<char> text = metl::format_uint(out, value);
-  181|    193|    const auto read = metl::try_parse_uint<std::uint64_t>(metl::span<const char>(text.data(), text.size()));
-  182|    193|    if (!read || read->value != value || !read->tail.empty()) {
+  178|    190|  {
+  179|    190|    const auto value = reader.integer<std::uint64_t>();
+  180|    190|    const metl::span<char> text = metl::format_uint(out, value);
+  181|    190|    const auto read = metl::try_parse_uint<std::uint64_t>(metl::span<const char>(text.data(), text.size()));
+  182|    190|    if (!read || read->value != value || !read->tail.empty()) {
   ------------------
-  |  Branch (182:9): [True: 0, False: 193]
-  |  Branch (182:18): [True: 0, False: 193]
-  |  Branch (182:42): [True: 0, False: 193]
+  |  Branch (182:9): [True: 0, False: 190]
+  |  Branch (182:18): [True: 0, False: 190]
+  |  Branch (182:42): [True: 0, False: 190]
   ------------------
   183|      0|      __builtin_trap();
   184|      0|    }
-  185|    193|  }
+  185|    190|  }
   186|       |
-  187|    193|  {
-  188|    193|    const auto value = static_cast<std::int64_t>(reader.integer<std::uint64_t>());
-  189|    193|    const metl::span<char> text = metl::format_int(out, value);
-  190|    193|    const auto read = metl::try_parse_int<std::int64_t>(metl::span<const char>(text.data(), text.size()));
-  191|    193|    if (!read || read->value != value || !read->tail.empty()) {
+  187|    190|  {
+  188|    190|    const auto value = static_cast<std::int64_t>(reader.integer<std::uint64_t>());
+  189|    190|    const metl::span<char> text = metl::format_int(out, value);
+  190|    190|    const auto read = metl::try_parse_int<std::int64_t>(metl::span<const char>(text.data(), text.size()));
+  191|    190|    if (!read || read->value != value || !read->tail.empty()) {
   ------------------
-  |  Branch (191:9): [True: 0, False: 193]
-  |  Branch (191:18): [True: 0, False: 193]
-  |  Branch (191:42): [True: 0, False: 193]
+  |  Branch (191:9): [True: 0, False: 190]
+  |  Branch (191:18): [True: 0, False: 190]
+  |  Branch (191:42): [True: 0, False: 190]
   ------------------
   192|      0|      __builtin_trap();
   193|      0|    }
-  194|    193|  }
+  194|    190|  }
   195|       |
-  196|    193|  {
-  197|    193|    const auto value = reader.integer<std::uint64_t>();
-  198|    193|    const auto letters = (reader.byte() & 1u) != 0u ? metl::hex_case::upper : metl::hex_case::lower;
+  196|    190|  {
+  197|    190|    const auto value = reader.integer<std::uint64_t>();
+  198|    190|    const auto letters = (reader.byte() & 1u) != 0u ? metl::hex_case::upper : metl::hex_case::lower;
   ------------------
-  |  Branch (198:26): [True: 22, False: 171]
+  |  Branch (198:26): [True: 23, False: 167]
   ------------------
-  199|    193|    const metl::span<char> text = metl::format_hex(out, value, 0, letters);
-  200|    193|    const auto read = metl::try_parse_hex<std::uint64_t>(metl::span<const char>(text.data(), text.size()));
-  201|    193|    if (!read || read->value != value || !read->tail.empty()) {
+  199|    190|    const metl::span<char> text = metl::format_hex(out, value, 0, letters);
+  200|    190|    const auto read = metl::try_parse_hex<std::uint64_t>(metl::span<const char>(text.data(), text.size()));
+  201|    190|    if (!read || read->value != value || !read->tail.empty()) {
   ------------------
-  |  Branch (201:9): [True: 0, False: 193]
-  |  Branch (201:18): [True: 0, False: 193]
-  |  Branch (201:42): [True: 0, False: 193]
+  |  Branch (201:9): [True: 0, False: 190]
+  |  Branch (201:18): [True: 0, False: 190]
+  |  Branch (201:42): [True: 0, False: 190]
   ------------------
   202|      0|      __builtin_trap();
   203|      0|    }
-  204|    193|  }
-  205|    193|}
+  204|    190|  }
+  205|    190|}
 fuzz_parse.cpp:_ZN12_GLOBAL__N_120check_unsigned_widthIhEEvN4metl4spanIKcLm18446744073709551615EEE:
-   60|    193|void check_unsigned_width(metl::span<const char> text) {
-   61|    193|  const auto narrow = metl::try_parse_uint<Narrow>(text);
-   62|    193|  const auto wide = metl::try_parse_uint<std::uint64_t>(text);
+   60|    190|void check_unsigned_width(metl::span<const char> text) {
+   61|    190|  const auto narrow = metl::try_parse_uint<Narrow>(text);
+   62|    190|  const auto wide = metl::try_parse_uint<std::uint64_t>(text);
    63|       |
-   64|    193|  if (narrow) {
+   64|    190|  if (narrow) {
   ------------------
-  |  Branch (64:7): [True: 16, False: 177]
+  |  Branch (64:7): [True: 16, False: 174]
   ------------------
    65|     16|    check_tail(text, narrow->tail);
    66|       |    // Widening agreement: a value a narrow type accepts must survive widening
@@ -182,55 +182,55 @@ fuzz_parse.cpp:_ZN12_GLOBAL__N_120check_unsigned_widthIhEEvN4metl4spanIKcLm18446
    77|     16|    return;
    78|     16|  }
    79|       |
-   80|    177|  if (narrow.error() == metl::parse_error::out_of_range) {
+   80|    174|  if (narrow.error() == metl::parse_error::out_of_range) {
   ------------------
-  |  Branch (80:7): [True: 115, False: 62]
+  |  Branch (80:7): [True: 113, False: 61]
   ------------------
    81|       |    // Not wrapped: the value really did not fit. Either the wide parse also
    82|       |    // overflowed, or it produced something the narrow type genuinely cannot
    83|       |    // hold.
-   84|    115|    if (wide) {
+   84|    113|    if (wide) {
   ------------------
-  |  Branch (84:9): [True: 64, False: 51]
+  |  Branch (84:9): [True: 62, False: 51]
   ------------------
-   85|     64|      if (wide->value <= static_cast<std::uint64_t>(std::numeric_limits<Narrow>::max())) {
+   85|     62|      if (wide->value <= static_cast<std::uint64_t>(std::numeric_limits<Narrow>::max())) {
   ------------------
-  |  Branch (85:11): [True: 0, False: 64]
+  |  Branch (85:11): [True: 0, False: 62]
   ------------------
    86|      0|        __builtin_trap();
    87|      0|      }
-   88|     64|    } else if (wide.error() != metl::parse_error::out_of_range) {
+   88|     62|    } else if (wide.error() != metl::parse_error::out_of_range) {
   ------------------
   |  Branch (88:16): [True: 0, False: 51]
   ------------------
    89|      0|      __builtin_trap();
    90|      0|    }
-   91|    115|    return;
-   92|    115|  }
+   91|    113|    return;
+   92|    113|  }
    93|       |
    94|       |  // `empty` and `not_a_number` are properties of the text alone, so every width
    95|       |  // must agree on them.
-   96|     62|  if (wide) {
+   96|     61|  if (wide) {
   ------------------
-  |  Branch (96:7): [True: 0, False: 62]
+  |  Branch (96:7): [True: 0, False: 61]
   ------------------
    97|      0|    __builtin_trap();
    98|      0|  }
-   99|     62|  if (wide.error() != narrow.error()) {
+   99|     61|  if (wide.error() != narrow.error()) {
   ------------------
-  |  Branch (99:7): [True: 0, False: 62]
+  |  Branch (99:7): [True: 0, False: 61]
   ------------------
   100|      0|    __builtin_trap();
   101|      0|  }
-  102|     62|}
+  102|     61|}
 fuzz_parse.cpp:_ZN12_GLOBAL__N_120check_unsigned_widthItEEvN4metl4spanIKcLm18446744073709551615EEE:
-   60|    193|void check_unsigned_width(metl::span<const char> text) {
-   61|    193|  const auto narrow = metl::try_parse_uint<Narrow>(text);
-   62|    193|  const auto wide = metl::try_parse_uint<std::uint64_t>(text);
+   60|    190|void check_unsigned_width(metl::span<const char> text) {
+   61|    190|  const auto narrow = metl::try_parse_uint<Narrow>(text);
+   62|    190|  const auto wide = metl::try_parse_uint<std::uint64_t>(text);
    63|       |
-   64|    193|  if (narrow) {
+   64|    190|  if (narrow) {
   ------------------
-  |  Branch (64:7): [True: 28, False: 165]
+  |  Branch (64:7): [True: 28, False: 162]
   ------------------
    65|     28|    check_tail(text, narrow->tail);
    66|       |    // Widening agreement: a value a narrow type accepts must survive widening
@@ -256,55 +256,55 @@ fuzz_parse.cpp:_ZN12_GLOBAL__N_120check_unsigned_widthItEEvN4metl4spanIKcLm18446
    77|     28|    return;
    78|     28|  }
    79|       |
-   80|    165|  if (narrow.error() == metl::parse_error::out_of_range) {
+   80|    162|  if (narrow.error() == metl::parse_error::out_of_range) {
   ------------------
-  |  Branch (80:7): [True: 103, False: 62]
+  |  Branch (80:7): [True: 101, False: 61]
   ------------------
    81|       |    // Not wrapped: the value really did not fit. Either the wide parse also
    82|       |    // overflowed, or it produced something the narrow type genuinely cannot
    83|       |    // hold.
-   84|    103|    if (wide) {
+   84|    101|    if (wide) {
   ------------------
-  |  Branch (84:9): [True: 52, False: 51]
+  |  Branch (84:9): [True: 50, False: 51]
   ------------------
-   85|     52|      if (wide->value <= static_cast<std::uint64_t>(std::numeric_limits<Narrow>::max())) {
+   85|     50|      if (wide->value <= static_cast<std::uint64_t>(std::numeric_limits<Narrow>::max())) {
   ------------------
-  |  Branch (85:11): [True: 0, False: 52]
+  |  Branch (85:11): [True: 0, False: 50]
   ------------------
    86|      0|        __builtin_trap();
    87|      0|      }
-   88|     52|    } else if (wide.error() != metl::parse_error::out_of_range) {
+   88|     51|    } else if (wide.error() != metl::parse_error::out_of_range) {
   ------------------
   |  Branch (88:16): [True: 0, False: 51]
   ------------------
    89|      0|      __builtin_trap();
    90|      0|    }
-   91|    103|    return;
-   92|    103|  }
+   91|    101|    return;
+   92|    101|  }
    93|       |
    94|       |  // `empty` and `not_a_number` are properties of the text alone, so every width
    95|       |  // must agree on them.
-   96|     62|  if (wide) {
+   96|     61|  if (wide) {
   ------------------
-  |  Branch (96:7): [True: 0, False: 62]
+  |  Branch (96:7): [True: 0, False: 61]
   ------------------
    97|      0|    __builtin_trap();
    98|      0|  }
-   99|     62|  if (wide.error() != narrow.error()) {
+   99|     61|  if (wide.error() != narrow.error()) {
   ------------------
-  |  Branch (99:7): [True: 0, False: 62]
+  |  Branch (99:7): [True: 0, False: 61]
   ------------------
   100|      0|    __builtin_trap();
   101|      0|  }
-  102|     62|}
+  102|     61|}
 fuzz_parse.cpp:_ZN12_GLOBAL__N_120check_unsigned_widthIjEEvN4metl4spanIKcLm18446744073709551615EEE:
-   60|    193|void check_unsigned_width(metl::span<const char> text) {
-   61|    193|  const auto narrow = metl::try_parse_uint<Narrow>(text);
-   62|    193|  const auto wide = metl::try_parse_uint<std::uint64_t>(text);
+   60|    190|void check_unsigned_width(metl::span<const char> text) {
+   61|    190|  const auto narrow = metl::try_parse_uint<Narrow>(text);
+   62|    190|  const auto wide = metl::try_parse_uint<std::uint64_t>(text);
    63|       |
-   64|    193|  if (narrow) {
+   64|    190|  if (narrow) {
   ------------------
-  |  Branch (64:7): [True: 44, False: 149]
+  |  Branch (64:7): [True: 44, False: 146]
   ------------------
    65|     44|    check_tail(text, narrow->tail);
    66|       |    // Widening agreement: a value a narrow type accepts must survive widening
@@ -330,20 +330,20 @@ fuzz_parse.cpp:_ZN12_GLOBAL__N_120check_unsigned_widthIjEEvN4metl4spanIKcLm18446
    77|     44|    return;
    78|     44|  }
    79|       |
-   80|    149|  if (narrow.error() == metl::parse_error::out_of_range) {
+   80|    146|  if (narrow.error() == metl::parse_error::out_of_range) {
   ------------------
-  |  Branch (80:7): [True: 87, False: 62]
+  |  Branch (80:7): [True: 85, False: 61]
   ------------------
    81|       |    // Not wrapped: the value really did not fit. Either the wide parse also
    82|       |    // overflowed, or it produced something the narrow type genuinely cannot
    83|       |    // hold.
-   84|     87|    if (wide) {
+   84|     85|    if (wide) {
   ------------------
-  |  Branch (84:9): [True: 36, False: 51]
+  |  Branch (84:9): [True: 34, False: 51]
   ------------------
-   85|     36|      if (wide->value <= static_cast<std::uint64_t>(std::numeric_limits<Narrow>::max())) {
+   85|     34|      if (wide->value <= static_cast<std::uint64_t>(std::numeric_limits<Narrow>::max())) {
   ------------------
-  |  Branch (85:11): [True: 0, False: 36]
+  |  Branch (85:11): [True: 0, False: 34]
   ------------------
    86|      0|        __builtin_trap();
    87|      0|      }
@@ -353,81 +353,81 @@ fuzz_parse.cpp:_ZN12_GLOBAL__N_120check_unsigned_widthIjEEvN4metl4spanIKcLm18446
   ------------------
    89|      0|      __builtin_trap();
    90|      0|    }
-   91|     87|    return;
-   92|     87|  }
+   91|     85|    return;
+   92|     85|  }
    93|       |
    94|       |  // `empty` and `not_a_number` are properties of the text alone, so every width
    95|       |  // must agree on them.
-   96|     62|  if (wide) {
+   96|     61|  if (wide) {
   ------------------
-  |  Branch (96:7): [True: 0, False: 62]
+  |  Branch (96:7): [True: 0, False: 61]
   ------------------
    97|      0|    __builtin_trap();
    98|      0|  }
-   99|     62|  if (wide.error() != narrow.error()) {
+   99|     61|  if (wide.error() != narrow.error()) {
   ------------------
-  |  Branch (99:7): [True: 0, False: 62]
+  |  Branch (99:7): [True: 0, False: 61]
   ------------------
   100|      0|    __builtin_trap();
   101|      0|  }
-  102|     62|}
+  102|     61|}
 fuzz_parse.cpp:_ZN12_GLOBAL__N_118check_signed_widthIaEEvN4metl4spanIKcLm18446744073709551615EEE:
-  105|    193|void check_signed_width(metl::span<const char> text) {
-  106|    193|  const auto narrow = metl::try_parse_int<Narrow>(text);
-  107|    193|  const auto wide = metl::try_parse_int<std::int64_t>(text);
+  105|    190|void check_signed_width(metl::span<const char> text) {
+  106|    190|  const auto narrow = metl::try_parse_int<Narrow>(text);
+  107|    190|  const auto wide = metl::try_parse_int<std::int64_t>(text);
   108|       |
-  109|    193|  if (narrow) {
+  109|    190|  if (narrow) {
   ------------------
-  |  Branch (109:7): [True: 19, False: 174]
+  |  Branch (109:7): [True: 18, False: 172]
   ------------------
-  110|     19|    check_tail(text, narrow->tail);
-  111|     19|    if (!wide) {
+  110|     18|    check_tail(text, narrow->tail);
+  111|     18|    if (!wide) {
   ------------------
-  |  Branch (111:9): [True: 0, False: 19]
+  |  Branch (111:9): [True: 0, False: 18]
   ------------------
   112|      0|      __builtin_trap();
   113|      0|    }
-  114|     19|    if (static_cast<std::int64_t>(narrow->value) != wide->value) {
+  114|     18|    if (static_cast<std::int64_t>(narrow->value) != wide->value) {
   ------------------
-  |  Branch (114:9): [True: 0, False: 19]
+  |  Branch (114:9): [True: 0, False: 18]
   ------------------
   115|      0|      __builtin_trap();
   116|      0|    }
-  117|     19|    if (narrow->tail.size() != wide->tail.size()) {
+  117|     18|    if (narrow->tail.size() != wide->tail.size()) {
   ------------------
-  |  Branch (117:9): [True: 0, False: 19]
+  |  Branch (117:9): [True: 0, False: 18]
   ------------------
   118|      0|      __builtin_trap();
   119|      0|    }
-  120|     19|    return;
-  121|     19|  }
+  120|     18|    return;
+  121|     18|  }
   122|       |
-  123|    174|  if (narrow.error() == metl::parse_error::out_of_range) {
+  123|    172|  if (narrow.error() == metl::parse_error::out_of_range) {
   ------------------
-  |  Branch (123:7): [True: 126, False: 48]
+  |  Branch (123:7): [True: 124, False: 48]
   ------------------
-  124|    126|    if (wide) {
+  124|    124|    if (wide) {
   ------------------
-  |  Branch (124:9): [True: 70, False: 56]
+  |  Branch (124:9): [True: 68, False: 56]
   ------------------
-  125|     70|      const std::int64_t value = wide->value;
-  126|     70|      const auto low = static_cast<std::int64_t>(std::numeric_limits<Narrow>::min());
-  127|     70|      const auto high = static_cast<std::int64_t>(std::numeric_limits<Narrow>::max());
-  128|     70|      if (value >= low && value <= high) {
+  125|     68|      const std::int64_t value = wide->value;
+  126|     68|      const auto low = static_cast<std::int64_t>(std::numeric_limits<Narrow>::min());
+  127|     68|      const auto high = static_cast<std::int64_t>(std::numeric_limits<Narrow>::max());
+  128|     68|      if (value >= low && value <= high) {
   ------------------
-  |  Branch (128:11): [True: 63, False: 7]
-  |  Branch (128:27): [True: 0, False: 63]
+  |  Branch (128:11): [True: 61, False: 7]
+  |  Branch (128:27): [True: 0, False: 61]
   ------------------
   129|      0|        __builtin_trap();  // it fit after all -- the narrow bound is wrong
   130|      0|      }
-  131|     70|    } else if (wide.error() != metl::parse_error::out_of_range) {
+  131|     68|    } else if (wide.error() != metl::parse_error::out_of_range) {
   ------------------
   |  Branch (131:16): [True: 0, False: 56]
   ------------------
   132|      0|      __builtin_trap();
   133|      0|    }
-  134|    126|    return;
-  135|    126|  }
+  134|    124|    return;
+  135|    124|  }
   136|       |
   137|     48|  if (wide) {
   ------------------
@@ -443,51 +443,51 @@ fuzz_parse.cpp:_ZN12_GLOBAL__N_118check_signed_widthIaEEvN4metl4spanIKcLm1844674
   142|      0|  }
   143|     48|}
 fuzz_parse.cpp:_ZN12_GLOBAL__N_118check_signed_widthIsEEvN4metl4spanIKcLm18446744073709551615EEE:
-  105|    193|void check_signed_width(metl::span<const char> text) {
-  106|    193|  const auto narrow = metl::try_parse_int<Narrow>(text);
-  107|    193|  const auto wide = metl::try_parse_int<std::int64_t>(text);
+  105|    190|void check_signed_width(metl::span<const char> text) {
+  106|    190|  const auto narrow = metl::try_parse_int<Narrow>(text);
+  107|    190|  const auto wide = metl::try_parse_int<std::int64_t>(text);
   108|       |
-  109|    193|  if (narrow) {
+  109|    190|  if (narrow) {
   ------------------
-  |  Branch (109:7): [True: 34, False: 159]
+  |  Branch (109:7): [True: 33, False: 157]
   ------------------
-  110|     34|    check_tail(text, narrow->tail);
-  111|     34|    if (!wide) {
+  110|     33|    check_tail(text, narrow->tail);
+  111|     33|    if (!wide) {
   ------------------
-  |  Branch (111:9): [True: 0, False: 34]
+  |  Branch (111:9): [True: 0, False: 33]
   ------------------
   112|      0|      __builtin_trap();
   113|      0|    }
-  114|     34|    if (static_cast<std::int64_t>(narrow->value) != wide->value) {
+  114|     33|    if (static_cast<std::int64_t>(narrow->value) != wide->value) {
   ------------------
-  |  Branch (114:9): [True: 0, False: 34]
+  |  Branch (114:9): [True: 0, False: 33]
   ------------------
   115|      0|      __builtin_trap();
   116|      0|    }
-  117|     34|    if (narrow->tail.size() != wide->tail.size()) {
+  117|     33|    if (narrow->tail.size() != wide->tail.size()) {
   ------------------
-  |  Branch (117:9): [True: 0, False: 34]
+  |  Branch (117:9): [True: 0, False: 33]
   ------------------
   118|      0|      __builtin_trap();
   119|      0|    }
-  120|     34|    return;
-  121|     34|  }
+  120|     33|    return;
+  121|     33|  }
   122|       |
-  123|    159|  if (narrow.error() == metl::parse_error::out_of_range) {
+  123|    157|  if (narrow.error() == metl::parse_error::out_of_range) {
   ------------------
-  |  Branch (123:7): [True: 111, False: 48]
+  |  Branch (123:7): [True: 109, False: 48]
   ------------------
-  124|    111|    if (wide) {
+  124|    109|    if (wide) {
   ------------------
-  |  Branch (124:9): [True: 55, False: 56]
+  |  Branch (124:9): [True: 53, False: 56]
   ------------------
-  125|     55|      const std::int64_t value = wide->value;
-  126|     55|      const auto low = static_cast<std::int64_t>(std::numeric_limits<Narrow>::min());
-  127|     55|      const auto high = static_cast<std::int64_t>(std::numeric_limits<Narrow>::max());
-  128|     55|      if (value >= low && value <= high) {
+  125|     53|      const std::int64_t value = wide->value;
+  126|     53|      const auto low = static_cast<std::int64_t>(std::numeric_limits<Narrow>::min());
+  127|     53|      const auto high = static_cast<std::int64_t>(std::numeric_limits<Narrow>::max());
+  128|     53|      if (value >= low && value <= high) {
   ------------------
-  |  Branch (128:11): [True: 51, False: 4]
-  |  Branch (128:27): [True: 0, False: 51]
+  |  Branch (128:11): [True: 49, False: 4]
+  |  Branch (128:27): [True: 0, False: 49]
   ------------------
   129|      0|        __builtin_trap();  // it fit after all -- the narrow bound is wrong
   130|      0|      }
@@ -497,8 +497,8 @@ fuzz_parse.cpp:_ZN12_GLOBAL__N_118check_signed_widthIsEEvN4metl4spanIKcLm1844674
   ------------------
   132|      0|      __builtin_trap();
   133|      0|    }
-  134|    111|    return;
-  135|    111|  }
+  134|    109|    return;
+  135|    109|  }
   136|       |
   137|     48|  if (wide) {
   ------------------
@@ -514,51 +514,51 @@ fuzz_parse.cpp:_ZN12_GLOBAL__N_118check_signed_widthIsEEvN4metl4spanIKcLm1844674
   142|      0|  }
   143|     48|}
 fuzz_parse.cpp:_ZN12_GLOBAL__N_118check_signed_widthIiEEvN4metl4spanIKcLm18446744073709551615EEE:
-  105|    193|void check_signed_width(metl::span<const char> text) {
-  106|    193|  const auto narrow = metl::try_parse_int<Narrow>(text);
-  107|    193|  const auto wide = metl::try_parse_int<std::int64_t>(text);
+  105|    190|void check_signed_width(metl::span<const char> text) {
+  106|    190|  const auto narrow = metl::try_parse_int<Narrow>(text);
+  107|    190|  const auto wide = metl::try_parse_int<std::int64_t>(text);
   108|       |
-  109|    193|  if (narrow) {
+  109|    190|  if (narrow) {
   ------------------
-  |  Branch (109:7): [True: 52, False: 141]
+  |  Branch (109:7): [True: 51, False: 139]
   ------------------
-  110|     52|    check_tail(text, narrow->tail);
-  111|     52|    if (!wide) {
+  110|     51|    check_tail(text, narrow->tail);
+  111|     51|    if (!wide) {
   ------------------
-  |  Branch (111:9): [True: 0, False: 52]
+  |  Branch (111:9): [True: 0, False: 51]
   ------------------
   112|      0|      __builtin_trap();
   113|      0|    }
-  114|     52|    if (static_cast<std::int64_t>(narrow->value) != wide->value) {
+  114|     51|    if (static_cast<std::int64_t>(narrow->value) != wide->value) {
   ------------------
-  |  Branch (114:9): [True: 0, False: 52]
+  |  Branch (114:9): [True: 0, False: 51]
   ------------------
   115|      0|      __builtin_trap();
   116|      0|    }
-  117|     52|    if (narrow->tail.size() != wide->tail.size()) {
+  117|     51|    if (narrow->tail.size() != wide->tail.size()) {
   ------------------
-  |  Branch (117:9): [True: 0, False: 52]
+  |  Branch (117:9): [True: 0, False: 51]
   ------------------
   118|      0|      __builtin_trap();
   119|      0|    }
-  120|     52|    return;
-  121|     52|  }
+  120|     51|    return;
+  121|     51|  }
   122|       |
-  123|    141|  if (narrow.error() == metl::parse_error::out_of_range) {
+  123|    139|  if (narrow.error() == metl::parse_error::out_of_range) {
   ------------------
-  |  Branch (123:7): [True: 93, False: 48]
+  |  Branch (123:7): [True: 91, False: 48]
   ------------------
-  124|     93|    if (wide) {
+  124|     91|    if (wide) {
   ------------------
-  |  Branch (124:9): [True: 37, False: 56]
+  |  Branch (124:9): [True: 35, False: 56]
   ------------------
-  125|     37|      const std::int64_t value = wide->value;
-  126|     37|      const auto low = static_cast<std::int64_t>(std::numeric_limits<Narrow>::min());
-  127|     37|      const auto high = static_cast<std::int64_t>(std::numeric_limits<Narrow>::max());
-  128|     37|      if (value >= low && value <= high) {
+  125|     35|      const std::int64_t value = wide->value;
+  126|     35|      const auto low = static_cast<std::int64_t>(std::numeric_limits<Narrow>::min());
+  127|     35|      const auto high = static_cast<std::int64_t>(std::numeric_limits<Narrow>::max());
+  128|     35|      if (value >= low && value <= high) {
   ------------------
-  |  Branch (128:11): [True: 35, False: 2]
-  |  Branch (128:27): [True: 0, False: 35]
+  |  Branch (128:11): [True: 33, False: 2]
+  |  Branch (128:27): [True: 0, False: 33]
   ------------------
   129|      0|        __builtin_trap();  // it fit after all -- the narrow bound is wrong
   130|      0|      }
@@ -568,8 +568,8 @@ fuzz_parse.cpp:_ZN12_GLOBAL__N_118check_signed_widthIiEEvN4metl4spanIKcLm1844674
   ------------------
   132|      0|      __builtin_trap();
   133|      0|    }
-  134|     93|    return;
-  135|     93|  }
+  134|     91|    return;
+  135|     91|  }
   136|       |
   137|     48|  if (wide) {
   ------------------
@@ -585,13 +585,13 @@ fuzz_parse.cpp:_ZN12_GLOBAL__N_118check_signed_widthIiEEvN4metl4spanIKcLm1844674
   142|      0|  }
   143|     48|}
 fuzz_parse.cpp:_ZN12_GLOBAL__N_115check_hex_widthIhEEvN4metl4spanIKcLm18446744073709551615EEE:
-  146|    193|void check_hex_width(metl::span<const char> text) {
-  147|    193|  const auto narrow = metl::try_parse_hex<Narrow>(text);
-  148|    193|  const auto wide = metl::try_parse_hex<std::uint64_t>(text);
+  146|    190|void check_hex_width(metl::span<const char> text) {
+  147|    190|  const auto narrow = metl::try_parse_hex<Narrow>(text);
+  148|    190|  const auto wide = metl::try_parse_hex<std::uint64_t>(text);
   149|       |
-  150|    193|  if (narrow) {
+  150|    190|  if (narrow) {
   ------------------
-  |  Branch (150:7): [True: 17, False: 176]
+  |  Branch (150:7): [True: 17, False: 173]
   ------------------
   151|     17|    check_tail(text, narrow->tail);
   152|     17|    if (!wide || static_cast<std::uint64_t>(narrow->value) != wide->value ||
@@ -607,44 +607,44 @@ fuzz_parse.cpp:_ZN12_GLOBAL__N_115check_hex_widthIhEEvN4metl4spanIKcLm1844674407
   155|      0|    }
   156|     17|    return;
   157|     17|  }
-  158|    176|  if (narrow.error() == metl::parse_error::out_of_range) {
+  158|    173|  if (narrow.error() == metl::parse_error::out_of_range) {
   ------------------
-  |  Branch (158:7): [True: 141, False: 35]
+  |  Branch (158:7): [True: 139, False: 34]
   ------------------
-  159|    141|    if (wide) {
+  159|    139|    if (wide) {
   ------------------
-  |  Branch (159:9): [True: 74, False: 67]
+  |  Branch (159:9): [True: 72, False: 67]
   ------------------
-  160|     74|      if (wide->value <= static_cast<std::uint64_t>(std::numeric_limits<Narrow>::max())) {
+  160|     72|      if (wide->value <= static_cast<std::uint64_t>(std::numeric_limits<Narrow>::max())) {
   ------------------
-  |  Branch (160:11): [True: 0, False: 74]
+  |  Branch (160:11): [True: 0, False: 72]
   ------------------
   161|      0|        __builtin_trap();
   162|      0|      }
-  163|     74|    } else if (wide.error() != metl::parse_error::out_of_range) {
+  163|     72|    } else if (wide.error() != metl::parse_error::out_of_range) {
   ------------------
   |  Branch (163:16): [True: 0, False: 67]
   ------------------
   164|      0|      __builtin_trap();
   165|      0|    }
-  166|    141|    return;
-  167|    141|  }
-  168|     35|  if (wide || wide.error() != narrow.error()) {
+  166|    139|    return;
+  167|    139|  }
+  168|     34|  if (wide || wide.error() != narrow.error()) {
   ------------------
-  |  Branch (168:7): [True: 0, False: 35]
-  |  Branch (168:15): [True: 0, False: 35]
+  |  Branch (168:7): [True: 0, False: 34]
+  |  Branch (168:15): [True: 0, False: 34]
   ------------------
   169|      0|    __builtin_trap();
   170|      0|  }
-  171|     35|}
+  171|     34|}
 fuzz_parse.cpp:_ZN12_GLOBAL__N_115check_hex_widthItEEvN4metl4spanIKcLm18446744073709551615EEE:
-  146|    193|void check_hex_width(metl::span<const char> text) {
-  147|    193|  const auto narrow = metl::try_parse_hex<Narrow>(text);
-  148|    193|  const auto wide = metl::try_parse_hex<std::uint64_t>(text);
+  146|    190|void check_hex_width(metl::span<const char> text) {
+  147|    190|  const auto narrow = metl::try_parse_hex<Narrow>(text);
+  148|    190|  const auto wide = metl::try_parse_hex<std::uint64_t>(text);
   149|       |
-  150|    193|  if (narrow) {
+  150|    190|  if (narrow) {
   ------------------
-  |  Branch (150:7): [True: 34, False: 159]
+  |  Branch (150:7): [True: 34, False: 156]
   ------------------
   151|     34|    check_tail(text, narrow->tail);
   152|     34|    if (!wide || static_cast<std::uint64_t>(narrow->value) != wide->value ||
@@ -660,17 +660,17 @@ fuzz_parse.cpp:_ZN12_GLOBAL__N_115check_hex_widthItEEvN4metl4spanIKcLm1844674407
   155|      0|    }
   156|     34|    return;
   157|     34|  }
-  158|    159|  if (narrow.error() == metl::parse_error::out_of_range) {
+  158|    156|  if (narrow.error() == metl::parse_error::out_of_range) {
   ------------------
-  |  Branch (158:7): [True: 124, False: 35]
+  |  Branch (158:7): [True: 122, False: 34]
   ------------------
-  159|    124|    if (wide) {
+  159|    122|    if (wide) {
   ------------------
-  |  Branch (159:9): [True: 57, False: 67]
+  |  Branch (159:9): [True: 55, False: 67]
   ------------------
-  160|     57|      if (wide->value <= static_cast<std::uint64_t>(std::numeric_limits<Narrow>::max())) {
+  160|     55|      if (wide->value <= static_cast<std::uint64_t>(std::numeric_limits<Narrow>::max())) {
   ------------------
-  |  Branch (160:11): [True: 0, False: 57]
+  |  Branch (160:11): [True: 0, False: 55]
   ------------------
   161|      0|        __builtin_trap();
   162|      0|      }
@@ -680,24 +680,24 @@ fuzz_parse.cpp:_ZN12_GLOBAL__N_115check_hex_widthItEEvN4metl4spanIKcLm1844674407
   ------------------
   164|      0|      __builtin_trap();
   165|      0|    }
-  166|    124|    return;
-  167|    124|  }
-  168|     35|  if (wide || wide.error() != narrow.error()) {
+  166|    122|    return;
+  167|    122|  }
+  168|     34|  if (wide || wide.error() != narrow.error()) {
   ------------------
-  |  Branch (168:7): [True: 0, False: 35]
-  |  Branch (168:15): [True: 0, False: 35]
+  |  Branch (168:7): [True: 0, False: 34]
+  |  Branch (168:15): [True: 0, False: 34]
   ------------------
   169|      0|    __builtin_trap();
   170|      0|  }
-  171|     35|}
+  171|     34|}
 fuzz_parse.cpp:_ZN12_GLOBAL__N_115check_hex_widthIjEEvN4metl4spanIKcLm18446744073709551615EEE:
-  146|    193|void check_hex_width(metl::span<const char> text) {
-  147|    193|  const auto narrow = metl::try_parse_hex<Narrow>(text);
-  148|    193|  const auto wide = metl::try_parse_hex<std::uint64_t>(text);
+  146|    190|void check_hex_width(metl::span<const char> text) {
+  147|    190|  const auto narrow = metl::try_parse_hex<Narrow>(text);
+  148|    190|  const auto wide = metl::try_parse_hex<std::uint64_t>(text);
   149|       |
-  150|    193|  if (narrow) {
+  150|    190|  if (narrow) {
   ------------------
-  |  Branch (150:7): [True: 55, False: 138]
+  |  Branch (150:7): [True: 55, False: 135]
   ------------------
   151|     55|    check_tail(text, narrow->tail);
   152|     55|    if (!wide || static_cast<std::uint64_t>(narrow->value) != wide->value ||
@@ -713,17 +713,17 @@ fuzz_parse.cpp:_ZN12_GLOBAL__N_115check_hex_widthIjEEvN4metl4spanIKcLm1844674407
   155|      0|    }
   156|     55|    return;
   157|     55|  }
-  158|    138|  if (narrow.error() == metl::parse_error::out_of_range) {
+  158|    135|  if (narrow.error() == metl::parse_error::out_of_range) {
   ------------------
-  |  Branch (158:7): [True: 103, False: 35]
+  |  Branch (158:7): [True: 101, False: 34]
   ------------------
-  159|    103|    if (wide) {
+  159|    101|    if (wide) {
   ------------------
-  |  Branch (159:9): [True: 36, False: 67]
+  |  Branch (159:9): [True: 34, False: 67]
   ------------------
-  160|     36|      if (wide->value <= static_cast<std::uint64_t>(std::numeric_limits<Narrow>::max())) {
+  160|     34|      if (wide->value <= static_cast<std::uint64_t>(std::numeric_limits<Narrow>::max())) {
   ------------------
-  |  Branch (160:11): [True: 0, False: 36]
+  |  Branch (160:11): [True: 0, False: 34]
   ------------------
   161|      0|        __builtin_trap();
   162|      0|      }
@@ -733,173 +733,173 @@ fuzz_parse.cpp:_ZN12_GLOBAL__N_115check_hex_widthIjEEvN4metl4spanIKcLm1844674407
   ------------------
   164|      0|      __builtin_trap();
   165|      0|    }
-  166|    103|    return;
-  167|    103|  }
-  168|     35|  if (wide || wide.error() != narrow.error()) {
+  166|    101|    return;
+  167|    101|  }
+  168|     34|  if (wide || wide.error() != narrow.error()) {
   ------------------
-  |  Branch (168:7): [True: 0, False: 35]
-  |  Branch (168:15): [True: 0, False: 35]
+  |  Branch (168:7): [True: 0, False: 34]
+  |  Branch (168:15): [True: 0, False: 34]
   ------------------
   169|      0|    __builtin_trap();
   170|      0|  }
-  171|     35|}
+  171|     34|}
 
 _ZN4metl10unexpectedINS_11parse_errorEEC2IS1_vEEOT_:
-   56|  3.32k|  constexpr explicit unexpected(Err&& e) : value_(std::forward<Err>(e)) {}
+   56|  3.27k|  constexpr explicit unexpected(Err&& e) : value_(std::forward<Err>(e)) {}
 _ZN4metl8expectedINS_6parsedIjEENS_11parse_errorEEC2IS3_vEEONS_10unexpectedIT_EE:
-  196|  1.21k|  expected(unexpected<G>&& u) : has_value_(false) {
-  197|  1.21k|    construct_error(static_cast<G&&>(u.error()));
-  198|  1.21k|  }
+  196|  1.19k|  expected(unexpected<G>&& u) : has_value_(false) {
+  197|  1.19k|    construct_error(static_cast<G&&>(u.error()));
+  198|  1.19k|  }
 _ZN4metl8expectedINS_6parsedIjEENS_11parse_errorEE13storage_unionC2Ev:
-  848|  1.41k|    storage_union() {}
+  848|  1.39k|    storage_union() {}
 _ZN4metl8expectedINS_6parsedIjEENS_11parse_errorEE15construct_errorIJS3_EEEvDpOT_:
-  698|  1.21k|  void construct_error(Args&&... args) {
-  699|  1.21k|    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
-  700|  1.21k|  }
+  698|  1.19k|  void construct_error(Args&&... args) {
+  699|  1.19k|    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
+  700|  1.19k|  }
 _ZNR4metl10unexpectedINS_11parse_errorEE5errorEv:
-   67|  3.32k|  constexpr E& error() & noexcept { return value_; }
+   67|  3.27k|  constexpr E& error() & noexcept { return value_; }
 _ZN4metl8expectedINS_6parsedIjEENS_11parse_errorEE13storage_unionD2Ev:
-  849|  1.41k|    ~storage_union() {}
+  849|  1.39k|    ~storage_union() {}
 _ZN4metl8expectedINS_6parsedIjEENS_11parse_errorEEC2EOS2_:
-  186|    202|  expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
+  186|    200|  expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
 _ZN4metl8expectedINS_6parsedIjEENS_11parse_errorEE15construct_valueIJS2_EEEvDpOT_:
-  693|    202|  void construct_value(Args&&... args) {
-  694|    202|    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
-  695|    202|  }
+  693|    200|  void construct_value(Args&&... args) {
+  694|    200|    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
+  695|    200|  }
 _ZNK4metl8expectedINS_6parsedIjEENS_11parse_errorEEcvbEv:
-  305|  1.41k|  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
+  305|  1.39k|  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
 _ZN4metl8expectedINS_6parsedImEENS_11parse_errorEEC2IS3_vEEONS_10unexpectedIT_EE:
-  196|    645|  expected(unexpected<G>&& u) : has_value_(false) {
-  197|    645|    construct_error(static_cast<G&&>(u.error()));
-  198|    645|  }
+  196|    639|  expected(unexpected<G>&& u) : has_value_(false) {
+  197|    639|    construct_error(static_cast<G&&>(u.error()));
+  198|    639|  }
 _ZN4metl8expectedINS_6parsedImEENS_11parse_errorEE13storage_unionC2Ev:
-  848|  1.54k|    storage_union() {}
+  848|  1.52k|    storage_union() {}
 _ZN4metl8expectedINS_6parsedImEENS_11parse_errorEE15construct_errorIJS3_EEEvDpOT_:
-  698|    645|  void construct_error(Args&&... args) {
-  699|    645|    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
-  700|    645|  }
+  698|    639|  void construct_error(Args&&... args) {
+  699|    639|    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
+  700|    639|  }
 _ZN4metl8expectedINS_6parsedImEENS_11parse_errorEE13storage_unionD2Ev:
-  849|  1.54k|    ~storage_union() {}
+  849|  1.52k|    ~storage_union() {}
 _ZN4metl8expectedINS_6parsedImEENS_11parse_errorEEC2EOS2_:
-  186|    899|  expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
+  186|    881|  expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
 _ZN4metl8expectedINS_6parsedImEENS_11parse_errorEE15construct_valueIJS2_EEEvDpOT_:
-  693|    899|  void construct_value(Args&&... args) {
-  694|    899|    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
-  695|    899|  }
+  693|    881|  void construct_value(Args&&... args) {
+  694|    881|    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
+  695|    881|  }
 _ZNK4metl8expectedINS_6parsedImEENS_11parse_errorEEcvbEv:
-  305|  1.54k|  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
+  305|  1.52k|  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
 _ZNK4metl8expectedINS_6parsedImEENS_11parse_errorEEptEv:
-  312|  1.47k|  METL_NODISCARD const T* operator->() const noexcept {
-  313|  1.47k|    METL_ASSERT(has_value_);
+  312|  1.45k|  METL_NODISCARD const T* operator->() const noexcept {
+  313|  1.45k|    METL_ASSERT(has_value_);
   ------------------
-  |  |   91|  1.47k|  do {                                                             \
-  |  |   92|  1.47k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|  1.45k|  do {                                                             \
+  |  |   92|  1.45k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|  1.47k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  1.45k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 1.47k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 1.45k]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|  1.47k|  } while (false)
+  |  |   95|  1.45k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 1.47k]
+  |  |  |  Branch (95:12): [Folded, False: 1.45k]
   |  |  ------------------
   ------------------
-  314|  1.47k|    return value_ptr();
-  315|  1.47k|  }
+  314|  1.45k|    return value_ptr();
+  315|  1.45k|  }
 _ZNK4metl8expectedINS_6parsedImEENS_11parse_errorEE9value_ptrEv:
-  681|  1.47k|  const T* value_ptr() const noexcept { return storage_.value_storage.ptr(); }
+  681|  1.45k|  const T* value_ptr() const noexcept { return storage_.value_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedImEENS_11parse_errorEED2Ev:
-  238|  1.54k|  ~expected() { destroy_active(); }
+  238|  1.52k|  ~expected() { destroy_active(); }
 _ZN4metl8expectedINS_6parsedImEENS_11parse_errorEE14destroy_activeEv:
-  702|  1.54k|  void destroy_active() noexcept {
-  703|  1.54k|    if (has_value_) {
+  702|  1.52k|  void destroy_active() noexcept {
+  703|  1.52k|    if (has_value_) {
   ------------------
-  |  Branch (703:9): [True: 899, False: 645]
+  |  Branch (703:9): [True: 881, False: 639]
   ------------------
-  704|    899|      value_ptr()->~T();
-  705|    899|    } else {
-  706|    645|      error_ptr()->~E();
-  707|    645|    }
-  708|  1.54k|  }
+  704|    881|      value_ptr()->~T();
+  705|    881|    } else {
+  706|    639|      error_ptr()->~E();
+  707|    639|    }
+  708|  1.52k|  }
 _ZN4metl8expectedINS_6parsedImEENS_11parse_errorEE9value_ptrEv:
-  680|    899|  T* value_ptr() noexcept { return storage_.value_storage.ptr(); }
+  680|    881|  T* value_ptr() noexcept { return storage_.value_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedImEENS_11parse_errorEE9error_ptrEv:
-  683|    645|  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
+  683|    639|  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIlEENS_11parse_errorEEC2IS3_vEEONS_10unexpectedIT_EE:
   196|    312|  expected(unexpected<G>&& u) : has_value_(false) {
   197|    312|    construct_error(static_cast<G&&>(u.error()));
   198|    312|  }
 _ZN4metl8expectedINS_6parsedIlEENS_11parse_errorEE13storage_unionC2Ev:
-  848|    772|    storage_union() {}
+  848|    760|    storage_union() {}
 _ZN4metl8expectedINS_6parsedIlEENS_11parse_errorEE15construct_errorIJS3_EEEvDpOT_:
   698|    312|  void construct_error(Args&&... args) {
   699|    312|    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
   700|    312|  }
 _ZN4metl8expectedINS_6parsedIlEENS_11parse_errorEE13storage_unionD2Ev:
-  849|    772|    ~storage_union() {}
+  849|    760|    ~storage_union() {}
 _ZN4metl8expectedINS_6parsedIlEENS_11parse_errorEEC2EOS2_:
-  186|    460|  expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
+  186|    448|  expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
 _ZN4metl8expectedINS_6parsedIlEENS_11parse_errorEE15construct_valueIJS2_EEEvDpOT_:
-  693|    460|  void construct_value(Args&&... args) {
-  694|    460|    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
-  695|    460|  }
+  693|    448|  void construct_value(Args&&... args) {
+  694|    448|    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
+  695|    448|  }
 _ZNK4metl8expectedINS_6parsedIlEENS_11parse_errorEEcvbEv:
-  305|    772|  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
+  305|    760|  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
 _ZNK4metl8expectedINS_6parsedIlEENS_11parse_errorEEptEv:
-  312|    758|  METL_NODISCARD const T* operator->() const noexcept {
-  313|    758|    METL_ASSERT(has_value_);
+  312|    740|  METL_NODISCARD const T* operator->() const noexcept {
+  313|    740|    METL_ASSERT(has_value_);
   ------------------
-  |  |   91|    758|  do {                                                             \
-  |  |   92|    758|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    740|  do {                                                             \
+  |  |   92|    740|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    758|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    740|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 758]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 740]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    758|  } while (false)
+  |  |   95|    740|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 758]
+  |  |  |  Branch (95:12): [Folded, False: 740]
   |  |  ------------------
   ------------------
-  314|    758|    return value_ptr();
-  315|    758|  }
+  314|    740|    return value_ptr();
+  315|    740|  }
 _ZNK4metl8expectedINS_6parsedIlEENS_11parse_errorEE9value_ptrEv:
-  681|    758|  const T* value_ptr() const noexcept { return storage_.value_storage.ptr(); }
+  681|    740|  const T* value_ptr() const noexcept { return storage_.value_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIlEENS_11parse_errorEED2Ev:
-  238|    772|  ~expected() { destroy_active(); }
+  238|    760|  ~expected() { destroy_active(); }
 _ZN4metl8expectedINS_6parsedIlEENS_11parse_errorEE14destroy_activeEv:
-  702|    772|  void destroy_active() noexcept {
-  703|    772|    if (has_value_) {
+  702|    760|  void destroy_active() noexcept {
+  703|    760|    if (has_value_) {
   ------------------
-  |  Branch (703:9): [True: 460, False: 312]
+  |  Branch (703:9): [True: 448, False: 312]
   ------------------
-  704|    460|      value_ptr()->~T();
-  705|    460|    } else {
+  704|    448|      value_ptr()->~T();
+  705|    448|    } else {
   706|    312|      error_ptr()->~E();
   707|    312|    }
-  708|    772|  }
+  708|    760|  }
 _ZN4metl8expectedINS_6parsedIlEENS_11parse_errorEE9value_ptrEv:
-  680|    460|  T* value_ptr() noexcept { return storage_.value_storage.ptr(); }
+  680|    448|  T* value_ptr() noexcept { return storage_.value_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIlEENS_11parse_errorEE9error_ptrEv:
   683|    312|  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIhEENS_11parse_errorEEC2IS3_vEEONS_10unexpectedIT_EE:
-  196|    353|  expected(unexpected<G>&& u) : has_value_(false) {
-  197|    353|    construct_error(static_cast<G&&>(u.error()));
-  198|    353|  }
+  196|    347|  expected(unexpected<G>&& u) : has_value_(false) {
+  197|    347|    construct_error(static_cast<G&&>(u.error()));
+  198|    347|  }
 _ZN4metl8expectedINS_6parsedIhEENS_11parse_errorEE13storage_unionC2Ev:
-  848|    386|    storage_union() {}
+  848|    380|    storage_union() {}
 _ZN4metl8expectedINS_6parsedIhEENS_11parse_errorEE15construct_errorIJS3_EEEvDpOT_:
-  698|    353|  void construct_error(Args&&... args) {
-  699|    353|    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
-  700|    353|  }
+  698|    347|  void construct_error(Args&&... args) {
+  699|    347|    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
+  700|    347|  }
 _ZN4metl8expectedINS_6parsedIhEENS_11parse_errorEE13storage_unionD2Ev:
-  849|    386|    ~storage_union() {}
+  849|    380|    ~storage_union() {}
 _ZN4metl8expectedINS_6parsedIhEENS_11parse_errorEEC2EOS2_:
   186|     33|  expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
 _ZN4metl8expectedINS_6parsedIhEENS_11parse_errorEE15construct_valueIJS2_EEEvDpOT_:
@@ -907,7 +907,7 @@ _ZN4metl8expectedINS_6parsedIhEENS_11parse_errorEE15construct_valueIJS2_EEEvDpOT
   694|     33|    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
   695|     33|  }
 _ZNK4metl8expectedINS_6parsedIhEENS_11parse_errorEEcvbEv:
-  305|    386|  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
+  305|    380|  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
 _ZNK4metl8expectedINS_6parsedIhEENS_11parse_errorEEptEv:
   312|     99|  METL_NODISCARD const T* operator->() const noexcept {
   313|     99|    METL_ASSERT(has_value_);
@@ -932,80 +932,80 @@ _ZNK4metl8expectedINS_6parsedIhEENS_11parse_errorEEptEv:
 _ZNK4metl8expectedINS_6parsedIhEENS_11parse_errorEE9value_ptrEv:
   681|     99|  const T* value_ptr() const noexcept { return storage_.value_storage.ptr(); }
 _ZNKR4metl8expectedINS_6parsedIhEENS_11parse_errorEE5errorEv:
-  402|    450|  METL_NODISCARD const E& error() const& noexcept {
-  403|    450|    METL_ASSERT(!has_value_);
+  402|    442|  METL_NODISCARD const E& error() const& noexcept {
+  403|    442|    METL_ASSERT(!has_value_);
   ------------------
-  |  |   91|    450|  do {                                                             \
-  |  |   92|    450|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    442|  do {                                                             \
+  |  |   92|    442|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    450|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    442|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 450]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 442]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    450|  } while (false)
+  |  |   95|    442|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 450]
+  |  |  |  Branch (95:12): [Folded, False: 442]
   |  |  ------------------
   ------------------
-  404|    450|    return *error_ptr();
-  405|    450|  }
+  404|    442|    return *error_ptr();
+  405|    442|  }
 _ZNK4metl8expectedINS_6parsedIhEENS_11parse_errorEE9error_ptrEv:
-  684|    450|  const E* error_ptr() const noexcept { return storage_.error_storage.ptr(); }
+  684|    442|  const E* error_ptr() const noexcept { return storage_.error_storage.ptr(); }
 _ZNKR4metl8expectedINS_6parsedImEENS_11parse_errorEE5errorEv:
-  402|    645|  METL_NODISCARD const E& error() const& noexcept {
-  403|    645|    METL_ASSERT(!has_value_);
+  402|    639|  METL_NODISCARD const E& error() const& noexcept {
+  403|    639|    METL_ASSERT(!has_value_);
   ------------------
-  |  |   91|    645|  do {                                                             \
-  |  |   92|    645|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    639|  do {                                                             \
+  |  |   92|    639|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    645|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    639|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 645]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 639]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    645|  } while (false)
+  |  |   95|    639|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 645]
+  |  |  |  Branch (95:12): [Folded, False: 639]
   |  |  ------------------
   ------------------
-  404|    645|    return *error_ptr();
-  405|    645|  }
+  404|    639|    return *error_ptr();
+  405|    639|  }
 _ZNK4metl8expectedINS_6parsedImEENS_11parse_errorEE9error_ptrEv:
-  684|    645|  const E* error_ptr() const noexcept { return storage_.error_storage.ptr(); }
+  684|    639|  const E* error_ptr() const noexcept { return storage_.error_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIhEENS_11parse_errorEED2Ev:
-  238|    386|  ~expected() { destroy_active(); }
+  238|    380|  ~expected() { destroy_active(); }
 _ZN4metl8expectedINS_6parsedIhEENS_11parse_errorEE14destroy_activeEv:
-  702|    386|  void destroy_active() noexcept {
-  703|    386|    if (has_value_) {
+  702|    380|  void destroy_active() noexcept {
+  703|    380|    if (has_value_) {
   ------------------
-  |  Branch (703:9): [True: 33, False: 353]
+  |  Branch (703:9): [True: 33, False: 347]
   ------------------
   704|     33|      value_ptr()->~T();
-  705|    353|    } else {
-  706|    353|      error_ptr()->~E();
-  707|    353|    }
-  708|    386|  }
+  705|    347|    } else {
+  706|    347|      error_ptr()->~E();
+  707|    347|    }
+  708|    380|  }
 _ZN4metl8expectedINS_6parsedIhEENS_11parse_errorEE9value_ptrEv:
   680|     33|  T* value_ptr() noexcept { return storage_.value_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIhEENS_11parse_errorEE9error_ptrEv:
-  683|    353|  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
+  683|    347|  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedItEENS_11parse_errorEEC2IS3_vEEONS_10unexpectedIT_EE:
-  196|    324|  expected(unexpected<G>&& u) : has_value_(false) {
-  197|    324|    construct_error(static_cast<G&&>(u.error()));
-  198|    324|  }
+  196|    318|  expected(unexpected<G>&& u) : has_value_(false) {
+  197|    318|    construct_error(static_cast<G&&>(u.error()));
+  198|    318|  }
 _ZN4metl8expectedINS_6parsedItEENS_11parse_errorEE13storage_unionC2Ev:
-  848|    386|    storage_union() {}
+  848|    380|    storage_union() {}
 _ZN4metl8expectedINS_6parsedItEENS_11parse_errorEE15construct_errorIJS3_EEEvDpOT_:
-  698|    324|  void construct_error(Args&&... args) {
-  699|    324|    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
-  700|    324|  }
+  698|    318|  void construct_error(Args&&... args) {
+  699|    318|    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
+  700|    318|  }
 _ZN4metl8expectedINS_6parsedItEENS_11parse_errorEE13storage_unionD2Ev:
-  849|    386|    ~storage_union() {}
+  849|    380|    ~storage_union() {}
 _ZN4metl8expectedINS_6parsedItEENS_11parse_errorEEC2EOS2_:
   186|     62|  expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
 _ZN4metl8expectedINS_6parsedItEENS_11parse_errorEE15construct_valueIJS2_EEEvDpOT_:
@@ -1013,7 +1013,7 @@ _ZN4metl8expectedINS_6parsedItEENS_11parse_errorEE15construct_valueIJS2_EEEvDpOT
   694|     62|    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
   695|     62|  }
 _ZNK4metl8expectedINS_6parsedItEENS_11parse_errorEEcvbEv:
-  305|    386|  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
+  305|    380|  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
 _ZNK4metl8expectedINS_6parsedItEENS_11parse_errorEEptEv:
   312|    186|  METL_NODISCARD const T* operator->() const noexcept {
   313|    186|    METL_ASSERT(has_value_);
@@ -1038,134 +1038,134 @@ _ZNK4metl8expectedINS_6parsedItEENS_11parse_errorEEptEv:
 _ZNK4metl8expectedINS_6parsedItEENS_11parse_errorEE9value_ptrEv:
   681|    186|  const T* value_ptr() const noexcept { return storage_.value_storage.ptr(); }
 _ZNKR4metl8expectedINS_6parsedItEENS_11parse_errorEE5errorEv:
-  402|    421|  METL_NODISCARD const E& error() const& noexcept {
-  403|    421|    METL_ASSERT(!has_value_);
+  402|    413|  METL_NODISCARD const E& error() const& noexcept {
+  403|    413|    METL_ASSERT(!has_value_);
   ------------------
-  |  |   91|    421|  do {                                                             \
-  |  |   92|    421|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    413|  do {                                                             \
+  |  |   92|    413|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    421|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    413|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 421]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 413]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    421|  } while (false)
+  |  |   95|    413|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 421]
+  |  |  |  Branch (95:12): [Folded, False: 413]
   |  |  ------------------
   ------------------
-  404|    421|    return *error_ptr();
-  405|    421|  }
+  404|    413|    return *error_ptr();
+  405|    413|  }
 _ZNK4metl8expectedINS_6parsedItEENS_11parse_errorEE9error_ptrEv:
-  684|    421|  const E* error_ptr() const noexcept { return storage_.error_storage.ptr(); }
+  684|    413|  const E* error_ptr() const noexcept { return storage_.error_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedItEENS_11parse_errorEED2Ev:
-  238|    386|  ~expected() { destroy_active(); }
+  238|    380|  ~expected() { destroy_active(); }
 _ZN4metl8expectedINS_6parsedItEENS_11parse_errorEE14destroy_activeEv:
-  702|    386|  void destroy_active() noexcept {
-  703|    386|    if (has_value_) {
+  702|    380|  void destroy_active() noexcept {
+  703|    380|    if (has_value_) {
   ------------------
-  |  Branch (703:9): [True: 62, False: 324]
+  |  Branch (703:9): [True: 62, False: 318]
   ------------------
   704|     62|      value_ptr()->~T();
-  705|    324|    } else {
-  706|    324|      error_ptr()->~E();
-  707|    324|    }
-  708|    386|  }
+  705|    318|    } else {
+  706|    318|      error_ptr()->~E();
+  707|    318|    }
+  708|    380|  }
 _ZN4metl8expectedINS_6parsedItEENS_11parse_errorEE9value_ptrEv:
   680|     62|  T* value_ptr() noexcept { return storage_.value_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedItEENS_11parse_errorEE9error_ptrEv:
-  683|    324|  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
+  683|    318|  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
 _ZNKR4metl8expectedINS_6parsedIjEENS_11parse_errorEE5errorEv:
-  402|    384|  METL_NODISCARD const E& error() const& noexcept {
-  403|    384|    METL_ASSERT(!has_value_);
+  402|    376|  METL_NODISCARD const E& error() const& noexcept {
+  403|    376|    METL_ASSERT(!has_value_);
   ------------------
-  |  |   91|    384|  do {                                                             \
-  |  |   92|    384|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    376|  do {                                                             \
+  |  |   92|    376|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    384|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    376|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 384]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 376]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    384|  } while (false)
+  |  |   95|    376|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 384]
+  |  |  |  Branch (95:12): [Folded, False: 376]
   |  |  ------------------
   ------------------
-  404|    384|    return *error_ptr();
-  405|    384|  }
+  404|    376|    return *error_ptr();
+  405|    376|  }
 _ZNK4metl8expectedINS_6parsedIjEENS_11parse_errorEE9error_ptrEv:
-  684|    384|  const E* error_ptr() const noexcept { return storage_.error_storage.ptr(); }
+  684|    376|  const E* error_ptr() const noexcept { return storage_.error_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIaEENS_11parse_errorEEC2IS3_vEEONS_10unexpectedIT_EE:
-  196|    174|  expected(unexpected<G>&& u) : has_value_(false) {
-  197|    174|    construct_error(static_cast<G&&>(u.error()));
-  198|    174|  }
+  196|    172|  expected(unexpected<G>&& u) : has_value_(false) {
+  197|    172|    construct_error(static_cast<G&&>(u.error()));
+  198|    172|  }
 _ZN4metl8expectedINS_6parsedIaEENS_11parse_errorEE13storage_unionC2Ev:
-  848|    193|    storage_union() {}
+  848|    190|    storage_union() {}
 _ZN4metl8expectedINS_6parsedIaEENS_11parse_errorEE15construct_errorIJS3_EEEvDpOT_:
-  698|    174|  void construct_error(Args&&... args) {
-  699|    174|    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
-  700|    174|  }
+  698|    172|  void construct_error(Args&&... args) {
+  699|    172|    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
+  700|    172|  }
 _ZN4metl8expectedINS_6parsedIaEENS_11parse_errorEE13storage_unionD2Ev:
-  849|    193|    ~storage_union() {}
+  849|    190|    ~storage_union() {}
 _ZN4metl8expectedINS_6parsedIaEENS_11parse_errorEEC2EOS2_:
-  186|     19|  expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
+  186|     18|  expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
 _ZN4metl8expectedINS_6parsedIaEENS_11parse_errorEE15construct_valueIJS2_EEEvDpOT_:
-  693|     19|  void construct_value(Args&&... args) {
-  694|     19|    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
-  695|     19|  }
+  693|     18|  void construct_value(Args&&... args) {
+  694|     18|    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
+  695|     18|  }
 _ZNK4metl8expectedINS_6parsedIaEENS_11parse_errorEEcvbEv:
-  305|    193|  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
+  305|    190|  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
 _ZNK4metl8expectedINS_6parsedIaEENS_11parse_errorEEptEv:
-  312|     57|  METL_NODISCARD const T* operator->() const noexcept {
-  313|     57|    METL_ASSERT(has_value_);
+  312|     54|  METL_NODISCARD const T* operator->() const noexcept {
+  313|     54|    METL_ASSERT(has_value_);
   ------------------
-  |  |   91|     57|  do {                                                             \
-  |  |   92|     57|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|     54|  do {                                                             \
+  |  |   92|     54|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|     57|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|     54|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 57]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 54]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|     57|  } while (false)
+  |  |   95|     54|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 57]
+  |  |  |  Branch (95:12): [Folded, False: 54]
   |  |  ------------------
   ------------------
-  314|     57|    return value_ptr();
-  315|     57|  }
+  314|     54|    return value_ptr();
+  315|     54|  }
 _ZNK4metl8expectedINS_6parsedIaEENS_11parse_errorEE9value_ptrEv:
-  681|     57|  const T* value_ptr() const noexcept { return storage_.value_storage.ptr(); }
+  681|     54|  const T* value_ptr() const noexcept { return storage_.value_storage.ptr(); }
 _ZNKR4metl8expectedINS_6parsedIaEENS_11parse_errorEE5errorEv:
-  402|    222|  METL_NODISCARD const E& error() const& noexcept {
-  403|    222|    METL_ASSERT(!has_value_);
+  402|    220|  METL_NODISCARD const E& error() const& noexcept {
+  403|    220|    METL_ASSERT(!has_value_);
   ------------------
-  |  |   91|    222|  do {                                                             \
-  |  |   92|    222|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    220|  do {                                                             \
+  |  |   92|    220|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    222|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    220|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 222]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 220]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    222|  } while (false)
+  |  |   95|    220|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 222]
+  |  |  |  Branch (95:12): [Folded, False: 220]
   |  |  ------------------
   ------------------
-  404|    222|    return *error_ptr();
-  405|    222|  }
+  404|    220|    return *error_ptr();
+  405|    220|  }
 _ZNK4metl8expectedINS_6parsedIaEENS_11parse_errorEE9error_ptrEv:
-  684|    222|  const E* error_ptr() const noexcept { return storage_.error_storage.ptr(); }
+  684|    220|  const E* error_ptr() const noexcept { return storage_.error_storage.ptr(); }
 _ZNKR4metl8expectedINS_6parsedIlEENS_11parse_errorEE5errorEv:
   402|    312|  METL_NODISCARD const E& error() const& noexcept {
   403|    312|    METL_ASSERT(!has_value_);
@@ -1190,1301 +1190,1301 @@ _ZNKR4metl8expectedINS_6parsedIlEENS_11parse_errorEE5errorEv:
 _ZNK4metl8expectedINS_6parsedIlEENS_11parse_errorEE9error_ptrEv:
   684|    312|  const E* error_ptr() const noexcept { return storage_.error_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIaEENS_11parse_errorEED2Ev:
-  238|    193|  ~expected() { destroy_active(); }
+  238|    190|  ~expected() { destroy_active(); }
 _ZN4metl8expectedINS_6parsedIaEENS_11parse_errorEE14destroy_activeEv:
-  702|    193|  void destroy_active() noexcept {
-  703|    193|    if (has_value_) {
+  702|    190|  void destroy_active() noexcept {
+  703|    190|    if (has_value_) {
   ------------------
-  |  Branch (703:9): [True: 19, False: 174]
+  |  Branch (703:9): [True: 18, False: 172]
   ------------------
-  704|     19|      value_ptr()->~T();
-  705|    174|    } else {
-  706|    174|      error_ptr()->~E();
-  707|    174|    }
-  708|    193|  }
+  704|     18|      value_ptr()->~T();
+  705|    172|    } else {
+  706|    172|      error_ptr()->~E();
+  707|    172|    }
+  708|    190|  }
 _ZN4metl8expectedINS_6parsedIaEENS_11parse_errorEE9value_ptrEv:
-  680|     19|  T* value_ptr() noexcept { return storage_.value_storage.ptr(); }
+  680|     18|  T* value_ptr() noexcept { return storage_.value_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIaEENS_11parse_errorEE9error_ptrEv:
-  683|    174|  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
+  683|    172|  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIsEENS_11parse_errorEEC2IS3_vEEONS_10unexpectedIT_EE:
-  196|    159|  expected(unexpected<G>&& u) : has_value_(false) {
-  197|    159|    construct_error(static_cast<G&&>(u.error()));
-  198|    159|  }
+  196|    157|  expected(unexpected<G>&& u) : has_value_(false) {
+  197|    157|    construct_error(static_cast<G&&>(u.error()));
+  198|    157|  }
 _ZN4metl8expectedINS_6parsedIsEENS_11parse_errorEE13storage_unionC2Ev:
-  848|    193|    storage_union() {}
+  848|    190|    storage_union() {}
 _ZN4metl8expectedINS_6parsedIsEENS_11parse_errorEE15construct_errorIJS3_EEEvDpOT_:
-  698|    159|  void construct_error(Args&&... args) {
-  699|    159|    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
-  700|    159|  }
+  698|    157|  void construct_error(Args&&... args) {
+  699|    157|    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
+  700|    157|  }
 _ZN4metl8expectedINS_6parsedIsEENS_11parse_errorEE13storage_unionD2Ev:
-  849|    193|    ~storage_union() {}
+  849|    190|    ~storage_union() {}
 _ZN4metl8expectedINS_6parsedIsEENS_11parse_errorEEC2EOS2_:
-  186|     34|  expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
+  186|     33|  expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
 _ZN4metl8expectedINS_6parsedIsEENS_11parse_errorEE15construct_valueIJS2_EEEvDpOT_:
-  693|     34|  void construct_value(Args&&... args) {
-  694|     34|    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
-  695|     34|  }
+  693|     33|  void construct_value(Args&&... args) {
+  694|     33|    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
+  695|     33|  }
 _ZNK4metl8expectedINS_6parsedIsEENS_11parse_errorEEcvbEv:
-  305|    193|  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
+  305|    190|  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
 _ZNK4metl8expectedINS_6parsedIsEENS_11parse_errorEEptEv:
-  312|    102|  METL_NODISCARD const T* operator->() const noexcept {
-  313|    102|    METL_ASSERT(has_value_);
+  312|     99|  METL_NODISCARD const T* operator->() const noexcept {
+  313|     99|    METL_ASSERT(has_value_);
   ------------------
-  |  |   91|    102|  do {                                                             \
-  |  |   92|    102|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|     99|  do {                                                             \
+  |  |   92|     99|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    102|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|     99|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 102]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 99]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    102|  } while (false)
+  |  |   95|     99|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 102]
+  |  |  |  Branch (95:12): [Folded, False: 99]
   |  |  ------------------
   ------------------
-  314|    102|    return value_ptr();
-  315|    102|  }
+  314|     99|    return value_ptr();
+  315|     99|  }
 _ZNK4metl8expectedINS_6parsedIsEENS_11parse_errorEE9value_ptrEv:
-  681|    102|  const T* value_ptr() const noexcept { return storage_.value_storage.ptr(); }
+  681|     99|  const T* value_ptr() const noexcept { return storage_.value_storage.ptr(); }
 _ZNKR4metl8expectedINS_6parsedIsEENS_11parse_errorEE5errorEv:
-  402|    207|  METL_NODISCARD const E& error() const& noexcept {
-  403|    207|    METL_ASSERT(!has_value_);
+  402|    205|  METL_NODISCARD const E& error() const& noexcept {
+  403|    205|    METL_ASSERT(!has_value_);
   ------------------
-  |  |   91|    207|  do {                                                             \
-  |  |   92|    207|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    205|  do {                                                             \
+  |  |   92|    205|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    207|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    205|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 207]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 205]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    207|  } while (false)
+  |  |   95|    205|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 207]
+  |  |  |  Branch (95:12): [Folded, False: 205]
   |  |  ------------------
   ------------------
-  404|    207|    return *error_ptr();
-  405|    207|  }
+  404|    205|    return *error_ptr();
+  405|    205|  }
 _ZNK4metl8expectedINS_6parsedIsEENS_11parse_errorEE9error_ptrEv:
-  684|    207|  const E* error_ptr() const noexcept { return storage_.error_storage.ptr(); }
+  684|    205|  const E* error_ptr() const noexcept { return storage_.error_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIsEENS_11parse_errorEED2Ev:
-  238|    193|  ~expected() { destroy_active(); }
+  238|    190|  ~expected() { destroy_active(); }
 _ZN4metl8expectedINS_6parsedIsEENS_11parse_errorEE14destroy_activeEv:
-  702|    193|  void destroy_active() noexcept {
-  703|    193|    if (has_value_) {
+  702|    190|  void destroy_active() noexcept {
+  703|    190|    if (has_value_) {
   ------------------
-  |  Branch (703:9): [True: 34, False: 159]
+  |  Branch (703:9): [True: 33, False: 157]
   ------------------
-  704|     34|      value_ptr()->~T();
-  705|    159|    } else {
-  706|    159|      error_ptr()->~E();
-  707|    159|    }
-  708|    193|  }
+  704|     33|      value_ptr()->~T();
+  705|    157|    } else {
+  706|    157|      error_ptr()->~E();
+  707|    157|    }
+  708|    190|  }
 _ZN4metl8expectedINS_6parsedIsEENS_11parse_errorEE9value_ptrEv:
-  680|     34|  T* value_ptr() noexcept { return storage_.value_storage.ptr(); }
+  680|     33|  T* value_ptr() noexcept { return storage_.value_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIsEENS_11parse_errorEE9error_ptrEv:
-  683|    159|  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
+  683|    157|  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIiEENS_11parse_errorEEC2IS3_vEEONS_10unexpectedIT_EE:
-  196|    141|  expected(unexpected<G>&& u) : has_value_(false) {
-  197|    141|    construct_error(static_cast<G&&>(u.error()));
-  198|    141|  }
+  196|    139|  expected(unexpected<G>&& u) : has_value_(false) {
+  197|    139|    construct_error(static_cast<G&&>(u.error()));
+  198|    139|  }
 _ZN4metl8expectedINS_6parsedIiEENS_11parse_errorEE13storage_unionC2Ev:
-  848|    193|    storage_union() {}
+  848|    190|    storage_union() {}
 _ZN4metl8expectedINS_6parsedIiEENS_11parse_errorEE15construct_errorIJS3_EEEvDpOT_:
-  698|    141|  void construct_error(Args&&... args) {
-  699|    141|    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
-  700|    141|  }
+  698|    139|  void construct_error(Args&&... args) {
+  699|    139|    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
+  700|    139|  }
 _ZN4metl8expectedINS_6parsedIiEENS_11parse_errorEE13storage_unionD2Ev:
-  849|    193|    ~storage_union() {}
+  849|    190|    ~storage_union() {}
 _ZN4metl8expectedINS_6parsedIiEENS_11parse_errorEEC2EOS2_:
-  186|     52|  expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
+  186|     51|  expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
 _ZN4metl8expectedINS_6parsedIiEENS_11parse_errorEE15construct_valueIJS2_EEEvDpOT_:
-  693|     52|  void construct_value(Args&&... args) {
-  694|     52|    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
-  695|     52|  }
+  693|     51|  void construct_value(Args&&... args) {
+  694|     51|    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
+  695|     51|  }
 _ZNK4metl8expectedINS_6parsedIiEENS_11parse_errorEEcvbEv:
-  305|    193|  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
+  305|    190|  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
 _ZNK4metl8expectedINS_6parsedIiEENS_11parse_errorEEptEv:
-  312|    156|  METL_NODISCARD const T* operator->() const noexcept {
-  313|    156|    METL_ASSERT(has_value_);
+  312|    153|  METL_NODISCARD const T* operator->() const noexcept {
+  313|    153|    METL_ASSERT(has_value_);
   ------------------
-  |  |   91|    156|  do {                                                             \
-  |  |   92|    156|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    153|  do {                                                             \
+  |  |   92|    153|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    156|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    153|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 156]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 153]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    156|  } while (false)
+  |  |   95|    153|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 156]
+  |  |  |  Branch (95:12): [Folded, False: 153]
   |  |  ------------------
   ------------------
-  314|    156|    return value_ptr();
-  315|    156|  }
+  314|    153|    return value_ptr();
+  315|    153|  }
 _ZNK4metl8expectedINS_6parsedIiEENS_11parse_errorEE9value_ptrEv:
-  681|    156|  const T* value_ptr() const noexcept { return storage_.value_storage.ptr(); }
+  681|    153|  const T* value_ptr() const noexcept { return storage_.value_storage.ptr(); }
 _ZNKR4metl8expectedINS_6parsedIiEENS_11parse_errorEE5errorEv:
-  402|    189|  METL_NODISCARD const E& error() const& noexcept {
-  403|    189|    METL_ASSERT(!has_value_);
+  402|    187|  METL_NODISCARD const E& error() const& noexcept {
+  403|    187|    METL_ASSERT(!has_value_);
   ------------------
-  |  |   91|    189|  do {                                                             \
-  |  |   92|    189|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    187|  do {                                                             \
+  |  |   92|    187|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    189|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    187|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 189]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 187]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    189|  } while (false)
+  |  |   95|    187|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 189]
+  |  |  |  Branch (95:12): [Folded, False: 187]
   |  |  ------------------
   ------------------
-  404|    189|    return *error_ptr();
-  405|    189|  }
+  404|    187|    return *error_ptr();
+  405|    187|  }
 _ZNK4metl8expectedINS_6parsedIiEENS_11parse_errorEE9error_ptrEv:
-  684|    189|  const E* error_ptr() const noexcept { return storage_.error_storage.ptr(); }
+  684|    187|  const E* error_ptr() const noexcept { return storage_.error_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIiEENS_11parse_errorEED2Ev:
-  238|    193|  ~expected() { destroy_active(); }
+  238|    190|  ~expected() { destroy_active(); }
 _ZN4metl8expectedINS_6parsedIiEENS_11parse_errorEE14destroy_activeEv:
-  702|    193|  void destroy_active() noexcept {
-  703|    193|    if (has_value_) {
+  702|    190|  void destroy_active() noexcept {
+  703|    190|    if (has_value_) {
   ------------------
-  |  Branch (703:9): [True: 52, False: 141]
+  |  Branch (703:9): [True: 51, False: 139]
   ------------------
-  704|     52|      value_ptr()->~T();
-  705|    141|    } else {
-  706|    141|      error_ptr()->~E();
-  707|    141|    }
-  708|    193|  }
+  704|     51|      value_ptr()->~T();
+  705|    139|    } else {
+  706|    139|      error_ptr()->~E();
+  707|    139|    }
+  708|    190|  }
 _ZN4metl8expectedINS_6parsedIiEENS_11parse_errorEE9value_ptrEv:
-  680|     52|  T* value_ptr() noexcept { return storage_.value_storage.ptr(); }
+  680|     51|  T* value_ptr() noexcept { return storage_.value_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIiEENS_11parse_errorEE9error_ptrEv:
-  683|    141|  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
+  683|    139|  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIjEENS_11parse_errorEED2Ev:
-  238|  1.41k|  ~expected() { destroy_active(); }
+  238|  1.39k|  ~expected() { destroy_active(); }
 _ZN4metl8expectedINS_6parsedIjEENS_11parse_errorEE14destroy_activeEv:
-  702|  1.41k|  void destroy_active() noexcept {
-  703|  1.41k|    if (has_value_) {
+  702|  1.39k|  void destroy_active() noexcept {
+  703|  1.39k|    if (has_value_) {
   ------------------
-  |  Branch (703:9): [True: 202, False: 1.21k]
+  |  Branch (703:9): [True: 200, False: 1.19k]
   ------------------
-  704|    202|      value_ptr()->~T();
-  705|  1.21k|    } else {
-  706|  1.21k|      error_ptr()->~E();
-  707|  1.21k|    }
-  708|  1.41k|  }
+  704|    200|      value_ptr()->~T();
+  705|  1.19k|    } else {
+  706|  1.19k|      error_ptr()->~E();
+  707|  1.19k|    }
+  708|  1.39k|  }
 _ZN4metl8expectedINS_6parsedIjEENS_11parse_errorEE9value_ptrEv:
-  680|    202|  T* value_ptr() noexcept { return storage_.value_storage.ptr(); }
+  680|    200|  T* value_ptr() noexcept { return storage_.value_storage.ptr(); }
 _ZN4metl8expectedINS_6parsedIjEENS_11parse_errorEE9error_ptrEv:
-  683|  1.21k|  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
+  683|  1.19k|  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
 _ZNK4metl8expectedINS_6parsedIjEENS_11parse_errorEEptEv:
-  312|    606|  METL_NODISCARD const T* operator->() const noexcept {
-  313|    606|    METL_ASSERT(has_value_);
+  312|    600|  METL_NODISCARD const T* operator->() const noexcept {
+  313|    600|    METL_ASSERT(has_value_);
   ------------------
-  |  |   91|    606|  do {                                                             \
-  |  |   92|    606|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    600|  do {                                                             \
+  |  |   92|    600|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    606|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    600|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 606]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 600]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    606|  } while (false)
+  |  |   95|    600|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 606]
+  |  |  |  Branch (95:12): [Folded, False: 600]
   |  |  ------------------
   ------------------
-  314|    606|    return value_ptr();
-  315|    606|  }
+  314|    600|    return value_ptr();
+  315|    600|  }
 _ZNK4metl8expectedINS_6parsedIjEENS_11parse_errorEE9value_ptrEv:
-  681|    606|  const T* value_ptr() const noexcept { return storage_.value_storage.ptr(); }
+  681|    600|  const T* value_ptr() const noexcept { return storage_.value_storage.ptr(); }
 
 _ZN4metl11format_uintImEENS_4spanIcLm18446744073709551615EEES2_T_:
-  166|    193|constexpr span<char> format_uint(span<char> out, T value) noexcept {
-  167|    193|  const span<char> text = try_format_uint(out, value);
-  168|    193|  METL_ASSERT(!text.empty());
+  166|    190|constexpr span<char> format_uint(span<char> out, T value) noexcept {
+  167|    190|  const span<char> text = try_format_uint(out, value);
+  168|    190|  METL_ASSERT(!text.empty());
   ------------------
-  |  |   91|    193|  do {                                                             \
-  |  |   92|    193|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    190|  do {                                                             \
+  |  |   92|    190|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    193|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    190|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 193]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 190]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    193|  } while (false)
+  |  |   95|    190|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 193]
+  |  |  |  Branch (95:12): [Folded, False: 190]
   |  |  ------------------
   ------------------
-  169|    193|  return text;
-  170|    193|}
+  169|    190|  return text;
+  170|    190|}
 _ZN4metl15try_format_uintImEENS_4spanIcLm18446744073709551615EEES2_T_:
-  140|    193|METL_NODISCARD constexpr span<char> try_format_uint(span<char> out, T value) noexcept {
-  141|    193|  static_assert(detail::is_plain_integer_v<T>,
-  142|    193|                "try_format_uint takes an integer: bool and the character types are excluded "
-  143|    193|                "because printing them as numbers is almost never what was meant");
-  144|    193|  static_assert(std::is_unsigned_v<T>,
-  145|    193|                "try_format_uint takes an UNSIGNED value; a negative signed value would convert "
-  146|    193|                "to a huge positive one and print as such. Use try_format_int instead");
-  147|    193|  const auto magnitude = static_cast<unsigned long long>(value);
-  148|    193|  const std::size_t count = detail::decimal_digits(magnitude);
-  149|    193|  if (count > out.size()) {
+  140|    190|METL_NODISCARD constexpr span<char> try_format_uint(span<char> out, T value) noexcept {
+  141|    190|  static_assert(detail::is_plain_integer_v<T>,
+  142|    190|                "try_format_uint takes an integer: bool and the character types are excluded "
+  143|    190|                "because printing them as numbers is almost never what was meant");
+  144|    190|  static_assert(std::is_unsigned_v<T>,
+  145|    190|                "try_format_uint takes an UNSIGNED value; a negative signed value would convert "
+  146|    190|                "to a huge positive one and print as such. Use try_format_int instead");
+  147|    190|  const auto magnitude = static_cast<unsigned long long>(value);
+  148|    190|  const std::size_t count = detail::decimal_digits(magnitude);
+  149|    190|  if (count > out.size()) {
   ------------------
-  |  Branch (149:7): [True: 0, False: 193]
+  |  Branch (149:7): [True: 0, False: 190]
   ------------------
   150|      0|    return out.first(std::size_t{0});
   151|      0|  }
-  152|    193|  detail::write_decimal(out, count, magnitude);
-  153|    193|  return out.first(count);
-  154|    193|}
+  152|    190|  detail::write_decimal(out, count, magnitude);
+  153|    190|  return out.first(count);
+  154|    190|}
 _ZN4metl6detail14decimal_digitsEy:
-   65|    386|constexpr std::size_t decimal_digits(unsigned long long magnitude) noexcept {
-   66|    386|  std::size_t digits = 1;
-   67|  5.36k|  while (magnitude >= 10ULL) {
+   65|    380|constexpr std::size_t decimal_digits(unsigned long long magnitude) noexcept {
+   66|    380|  std::size_t digits = 1;
+   67|  5.24k|  while (magnitude >= 10ULL) {
   ------------------
-  |  Branch (67:10): [True: 4.97k, False: 386]
+  |  Branch (67:10): [True: 4.86k, False: 380]
   ------------------
-   68|  4.97k|    magnitude /= 10ULL;
-   69|  4.97k|    ++digits;
-   70|  4.97k|  }
-   71|    386|  return digits;
-   72|    386|}
+   68|  4.86k|    magnitude /= 10ULL;
+   69|  4.86k|    ++digits;
+   70|  4.86k|  }
+   71|    380|  return digits;
+   72|    380|}
 _ZN4metl6detail13write_decimalENS_4spanIcLm18446744073709551615EEEmy:
-   85|    386|constexpr void write_decimal(span<char> out, std::size_t count, unsigned long long magnitude) noexcept {
-   86|    386|  std::size_t index = count;
-   87|  5.74k|  while (index > 0) {
+   85|    380|constexpr void write_decimal(span<char> out, std::size_t count, unsigned long long magnitude) noexcept {
+   86|    380|  std::size_t index = count;
+   87|  5.62k|  while (index > 0) {
   ------------------
-  |  Branch (87:10): [True: 5.36k, False: 386]
+  |  Branch (87:10): [True: 5.24k, False: 380]
   ------------------
-   88|  5.36k|    --index;
-   89|  5.36k|    out[index] = static_cast<char>('0' + static_cast<char>(magnitude % 10ULL));
-   90|  5.36k|    magnitude /= 10ULL;
-   91|  5.36k|  }
-   92|    386|}
+   88|  5.24k|    --index;
+   89|  5.24k|    out[index] = static_cast<char>('0' + static_cast<char>(magnitude % 10ULL));
+   90|  5.24k|    magnitude /= 10ULL;
+   91|  5.24k|  }
+   92|    380|}
 _ZN4metl10format_intIlEENS_4spanIcLm18446744073709551615EEES2_T_:
-  209|    193|constexpr span<char> format_int(span<char> out, T value) noexcept {
-  210|    193|  const span<char> text = try_format_int(out, value);
-  211|    193|  METL_ASSERT(!text.empty());
+  209|    190|constexpr span<char> format_int(span<char> out, T value) noexcept {
+  210|    190|  const span<char> text = try_format_int(out, value);
+  211|    190|  METL_ASSERT(!text.empty());
   ------------------
-  |  |   91|    193|  do {                                                             \
-  |  |   92|    193|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    190|  do {                                                             \
+  |  |   92|    190|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    193|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    190|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 193]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 190]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    193|  } while (false)
+  |  |   95|    190|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 193]
+  |  |  |  Branch (95:12): [Folded, False: 190]
   |  |  ------------------
   ------------------
-  212|    193|  return text;
-  213|    193|}
+  212|    190|  return text;
+  213|    190|}
 _ZN4metl14try_format_intIlEENS_4spanIcLm18446744073709551615EEES2_T_:
-  182|    193|METL_NODISCARD constexpr span<char> try_format_int(span<char> out, T value) noexcept {
-  183|    193|  static_assert(detail::is_plain_integer_v<T>,
-  184|    193|                "try_format_int takes an integer: bool and the character types are excluded "
-  185|    193|                "because printing them as numbers is almost never what was meant");
-  186|    193|  const auto widened = static_cast<long long>(value);
-  187|    193|  const unsigned long long magnitude = detail::magnitude_of(widened);
-  188|    193|  const std::size_t digits = detail::decimal_digits(magnitude);
-  189|    193|  const std::size_t count = digits + (widened < 0 ? 1U : 0U);
+  182|    190|METL_NODISCARD constexpr span<char> try_format_int(span<char> out, T value) noexcept {
+  183|    190|  static_assert(detail::is_plain_integer_v<T>,
+  184|    190|                "try_format_int takes an integer: bool and the character types are excluded "
+  185|    190|                "because printing them as numbers is almost never what was meant");
+  186|    190|  const auto widened = static_cast<long long>(value);
+  187|    190|  const unsigned long long magnitude = detail::magnitude_of(widened);
+  188|    190|  const std::size_t digits = detail::decimal_digits(magnitude);
+  189|    190|  const std::size_t count = digits + (widened < 0 ? 1U : 0U);
   ------------------
-  |  Branch (189:39): [True: 11, False: 182]
+  |  Branch (189:39): [True: 11, False: 179]
   ------------------
-  190|    193|  if (count > out.size()) {
+  190|    190|  if (count > out.size()) {
   ------------------
-  |  Branch (190:7): [True: 0, False: 193]
+  |  Branch (190:7): [True: 0, False: 190]
   ------------------
   191|      0|    return out.first(std::size_t{0});
   192|      0|  }
-  193|    193|  if (widened < 0) {
+  193|    190|  if (widened < 0) {
   ------------------
-  |  Branch (193:7): [True: 11, False: 182]
+  |  Branch (193:7): [True: 11, False: 179]
   ------------------
   194|     11|    out[0] = '-';
   195|     11|    detail::write_decimal(out.subspan(1), digits, magnitude);
-  196|    182|  } else {
-  197|    182|    detail::write_decimal(out, digits, magnitude);
-  198|    182|  }
-  199|    193|  return out.first(count);
-  200|    193|}
+  196|    179|  } else {
+  197|    179|    detail::write_decimal(out, digits, magnitude);
+  198|    179|  }
+  199|    190|  return out.first(count);
+  200|    190|}
 _ZN4metl6detail12magnitude_ofEx:
-  113|    193|constexpr unsigned long long magnitude_of(long long value) noexcept {
-  114|    193|  const auto unsigned_value = static_cast<unsigned long long>(value);
-  115|    193|  return value < 0 ? (0ULL - unsigned_value) : unsigned_value;
+  113|    190|constexpr unsigned long long magnitude_of(long long value) noexcept {
+  114|    190|  const auto unsigned_value = static_cast<unsigned long long>(value);
+  115|    190|  return value < 0 ? (0ULL - unsigned_value) : unsigned_value;
   ------------------
-  |  Branch (115:10): [True: 11, False: 182]
+  |  Branch (115:10): [True: 11, False: 179]
   ------------------
-  116|    193|}
+  116|    190|}
 _ZN4metl10format_hexImEENS_4spanIcLm18446744073709551615EEES2_T_mNS_8hex_caseE:
-  264|    193|                                hex_case letters = hex_case::lower) noexcept {
-  265|    193|  const span<char> text = try_format_hex(out, value, digits, letters);
-  266|    193|  METL_ASSERT(!text.empty());
+  264|    190|                                hex_case letters = hex_case::lower) noexcept {
+  265|    190|  const span<char> text = try_format_hex(out, value, digits, letters);
+  266|    190|  METL_ASSERT(!text.empty());
   ------------------
-  |  |   91|    193|  do {                                                             \
-  |  |   92|    193|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    190|  do {                                                             \
+  |  |   92|    190|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    193|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    190|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 193]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 190]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    193|  } while (false)
+  |  |   95|    190|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 193]
+  |  |  |  Branch (95:12): [Folded, False: 190]
   |  |  ------------------
   ------------------
-  267|    193|  return text;
-  268|    193|}
+  267|    190|  return text;
+  268|    190|}
 _ZN4metl14try_format_hexImEENS_4spanIcLm18446744073709551615EEES2_T_mNS_8hex_caseE:
-  235|    193|                                                   hex_case letters = hex_case::lower) noexcept {
-  236|    193|  static_assert(detail::is_plain_integer_v<T>,
-  237|    193|                "try_format_hex takes an integer: bool and the character types are excluded "
-  238|    193|                "because printing them as numbers is almost never what was meant");
-  239|    193|  static_assert(std::is_unsigned_v<T>,
-  240|    193|                "try_format_hex takes an UNSIGNED value; a negative signed value would be "
-  241|    193|                "sign-extended to a 64-bit pattern of f's. Cast to the unsigned type whose "
-  242|    193|                "width you actually mean");
-  243|    193|  const auto widened = static_cast<unsigned long long>(value);
-  244|    193|  const std::size_t needed = detail::hex_digits(widened);
-  245|    193|  const std::size_t count = digits == 0 ? needed : digits;
+  235|    190|                                                   hex_case letters = hex_case::lower) noexcept {
+  236|    190|  static_assert(detail::is_plain_integer_v<T>,
+  237|    190|                "try_format_hex takes an integer: bool and the character types are excluded "
+  238|    190|                "because printing them as numbers is almost never what was meant");
+  239|    190|  static_assert(std::is_unsigned_v<T>,
+  240|    190|                "try_format_hex takes an UNSIGNED value; a negative signed value would be "
+  241|    190|                "sign-extended to a 64-bit pattern of f's. Cast to the unsigned type whose "
+  242|    190|                "width you actually mean");
+  243|    190|  const auto widened = static_cast<unsigned long long>(value);
+  244|    190|  const std::size_t needed = detail::hex_digits(widened);
+  245|    190|  const std::size_t count = digits == 0 ? needed : digits;
   ------------------
-  |  Branch (245:29): [True: 193, False: 0]
+  |  Branch (245:29): [True: 190, False: 0]
   ------------------
-  246|    193|  if (count > out.size() || needed > count) {
+  246|    190|  if (count > out.size() || needed > count) {
   ------------------
-  |  Branch (246:7): [True: 0, False: 193]
-  |  Branch (246:29): [True: 0, False: 193]
+  |  Branch (246:7): [True: 0, False: 190]
+  |  Branch (246:29): [True: 0, False: 190]
   ------------------
   247|      0|    return out.first(std::size_t{0});
   248|      0|  }
-  249|    193|  detail::write_hex(out, count, widened, letters);
-  250|    193|  return out.first(count);
-  251|    193|}
+  249|    190|  detail::write_hex(out, count, widened, letters);
+  250|    190|  return out.first(count);
+  251|    190|}
 _ZN4metl6detail10hex_digitsEy:
-   75|    193|constexpr std::size_t hex_digits(unsigned long long value) noexcept {
-   76|    193|  std::size_t digits = 1;
-   77|  1.27k|  while (value >= 16ULL) {
+   75|    190|constexpr std::size_t hex_digits(unsigned long long value) noexcept {
+   76|    190|  std::size_t digits = 1;
+   77|  1.25k|  while (value >= 16ULL) {
   ------------------
-  |  Branch (77:10): [True: 1.07k, False: 193]
+  |  Branch (77:10): [True: 1.06k, False: 190]
   ------------------
-   78|  1.07k|    value >>= 4U;
-   79|  1.07k|    ++digits;
-   80|  1.07k|  }
-   81|    193|  return digits;
-   82|    193|}
+   78|  1.06k|    value >>= 4U;
+   79|  1.06k|    ++digits;
+   80|  1.06k|  }
+   81|    190|  return digits;
+   82|    190|}
 _ZN4metl6detail9write_hexENS_4spanIcLm18446744073709551615EEEmyNS_8hex_caseE:
-   98|    193|                         hex_case letters) noexcept {
-   99|    193|  const char alphabet_offset = (letters == hex_case::upper) ? 'A' : 'a';
+   98|    190|                         hex_case letters) noexcept {
+   99|    190|  const char alphabet_offset = (letters == hex_case::upper) ? 'A' : 'a';
   ------------------
-  |  Branch (99:32): [True: 22, False: 171]
+  |  Branch (99:32): [True: 23, False: 167]
   ------------------
-  100|    193|  std::size_t index = count;
-  101|  1.46k|  while (index > 0) {
+  100|    190|  std::size_t index = count;
+  101|  1.44k|  while (index > 0) {
   ------------------
-  |  Branch (101:10): [True: 1.27k, False: 193]
+  |  Branch (101:10): [True: 1.25k, False: 190]
   ------------------
-  102|  1.27k|    --index;
-  103|  1.27k|    const auto nibble = static_cast<unsigned>(value & 0xFULL);
-  104|  1.27k|    out[index] = nibble < 10U ? static_cast<char>('0' + static_cast<char>(nibble))
+  102|  1.25k|    --index;
+  103|  1.25k|    const auto nibble = static_cast<unsigned>(value & 0xFULL);
+  104|  1.25k|    out[index] = nibble < 10U ? static_cast<char>('0' + static_cast<char>(nibble))
   ------------------
-  |  Branch (104:18): [True: 1.20k, False: 63]
+  |  Branch (104:18): [True: 1.18k, False: 63]
   ------------------
-  105|  1.27k|                              : static_cast<char>(alphabet_offset + static_cast<char>(nibble - 10U));
-  106|  1.27k|    value >>= 4U;
-  107|  1.27k|  }
-  108|    193|}
+  105|  1.25k|                              : static_cast<char>(alphabet_offset + static_cast<char>(nibble - 10U));
+  106|  1.25k|    value >>= 4U;
+  107|  1.25k|  }
+  108|    190|}
 
 _ZN4metl14try_parse_uintIjEENS_8expectedINS_6parsedIT_EENS_11parse_errorEEENS_4spanIKcLm18446744073709551615EEE:
-  231|  1.22k|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_uint(span<const char> text) noexcept {
-  232|  1.22k|  static_assert(detail::is_plain_integer_v<T>,
-  233|  1.22k|                "try_parse_uint produces an integer: bool and the character types are excluded "
-  234|  1.22k|                "because reading them as numbers is almost never what was meant");
-  235|  1.22k|  static_assert(std::is_unsigned_v<T>,
-  236|  1.22k|                "try_parse_uint produces an UNSIGNED value and rejects a leading '-'. Use "
-  237|  1.22k|                "try_parse_int for a field that may be negative");
+  231|  1.20k|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_uint(span<const char> text) noexcept {
+  232|  1.20k|  static_assert(detail::is_plain_integer_v<T>,
+  233|  1.20k|                "try_parse_uint produces an integer: bool and the character types are excluded "
+  234|  1.20k|                "because reading them as numbers is almost never what was meant");
+  235|  1.20k|  static_assert(std::is_unsigned_v<T>,
+  236|  1.20k|                "try_parse_uint produces an UNSIGNED value and rejects a leading '-'. Use "
+  237|  1.20k|                "try_parse_int for a field that may be negative");
   238|       |
-  239|  1.22k|  if (text.empty()) {
+  239|  1.20k|  if (text.empty()) {
   ------------------
-  |  Branch (239:7): [True: 0, False: 1.22k]
+  |  Branch (239:7): [True: 0, False: 1.20k]
   ------------------
   240|      0|    return unexpected<parse_error>(parse_error::empty);
   241|      0|  }
   242|       |  // Both `constexpr`, so the divide happens in the compiler and not in an
   243|       |  // ARMv6-M image that has no divide instruction. See `fold_decimal`.
-  244|  1.22k|  using accumulator_t = detail::parse_accumulator_t<T>;
-  245|  1.22k|  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
-  246|  1.22k|  constexpr accumulator_t limit_head = limit / accumulator_t{10};
-  247|  1.22k|  constexpr accumulator_t limit_tail = limit % accumulator_t{10};
+  244|  1.20k|  using accumulator_t = detail::parse_accumulator_t<T>;
+  245|  1.20k|  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  246|  1.20k|  constexpr accumulator_t limit_head = limit / accumulator_t{10};
+  247|  1.20k|  constexpr accumulator_t limit_tail = limit % accumulator_t{10};
   248|       |
-  249|  1.22k|  const auto run = detail::fold_decimal(text, limit_head, limit_tail);
-  250|  1.22k|  if (run.consumed == 0) {
+  249|  1.20k|  const auto run = detail::fold_decimal(text, limit_head, limit_tail);
+  250|  1.20k|  if (run.consumed == 0) {
   ------------------
-  |  Branch (250:7): [True: 399, False: 826]
+  |  Branch (250:7): [True: 394, False: 807]
   ------------------
-  251|    399|    return unexpected<parse_error>(parse_error::not_a_number);
-  252|    399|  }
-  253|    826|  if (run.overflowed) {
+  251|    394|    return unexpected<parse_error>(parse_error::not_a_number);
+  252|    394|  }
+  253|    807|  if (run.overflowed) {
   ------------------
-  |  Branch (253:7): [True: 679, False: 147]
+  |  Branch (253:7): [True: 662, False: 145]
   ------------------
-  254|    679|    return unexpected<parse_error>(parse_error::out_of_range);
-  255|    679|  }
-  256|    147|  return parsed<T>{static_cast<T>(run.value), text.subspan(run.consumed)};
-  257|    826|}
+  254|    662|    return unexpected<parse_error>(parse_error::out_of_range);
+  255|    662|  }
+  256|    145|  return parsed<T>{static_cast<T>(run.value), text.subspan(run.consumed)};
+  257|    807|}
 _ZN4metl6detail12fold_decimalIjEENS0_9digit_runIT_EENS_4spanIKcLm18446744073709551615EEES3_S3_:
-  163|  2.19k|constexpr digit_run<Acc> fold_decimal(span<const char> text, Acc limit_head, Acc limit_tail) noexcept {
-  164|  2.19k|  Acc value = 0;
-  165|  2.19k|  std::size_t index = 0;
-  166|  2.19k|  bool overflowed = false;
+  163|  2.15k|constexpr digit_run<Acc> fold_decimal(span<const char> text, Acc limit_head, Acc limit_tail) noexcept {
+  164|  2.15k|  Acc value = 0;
+  165|  2.15k|  std::size_t index = 0;
+  166|  2.15k|  bool overflowed = false;
   167|       |
-  168|  58.4k|  while (index < text.size() && is_decimal_digit(text[index])) {
+  168|  57.7k|  while (index < text.size() && is_decimal_digit(text[index])) {
   ------------------
-  |  Branch (168:10): [True: 57.0k, False: 1.45k]
-  |  Branch (168:33): [True: 56.2k, False: 735]
+  |  Branch (168:10): [True: 56.3k, False: 1.41k]
+  |  Branch (168:33): [True: 55.5k, False: 734]
   ------------------
-  169|  56.2k|    const auto digit = static_cast<Acc>(text[index] - '0');
-  170|  56.2k|    if (value > limit_head || (value == limit_head && digit > limit_tail)) {
+  169|  55.5k|    const auto digit = static_cast<Acc>(text[index] - '0');
+  170|  55.5k|    if (value > limit_head || (value == limit_head && digit > limit_tail)) {
   ------------------
-  |  Branch (170:9): [True: 40.3k, False: 15.9k]
-  |  Branch (170:32): [True: 1.81k, False: 14.1k]
-  |  Branch (170:55): [True: 1.77k, False: 40]
+  |  Branch (170:9): [True: 40.3k, False: 15.2k]
+  |  Branch (170:32): [True: 1.79k, False: 13.4k]
+  |  Branch (170:55): [True: 1.76k, False: 32]
   ------------------
   171|  42.0k|      overflowed = true;
   172|  42.0k|    } else {
-  173|  14.2k|      value = static_cast<Acc>(value * Acc{10} + digit);
-  174|  14.2k|    }
-  175|  56.2k|    ++index;
-  176|  56.2k|  }
-  177|  2.19k|  return digit_run<Acc>{value, index, overflowed};
-  178|  2.19k|}
+  173|  13.5k|      value = static_cast<Acc>(value * Acc{10} + digit);
+  174|  13.5k|    }
+  175|  55.5k|    ++index;
+  176|  55.5k|  }
+  177|  2.15k|  return digit_run<Acc>{value, index, overflowed};
+  178|  2.15k|}
 _ZN4metl6detail16is_decimal_digitEc:
-  105|  90.1k|constexpr bool is_decimal_digit(char character) noexcept {
-  106|  90.1k|  return character >= '0' && character <= '9';
+  105|  88.9k|constexpr bool is_decimal_digit(char character) noexcept {
+  106|  88.9k|  return character >= '0' && character <= '9';
   ------------------
-  |  Branch (106:10): [True: 89.6k, False: 485]
-  |  Branch (106:30): [True: 89.0k, False: 622]
+  |  Branch (106:10): [True: 88.4k, False: 476]
+  |  Branch (106:30): [True: 87.8k, False: 627]
   ------------------
-  107|  90.1k|}
+  107|  88.9k|}
 _ZN4metl14try_parse_uintImEENS_8expectedINS_6parsedIT_EENS_11parse_errorEEENS_4spanIKcLm18446744073709551615EEE:
-  231|    772|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_uint(span<const char> text) noexcept {
-  232|    772|  static_assert(detail::is_plain_integer_v<T>,
-  233|    772|                "try_parse_uint produces an integer: bool and the character types are excluded "
-  234|    772|                "because reading them as numbers is almost never what was meant");
-  235|    772|  static_assert(std::is_unsigned_v<T>,
-  236|    772|                "try_parse_uint produces an UNSIGNED value and rejects a leading '-'. Use "
-  237|    772|                "try_parse_int for a field that may be negative");
+  231|    760|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_uint(span<const char> text) noexcept {
+  232|    760|  static_assert(detail::is_plain_integer_v<T>,
+  233|    760|                "try_parse_uint produces an integer: bool and the character types are excluded "
+  234|    760|                "because reading them as numbers is almost never what was meant");
+  235|    760|  static_assert(std::is_unsigned_v<T>,
+  236|    760|                "try_parse_uint produces an UNSIGNED value and rejects a leading '-'. Use "
+  237|    760|                "try_parse_int for a field that may be negative");
   238|       |
-  239|    772|  if (text.empty()) {
+  239|    760|  if (text.empty()) {
   ------------------
-  |  Branch (239:7): [True: 0, False: 772]
+  |  Branch (239:7): [True: 0, False: 760]
   ------------------
   240|      0|    return unexpected<parse_error>(parse_error::empty);
   241|      0|  }
   242|       |  // Both `constexpr`, so the divide happens in the compiler and not in an
   243|       |  // ARMv6-M image that has no divide instruction. See `fold_decimal`.
-  244|    772|  using accumulator_t = detail::parse_accumulator_t<T>;
-  245|    772|  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
-  246|    772|  constexpr accumulator_t limit_head = limit / accumulator_t{10};
-  247|    772|  constexpr accumulator_t limit_tail = limit % accumulator_t{10};
+  244|    760|  using accumulator_t = detail::parse_accumulator_t<T>;
+  245|    760|  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  246|    760|  constexpr accumulator_t limit_head = limit / accumulator_t{10};
+  247|    760|  constexpr accumulator_t limit_tail = limit % accumulator_t{10};
   248|       |
-  249|    772|  const auto run = detail::fold_decimal(text, limit_head, limit_tail);
-  250|    772|  if (run.consumed == 0) {
+  249|    760|  const auto run = detail::fold_decimal(text, limit_head, limit_tail);
+  250|    760|  if (run.consumed == 0) {
   ------------------
-  |  Branch (250:7): [True: 186, False: 586]
+  |  Branch (250:7): [True: 183, False: 577]
   ------------------
-  251|    186|    return unexpected<parse_error>(parse_error::not_a_number);
-  252|    186|  }
-  253|    586|  if (run.overflowed) {
+  251|    183|    return unexpected<parse_error>(parse_error::not_a_number);
+  252|    183|  }
+  253|    577|  if (run.overflowed) {
   ------------------
-  |  Branch (253:7): [True: 153, False: 433]
+  |  Branch (253:7): [True: 153, False: 424]
   ------------------
   254|    153|    return unexpected<parse_error>(parse_error::out_of_range);
   255|    153|  }
-  256|    433|  return parsed<T>{static_cast<T>(run.value), text.subspan(run.consumed)};
-  257|    586|}
+  256|    424|  return parsed<T>{static_cast<T>(run.value), text.subspan(run.consumed)};
+  257|    577|}
 _ZN4metl6detail12fold_decimalImEENS0_9digit_runIT_EENS_4spanIKcLm18446744073709551615EEES3_S3_:
-  163|  1.54k|constexpr digit_run<Acc> fold_decimal(span<const char> text, Acc limit_head, Acc limit_tail) noexcept {
-  164|  1.54k|  Acc value = 0;
-  165|  1.54k|  std::size_t index = 0;
-  166|  1.54k|  bool overflowed = false;
+  163|  1.52k|constexpr digit_run<Acc> fold_decimal(span<const char> text, Acc limit_head, Acc limit_tail) noexcept {
+  164|  1.52k|  Acc value = 0;
+  165|  1.52k|  std::size_t index = 0;
+  166|  1.52k|  bool overflowed = false;
   167|       |
-  168|  34.2k|  while (index < text.size() && is_decimal_digit(text[index])) {
+  168|  33.7k|  while (index < text.size() && is_decimal_digit(text[index])) {
   ------------------
-  |  Branch (168:10): [True: 33.1k, False: 1.17k]
-  |  Branch (168:33): [True: 32.7k, False: 372]
+  |  Branch (168:10): [True: 32.5k, False: 1.15k]
+  |  Branch (168:33): [True: 32.2k, False: 369]
   ------------------
-  169|  32.7k|    const auto digit = static_cast<Acc>(text[index] - '0');
-  170|  32.7k|    if (value > limit_head || (value == limit_head && digit > limit_tail)) {
+  169|  32.2k|    const auto digit = static_cast<Acc>(text[index] - '0');
+  170|  32.2k|    if (value > limit_head || (value == limit_head && digit > limit_tail)) {
   ------------------
-  |  Branch (170:9): [True: 12.7k, False: 20.0k]
-  |  Branch (170:32): [True: 1.58k, False: 18.4k]
+  |  Branch (170:9): [True: 12.7k, False: 19.4k]
+  |  Branch (170:32): [True: 1.58k, False: 17.8k]
   |  Branch (170:55): [True: 1.56k, False: 16]
   ------------------
-  171|  14.2k|      overflowed = true;
-  172|  18.4k|    } else {
-  173|  18.4k|      value = static_cast<Acc>(value * Acc{10} + digit);
-  174|  18.4k|    }
-  175|  32.7k|    ++index;
-  176|  32.7k|  }
-  177|  1.54k|  return digit_run<Acc>{value, index, overflowed};
-  178|  1.54k|}
+  171|  14.3k|      overflowed = true;
+  172|  17.9k|    } else {
+  173|  17.9k|      value = static_cast<Acc>(value * Acc{10} + digit);
+  174|  17.9k|    }
+  175|  32.2k|    ++index;
+  176|  32.2k|  }
+  177|  1.52k|  return digit_run<Acc>{value, index, overflowed};
+  178|  1.52k|}
 _ZN4metl13try_parse_intIlEENS_8expectedINS_6parsedIT_EENS_11parse_errorEEENS_4spanIKcLm18446744073709551615EEE:
-  291|    772|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_int(span<const char> text) noexcept {
-  292|    772|  static_assert(detail::is_plain_integer_v<T>,
-  293|    772|                "try_parse_int produces an integer: bool and the character types are excluded "
-  294|    772|                "because reading them as numbers is almost never what was meant");
-  295|    772|  static_assert(std::is_signed_v<T>,
-  296|    772|                "try_parse_int produces a SIGNED value. Use try_parse_uint for an unsigned "
-  297|    772|                "field, so that a leading '-' is refused rather than wrapped");
+  291|    760|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_int(span<const char> text) noexcept {
+  292|    760|  static_assert(detail::is_plain_integer_v<T>,
+  293|    760|                "try_parse_int produces an integer: bool and the character types are excluded "
+  294|    760|                "because reading them as numbers is almost never what was meant");
+  295|    760|  static_assert(std::is_signed_v<T>,
+  296|    760|                "try_parse_int produces a SIGNED value. Use try_parse_uint for an unsigned "
+  297|    760|                "field, so that a leading '-' is refused rather than wrapped");
   298|       |
-  299|    772|  if (text.empty()) {
+  299|    760|  if (text.empty()) {
   ------------------
-  |  Branch (299:7): [True: 0, False: 772]
+  |  Branch (299:7): [True: 0, False: 760]
   ------------------
   300|      0|    return unexpected<parse_error>(parse_error::empty);
   301|      0|  }
-  302|    772|  const bool negative = text[0] == '-';
-  303|    772|  const span<const char> digits = negative ? text.subspan(std::size_t{1}) : text;
+  302|    760|  const bool negative = text[0] == '-';
+  303|    760|  const span<const char> digits = negative ? text.subspan(std::size_t{1}) : text;
   ------------------
-  |  Branch (303:35): [True: 65, False: 707]
+  |  Branch (303:35): [True: 62, False: 698]
   ------------------
   304|       |
   305|       |  // Four `constexpr` constants and a runtime select between them, rather than a
   306|       |  // runtime divide. The two limits differ by one and must not be shared: the
   307|       |  // negative range is larger, which is what lets "-32768" parse as an int16_t.
-  308|    772|  using accumulator_t = detail::parse_accumulator_t<T>;
-  309|    772|  constexpr auto positive_limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
-  310|    772|  constexpr accumulator_t negative_limit = detail::negative_limit_of<T>();
-  311|    772|  const accumulator_t limit_head =
-  312|    772|      negative ? negative_limit / accumulator_t{10} : positive_limit / accumulator_t{10};
+  308|    760|  using accumulator_t = detail::parse_accumulator_t<T>;
+  309|    760|  constexpr auto positive_limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  310|    760|  constexpr accumulator_t negative_limit = detail::negative_limit_of<T>();
+  311|    760|  const accumulator_t limit_head =
+  312|    760|      negative ? negative_limit / accumulator_t{10} : positive_limit / accumulator_t{10};
   ------------------
-  |  Branch (312:7): [True: 65, False: 707]
+  |  Branch (312:7): [True: 62, False: 698]
   ------------------
-  313|    772|  const accumulator_t limit_tail =
-  314|    772|      negative ? negative_limit % accumulator_t{10} : positive_limit % accumulator_t{10};
+  313|    760|  const accumulator_t limit_tail =
+  314|    760|      negative ? negative_limit % accumulator_t{10} : positive_limit % accumulator_t{10};
   ------------------
-  |  Branch (314:7): [True: 65, False: 707]
+  |  Branch (314:7): [True: 62, False: 698]
   ------------------
   315|       |
-  316|    772|  const auto run = detail::fold_decimal(digits, limit_head, limit_tail);
-  317|    772|  if (run.consumed == 0) {
+  316|    760|  const auto run = detail::fold_decimal(digits, limit_head, limit_tail);
+  317|    760|  if (run.consumed == 0) {
   ------------------
-  |  Branch (317:7): [True: 144, False: 628]
+  |  Branch (317:7): [True: 144, False: 616]
   ------------------
   318|    144|    return unexpected<parse_error>(parse_error::not_a_number);
   319|    144|  }
-  320|    628|  if (run.overflowed) {
+  320|    616|  if (run.overflowed) {
   ------------------
-  |  Branch (320:7): [True: 168, False: 460]
+  |  Branch (320:7): [True: 168, False: 448]
   ------------------
   321|    168|    return unexpected<parse_error>(parse_error::out_of_range);
   322|    168|  }
   323|       |
-  324|    460|  const span<const char> tail = digits.subspan(run.consumed);
-  325|    460|  if (!negative) {
+  324|    448|  const span<const char> tail = digits.subspan(run.consumed);
+  325|    448|  if (!negative) {
   ------------------
-  |  Branch (325:7): [True: 410, False: 50]
+  |  Branch (325:7): [True: 401, False: 47]
   ------------------
-  326|    410|    return parsed<T>{static_cast<T>(run.value), tail};
-  327|    410|  }
+  326|    401|    return parsed<T>{static_cast<T>(run.value), tail};
+  327|    401|  }
   328|       |  // run.value is at most max()+1. Negating max() is fine; the extra one is the
   329|       |  // minimum, which is returned directly because -min() does not exist.
-  330|     50|  if (run.value == negative_limit) {
+  330|     47|  if (run.value == negative_limit) {
   ------------------
-  |  Branch (330:7): [True: 4, False: 46]
+  |  Branch (330:7): [True: 4, False: 43]
   ------------------
   331|      4|    return parsed<T>{std::numeric_limits<T>::min(), tail};
   332|      4|  }
-  333|     46|  return parsed<T>{static_cast<T>(-static_cast<T>(run.value)), tail};
-  334|     50|}
+  333|     43|  return parsed<T>{static_cast<T>(-static_cast<T>(run.value)), tail};
+  334|     47|}
 _ZN4metl13try_parse_hexImEENS_8expectedINS_6parsedIT_EENS_11parse_errorEEENS_4spanIKcLm18446744073709551615EEE:
-  365|    772|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_hex(span<const char> text) noexcept {
-  366|    772|  static_assert(detail::is_plain_integer_v<T>,
-  367|    772|                "try_parse_hex produces an integer: bool and the character types are excluded "
-  368|    772|                "because reading them as numbers is almost never what was meant");
-  369|    772|  static_assert(std::is_unsigned_v<T>,
-  370|    772|                "try_parse_hex produces an UNSIGNED value; a hex field is a bit pattern. Cast "
-  371|    772|                "to the signed type whose width you actually mean");
+  365|    760|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_hex(span<const char> text) noexcept {
+  366|    760|  static_assert(detail::is_plain_integer_v<T>,
+  367|    760|                "try_parse_hex produces an integer: bool and the character types are excluded "
+  368|    760|                "because reading them as numbers is almost never what was meant");
+  369|    760|  static_assert(std::is_unsigned_v<T>,
+  370|    760|                "try_parse_hex produces an UNSIGNED value; a hex field is a bit pattern. Cast "
+  371|    760|                "to the signed type whose width you actually mean");
   372|       |
-  373|    772|  if (text.empty()) {
+  373|    760|  if (text.empty()) {
   ------------------
-  |  Branch (373:7): [True: 0, False: 772]
+  |  Branch (373:7): [True: 0, False: 760]
   ------------------
   374|      0|    return unexpected<parse_error>(parse_error::empty);
   375|      0|  }
-  376|    772|  using accumulator_t = detail::parse_accumulator_t<T>;
-  377|    772|  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
-  378|    772|  constexpr accumulator_t limit_head = limit / accumulator_t{16};
-  379|    772|  constexpr accumulator_t limit_tail = limit % accumulator_t{16};
+  376|    760|  using accumulator_t = detail::parse_accumulator_t<T>;
+  377|    760|  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  378|    760|  constexpr accumulator_t limit_head = limit / accumulator_t{16};
+  379|    760|  constexpr accumulator_t limit_tail = limit % accumulator_t{16};
   380|       |
-  381|    772|  const auto run = detail::fold_hex(text, limit_head, limit_tail);
-  382|    772|  if (run.consumed == 0) {
+  381|    760|  const auto run = detail::fold_hex(text, limit_head, limit_tail);
+  382|    760|  if (run.consumed == 0) {
   ------------------
-  |  Branch (382:7): [True: 105, False: 667]
+  |  Branch (382:7): [True: 102, False: 658]
   ------------------
-  383|    105|    return unexpected<parse_error>(parse_error::not_a_number);
-  384|    105|  }
-  385|    667|  if (run.overflowed) {
+  383|    102|    return unexpected<parse_error>(parse_error::not_a_number);
+  384|    102|  }
+  385|    658|  if (run.overflowed) {
   ------------------
-  |  Branch (385:7): [True: 201, False: 466]
+  |  Branch (385:7): [True: 201, False: 457]
   ------------------
   386|    201|    return unexpected<parse_error>(parse_error::out_of_range);
   387|    201|  }
-  388|    466|  return parsed<T>{static_cast<T>(run.value), text.subspan(run.consumed)};
-  389|    667|}
+  388|    457|  return parsed<T>{static_cast<T>(run.value), text.subspan(run.consumed)};
+  389|    658|}
 _ZN4metl6detail8fold_hexImEENS0_9digit_runIT_EENS_4spanIKcLm18446744073709551615EEES3_S3_:
-  183|    772|constexpr digit_run<Acc> fold_hex(span<const char> text, Acc limit_head, Acc limit_tail) noexcept {
-  184|    772|  Acc value = 0;
-  185|    772|  std::size_t index = 0;
-  186|    772|  bool overflowed = false;
+  183|    760|constexpr digit_run<Acc> fold_hex(span<const char> text, Acc limit_head, Acc limit_tail) noexcept {
+  184|    760|  Acc value = 0;
+  185|    760|  std::size_t index = 0;
+  186|    760|  bool overflowed = false;
   187|       |
-  188|  18.0k|  while (index < text.size() && hex_digit_value(text[index]) < 16u) {
+  188|  17.9k|  while (index < text.size() && hex_digit_value(text[index]) < 16u) {
   ------------------
-  |  Branch (188:10): [True: 17.4k, False: 628]
-  |  Branch (188:33): [True: 17.3k, False: 144]
+  |  Branch (188:10): [True: 17.3k, False: 619]
+  |  Branch (188:33): [True: 17.1k, False: 141]
   ------------------
-  189|  17.3k|    const auto digit = static_cast<Acc>(hex_digit_value(text[index]));
-  190|  17.3k|    if (value > limit_head || (value == limit_head && digit > limit_tail)) {
+  189|  17.1k|    const auto digit = static_cast<Acc>(hex_digit_value(text[index]));
+  190|  17.1k|    if (value > limit_head || (value == limit_head && digit > limit_tail)) {
   ------------------
-  |  Branch (190:9): [True: 9.56k, False: 7.74k]
-  |  Branch (190:32): [True: 8, False: 7.73k]
+  |  Branch (190:9): [True: 9.55k, False: 7.62k]
+  |  Branch (190:32): [True: 8, False: 7.61k]
   |  Branch (190:55): [True: 0, False: 8]
   ------------------
-  191|  9.56k|      overflowed = true;
-  192|  9.56k|    } else {
-  193|  7.74k|      value = static_cast<Acc>(value * Acc{16} + digit);
-  194|  7.74k|    }
-  195|  17.3k|    ++index;
-  196|  17.3k|  }
-  197|    772|  return digit_run<Acc>{value, index, overflowed};
-  198|    772|}
+  191|  9.55k|      overflowed = true;
+  192|  9.55k|    } else {
+  193|  7.62k|      value = static_cast<Acc>(value * Acc{16} + digit);
+  194|  7.62k|    }
+  195|  17.1k|    ++index;
+  196|  17.1k|  }
+  197|    760|  return digit_run<Acc>{value, index, overflowed};
+  198|    760|}
 _ZN4metl6detail15hex_digit_valueEc:
-  112|  66.9k|constexpr unsigned hex_digit_value(char character) noexcept {
-  113|  66.9k|  if (character >= '0' && character <= '9') {
+  112|  66.5k|constexpr unsigned hex_digit_value(char character) noexcept {
+  113|  66.5k|  if (character >= '0' && character <= '9') {
   ------------------
-  |  Branch (113:7): [True: 66.7k, False: 246]
-  |  Branch (113:27): [True: 55.9k, False: 10.7k]
+  |  Branch (113:7): [True: 66.2k, False: 234]
+  |  Branch (113:27): [True: 55.5k, False: 10.7k]
   ------------------
-  114|  55.9k|    return static_cast<unsigned>(character - '0');
-  115|  55.9k|  }
+  114|  55.5k|    return static_cast<unsigned>(character - '0');
+  115|  55.5k|  }
   116|  10.9k|  if (character >= 'a' && character <= 'f') {
   ------------------
-  |  Branch (116:7): [True: 4.55k, False: 6.40k]
-  |  Branch (116:27): [True: 4.53k, False: 18]
+  |  Branch (116:7): [True: 4.56k, False: 6.39k]
+  |  Branch (116:27): [True: 4.53k, False: 24]
   ------------------
   117|  4.53k|    return static_cast<unsigned>(character - 'a') + 10u;
   118|  4.53k|  }
   119|  6.42k|  if (character >= 'A' && character <= 'F') {
   ------------------
-  |  Branch (119:7): [True: 6.16k, False: 264]
-  |  Branch (119:27): [True: 6.13k, False: 24]
+  |  Branch (119:7): [True: 6.16k, False: 252]
+  |  Branch (119:27): [True: 6.13k, False: 30]
   ------------------
   120|  6.13k|    return static_cast<unsigned>(character - 'A') + 10u;
   121|  6.13k|  }
-  122|    288|  return 16u;
+  122|    282|  return 16u;
   123|  6.42k|}
 _ZN4metl14try_parse_uintIhEENS_8expectedINS_6parsedIT_EENS_11parse_errorEEENS_4spanIKcLm18446744073709551615EEE:
-  231|    193|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_uint(span<const char> text) noexcept {
-  232|    193|  static_assert(detail::is_plain_integer_v<T>,
-  233|    193|                "try_parse_uint produces an integer: bool and the character types are excluded "
-  234|    193|                "because reading them as numbers is almost never what was meant");
-  235|    193|  static_assert(std::is_unsigned_v<T>,
-  236|    193|                "try_parse_uint produces an UNSIGNED value and rejects a leading '-'. Use "
-  237|    193|                "try_parse_int for a field that may be negative");
+  231|    190|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_uint(span<const char> text) noexcept {
+  232|    190|  static_assert(detail::is_plain_integer_v<T>,
+  233|    190|                "try_parse_uint produces an integer: bool and the character types are excluded "
+  234|    190|                "because reading them as numbers is almost never what was meant");
+  235|    190|  static_assert(std::is_unsigned_v<T>,
+  236|    190|                "try_parse_uint produces an UNSIGNED value and rejects a leading '-'. Use "
+  237|    190|                "try_parse_int for a field that may be negative");
   238|       |
-  239|    193|  if (text.empty()) {
+  239|    190|  if (text.empty()) {
   ------------------
-  |  Branch (239:7): [True: 0, False: 193]
+  |  Branch (239:7): [True: 0, False: 190]
   ------------------
   240|      0|    return unexpected<parse_error>(parse_error::empty);
   241|      0|  }
   242|       |  // Both `constexpr`, so the divide happens in the compiler and not in an
   243|       |  // ARMv6-M image that has no divide instruction. See `fold_decimal`.
-  244|    193|  using accumulator_t = detail::parse_accumulator_t<T>;
-  245|    193|  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
-  246|    193|  constexpr accumulator_t limit_head = limit / accumulator_t{10};
-  247|    193|  constexpr accumulator_t limit_tail = limit % accumulator_t{10};
+  244|    190|  using accumulator_t = detail::parse_accumulator_t<T>;
+  245|    190|  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  246|    190|  constexpr accumulator_t limit_head = limit / accumulator_t{10};
+  247|    190|  constexpr accumulator_t limit_tail = limit % accumulator_t{10};
   248|       |
-  249|    193|  const auto run = detail::fold_decimal(text, limit_head, limit_tail);
-  250|    193|  if (run.consumed == 0) {
+  249|    190|  const auto run = detail::fold_decimal(text, limit_head, limit_tail);
+  250|    190|  if (run.consumed == 0) {
   ------------------
-  |  Branch (250:7): [True: 62, False: 131]
+  |  Branch (250:7): [True: 61, False: 129]
   ------------------
-  251|     62|    return unexpected<parse_error>(parse_error::not_a_number);
-  252|     62|  }
-  253|    131|  if (run.overflowed) {
+  251|     61|    return unexpected<parse_error>(parse_error::not_a_number);
+  252|     61|  }
+  253|    129|  if (run.overflowed) {
   ------------------
-  |  Branch (253:7): [True: 115, False: 16]
+  |  Branch (253:7): [True: 113, False: 16]
   ------------------
-  254|    115|    return unexpected<parse_error>(parse_error::out_of_range);
-  255|    115|  }
+  254|    113|    return unexpected<parse_error>(parse_error::out_of_range);
+  255|    113|  }
   256|     16|  return parsed<T>{static_cast<T>(run.value), text.subspan(run.consumed)};
-  257|    131|}
+  257|    129|}
 _ZN4metl14try_parse_uintItEENS_8expectedINS_6parsedIT_EENS_11parse_errorEEENS_4spanIKcLm18446744073709551615EEE:
-  231|    193|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_uint(span<const char> text) noexcept {
-  232|    193|  static_assert(detail::is_plain_integer_v<T>,
-  233|    193|                "try_parse_uint produces an integer: bool and the character types are excluded "
-  234|    193|                "because reading them as numbers is almost never what was meant");
-  235|    193|  static_assert(std::is_unsigned_v<T>,
-  236|    193|                "try_parse_uint produces an UNSIGNED value and rejects a leading '-'. Use "
-  237|    193|                "try_parse_int for a field that may be negative");
+  231|    190|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_uint(span<const char> text) noexcept {
+  232|    190|  static_assert(detail::is_plain_integer_v<T>,
+  233|    190|                "try_parse_uint produces an integer: bool and the character types are excluded "
+  234|    190|                "because reading them as numbers is almost never what was meant");
+  235|    190|  static_assert(std::is_unsigned_v<T>,
+  236|    190|                "try_parse_uint produces an UNSIGNED value and rejects a leading '-'. Use "
+  237|    190|                "try_parse_int for a field that may be negative");
   238|       |
-  239|    193|  if (text.empty()) {
+  239|    190|  if (text.empty()) {
   ------------------
-  |  Branch (239:7): [True: 0, False: 193]
+  |  Branch (239:7): [True: 0, False: 190]
   ------------------
   240|      0|    return unexpected<parse_error>(parse_error::empty);
   241|      0|  }
   242|       |  // Both `constexpr`, so the divide happens in the compiler and not in an
   243|       |  // ARMv6-M image that has no divide instruction. See `fold_decimal`.
-  244|    193|  using accumulator_t = detail::parse_accumulator_t<T>;
-  245|    193|  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
-  246|    193|  constexpr accumulator_t limit_head = limit / accumulator_t{10};
-  247|    193|  constexpr accumulator_t limit_tail = limit % accumulator_t{10};
+  244|    190|  using accumulator_t = detail::parse_accumulator_t<T>;
+  245|    190|  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  246|    190|  constexpr accumulator_t limit_head = limit / accumulator_t{10};
+  247|    190|  constexpr accumulator_t limit_tail = limit % accumulator_t{10};
   248|       |
-  249|    193|  const auto run = detail::fold_decimal(text, limit_head, limit_tail);
-  250|    193|  if (run.consumed == 0) {
+  249|    190|  const auto run = detail::fold_decimal(text, limit_head, limit_tail);
+  250|    190|  if (run.consumed == 0) {
   ------------------
-  |  Branch (250:7): [True: 62, False: 131]
+  |  Branch (250:7): [True: 61, False: 129]
   ------------------
-  251|     62|    return unexpected<parse_error>(parse_error::not_a_number);
-  252|     62|  }
-  253|    131|  if (run.overflowed) {
+  251|     61|    return unexpected<parse_error>(parse_error::not_a_number);
+  252|     61|  }
+  253|    129|  if (run.overflowed) {
   ------------------
-  |  Branch (253:7): [True: 103, False: 28]
+  |  Branch (253:7): [True: 101, False: 28]
   ------------------
-  254|    103|    return unexpected<parse_error>(parse_error::out_of_range);
-  255|    103|  }
+  254|    101|    return unexpected<parse_error>(parse_error::out_of_range);
+  255|    101|  }
   256|     28|  return parsed<T>{static_cast<T>(run.value), text.subspan(run.consumed)};
-  257|    131|}
+  257|    129|}
 _ZN4metl13try_parse_intIaEENS_8expectedINS_6parsedIT_EENS_11parse_errorEEENS_4spanIKcLm18446744073709551615EEE:
-  291|    193|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_int(span<const char> text) noexcept {
-  292|    193|  static_assert(detail::is_plain_integer_v<T>,
-  293|    193|                "try_parse_int produces an integer: bool and the character types are excluded "
-  294|    193|                "because reading them as numbers is almost never what was meant");
-  295|    193|  static_assert(std::is_signed_v<T>,
-  296|    193|                "try_parse_int produces a SIGNED value. Use try_parse_uint for an unsigned "
-  297|    193|                "field, so that a leading '-' is refused rather than wrapped");
+  291|    190|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_int(span<const char> text) noexcept {
+  292|    190|  static_assert(detail::is_plain_integer_v<T>,
+  293|    190|                "try_parse_int produces an integer: bool and the character types are excluded "
+  294|    190|                "because reading them as numbers is almost never what was meant");
+  295|    190|  static_assert(std::is_signed_v<T>,
+  296|    190|                "try_parse_int produces a SIGNED value. Use try_parse_uint for an unsigned "
+  297|    190|                "field, so that a leading '-' is refused rather than wrapped");
   298|       |
-  299|    193|  if (text.empty()) {
+  299|    190|  if (text.empty()) {
   ------------------
-  |  Branch (299:7): [True: 0, False: 193]
+  |  Branch (299:7): [True: 0, False: 190]
   ------------------
   300|      0|    return unexpected<parse_error>(parse_error::empty);
   301|      0|  }
-  302|    193|  const bool negative = text[0] == '-';
-  303|    193|  const span<const char> digits = negative ? text.subspan(std::size_t{1}) : text;
+  302|    190|  const bool negative = text[0] == '-';
+  303|    190|  const span<const char> digits = negative ? text.subspan(std::size_t{1}) : text;
   ------------------
-  |  Branch (303:35): [True: 18, False: 175]
+  |  Branch (303:35): [True: 17, False: 173]
   ------------------
   304|       |
   305|       |  // Four `constexpr` constants and a runtime select between them, rather than a
   306|       |  // runtime divide. The two limits differ by one and must not be shared: the
   307|       |  // negative range is larger, which is what lets "-32768" parse as an int16_t.
-  308|    193|  using accumulator_t = detail::parse_accumulator_t<T>;
-  309|    193|  constexpr auto positive_limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
-  310|    193|  constexpr accumulator_t negative_limit = detail::negative_limit_of<T>();
-  311|    193|  const accumulator_t limit_head =
-  312|    193|      negative ? negative_limit / accumulator_t{10} : positive_limit / accumulator_t{10};
+  308|    190|  using accumulator_t = detail::parse_accumulator_t<T>;
+  309|    190|  constexpr auto positive_limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  310|    190|  constexpr accumulator_t negative_limit = detail::negative_limit_of<T>();
+  311|    190|  const accumulator_t limit_head =
+  312|    190|      negative ? negative_limit / accumulator_t{10} : positive_limit / accumulator_t{10};
   ------------------
-  |  Branch (312:7): [True: 18, False: 175]
+  |  Branch (312:7): [True: 17, False: 173]
   ------------------
-  313|    193|  const accumulator_t limit_tail =
-  314|    193|      negative ? negative_limit % accumulator_t{10} : positive_limit % accumulator_t{10};
+  313|    190|  const accumulator_t limit_tail =
+  314|    190|      negative ? negative_limit % accumulator_t{10} : positive_limit % accumulator_t{10};
   ------------------
-  |  Branch (314:7): [True: 18, False: 175]
+  |  Branch (314:7): [True: 17, False: 173]
   ------------------
   315|       |
-  316|    193|  const auto run = detail::fold_decimal(digits, limit_head, limit_tail);
-  317|    193|  if (run.consumed == 0) {
+  316|    190|  const auto run = detail::fold_decimal(digits, limit_head, limit_tail);
+  317|    190|  if (run.consumed == 0) {
   ------------------
-  |  Branch (317:7): [True: 48, False: 145]
+  |  Branch (317:7): [True: 48, False: 142]
   ------------------
   318|     48|    return unexpected<parse_error>(parse_error::not_a_number);
   319|     48|  }
-  320|    145|  if (run.overflowed) {
+  320|    142|  if (run.overflowed) {
   ------------------
-  |  Branch (320:7): [True: 126, False: 19]
+  |  Branch (320:7): [True: 124, False: 18]
   ------------------
-  321|    126|    return unexpected<parse_error>(parse_error::out_of_range);
-  322|    126|  }
+  321|    124|    return unexpected<parse_error>(parse_error::out_of_range);
+  322|    124|  }
   323|       |
-  324|     19|  const span<const char> tail = digits.subspan(run.consumed);
-  325|     19|  if (!negative) {
+  324|     18|  const span<const char> tail = digits.subspan(run.consumed);
+  325|     18|  if (!negative) {
   ------------------
-  |  Branch (325:7): [True: 13, False: 6]
+  |  Branch (325:7): [True: 13, False: 5]
   ------------------
   326|     13|    return parsed<T>{static_cast<T>(run.value), tail};
   327|     13|  }
   328|       |  // run.value is at most max()+1. Negating max() is fine; the extra one is the
   329|       |  // minimum, which is returned directly because -min() does not exist.
-  330|      6|  if (run.value == negative_limit) {
+  330|      5|  if (run.value == negative_limit) {
   ------------------
-  |  Branch (330:7): [True: 1, False: 5]
+  |  Branch (330:7): [True: 1, False: 4]
   ------------------
   331|      1|    return parsed<T>{std::numeric_limits<T>::min(), tail};
   332|      1|  }
-  333|      5|  return parsed<T>{static_cast<T>(-static_cast<T>(run.value)), tail};
-  334|      6|}
+  333|      4|  return parsed<T>{static_cast<T>(-static_cast<T>(run.value)), tail};
+  334|      5|}
 _ZN4metl13try_parse_intIsEENS_8expectedINS_6parsedIT_EENS_11parse_errorEEENS_4spanIKcLm18446744073709551615EEE:
-  291|    193|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_int(span<const char> text) noexcept {
-  292|    193|  static_assert(detail::is_plain_integer_v<T>,
-  293|    193|                "try_parse_int produces an integer: bool and the character types are excluded "
-  294|    193|                "because reading them as numbers is almost never what was meant");
-  295|    193|  static_assert(std::is_signed_v<T>,
-  296|    193|                "try_parse_int produces a SIGNED value. Use try_parse_uint for an unsigned "
-  297|    193|                "field, so that a leading '-' is refused rather than wrapped");
+  291|    190|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_int(span<const char> text) noexcept {
+  292|    190|  static_assert(detail::is_plain_integer_v<T>,
+  293|    190|                "try_parse_int produces an integer: bool and the character types are excluded "
+  294|    190|                "because reading them as numbers is almost never what was meant");
+  295|    190|  static_assert(std::is_signed_v<T>,
+  296|    190|                "try_parse_int produces a SIGNED value. Use try_parse_uint for an unsigned "
+  297|    190|                "field, so that a leading '-' is refused rather than wrapped");
   298|       |
-  299|    193|  if (text.empty()) {
+  299|    190|  if (text.empty()) {
   ------------------
-  |  Branch (299:7): [True: 0, False: 193]
+  |  Branch (299:7): [True: 0, False: 190]
   ------------------
   300|      0|    return unexpected<parse_error>(parse_error::empty);
   301|      0|  }
-  302|    193|  const bool negative = text[0] == '-';
-  303|    193|  const span<const char> digits = negative ? text.subspan(std::size_t{1}) : text;
+  302|    190|  const bool negative = text[0] == '-';
+  303|    190|  const span<const char> digits = negative ? text.subspan(std::size_t{1}) : text;
   ------------------
-  |  Branch (303:35): [True: 18, False: 175]
+  |  Branch (303:35): [True: 17, False: 173]
   ------------------
   304|       |
   305|       |  // Four `constexpr` constants and a runtime select between them, rather than a
   306|       |  // runtime divide. The two limits differ by one and must not be shared: the
   307|       |  // negative range is larger, which is what lets "-32768" parse as an int16_t.
-  308|    193|  using accumulator_t = detail::parse_accumulator_t<T>;
-  309|    193|  constexpr auto positive_limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
-  310|    193|  constexpr accumulator_t negative_limit = detail::negative_limit_of<T>();
-  311|    193|  const accumulator_t limit_head =
-  312|    193|      negative ? negative_limit / accumulator_t{10} : positive_limit / accumulator_t{10};
+  308|    190|  using accumulator_t = detail::parse_accumulator_t<T>;
+  309|    190|  constexpr auto positive_limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  310|    190|  constexpr accumulator_t negative_limit = detail::negative_limit_of<T>();
+  311|    190|  const accumulator_t limit_head =
+  312|    190|      negative ? negative_limit / accumulator_t{10} : positive_limit / accumulator_t{10};
   ------------------
-  |  Branch (312:7): [True: 18, False: 175]
+  |  Branch (312:7): [True: 17, False: 173]
   ------------------
-  313|    193|  const accumulator_t limit_tail =
-  314|    193|      negative ? negative_limit % accumulator_t{10} : positive_limit % accumulator_t{10};
+  313|    190|  const accumulator_t limit_tail =
+  314|    190|      negative ? negative_limit % accumulator_t{10} : positive_limit % accumulator_t{10};
   ------------------
-  |  Branch (314:7): [True: 18, False: 175]
+  |  Branch (314:7): [True: 17, False: 173]
   ------------------
   315|       |
-  316|    193|  const auto run = detail::fold_decimal(digits, limit_head, limit_tail);
-  317|    193|  if (run.consumed == 0) {
+  316|    190|  const auto run = detail::fold_decimal(digits, limit_head, limit_tail);
+  317|    190|  if (run.consumed == 0) {
   ------------------
-  |  Branch (317:7): [True: 48, False: 145]
+  |  Branch (317:7): [True: 48, False: 142]
   ------------------
   318|     48|    return unexpected<parse_error>(parse_error::not_a_number);
   319|     48|  }
-  320|    145|  if (run.overflowed) {
+  320|    142|  if (run.overflowed) {
   ------------------
-  |  Branch (320:7): [True: 111, False: 34]
+  |  Branch (320:7): [True: 109, False: 33]
   ------------------
-  321|    111|    return unexpected<parse_error>(parse_error::out_of_range);
-  322|    111|  }
+  321|    109|    return unexpected<parse_error>(parse_error::out_of_range);
+  322|    109|  }
   323|       |
-  324|     34|  const span<const char> tail = digits.subspan(run.consumed);
-  325|     34|  if (!negative) {
+  324|     33|  const span<const char> tail = digits.subspan(run.consumed);
+  325|     33|  if (!negative) {
   ------------------
-  |  Branch (325:7): [True: 25, False: 9]
+  |  Branch (325:7): [True: 25, False: 8]
   ------------------
   326|     25|    return parsed<T>{static_cast<T>(run.value), tail};
   327|     25|  }
   328|       |  // run.value is at most max()+1. Negating max() is fine; the extra one is the
   329|       |  // minimum, which is returned directly because -min() does not exist.
-  330|      9|  if (run.value == negative_limit) {
+  330|      8|  if (run.value == negative_limit) {
   ------------------
-  |  Branch (330:7): [True: 1, False: 8]
+  |  Branch (330:7): [True: 1, False: 7]
   ------------------
   331|      1|    return parsed<T>{std::numeric_limits<T>::min(), tail};
   332|      1|  }
-  333|      8|  return parsed<T>{static_cast<T>(-static_cast<T>(run.value)), tail};
-  334|      9|}
+  333|      7|  return parsed<T>{static_cast<T>(-static_cast<T>(run.value)), tail};
+  334|      8|}
 _ZN4metl13try_parse_intIiEENS_8expectedINS_6parsedIT_EENS_11parse_errorEEENS_4spanIKcLm18446744073709551615EEE:
-  291|    193|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_int(span<const char> text) noexcept {
-  292|    193|  static_assert(detail::is_plain_integer_v<T>,
-  293|    193|                "try_parse_int produces an integer: bool and the character types are excluded "
-  294|    193|                "because reading them as numbers is almost never what was meant");
-  295|    193|  static_assert(std::is_signed_v<T>,
-  296|    193|                "try_parse_int produces a SIGNED value. Use try_parse_uint for an unsigned "
-  297|    193|                "field, so that a leading '-' is refused rather than wrapped");
+  291|    190|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_int(span<const char> text) noexcept {
+  292|    190|  static_assert(detail::is_plain_integer_v<T>,
+  293|    190|                "try_parse_int produces an integer: bool and the character types are excluded "
+  294|    190|                "because reading them as numbers is almost never what was meant");
+  295|    190|  static_assert(std::is_signed_v<T>,
+  296|    190|                "try_parse_int produces a SIGNED value. Use try_parse_uint for an unsigned "
+  297|    190|                "field, so that a leading '-' is refused rather than wrapped");
   298|       |
-  299|    193|  if (text.empty()) {
+  299|    190|  if (text.empty()) {
   ------------------
-  |  Branch (299:7): [True: 0, False: 193]
+  |  Branch (299:7): [True: 0, False: 190]
   ------------------
   300|      0|    return unexpected<parse_error>(parse_error::empty);
   301|      0|  }
-  302|    193|  const bool negative = text[0] == '-';
-  303|    193|  const span<const char> digits = negative ? text.subspan(std::size_t{1}) : text;
+  302|    190|  const bool negative = text[0] == '-';
+  303|    190|  const span<const char> digits = negative ? text.subspan(std::size_t{1}) : text;
   ------------------
-  |  Branch (303:35): [True: 18, False: 175]
+  |  Branch (303:35): [True: 17, False: 173]
   ------------------
   304|       |
   305|       |  // Four `constexpr` constants and a runtime select between them, rather than a
   306|       |  // runtime divide. The two limits differ by one and must not be shared: the
   307|       |  // negative range is larger, which is what lets "-32768" parse as an int16_t.
-  308|    193|  using accumulator_t = detail::parse_accumulator_t<T>;
-  309|    193|  constexpr auto positive_limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
-  310|    193|  constexpr accumulator_t negative_limit = detail::negative_limit_of<T>();
-  311|    193|  const accumulator_t limit_head =
-  312|    193|      negative ? negative_limit / accumulator_t{10} : positive_limit / accumulator_t{10};
+  308|    190|  using accumulator_t = detail::parse_accumulator_t<T>;
+  309|    190|  constexpr auto positive_limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  310|    190|  constexpr accumulator_t negative_limit = detail::negative_limit_of<T>();
+  311|    190|  const accumulator_t limit_head =
+  312|    190|      negative ? negative_limit / accumulator_t{10} : positive_limit / accumulator_t{10};
   ------------------
-  |  Branch (312:7): [True: 18, False: 175]
+  |  Branch (312:7): [True: 17, False: 173]
   ------------------
-  313|    193|  const accumulator_t limit_tail =
-  314|    193|      negative ? negative_limit % accumulator_t{10} : positive_limit % accumulator_t{10};
+  313|    190|  const accumulator_t limit_tail =
+  314|    190|      negative ? negative_limit % accumulator_t{10} : positive_limit % accumulator_t{10};
   ------------------
-  |  Branch (314:7): [True: 18, False: 175]
+  |  Branch (314:7): [True: 17, False: 173]
   ------------------
   315|       |
-  316|    193|  const auto run = detail::fold_decimal(digits, limit_head, limit_tail);
-  317|    193|  if (run.consumed == 0) {
+  316|    190|  const auto run = detail::fold_decimal(digits, limit_head, limit_tail);
+  317|    190|  if (run.consumed == 0) {
   ------------------
-  |  Branch (317:7): [True: 48, False: 145]
+  |  Branch (317:7): [True: 48, False: 142]
   ------------------
   318|     48|    return unexpected<parse_error>(parse_error::not_a_number);
   319|     48|  }
-  320|    145|  if (run.overflowed) {
+  320|    142|  if (run.overflowed) {
   ------------------
-  |  Branch (320:7): [True: 93, False: 52]
+  |  Branch (320:7): [True: 91, False: 51]
   ------------------
-  321|     93|    return unexpected<parse_error>(parse_error::out_of_range);
-  322|     93|  }
+  321|     91|    return unexpected<parse_error>(parse_error::out_of_range);
+  322|     91|  }
   323|       |
-  324|     52|  const span<const char> tail = digits.subspan(run.consumed);
-  325|     52|  if (!negative) {
+  324|     51|  const span<const char> tail = digits.subspan(run.consumed);
+  325|     51|  if (!negative) {
   ------------------
-  |  Branch (325:7): [True: 41, False: 11]
+  |  Branch (325:7): [True: 41, False: 10]
   ------------------
   326|     41|    return parsed<T>{static_cast<T>(run.value), tail};
   327|     41|  }
   328|       |  // run.value is at most max()+1. Negating max() is fine; the extra one is the
   329|       |  // minimum, which is returned directly because -min() does not exist.
-  330|     11|  if (run.value == negative_limit) {
+  330|     10|  if (run.value == negative_limit) {
   ------------------
-  |  Branch (330:7): [True: 1, False: 10]
+  |  Branch (330:7): [True: 1, False: 9]
   ------------------
   331|      1|    return parsed<T>{std::numeric_limits<T>::min(), tail};
   332|      1|  }
-  333|     10|  return parsed<T>{static_cast<T>(-static_cast<T>(run.value)), tail};
-  334|     11|}
+  333|      9|  return parsed<T>{static_cast<T>(-static_cast<T>(run.value)), tail};
+  334|     10|}
 _ZN4metl13try_parse_hexIhEENS_8expectedINS_6parsedIT_EENS_11parse_errorEEENS_4spanIKcLm18446744073709551615EEE:
-  365|    193|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_hex(span<const char> text) noexcept {
-  366|    193|  static_assert(detail::is_plain_integer_v<T>,
-  367|    193|                "try_parse_hex produces an integer: bool and the character types are excluded "
-  368|    193|                "because reading them as numbers is almost never what was meant");
-  369|    193|  static_assert(std::is_unsigned_v<T>,
-  370|    193|                "try_parse_hex produces an UNSIGNED value; a hex field is a bit pattern. Cast "
-  371|    193|                "to the signed type whose width you actually mean");
+  365|    190|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_hex(span<const char> text) noexcept {
+  366|    190|  static_assert(detail::is_plain_integer_v<T>,
+  367|    190|                "try_parse_hex produces an integer: bool and the character types are excluded "
+  368|    190|                "because reading them as numbers is almost never what was meant");
+  369|    190|  static_assert(std::is_unsigned_v<T>,
+  370|    190|                "try_parse_hex produces an UNSIGNED value; a hex field is a bit pattern. Cast "
+  371|    190|                "to the signed type whose width you actually mean");
   372|       |
-  373|    193|  if (text.empty()) {
+  373|    190|  if (text.empty()) {
   ------------------
-  |  Branch (373:7): [True: 0, False: 193]
+  |  Branch (373:7): [True: 0, False: 190]
   ------------------
   374|      0|    return unexpected<parse_error>(parse_error::empty);
   375|      0|  }
-  376|    193|  using accumulator_t = detail::parse_accumulator_t<T>;
-  377|    193|  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
-  378|    193|  constexpr accumulator_t limit_head = limit / accumulator_t{16};
-  379|    193|  constexpr accumulator_t limit_tail = limit % accumulator_t{16};
+  376|    190|  using accumulator_t = detail::parse_accumulator_t<T>;
+  377|    190|  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  378|    190|  constexpr accumulator_t limit_head = limit / accumulator_t{16};
+  379|    190|  constexpr accumulator_t limit_tail = limit % accumulator_t{16};
   380|       |
-  381|    193|  const auto run = detail::fold_hex(text, limit_head, limit_tail);
-  382|    193|  if (run.consumed == 0) {
+  381|    190|  const auto run = detail::fold_hex(text, limit_head, limit_tail);
+  382|    190|  if (run.consumed == 0) {
   ------------------
-  |  Branch (382:7): [True: 35, False: 158]
+  |  Branch (382:7): [True: 34, False: 156]
   ------------------
-  383|     35|    return unexpected<parse_error>(parse_error::not_a_number);
-  384|     35|  }
-  385|    158|  if (run.overflowed) {
+  383|     34|    return unexpected<parse_error>(parse_error::not_a_number);
+  384|     34|  }
+  385|    156|  if (run.overflowed) {
   ------------------
-  |  Branch (385:7): [True: 141, False: 17]
+  |  Branch (385:7): [True: 139, False: 17]
   ------------------
-  386|    141|    return unexpected<parse_error>(parse_error::out_of_range);
-  387|    141|  }
+  386|    139|    return unexpected<parse_error>(parse_error::out_of_range);
+  387|    139|  }
   388|     17|  return parsed<T>{static_cast<T>(run.value), text.subspan(run.consumed)};
-  389|    158|}
+  389|    156|}
 _ZN4metl6detail8fold_hexIjEENS0_9digit_runIT_EENS_4spanIKcLm18446744073709551615EEES3_S3_:
-  183|    579|constexpr digit_run<Acc> fold_hex(span<const char> text, Acc limit_head, Acc limit_tail) noexcept {
-  184|    579|  Acc value = 0;
-  185|    579|  std::size_t index = 0;
-  186|    579|  bool overflowed = false;
+  183|    570|constexpr digit_run<Acc> fold_hex(span<const char> text, Acc limit_head, Acc limit_tail) noexcept {
+  184|    570|  Acc value = 0;
+  185|    570|  std::size_t index = 0;
+  186|    570|  bool overflowed = false;
   187|       |
-  188|  16.6k|  while (index < text.size() && hex_digit_value(text[index]) < 16u) {
+  188|  16.5k|  while (index < text.size() && hex_digit_value(text[index]) < 16u) {
   ------------------
-  |  Branch (188:10): [True: 16.1k, False: 435]
-  |  Branch (188:33): [True: 16.0k, False: 144]
+  |  Branch (188:10): [True: 16.0k, False: 429]
+  |  Branch (188:33): [True: 15.9k, False: 141]
   ------------------
-  189|  16.0k|    const auto digit = static_cast<Acc>(hex_digit_value(text[index]));
-  190|  16.0k|    if (value > limit_head || (value == limit_head && digit > limit_tail)) {
+  189|  15.9k|    const auto digit = static_cast<Acc>(hex_digit_value(text[index]));
+  190|  15.9k|    if (value > limit_head || (value == limit_head && digit > limit_tail)) {
   ------------------
-  |  Branch (190:9): [True: 12.7k, False: 3.27k]
-  |  Branch (190:32): [True: 20, False: 3.25k]
+  |  Branch (190:9): [True: 12.7k, False: 3.21k]
+  |  Branch (190:32): [True: 20, False: 3.19k]
   |  Branch (190:55): [True: 0, False: 20]
   ------------------
   191|  12.7k|      overflowed = true;
   192|  12.7k|    } else {
-  193|  3.27k|      value = static_cast<Acc>(value * Acc{16} + digit);
-  194|  3.27k|    }
-  195|  16.0k|    ++index;
-  196|  16.0k|  }
-  197|    579|  return digit_run<Acc>{value, index, overflowed};
-  198|    579|}
+  193|  3.21k|      value = static_cast<Acc>(value * Acc{16} + digit);
+  194|  3.21k|    }
+  195|  15.9k|    ++index;
+  196|  15.9k|  }
+  197|    570|  return digit_run<Acc>{value, index, overflowed};
+  198|    570|}
 _ZN4metl13try_parse_hexItEENS_8expectedINS_6parsedIT_EENS_11parse_errorEEENS_4spanIKcLm18446744073709551615EEE:
-  365|    193|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_hex(span<const char> text) noexcept {
-  366|    193|  static_assert(detail::is_plain_integer_v<T>,
-  367|    193|                "try_parse_hex produces an integer: bool and the character types are excluded "
-  368|    193|                "because reading them as numbers is almost never what was meant");
-  369|    193|  static_assert(std::is_unsigned_v<T>,
-  370|    193|                "try_parse_hex produces an UNSIGNED value; a hex field is a bit pattern. Cast "
-  371|    193|                "to the signed type whose width you actually mean");
+  365|    190|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_hex(span<const char> text) noexcept {
+  366|    190|  static_assert(detail::is_plain_integer_v<T>,
+  367|    190|                "try_parse_hex produces an integer: bool and the character types are excluded "
+  368|    190|                "because reading them as numbers is almost never what was meant");
+  369|    190|  static_assert(std::is_unsigned_v<T>,
+  370|    190|                "try_parse_hex produces an UNSIGNED value; a hex field is a bit pattern. Cast "
+  371|    190|                "to the signed type whose width you actually mean");
   372|       |
-  373|    193|  if (text.empty()) {
+  373|    190|  if (text.empty()) {
   ------------------
-  |  Branch (373:7): [True: 0, False: 193]
+  |  Branch (373:7): [True: 0, False: 190]
   ------------------
   374|      0|    return unexpected<parse_error>(parse_error::empty);
   375|      0|  }
-  376|    193|  using accumulator_t = detail::parse_accumulator_t<T>;
-  377|    193|  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
-  378|    193|  constexpr accumulator_t limit_head = limit / accumulator_t{16};
-  379|    193|  constexpr accumulator_t limit_tail = limit % accumulator_t{16};
+  376|    190|  using accumulator_t = detail::parse_accumulator_t<T>;
+  377|    190|  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  378|    190|  constexpr accumulator_t limit_head = limit / accumulator_t{16};
+  379|    190|  constexpr accumulator_t limit_tail = limit % accumulator_t{16};
   380|       |
-  381|    193|  const auto run = detail::fold_hex(text, limit_head, limit_tail);
-  382|    193|  if (run.consumed == 0) {
+  381|    190|  const auto run = detail::fold_hex(text, limit_head, limit_tail);
+  382|    190|  if (run.consumed == 0) {
   ------------------
-  |  Branch (382:7): [True: 35, False: 158]
+  |  Branch (382:7): [True: 34, False: 156]
   ------------------
-  383|     35|    return unexpected<parse_error>(parse_error::not_a_number);
-  384|     35|  }
-  385|    158|  if (run.overflowed) {
+  383|     34|    return unexpected<parse_error>(parse_error::not_a_number);
+  384|     34|  }
+  385|    156|  if (run.overflowed) {
   ------------------
-  |  Branch (385:7): [True: 124, False: 34]
+  |  Branch (385:7): [True: 122, False: 34]
   ------------------
-  386|    124|    return unexpected<parse_error>(parse_error::out_of_range);
-  387|    124|  }
+  386|    122|    return unexpected<parse_error>(parse_error::out_of_range);
+  387|    122|  }
   388|     34|  return parsed<T>{static_cast<T>(run.value), text.subspan(run.consumed)};
-  389|    158|}
+  389|    156|}
 _ZN4metl13try_parse_hexIjEENS_8expectedINS_6parsedIT_EENS_11parse_errorEEENS_4spanIKcLm18446744073709551615EEE:
-  365|    193|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_hex(span<const char> text) noexcept {
-  366|    193|  static_assert(detail::is_plain_integer_v<T>,
-  367|    193|                "try_parse_hex produces an integer: bool and the character types are excluded "
-  368|    193|                "because reading them as numbers is almost never what was meant");
-  369|    193|  static_assert(std::is_unsigned_v<T>,
-  370|    193|                "try_parse_hex produces an UNSIGNED value; a hex field is a bit pattern. Cast "
-  371|    193|                "to the signed type whose width you actually mean");
+  365|    190|METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_hex(span<const char> text) noexcept {
+  366|    190|  static_assert(detail::is_plain_integer_v<T>,
+  367|    190|                "try_parse_hex produces an integer: bool and the character types are excluded "
+  368|    190|                "because reading them as numbers is almost never what was meant");
+  369|    190|  static_assert(std::is_unsigned_v<T>,
+  370|    190|                "try_parse_hex produces an UNSIGNED value; a hex field is a bit pattern. Cast "
+  371|    190|                "to the signed type whose width you actually mean");
   372|       |
-  373|    193|  if (text.empty()) {
+  373|    190|  if (text.empty()) {
   ------------------
-  |  Branch (373:7): [True: 0, False: 193]
+  |  Branch (373:7): [True: 0, False: 190]
   ------------------
   374|      0|    return unexpected<parse_error>(parse_error::empty);
   375|      0|  }
-  376|    193|  using accumulator_t = detail::parse_accumulator_t<T>;
-  377|    193|  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
-  378|    193|  constexpr accumulator_t limit_head = limit / accumulator_t{16};
-  379|    193|  constexpr accumulator_t limit_tail = limit % accumulator_t{16};
+  376|    190|  using accumulator_t = detail::parse_accumulator_t<T>;
+  377|    190|  constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  378|    190|  constexpr accumulator_t limit_head = limit / accumulator_t{16};
+  379|    190|  constexpr accumulator_t limit_tail = limit % accumulator_t{16};
   380|       |
-  381|    193|  const auto run = detail::fold_hex(text, limit_head, limit_tail);
-  382|    193|  if (run.consumed == 0) {
+  381|    190|  const auto run = detail::fold_hex(text, limit_head, limit_tail);
+  382|    190|  if (run.consumed == 0) {
   ------------------
-  |  Branch (382:7): [True: 35, False: 158]
+  |  Branch (382:7): [True: 34, False: 156]
   ------------------
-  383|     35|    return unexpected<parse_error>(parse_error::not_a_number);
-  384|     35|  }
-  385|    158|  if (run.overflowed) {
+  383|     34|    return unexpected<parse_error>(parse_error::not_a_number);
+  384|     34|  }
+  385|    156|  if (run.overflowed) {
   ------------------
-  |  Branch (385:7): [True: 103, False: 55]
+  |  Branch (385:7): [True: 101, False: 55]
   ------------------
-  386|    103|    return unexpected<parse_error>(parse_error::out_of_range);
-  387|    103|  }
+  386|    101|    return unexpected<parse_error>(parse_error::out_of_range);
+  387|    101|  }
   388|     55|  return parsed<T>{static_cast<T>(run.value), text.subspan(run.consumed)};
-  389|    158|}
+  389|    156|}
 
 _ZN4metl4spanIKcLm18446744073709551615EEC2EPS1_m:
-  118|  3.58k|  constexpr span(pointer ptr, size_type count) noexcept : storage_(ptr, count) {
-  119|  3.58k|    METL_ASSERT(Extent == dynamic_extent || count == Extent);
+  118|  3.50k|  constexpr span(pointer ptr, size_type count) noexcept : storage_(ptr, count) {
+  119|  3.50k|    METL_ASSERT(Extent == dynamic_extent || count == Extent);
   ------------------
-  |  |   91|  3.58k|  do {                                                             \
-  |  |   92|  3.58k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|  3.50k|  do {                                                             \
+  |  |   92|  3.50k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|  3.58k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  3.50k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [Folded, False: 3.58k]
-  |  |  |  |  |  Branch (25:70): [True: 3.58k, Folded]
+  |  |  |  |  |  Branch (25:34): [Folded, False: 3.50k]
+  |  |  |  |  |  Branch (25:70): [True: 3.50k, Folded]
   |  |  |  |  |  Branch (25:70): [True: 0, False: 0]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|  3.58k|  } while (false)
+  |  |   95|  3.50k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 3.58k]
+  |  |  |  Branch (95:12): [Folded, False: 3.50k]
   |  |  ------------------
   ------------------
-  120|  3.58k|  }
+  120|  3.50k|  }
 _ZN4metl6detail12span_storageIKcLm18446744073709551615EEC2EPS2_m:
-   81|  3.58k|  constexpr span_storage(T* ptr, std::size_t count) noexcept : data(ptr), size(count) {}
+   81|  3.50k|  constexpr span_storage(T* ptr, std::size_t count) noexcept : data(ptr), size(count) {}
 _ZNK4metl4spanIKcLm18446744073709551615EE5emptyEv:
-  206|  6.78k|  METL_NODISCARD constexpr bool empty() const noexcept { return storage_.size == 0; }
+  206|  6.67k|  METL_NODISCARD constexpr bool empty() const noexcept { return storage_.size == 0; }
 _ZNK4metl4spanIKcLm18446744073709551615EEixEm:
-  192|   247k|  constexpr reference operator[](size_type index) const noexcept {
-  193|   247k|    METL_ASSERT(index < size());
+  192|   244k|  constexpr reference operator[](size_type index) const noexcept {
+  193|   244k|    METL_ASSERT(index < size());
   ------------------
-  |  |   91|   247k|  do {                                                             \
-  |  |   92|   247k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|   244k|  do {                                                             \
+  |  |   92|   244k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|   247k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|   244k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 247k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 244k]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|   247k|  } while (false)
+  |  |   95|   244k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 247k]
+  |  |  |  Branch (95:12): [Folded, False: 244k]
   |  |  ------------------
   ------------------
-  194|   247k|    return storage_.data[index];
-  195|   247k|  }
+  194|   244k|    return storage_.data[index];
+  195|   244k|  }
 _ZNK4metl4spanIKcLm18446744073709551615EE7subspanEmm:
-  263|  2.80k|      size_type offset, size_type count = dynamic_extent) const noexcept {
-  264|  2.80k|    METL_ASSERT(offset <= size());
+  263|  2.74k|      size_type offset, size_type count = dynamic_extent) const noexcept {
+  264|  2.74k|    METL_ASSERT(offset <= size());
   ------------------
-  |  |   91|  2.80k|  do {                                                             \
-  |  |   92|  2.80k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|  2.74k|  do {                                                             \
+  |  |   92|  2.74k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|  2.80k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  2.74k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 2.80k]
-  |  |  |  |  ------------------
-  |  |  ------------------
-  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
-  |  |   94|      0|    }                                                              \
-  |  |   95|  2.80k|  } while (false)
-  |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 2.80k]
-  |  |  ------------------
-  ------------------
-  265|  2.80k|    const size_type actual_count = (count == dynamic_extent) ? (size() - offset) : count;
-  ------------------
-  |  Branch (265:36): [True: 2.80k, False: 0]
-  ------------------
-  266|  2.80k|    METL_ASSERT(actual_count <= (size() - offset));
-  ------------------
-  |  |   91|  2.80k|  do {                                                             \
-  |  |   92|  2.80k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
-  |  |  ------------------
-  |  |  |  |   25|  2.80k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
-  |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 2.80k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 2.74k]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|  2.80k|  } while (false)
+  |  |   95|  2.74k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 2.80k]
+  |  |  |  Branch (95:12): [Folded, False: 2.74k]
   |  |  ------------------
   ------------------
-  267|  2.80k|    return span<element_type, dynamic_extent>(storage_.data + offset, actual_count);
-  268|  2.80k|  }
+  265|  2.74k|    const size_type actual_count = (count == dynamic_extent) ? (size() - offset) : count;
+  ------------------
+  |  Branch (265:36): [True: 2.74k, False: 0]
+  ------------------
+  266|  2.74k|    METL_ASSERT(actual_count <= (size() - offset));
+  ------------------
+  |  |   91|  2.74k|  do {                                                             \
+  |  |   92|  2.74k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  ------------------
+  |  |  |  |   25|  2.74k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |  ------------------
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 2.74k]
+  |  |  |  |  ------------------
+  |  |  ------------------
+  |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
+  |  |   94|      0|    }                                                              \
+  |  |   95|  2.74k|  } while (false)
+  |  |  ------------------
+  |  |  |  Branch (95:12): [Folded, False: 2.74k]
+  |  |  ------------------
+  ------------------
+  267|  2.74k|    return span<element_type, dynamic_extent>(storage_.data + offset, actual_count);
+  268|  2.74k|  }
 _ZNK4metl4spanIKcLm18446744073709551615EE4dataEv:
-  198|    804|  METL_NODISCARD constexpr pointer data() const noexcept { return storage_.data; }
+  198|    794|  METL_NODISCARD constexpr pointer data() const noexcept { return storage_.data; }
 _ZNK4metl4spanIKcLm18446744073709551615EE4sizeEv:
-  200|   385k|  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size; }
+  200|   381k|  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size; }
 _ZN4metl4spanIcLm18446744073709551615EEC2EPcm:
-  118|    783|  constexpr span(pointer ptr, size_type count) noexcept : storage_(ptr, count) {
-  119|    783|    METL_ASSERT(Extent == dynamic_extent || count == Extent);
+  118|    771|  constexpr span(pointer ptr, size_type count) noexcept : storage_(ptr, count) {
+  119|    771|    METL_ASSERT(Extent == dynamic_extent || count == Extent);
   ------------------
-  |  |   91|    783|  do {                                                             \
-  |  |   92|    783|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    771|  do {                                                             \
+  |  |   92|    771|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    783|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    771|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [Folded, False: 783]
-  |  |  |  |  |  Branch (25:70): [True: 783, Folded]
+  |  |  |  |  |  Branch (25:34): [Folded, False: 771]
+  |  |  |  |  |  Branch (25:70): [True: 771, Folded]
   |  |  |  |  |  Branch (25:70): [True: 0, False: 0]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    783|  } while (false)
+  |  |   95|    771|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 783]
+  |  |  |  Branch (95:12): [Folded, False: 771]
   |  |  ------------------
   ------------------
-  120|    783|  }
+  120|    771|  }
 _ZN4metl6detail12span_storageIcLm18446744073709551615EEC2EPcm:
-   81|    783|  constexpr span_storage(T* ptr, std::size_t count) noexcept : data(ptr), size(count) {}
+   81|    771|  constexpr span_storage(T* ptr, std::size_t count) noexcept : data(ptr), size(count) {}
 _ZNK4metl4spanIcLm18446744073709551615EE5firstEm:
-  248|    579|  METL_NODISCARD constexpr span<element_type, dynamic_extent> first(size_type count) const noexcept {
-  249|    579|    METL_ASSERT(count <= size());
+  248|    570|  METL_NODISCARD constexpr span<element_type, dynamic_extent> first(size_type count) const noexcept {
+  249|    570|    METL_ASSERT(count <= size());
   ------------------
-  |  |   91|    579|  do {                                                             \
-  |  |   92|    579|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    570|  do {                                                             \
+  |  |   92|    570|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    579|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    570|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 579]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 570]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    579|  } while (false)
+  |  |   95|    570|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 579]
+  |  |  |  Branch (95:12): [Folded, False: 570]
   |  |  ------------------
   ------------------
-  250|    579|    return span<element_type, dynamic_extent>(storage_.data, count);
-  251|    579|  }
+  250|    570|    return span<element_type, dynamic_extent>(storage_.data, count);
+  251|    570|  }
 _ZNK4metl4spanIcLm18446744073709551615EEixEm:
-  192|  6.64k|  constexpr reference operator[](size_type index) const noexcept {
-  193|  6.64k|    METL_ASSERT(index < size());
+  192|  6.51k|  constexpr reference operator[](size_type index) const noexcept {
+  193|  6.51k|    METL_ASSERT(index < size());
   ------------------
-  |  |   91|  6.64k|  do {                                                             \
-  |  |   92|  6.64k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|  6.51k|  do {                                                             \
+  |  |   92|  6.51k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|  6.64k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  6.51k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 6.64k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 6.51k]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|  6.64k|  } while (false)
+  |  |   95|  6.51k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 6.64k]
+  |  |  |  Branch (95:12): [Folded, False: 6.51k]
   |  |  ------------------
   ------------------
-  194|  6.64k|    return storage_.data[index];
-  195|  6.64k|  }
+  194|  6.51k|    return storage_.data[index];
+  195|  6.51k|  }
 _ZNK4metl4spanIcLm18446744073709551615EE5emptyEv:
-  206|    579|  METL_NODISCARD constexpr bool empty() const noexcept { return storage_.size == 0; }
+  206|    570|  METL_NODISCARD constexpr bool empty() const noexcept { return storage_.size == 0; }
 _ZNK4metl4spanIcLm18446744073709551615EE4dataEv:
-  198|    579|  METL_NODISCARD constexpr pointer data() const noexcept { return storage_.data; }
+  198|    570|  METL_NODISCARD constexpr pointer data() const noexcept { return storage_.data; }
 _ZNK4metl4spanIcLm18446744073709551615EE4sizeEv:
-  200|  8.41k|  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size; }
+  200|  8.25k|  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size; }
 _ZNK4metl4spanIcLm18446744073709551615EE7subspanEmm:
   263|     11|      size_type offset, size_type count = dynamic_extent) const noexcept {
   264|     11|    METL_ASSERT(offset <= size());
@@ -2529,29 +2529,29 @@ _ZNK4metl4spanIcLm18446744073709551615EE7subspanEmm:
   268|     11|  }
 
 _ZN4metl11storage_forINS_11parse_errorEE4addrEv:
-   34|  3.32k|  void* addr() noexcept { return &bytes[0]; }
+   34|  3.27k|  void* addr() noexcept { return &bytes[0]; }
 _ZN4metl11storage_forINS_6parsedIjEEE4addrEv:
-   34|    202|  void* addr() noexcept { return &bytes[0]; }
+   34|    200|  void* addr() noexcept { return &bytes[0]; }
 _ZN4metl11storage_forINS_6parsedImEEE4addrEv:
-   34|    899|  void* addr() noexcept { return &bytes[0]; }
+   34|    881|  void* addr() noexcept { return &bytes[0]; }
 _ZNK4metl11storage_forINS_6parsedImEEE3ptrEv:
-   26|  1.47k|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
+   26|  1.45k|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
 _ZN4metl11storage_forINS_6parsedImEEE3ptrEv:
-   24|    899|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
+   24|    881|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
 _ZN4metl11storage_forINS_11parse_errorEE3ptrEv:
-   24|  3.32k|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
+   24|  3.27k|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
 _ZN4metl11storage_forINS_6parsedIlEEE4addrEv:
-   34|    460|  void* addr() noexcept { return &bytes[0]; }
+   34|    448|  void* addr() noexcept { return &bytes[0]; }
 _ZNK4metl11storage_forINS_6parsedIlEEE3ptrEv:
-   26|    758|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
+   26|    740|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
 _ZN4metl11storage_forINS_6parsedIlEEE3ptrEv:
-   24|    460|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
+   24|    448|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
 _ZN4metl11storage_forINS_6parsedIhEEE4addrEv:
    34|     33|  void* addr() noexcept { return &bytes[0]; }
 _ZNK4metl11storage_forINS_6parsedIhEEE3ptrEv:
    26|     99|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
 _ZNK4metl11storage_forINS_11parse_errorEE3ptrEv:
-   26|  2.83k|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
+   26|  2.79k|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
 _ZN4metl11storage_forINS_6parsedIhEEE3ptrEv:
    24|     33|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
 _ZN4metl11storage_forINS_6parsedItEEE4addrEv:
@@ -2561,25 +2561,25 @@ _ZNK4metl11storage_forINS_6parsedItEEE3ptrEv:
 _ZN4metl11storage_forINS_6parsedItEEE3ptrEv:
    24|     62|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
 _ZN4metl11storage_forINS_6parsedIaEEE4addrEv:
-   34|     19|  void* addr() noexcept { return &bytes[0]; }
+   34|     18|  void* addr() noexcept { return &bytes[0]; }
 _ZNK4metl11storage_forINS_6parsedIaEEE3ptrEv:
-   26|     57|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
+   26|     54|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
 _ZN4metl11storage_forINS_6parsedIaEEE3ptrEv:
-   24|     19|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
+   24|     18|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
 _ZN4metl11storage_forINS_6parsedIsEEE4addrEv:
-   34|     34|  void* addr() noexcept { return &bytes[0]; }
+   34|     33|  void* addr() noexcept { return &bytes[0]; }
 _ZNK4metl11storage_forINS_6parsedIsEEE3ptrEv:
-   26|    102|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
+   26|     99|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
 _ZN4metl11storage_forINS_6parsedIsEEE3ptrEv:
-   24|     34|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
+   24|     33|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
 _ZN4metl11storage_forINS_6parsedIiEEE4addrEv:
-   34|     52|  void* addr() noexcept { return &bytes[0]; }
+   34|     51|  void* addr() noexcept { return &bytes[0]; }
 _ZNK4metl11storage_forINS_6parsedIiEEE3ptrEv:
-   26|    156|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
+   26|    153|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
 _ZN4metl11storage_forINS_6parsedIiEEE3ptrEv:
-   24|     52|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
+   24|     51|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
 _ZN4metl11storage_forINS_6parsedIjEEE3ptrEv:
-   24|    202|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
+   24|    200|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
 _ZNK4metl11storage_forINS_6parsedIjEEE3ptrEv:
-   26|    606|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
+   26|    600|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
 
