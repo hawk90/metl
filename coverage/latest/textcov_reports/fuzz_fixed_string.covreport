@@ -1,71 +1,71 @@
 LLVMFuzzerTestOneInput:
-   37|    209|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
-   38|    209|  metl_fuzz::byte_reader in(data, size);
-   39|    209|  metl::fixed_string<kCapacity> str;
+   37|    206|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
+   38|    206|  metl_fuzz::byte_reader in(data, size);
+   39|    206|  metl::fixed_string<kCapacity> str;
    40|       |
-   41|  4.67k|  while (!in.empty()) {
+   41|  4.61k|  while (!in.empty()) {
   ------------------
-  |  Branch (41:10): [True: 4.46k, False: 209]
+  |  Branch (41:10): [True: 4.41k, False: 206]
   ------------------
-   42|  4.46k|    switch (in.byte() % 8u) {
-   43|    586|      case 0: {  // try_push_back — never asserts (returns false when full)
+   42|  4.41k|    switch (in.byte() % 8u) {
+   43|    566|      case 0: {  // try_push_back — never asserts (returns false when full)
   ------------------
-  |  Branch (43:7): [True: 586, False: 3.88k]
+  |  Branch (43:7): [True: 566, False: 3.84k]
   ------------------
-   44|    586|        (void)str.try_push_back(static_cast<char>(in.byte()));
-   45|    586|        break;
+   44|    566|        (void)str.try_push_back(static_cast<char>(in.byte()));
+   45|    566|        break;
    46|      0|      }
-   47|    393|      case 1: {  // try_pop_back — never asserts (returns false when empty)
+   47|    395|      case 1: {  // try_pop_back — never asserts (returns false when empty)
   ------------------
-  |  Branch (47:7): [True: 393, False: 4.07k]
+  |  Branch (47:7): [True: 395, False: 4.01k]
   ------------------
-   48|    393|        (void)str.try_pop_back();
-   49|    393|        break;
+   48|    395|        (void)str.try_pop_back();
+   49|    395|        break;
    50|      0|      }
-   51|    531|      case 2: {  // try_assign from a bounded, NUL-terminated slice
+   51|    662|      case 2: {  // try_assign from a bounded, NUL-terminated slice
   ------------------
-  |  Branch (51:7): [True: 531, False: 3.93k]
+  |  Branch (51:7): [True: 662, False: 3.75k]
   ------------------
-   52|    531|        char buf[kCapacity + 1];
-   53|    531|        in.c_string(buf);
-   54|    531|        const bool ok = str.try_assign(buf);
-   55|    531|        if (ok) {
+   52|    662|        char buf[kCapacity + 1];
+   53|    662|        in.c_string(buf);
+   54|    662|        const bool ok = str.try_assign(buf);
+   55|    662|        if (ok) {
   ------------------
-  |  Branch (55:13): [True: 531, False: 0]
+  |  Branch (55:13): [True: 662, False: 0]
   ------------------
    56|       |          // On success the contents must equal the source exactly.
-   57|    531|          if (std::strcmp(str.c_str(), buf) != 0) {
+   57|    662|          if (std::strcmp(str.c_str(), buf) != 0) {
   ------------------
-  |  Branch (57:15): [True: 0, False: 531]
+  |  Branch (57:15): [True: 0, False: 662]
   ------------------
    58|      0|            __builtin_trap();
    59|      0|          }
-   60|    531|        }
-   61|    531|        break;
-   62|    531|      }
-   63|  1.10k|      case 3: {  // try_append from a bounded, NUL-terminated slice
+   60|    662|        }
+   61|    662|        break;
+   62|    662|      }
+   63|    979|      case 3: {  // try_append from a bounded, NUL-terminated slice
   ------------------
-  |  Branch (63:7): [True: 1.10k, False: 3.35k]
+  |  Branch (63:7): [True: 979, False: 3.43k]
   ------------------
-   64|  1.10k|        char buf[kCapacity + 1];
-   65|  1.10k|        in.c_string(buf);
+   64|    979|        char buf[kCapacity + 1];
+   65|    979|        in.c_string(buf);
    66|       |        // Reports overflow via bool; contents unchanged on false. The plain
    67|       |        // `append` asserts instead, so it is NOT contract-valid on fuzz input.
-   68|  1.10k|        (void)str.try_append(buf);
-   69|  1.10k|        break;
-   70|    531|      }
-   71|    806|      case 4: {  // try_append from a span (may contain embedded NUL, no termination needed)
+   68|    979|        (void)str.try_append(buf);
+   69|    979|        break;
+   70|    662|      }
+   71|    795|      case 4: {  // try_append from a span (may contain embedded NUL, no termination needed)
   ------------------
-  |  Branch (71:7): [True: 806, False: 3.66k]
+  |  Branch (71:7): [True: 795, False: 3.61k]
   ------------------
-   72|    806|        std::size_t len = 0;
-   73|    806|        const std::uint8_t* p = in.slice(&len);
-   74|    806|        (void)str.try_append(metl::span<const char>(reinterpret_cast<const char*>(p), len));
-   75|    806|        break;
-   76|    531|      }
+   72|    795|        std::size_t len = 0;
+   73|    795|        const std::uint8_t* p = in.slice(&len);
+   74|    795|        (void)str.try_append(metl::span<const char>(reinterpret_cast<const char*>(p), len));
+   75|    795|        break;
+   76|    662|      }
    77|    391|      case 5: {  // bounded index read (contract: index < size())
   ------------------
-  |  Branch (77:7): [True: 391, False: 4.07k]
+  |  Branch (77:7): [True: 391, False: 4.02k]
   ------------------
    78|    391|        if (!str.empty()) {
   ------------------
@@ -80,88 +80,88 @@ LLVMFuzzerTestOneInput:
    85|    195|          (void)b;
    86|    195|        }
    87|    391|        break;
-   88|    531|      }
-   89|    441|      case 6: {  // read the whole string via its span view
+   88|    662|      }
+   89|    415|      case 6: {  // read the whole string via its span view
   ------------------
-  |  Branch (89:7): [True: 441, False: 4.02k]
+  |  Branch (89:7): [True: 415, False: 3.99k]
   ------------------
-   90|    441|        const metl::span<const char> view = str.as_span();
-   91|    441|        std::size_t acc = 0;
-   92|  1.38k|        for (std::size_t i = 0; i < view.size(); ++i) {
+   90|    415|        const metl::span<const char> view = str.as_span();
+   91|    415|        std::size_t acc = 0;
+   92|  2.48k|        for (std::size_t i = 0; i < view.size(); ++i) {
   ------------------
-  |  Branch (92:33): [True: 940, False: 441]
+  |  Branch (92:33): [True: 2.06k, False: 415]
   ------------------
-   93|    940|          acc += static_cast<std::size_t>(view[i]);
-   94|    940|        }
-   95|    441|        (void)acc;
-   96|    441|        break;
-   97|    531|      }
-   98|    211|      default: {  // clear
+   93|  2.06k|          acc += static_cast<std::size_t>(view[i]);
+   94|  2.06k|        }
+   95|    415|        (void)acc;
+   96|    415|        break;
+   97|    662|      }
+   98|    210|      default: {  // clear
   ------------------
-  |  Branch (98:7): [True: 211, False: 4.25k]
+  |  Branch (98:7): [True: 210, False: 4.20k]
   ------------------
-   99|    211|        str.clear();
-  100|    211|        break;
-  101|    531|      }
-  102|  4.46k|    }
-  103|  4.46k|    check_null_terminated(str);
-  104|  4.46k|    if (str.size() > str.capacity()) {
+   99|    210|        str.clear();
+  100|    210|        break;
+  101|    662|      }
+  102|  4.41k|    }
+  103|  4.41k|    check_null_terminated(str);
+  104|  4.41k|    if (str.size() > str.capacity()) {
   ------------------
-  |  Branch (104:9): [True: 0, False: 4.46k]
+  |  Branch (104:9): [True: 0, False: 4.41k]
   ------------------
   105|      0|      __builtin_trap();
   106|      0|    }
-  107|  4.46k|  }
+  107|  4.41k|  }
   108|       |
-  109|    209|  return 0;
-  110|    209|}
+  109|    206|  return 0;
+  110|    206|}
 fuzz_fixed_string.cpp:_ZN12_GLOBAL__N_121check_null_terminatedERKN4metl12fixed_stringILm64EEE:
-   23|  4.46k|void check_null_terminated(const metl::fixed_string<kCapacity>& s) {
+   23|  4.41k|void check_null_terminated(const metl::fixed_string<kCapacity>& s) {
    24|       |  // c_str() must carry a readable NUL terminator exactly at size(). Note the
    25|       |  // buffer MAY contain embedded NULs (try_push_back accepts any char), so
    26|       |  // strlen() can be shorter than size() — it can never legitimately exceed it.
-   27|  4.46k|  if (s.c_str()[s.size()] != '\0') {
+   27|  4.41k|  if (s.c_str()[s.size()] != '\0') {
   ------------------
-  |  Branch (27:7): [True: 0, False: 4.46k]
+  |  Branch (27:7): [True: 0, False: 4.41k]
   ------------------
    28|      0|    __builtin_trap();
    29|      0|  }
-   30|  4.46k|  if (std::strlen(s.c_str()) > s.size()) {
+   30|  4.41k|  if (std::strlen(s.c_str()) > s.size()) {
   ------------------
-  |  Branch (30:7): [True: 0, False: 4.46k]
+  |  Branch (30:7): [True: 0, False: 4.41k]
   ------------------
    31|      0|    __builtin_trap();
    32|      0|  }
-   33|  4.46k|}
+   33|  4.41k|}
 
 _ZN9metl_fuzz11byte_readerC2EPKhm:
-   31|    209|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
+   31|    206|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
 _ZNK9metl_fuzz11byte_reader5emptyEv:
-   34|  4.67k|  bool empty() const noexcept { return remaining() == 0; }
+   34|  4.61k|  bool empty() const noexcept { return remaining() == 0; }
 _ZNK9metl_fuzz11byte_reader9remainingEv:
-   33|  7.19k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
+   33|  7.13k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
   ------------------
-  |  Branch (33:51): [True: 6.94k, False: 258]
+  |  Branch (33:51): [True: 6.87k, False: 255]
   ------------------
 _ZN9metl_fuzz11byte_reader4byteEv:
-   37|  18.0k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
+   37|  18.1k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
   ------------------
-  |  Branch (37:41): [True: 17.9k, False: 38]
+  |  Branch (37:41): [True: 18.0k, False: 38]
   ------------------
 _ZN9metl_fuzz11byte_reader5sliceEPm:
-   89|    806|  const std::uint8_t* slice(std::size_t* len) noexcept {
-   90|    806|    std::size_t want = byte();
-   91|    806|    if (want > remaining()) {
+   89|    795|  const std::uint8_t* slice(std::size_t* len) noexcept {
+   90|    795|    std::size_t want = byte();
+   91|    795|    if (want > remaining()) {
   ------------------
-  |  Branch (91:9): [True: 23, False: 783]
+  |  Branch (91:9): [True: 23, False: 772]
   ------------------
    92|     23|      want = remaining();
    93|     23|    }
-   94|    806|    const std::uint8_t* begin = data_ + pos_;
-   95|    806|    pos_ += want;
-   96|    806|    *len = want;
-   97|    806|    return begin;
-   98|    806|  }
+   94|    795|    const std::uint8_t* begin = data_ + pos_;
+   95|    795|    pos_ += want;
+   96|    795|    *len = want;
+   97|    795|    return begin;
+   98|    795|  }
 _ZN9metl_fuzz11byte_reader8c_stringILm65EEEmRAT__c:
    67|  1.64k|  std::size_t c_string(char (&out)[N]) noexcept {
    68|  1.64k|    static_assert(N > 0, "c_string needs room for at least the NUL terminator");
@@ -170,10 +170,10 @@ _ZN9metl_fuzz11byte_reader8c_stringILm65EEEmRAT__c:
    71|  1.64k|    std::size_t want = byte();
    72|  1.64k|    if (want > room) {
   ------------------
-  |  Branch (72:9): [True: 174, False: 1.46k]
+  |  Branch (72:9): [True: 175, False: 1.46k]
   ------------------
-   73|    174|      want = room;
-   74|    174|    }
+   73|    175|      want = room;
+   74|    175|    }
    75|  1.64k|    if (want > remaining()) {
   ------------------
   |  Branch (75:9): [True: 53, False: 1.58k]
@@ -182,166 +182,166 @@ _ZN9metl_fuzz11byte_reader8c_stringILm65EEEmRAT__c:
    77|     53|    }
    78|       |
    79|  1.64k|    std::size_t i = 0;
-   80|  11.9k|    for (; i < want; ++i) {
+   80|  12.1k|    for (; i < want; ++i) {
   ------------------
-  |  Branch (80:12): [True: 10.3k, False: 1.64k]
+  |  Branch (80:12): [True: 10.5k, False: 1.64k]
   ------------------
-   81|  10.3k|      out[i] = static_cast<char>(byte());
-   82|  10.3k|    }
+   81|  10.5k|      out[i] = static_cast<char>(byte());
+   82|  10.5k|    }
    83|  1.64k|    out[i] = '\0';
    84|  1.64k|    return i;
    85|  1.64k|  }
 
 _ZN4metl12fixed_stringILm64EEC2Ev:
-   55|    209|  constexpr fixed_string() noexcept : storage_{}, size_(0) { storage_[0] = '\0'; }
+   55|    206|  constexpr fixed_string() noexcept : storage_{}, size_(0) { storage_[0] = '\0'; }
 _ZNK4metl12fixed_stringILm64EE5c_strEv:
-   83|  9.46k|  METL_NODISCARD constexpr const_pointer c_str() const noexcept { return storage_; }
+   83|  9.48k|  METL_NODISCARD constexpr const_pointer c_str() const noexcept { return storage_; }
 _ZNK4metl12fixed_stringILm64EE5emptyEv:
-   86|    784|  METL_NODISCARD constexpr bool empty() const noexcept { return size_ == 0; }
+   86|    786|  METL_NODISCARD constexpr bool empty() const noexcept { return size_ == 0; }
 _ZNK4metl12fixed_stringILm64EE4sizeEv:
-   90|  13.5k|  METL_NODISCARD constexpr size_type size() const noexcept { return size_; }
+   90|  13.4k|  METL_NODISCARD constexpr size_type size() const noexcept { return size_; }
 _ZNK4metl12fixed_stringILm64EE8capacityEv:
-   94|  4.46k|  METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
+   94|  4.41k|  METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
 _ZN4metl12fixed_stringILm64EE13try_push_backEc:
-  148|    586|  METL_NODISCARD bool try_push_back(char ch) noexcept {
-  149|    586|    if (full()) {
+  148|    566|  METL_NODISCARD bool try_push_back(char ch) noexcept {
+  149|    566|    if (full()) {
   ------------------
-  |  Branch (149:9): [True: 258, False: 328]
+  |  Branch (149:9): [True: 258, False: 308]
   ------------------
   150|    258|      return false;
   151|    258|    }
   152|       |
-  153|    328|    storage_[size_] = ch;
-  154|    328|    ++size_;
-  155|    328|    storage_[size_] = '\0';
-  156|    328|    return true;
-  157|    586|  }
+  153|    308|    storage_[size_] = ch;
+  154|    308|    ++size_;
+  155|    308|    storage_[size_] = '\0';
+  156|    308|    return true;
+  157|    566|  }
 _ZNK4metl12fixed_stringILm64EE4fullEv:
-   88|    586|  METL_NODISCARD constexpr bool full() const noexcept { return size_ == Capacity; }
+   88|    566|  METL_NODISCARD constexpr bool full() const noexcept { return size_ == Capacity; }
 _ZN4metl12fixed_stringILm64EE12try_pop_backEv:
-  173|    393|  METL_NODISCARD bool try_pop_back() noexcept {
-  174|    393|    if (empty()) {
+  173|    395|  METL_NODISCARD bool try_pop_back() noexcept {
+  174|    395|    if (empty()) {
   ------------------
-  |  Branch (174:9): [True: 196, False: 197]
+  |  Branch (174:9): [True: 197, False: 198]
   ------------------
-  175|    196|      return false;
-  176|    196|    }
+  175|    197|      return false;
+  176|    197|    }
   177|       |
-  178|    197|    --size_;
-  179|    197|    storage_[size_] = '\0';
-  180|    197|    return true;
-  181|    393|  }
+  178|    198|    --size_;
+  179|    198|    storage_[size_] = '\0';
+  180|    198|    return true;
+  181|    395|  }
 _ZN4metl12fixed_stringILm64EE10try_assignEPKc:
-  194|    531|  METL_NODISCARD bool try_assign(const char* text) noexcept {
-  195|    531|    METL_ASSERT(text != nullptr);
+  194|    662|  METL_NODISCARD bool try_assign(const char* text) noexcept {
+  195|    662|    METL_ASSERT(text != nullptr);
   ------------------
-  |  |   91|    531|  do {                                                             \
-  |  |   92|    531|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    662|  do {                                                             \
+  |  |   92|    662|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    531|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    662|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 531]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 662]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    531|  } while (false)
+  |  |   95|    662|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 531]
+  |  |  |  Branch (95:12): [Folded, False: 662]
   |  |  ------------------
   ------------------
   196|       |
-  197|    531|    const size_type input_size = string_length(text);
-  198|    531|    if (input_size > Capacity) {
+  197|    662|    const size_type input_size = string_length(text);
+  198|    662|    if (input_size > Capacity) {
   ------------------
-  |  Branch (198:9): [True: 0, False: 531]
+  |  Branch (198:9): [True: 0, False: 662]
   ------------------
   199|      0|      return false;
   200|      0|    }
   201|       |
-  202|  2.69k|    for (size_type i = 0; i < input_size; ++i) {
+  202|  3.13k|    for (size_type i = 0; i < input_size; ++i) {
   ------------------
-  |  Branch (202:27): [True: 2.16k, False: 531]
+  |  Branch (202:27): [True: 2.47k, False: 662]
   ------------------
-  203|  2.16k|      storage_[i] = text[i];
-  204|  2.16k|    }
+  203|  2.47k|      storage_[i] = text[i];
+  204|  2.47k|    }
   205|       |
-  206|    531|    size_ = input_size;
-  207|    531|    storage_[size_] = '\0';
-  208|    531|    return true;
-  209|    531|  }
+  206|    662|    size_ = input_size;
+  207|    662|    storage_[size_] = '\0';
+  208|    662|    return true;
+  209|    662|  }
 _ZN4metl12fixed_stringILm64EE13string_lengthEPKc:
   298|  1.64k|  static size_type string_length(const char* text) noexcept {
   299|  1.64k|    size_type length = 0;
-  300|  6.56k|    while (text[length] != '\0') {
+  300|  6.73k|    while (text[length] != '\0') {
   ------------------
-  |  Branch (300:12): [True: 4.92k, False: 1.64k]
+  |  Branch (300:12): [True: 5.09k, False: 1.64k]
   ------------------
-  301|  4.92k|      ++length;
-  302|  4.92k|    }
+  301|  5.09k|      ++length;
+  302|  5.09k|    }
   303|  1.64k|    return length;
   304|  1.64k|  }
 _ZN4metl12fixed_stringILm64EE10try_appendEPKc:
-  223|  1.10k|  METL_NODISCARD bool try_append(const char* text) noexcept {
-  224|  1.10k|    METL_ASSERT(text != nullptr);
+  223|    979|  METL_NODISCARD bool try_append(const char* text) noexcept {
+  224|    979|    METL_ASSERT(text != nullptr);
   ------------------
-  |  |   91|  1.10k|  do {                                                             \
-  |  |   92|  1.10k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    979|  do {                                                             \
+  |  |   92|    979|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|  1.10k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    979|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 1.10k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 979]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|  1.10k|  } while (false)
+  |  |   95|    979|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 1.10k]
+  |  |  |  Branch (95:12): [Folded, False: 979]
   |  |  ------------------
   ------------------
   225|       |
-  226|  1.10k|    const size_type input_size = string_length(text);
-  227|  1.10k|    if (!can_append(input_size)) {
+  226|    979|    const size_type input_size = string_length(text);
+  227|    979|    if (!can_append(input_size)) {
   ------------------
-  |  Branch (227:9): [True: 354, False: 755]
+  |  Branch (227:9): [True: 354, False: 625]
   ------------------
   228|    354|      return false;
   229|    354|    }
   230|       |
-  231|  2.30k|    for (size_type i = 0; i < input_size; ++i) {
+  231|  2.04k|    for (size_type i = 0; i < input_size; ++i) {
   ------------------
-  |  Branch (231:27): [True: 1.54k, False: 755]
+  |  Branch (231:27): [True: 1.42k, False: 625]
   ------------------
-  232|  1.54k|      storage_[size_ + i] = text[i];
-  233|  1.54k|    }
+  232|  1.42k|      storage_[size_ + i] = text[i];
+  233|  1.42k|    }
   234|       |
-  235|    755|    size_ += input_size;
-  236|    755|    storage_[size_] = '\0';
-  237|    755|    return true;
-  238|  1.10k|  }
+  235|    625|    size_ += input_size;
+  236|    625|    storage_[size_] = '\0';
+  237|    625|    return true;
+  238|    979|  }
 _ZNK4metl12fixed_stringILm64EE10can_appendEm:
-  306|  1.91k|  constexpr bool can_append(size_type count) const noexcept { return count <= (Capacity - size_); }
+  306|  1.77k|  constexpr bool can_append(size_type count) const noexcept { return count <= (Capacity - size_); }
 _ZN4metl12fixed_stringILm64EE10try_appendENS_4spanIKcLm18446744073709551615EEE:
-  242|    806|  METL_NODISCARD bool try_append(span<const char> text) noexcept {
-  243|    806|    if (!can_append(text.size())) {
+  242|    795|  METL_NODISCARD bool try_append(span<const char> text) noexcept {
+  243|    795|    if (!can_append(text.size())) {
   ------------------
-  |  Branch (243:9): [True: 202, False: 604]
+  |  Branch (243:9): [True: 194, False: 601]
   ------------------
-  244|    202|      return false;
-  245|    202|    }
+  244|    194|      return false;
+  245|    194|    }
   246|       |
-  247|  1.77k|    for (size_type i = 0; i < text.size(); ++i) {
+  247|  1.61k|    for (size_type i = 0; i < text.size(); ++i) {
   ------------------
-  |  Branch (247:27): [True: 1.16k, False: 604]
+  |  Branch (247:27): [True: 1.01k, False: 601]
   ------------------
-  248|  1.16k|      storage_[size_ + i] = text[i];
-  249|  1.16k|    }
+  248|  1.01k|      storage_[size_ + i] = text[i];
+  249|  1.01k|    }
   250|       |
-  251|    604|    size_ += text.size();
-  252|    604|    storage_[size_] = '\0';
-  253|    604|    return true;
-  254|    806|  }
+  251|    601|    size_ += text.size();
+  252|    601|    storage_[size_] = '\0';
+  253|    601|    return true;
+  254|    795|  }
 _ZN4metl12fixed_stringILm64EEixEm:
   100|    195|  METL_NODISCARD reference operator[](size_type index) noexcept {
   101|    195|    METL_ASSERT(index < size_);
@@ -406,108 +406,108 @@ _ZN4metl12fixed_stringILm64EE4backEv:
   130|    195|    return storage_[size_ - 1];
   131|    195|  }
 _ZN4metl12fixed_stringILm64EE7as_spanEv:
-  275|    441|  METL_NODISCARD span<char> as_span() noexcept { return span<char>(storage_, size_); }
+  275|    415|  METL_NODISCARD span<char> as_span() noexcept { return span<char>(storage_, size_); }
 _ZN4metl12fixed_stringILm64EE5clearEv:
-  141|    211|  void clear() noexcept {
-  142|    211|    size_ = 0;
-  143|    211|    storage_[0] = '\0';
-  144|    211|  }
+  141|    210|  void clear() noexcept {
+  142|    210|    size_ = 0;
+  143|    210|    storage_[0] = '\0';
+  144|    210|  }
 
 _ZN4metl4spanIKcLm18446744073709551615EEC2EPS1_m:
-  118|    806|  constexpr span(pointer ptr, size_type count) noexcept : storage_(ptr, count) {
-  119|    806|    METL_ASSERT(Extent == dynamic_extent || count == Extent);
+  118|    795|  constexpr span(pointer ptr, size_type count) noexcept : storage_(ptr, count) {
+  119|    795|    METL_ASSERT(Extent == dynamic_extent || count == Extent);
   ------------------
-  |  |   91|    806|  do {                                                             \
-  |  |   92|    806|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    795|  do {                                                             \
+  |  |   92|    795|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    806|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    795|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [Folded, False: 806]
-  |  |  |  |  |  Branch (25:70): [True: 806, Folded]
+  |  |  |  |  |  Branch (25:34): [Folded, False: 795]
+  |  |  |  |  |  Branch (25:70): [True: 795, Folded]
   |  |  |  |  |  Branch (25:70): [True: 0, False: 0]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    806|  } while (false)
+  |  |   95|    795|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 806]
+  |  |  |  Branch (95:12): [Folded, False: 795]
   |  |  ------------------
   ------------------
-  120|    806|  }
+  120|    795|  }
 _ZN4metl6detail12span_storageIKcLm18446744073709551615EEC2EPS2_m:
-   81|  1.24k|  constexpr span_storage(T* ptr, std::size_t count) noexcept : data(ptr), size(count) {}
+   81|  1.21k|  constexpr span_storage(T* ptr, std::size_t count) noexcept : data(ptr), size(count) {}
 _ZN4metl4spanIKcLm18446744073709551615EEC2IcLm18446744073709551615EvEERKNS0_IT_XT0_EEE:
-  158|    441|  constexpr span(const span<U, N>& other) noexcept : storage_(other.data(), other.size()) {
-  159|    441|    METL_ASSERT(Extent == dynamic_extent || other.size() == Extent);
+  158|    415|  constexpr span(const span<U, N>& other) noexcept : storage_(other.data(), other.size()) {
+  159|    415|    METL_ASSERT(Extent == dynamic_extent || other.size() == Extent);
   ------------------
-  |  |   91|    441|  do {                                                             \
-  |  |   92|    441|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    415|  do {                                                             \
+  |  |   92|    415|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    441|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    415|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [Folded, False: 441]
-  |  |  |  |  |  Branch (25:70): [True: 441, Folded]
+  |  |  |  |  |  Branch (25:34): [Folded, False: 415]
+  |  |  |  |  |  Branch (25:70): [True: 415, Folded]
   |  |  |  |  |  Branch (25:70): [True: 0, False: 0]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    441|  } while (false)
+  |  |   95|    415|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 441]
+  |  |  |  Branch (95:12): [Folded, False: 415]
   |  |  ------------------
   ------------------
-  160|    441|  }
+  160|    415|  }
 _ZNK4metl4spanIcLm18446744073709551615EE4dataEv:
-  198|    441|  METL_NODISCARD constexpr pointer data() const noexcept { return storage_.data; }
+  198|    415|  METL_NODISCARD constexpr pointer data() const noexcept { return storage_.data; }
 _ZNK4metl4spanIcLm18446744073709551615EE4sizeEv:
-  200|    441|  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size; }
+  200|    415|  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size; }
 _ZNK4metl4spanIKcLm18446744073709551615EE4sizeEv:
-  200|  6.66k|  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size; }
+  200|  8.57k|  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size; }
 _ZNK4metl4spanIKcLm18446744073709551615EEixEm:
-  192|  2.10k|  constexpr reference operator[](size_type index) const noexcept {
-  193|  2.10k|    METL_ASSERT(index < size());
+  192|  3.08k|  constexpr reference operator[](size_type index) const noexcept {
+  193|  3.08k|    METL_ASSERT(index < size());
   ------------------
-  |  |   91|  2.10k|  do {                                                             \
-  |  |   92|  2.10k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|  3.08k|  do {                                                             \
+  |  |   92|  3.08k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|  2.10k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  3.08k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 2.10k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 3.08k]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|  2.10k|  } while (false)
+  |  |   95|  3.08k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 2.10k]
+  |  |  |  Branch (95:12): [Folded, False: 3.08k]
   |  |  ------------------
   ------------------
-  194|  2.10k|    return storage_.data[index];
-  195|  2.10k|  }
+  194|  3.08k|    return storage_.data[index];
+  195|  3.08k|  }
 _ZN4metl4spanIcLm18446744073709551615EEC2EPcm:
-  118|    441|  constexpr span(pointer ptr, size_type count) noexcept : storage_(ptr, count) {
-  119|    441|    METL_ASSERT(Extent == dynamic_extent || count == Extent);
+  118|    415|  constexpr span(pointer ptr, size_type count) noexcept : storage_(ptr, count) {
+  119|    415|    METL_ASSERT(Extent == dynamic_extent || count == Extent);
   ------------------
-  |  |   91|    441|  do {                                                             \
-  |  |   92|    441|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|    415|  do {                                                             \
+  |  |   92|    415|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|    441|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    415|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [Folded, False: 441]
-  |  |  |  |  |  Branch (25:70): [True: 441, Folded]
+  |  |  |  |  |  Branch (25:34): [Folded, False: 415]
+  |  |  |  |  |  Branch (25:70): [True: 415, Folded]
   |  |  |  |  |  Branch (25:70): [True: 0, False: 0]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|    441|  } while (false)
+  |  |   95|    415|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 441]
+  |  |  |  Branch (95:12): [Folded, False: 415]
   |  |  ------------------
   ------------------
-  120|    441|  }
+  120|    415|  }
 _ZN4metl6detail12span_storageIcLm18446744073709551615EEC2EPcm:
-   81|    441|  constexpr span_storage(T* ptr, std::size_t count) noexcept : data(ptr), size(count) {}
+   81|    415|  constexpr span_storage(T* ptr, std::size_t count) noexcept : data(ptr), size(count) {}
 
