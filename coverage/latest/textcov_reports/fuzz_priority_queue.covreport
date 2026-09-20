@@ -1,522 +1,522 @@
 _ZN9metl_fuzz11byte_readerC2EPKhm:
-   31|    264|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
+   31|    258|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
 _ZNK9metl_fuzz11byte_reader5emptyEv:
-   34|  13.3k|  bool empty() const noexcept { return remaining() == 0; }
+   34|  11.7k|  bool empty() const noexcept { return remaining() == 0; }
 _ZNK9metl_fuzz11byte_reader9remainingEv:
-   33|  13.3k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
+   33|  11.7k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
   ------------------
-  |  Branch (33:51): [True: 13.0k, False: 264]
+  |  Branch (33:51): [True: 11.5k, False: 258]
   ------------------
 _ZN9metl_fuzz11byte_reader4byteEv:
-   37|  56.3k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
+   37|  49.8k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
   ------------------
-  |  Branch (37:41): [True: 55.6k, False: 697]
+  |  Branch (37:41): [True: 49.1k, False: 666]
   ------------------
 _ZN9metl_fuzz11byte_reader7integerIjEET_v:
-   41|  10.8k|  UInt integer() noexcept {
-   42|  10.8k|    UInt value = 0;
-   43|  54.1k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
+   41|  9.57k|  UInt integer() noexcept {
+   42|  9.57k|    UInt value = 0;
+   43|  47.8k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
   ------------------
-  |  Branch (43:29): [True: 43.2k, False: 10.8k]
+  |  Branch (43:29): [True: 38.2k, False: 9.57k]
   ------------------
-   44|  43.2k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
-   45|  43.2k|    }
-   46|  10.8k|    return value;
-   47|  10.8k|  }
+   44|  38.2k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
+   45|  38.2k|    }
+   46|  9.57k|    return value;
+   47|  9.57k|  }
 
 LLVMFuzzerTestOneInput:
-   72|    264|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
-   73|    264|  metl_fuzz::byte_reader in(data, size);
-   74|    264|  queue_type queue;
-   75|    264|  std::size_t live = 0;
+   72|    258|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
+   73|    258|  metl_fuzz::byte_reader in(data, size);
+   74|    258|  queue_type queue;
+   75|    258|  std::size_t live = 0;
    76|       |
-   77|  13.3k|  while (!in.empty()) {
+   77|  11.7k|  while (!in.empty()) {
   ------------------
-  |  Branch (77:10): [True: 13.0k, False: 264]
+  |  Branch (77:10): [True: 11.5k, False: 258]
   ------------------
-   78|  13.0k|    switch (in.byte() % 5u) {
-   79|  6.74k|      case 0: {  // try_push — false when full, never asserts
+   78|  11.5k|    switch (in.byte() % 5u) {
+   79|  5.97k|      case 0: {  // try_push — false when full, never asserts
   ------------------
-  |  Branch (79:7): [True: 6.74k, False: 6.33k]
+  |  Branch (79:7): [True: 5.97k, False: 5.54k]
   ------------------
-   80|  6.74k|        if (queue.try_push(in.integer<std::uint32_t>())) {
+   80|  5.97k|        if (queue.try_push(in.integer<std::uint32_t>())) {
   ------------------
-  |  Branch (80:13): [True: 6.32k, False: 422]
+  |  Branch (80:13): [True: 5.58k, False: 387]
   ------------------
-   81|  6.32k|          ++live;
-   82|  6.32k|        }
-   83|  6.74k|        break;
+   81|  5.58k|          ++live;
+   82|  5.58k|        }
+   83|  5.97k|        break;
    84|      0|      }
-   85|  1.95k|      case 1: {  // try_emplace — same contract, in-place construction
+   85|  1.61k|      case 1: {  // try_emplace — same contract, in-place construction
   ------------------
-  |  Branch (85:7): [True: 1.95k, False: 11.1k]
+  |  Branch (85:7): [True: 1.61k, False: 9.90k]
   ------------------
-   86|  1.95k|        if (queue.try_emplace(in.integer<std::uint32_t>())) {
+   86|  1.61k|        if (queue.try_emplace(in.integer<std::uint32_t>())) {
   ------------------
-  |  Branch (86:13): [True: 1.73k, False: 216]
+  |  Branch (86:13): [True: 1.40k, False: 216]
   ------------------
-   87|  1.73k|          ++live;
-   88|  1.73k|        }
-   89|  1.95k|        break;
+   87|  1.40k|          ++live;
+   88|  1.40k|        }
+   89|  1.61k|        break;
    90|      0|      }
-   91|  1.50k|      case 2: {  // pop — guarded by empty(), so never an underflow
+   91|  1.30k|      case 2: {  // pop — guarded by empty(), so never an underflow
   ------------------
-  |  Branch (91:7): [True: 1.50k, False: 11.5k]
+  |  Branch (91:7): [True: 1.30k, False: 10.2k]
   ------------------
-   92|  1.50k|        if (!queue.empty()) {
+   92|  1.30k|        if (!queue.empty()) {
   ------------------
-  |  Branch (92:13): [True: 1.17k, False: 326]
+  |  Branch (92:13): [True: 1.03k, False: 276]
   ------------------
-   93|  1.17k|          queue.pop();
-   94|  1.17k|          --live;
-   95|  1.17k|        }
-   96|  1.50k|        break;
+   93|  1.03k|          queue.pop();
+   94|  1.03k|          --live;
+   95|  1.03k|        }
+   96|  1.30k|        break;
    97|      0|      }
-   98|  2.12k|      case 3: {  // erase_if — removes an arbitrary subset, then re-heapifies
+   98|  1.98k|      case 3: {  // erase_if — removes an arbitrary subset, then re-heapifies
   ------------------
-  |  Branch (98:7): [True: 2.12k, False: 10.9k]
+  |  Branch (98:7): [True: 1.98k, False: 9.53k]
   ------------------
-   99|  2.12k|        const std::uint32_t threshold = in.integer<std::uint32_t>();
-  100|  2.12k|        const std::size_t removed =
-  101|  2.12k|            queue.erase_if([threshold](const std::uint32_t& v) noexcept { return v < threshold; });
-  102|  2.12k|        if (removed > live) {
+   99|  1.98k|        const std::uint32_t threshold = in.integer<std::uint32_t>();
+  100|  1.98k|        const std::size_t removed =
+  101|  1.98k|            queue.erase_if([threshold](const std::uint32_t& v) noexcept { return v < threshold; });
+  102|  1.98k|        if (removed > live) {
   ------------------
-  |  Branch (102:13): [True: 0, False: 2.12k]
+  |  Branch (102:13): [True: 0, False: 1.98k]
   ------------------
   103|      0|          __builtin_trap();  // removed more than were ever there
   104|      0|        }
-  105|  2.12k|        live -= removed;
-  106|  2.12k|        break;
-  107|  2.12k|      }
-  108|    758|      default: {  // clear
+  105|  1.98k|        live -= removed;
+  106|  1.98k|        break;
+  107|  1.98k|      }
+  108|    637|      default: {  // clear
   ------------------
-  |  Branch (108:7): [True: 758, False: 12.3k]
+  |  Branch (108:7): [True: 637, False: 10.8k]
   ------------------
-  109|    758|        queue.clear();
-  110|    758|        live = 0;
-  111|    758|        break;
-  112|  2.12k|      }
-  113|  13.0k|    }
-  114|  13.0k|    check(queue, live);
-  115|  13.0k|  }
+  109|    637|        queue.clear();
+  110|    637|        live = 0;
+  111|    637|        break;
+  112|  1.98k|      }
+  113|  11.5k|    }
+  114|  11.5k|    check(queue, live);
+  115|  11.5k|  }
   116|       |
   117|       |  // Draining must yield a non-increasing sequence and end exactly empty.
-  118|    264|  std::uint32_t previous = 0xFFFFFFFFu;
-  119|  3.97k|  while (!queue.empty()) {
+  118|    258|  std::uint32_t previous = 0xFFFFFFFFu;
+  119|  3.79k|  while (!queue.empty()) {
   ------------------
-  |  Branch (119:10): [True: 3.71k, False: 264]
+  |  Branch (119:10): [True: 3.53k, False: 258]
   ------------------
-  120|  3.71k|    const std::uint32_t current = queue.top();
-  121|  3.71k|    if (current > previous) {
+  120|  3.53k|    const std::uint32_t current = queue.top();
+  121|  3.53k|    if (current > previous) {
   ------------------
-  |  Branch (121:9): [True: 0, False: 3.71k]
+  |  Branch (121:9): [True: 0, False: 3.53k]
   ------------------
   122|      0|      __builtin_trap();
   123|      0|    }
-  124|  3.71k|    previous = current;
-  125|  3.71k|    queue.pop();
-  126|  3.71k|    --live;
-  127|  3.71k|    check(queue, live);
-  128|  3.71k|  }
-  129|    264|  if (live != 0) {
+  124|  3.53k|    previous = current;
+  125|  3.53k|    queue.pop();
+  126|  3.53k|    --live;
+  127|  3.53k|    check(queue, live);
+  128|  3.53k|  }
+  129|    258|  if (live != 0) {
   ------------------
-  |  Branch (129:7): [True: 0, False: 264]
+  |  Branch (129:7): [True: 0, False: 258]
   ------------------
   130|      0|    __builtin_trap();
   131|      0|  }
   132|       |
-  133|    264|  return 0;
-  134|    264|}
+  133|    258|  return 0;
+  134|    258|}
 fuzz_priority_queue.cpp:_ZN12_GLOBAL__N_15checkERKN4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEEEm:
-   59|  16.7k|void check(const queue_type& queue, std::size_t expected_size) noexcept {
-   60|  16.7k|  if (queue.size() != expected_size || queue.as_span().size() != expected_size) {
+   59|  15.0k|void check(const queue_type& queue, std::size_t expected_size) noexcept {
+   60|  15.0k|  if (queue.size() != expected_size || queue.as_span().size() != expected_size) {
   ------------------
-  |  Branch (60:7): [True: 0, False: 16.7k]
-  |  Branch (60:7): [True: 0, False: 16.7k]
-  |  Branch (60:40): [True: 0, False: 16.7k]
+  |  Branch (60:7): [True: 0, False: 15.0k]
+  |  Branch (60:7): [True: 0, False: 15.0k]
+  |  Branch (60:40): [True: 0, False: 15.0k]
   ------------------
    61|      0|    __builtin_trap();
    62|      0|  }
-   63|  16.7k|  if (queue.empty() != (expected_size == 0) || queue.full() != (expected_size == kCapacity)) {
+   63|  15.0k|  if (queue.empty() != (expected_size == 0) || queue.full() != (expected_size == kCapacity)) {
   ------------------
-  |  Branch (63:7): [True: 0, False: 16.7k]
-  |  Branch (63:48): [True: 0, False: 16.7k]
+  |  Branch (63:7): [True: 0, False: 15.0k]
+  |  Branch (63:48): [True: 0, False: 15.0k]
   ------------------
    64|      0|    __builtin_trap();
    65|      0|  }
-   66|  16.7k|  check_heap_property(queue);
-   67|  16.7k|  check_top_is_max(queue);
-   68|  16.7k|}
+   66|  15.0k|  check_heap_property(queue);
+   67|  15.0k|  check_top_is_max(queue);
+   68|  15.0k|}
 fuzz_priority_queue.cpp:_ZN12_GLOBAL__N_119check_heap_propertyERKN4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEEE:
-   35|  16.7k|void check_heap_property(const queue_type& queue) noexcept {
-   36|  16.7k|  const metl::span<const std::uint32_t> slots = queue.as_span();
-   37|   332k|  for (std::size_t i = 1; i < slots.size(); ++i) {
+   35|  15.0k|void check_heap_property(const queue_type& queue) noexcept {
+   36|  15.0k|  const metl::span<const std::uint32_t> slots = queue.as_span();
+   37|   297k|  for (std::size_t i = 1; i < slots.size(); ++i) {
   ------------------
-  |  Branch (37:27): [True: 315k, False: 16.7k]
+  |  Branch (37:27): [True: 282k, False: 15.0k]
   ------------------
-   38|   315k|    if (slots[(i - 1) / 2] < slots[i]) {
+   38|   282k|    if (slots[(i - 1) / 2] < slots[i]) {
   ------------------
-  |  Branch (38:9): [True: 0, False: 315k]
+  |  Branch (38:9): [True: 0, False: 282k]
   ------------------
    39|      0|      __builtin_trap();
    40|      0|    }
-   41|   315k|  }
-   42|  16.7k|}
+   41|   282k|  }
+   42|  15.0k|}
 fuzz_priority_queue.cpp:_ZN12_GLOBAL__N_116check_top_is_maxERKN4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEEE:
-   46|  16.7k|void check_top_is_max(const queue_type& queue) noexcept {
-   47|  16.7k|  if (queue.empty()) {
+   46|  15.0k|void check_top_is_max(const queue_type& queue) noexcept {
+   47|  15.0k|  if (queue.empty()) {
   ------------------
-  |  Branch (47:7): [True: 2.18k, False: 14.6k]
+  |  Branch (47:7): [True: 1.98k, False: 13.0k]
   ------------------
-   48|  2.18k|    return;
-   49|  2.18k|  }
-   50|  14.6k|  const metl::span<const std::uint32_t> slots = queue.as_span();
-   51|  14.6k|  const std::uint32_t top = queue.top();
-   52|   344k|  for (std::size_t i = 0; i < slots.size(); ++i) {
+   48|  1.98k|    return;
+   49|  1.98k|  }
+   50|  13.0k|  const metl::span<const std::uint32_t> slots = queue.as_span();
+   51|  13.0k|  const std::uint32_t top = queue.top();
+   52|   308k|  for (std::size_t i = 0; i < slots.size(); ++i) {
   ------------------
-  |  Branch (52:27): [True: 330k, False: 14.6k]
+  |  Branch (52:27): [True: 295k, False: 13.0k]
   ------------------
-   53|   330k|    if (slots[i] > top) {
+   53|   295k|    if (slots[i] > top) {
   ------------------
-  |  Branch (53:9): [True: 0, False: 330k]
+  |  Branch (53:9): [True: 0, False: 295k]
   ------------------
    54|      0|      __builtin_trap();
    55|      0|    }
-   56|   330k|  }
-   57|  14.6k|}
+   56|   295k|  }
+   57|  13.0k|}
 fuzz_priority_queue.cpp:_ZZ22LLVMFuzzerTestOneInputENK3$_0clERKj:
-  101|  20.3k|            queue.erase_if([threshold](const std::uint32_t& v) noexcept { return v < threshold; });
+  101|  15.3k|            queue.erase_if([threshold](const std::uint32_t& v) noexcept { return v < threshold; });
 
 _ZN4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEEC2Ev:
-   66|    264|  fixed_priority_queue() = default;
+   66|    258|  fixed_priority_queue() = default;
 _ZNK4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEE4sizeEv:
-   76|  16.7k|  METL_NODISCARD size_type size() const noexcept { return storage_.size(); }
+   76|  15.0k|  METL_NODISCARD size_type size() const noexcept { return storage_.size(); }
 _ZNK4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEE7as_spanEv:
-  177|  48.1k|  METL_NODISCARD span<const T> as_span() const noexcept { return storage_.as_span(); }
+  177|  43.1k|  METL_NODISCARD span<const T> as_span() const noexcept { return storage_.as_span(); }
 _ZNK4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEE4fullEv:
-   74|  16.7k|  METL_NODISCARD bool full() const noexcept { return storage_.full(); }
+   74|  15.0k|  METL_NODISCARD bool full() const noexcept { return storage_.full(); }
 _ZNK4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEE5emptyEv:
-   72|  39.0k|  METL_NODISCARD bool empty() const noexcept { return storage_.empty(); }
+   72|  35.2k|  METL_NODISCARD bool empty() const noexcept { return storage_.empty(); }
 _ZNK4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEE3topEv:
-   87|  18.3k|  METL_NODISCARD const_reference top() const noexcept { return storage_.front(); }
+   87|  16.6k|  METL_NODISCARD const_reference top() const noexcept { return storage_.front(); }
 _ZN4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEE8try_pushEOj:
-  114|  6.74k|  METL_NODISCARD bool try_push(T&& value) { return try_emplace(std::move(value)); }
+  114|  5.97k|  METL_NODISCARD bool try_push(T&& value) { return try_emplace(std::move(value)); }
 _ZN4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEE11try_emplaceIJjEEEbDpOT_:
-   92|  8.69k|  METL_NODISCARD bool try_emplace(Args&&... args) {
-   93|  8.69k|    if (!storage_.try_emplace_back(std::forward<Args>(args)...)) {
+   92|  7.58k|  METL_NODISCARD bool try_emplace(Args&&... args) {
+   93|  7.58k|    if (!storage_.try_emplace_back(std::forward<Args>(args)...)) {
   ------------------
-  |  Branch (93:9): [True: 638, False: 8.05k]
+  |  Branch (93:9): [True: 603, False: 6.98k]
   ------------------
-   94|    638|      return false;
-   95|    638|    }
-   96|  8.05k|    sift_up(storage_.size() - 1);
-   97|  8.05k|    return true;
-   98|  8.69k|  }
+   94|    603|      return false;
+   95|    603|    }
+   96|  6.98k|    sift_up(storage_.size() - 1);
+   97|  6.98k|    return true;
+   98|  7.58k|  }
 _ZN4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEE7sift_upEm:
-  181|  8.05k|  void sift_up(size_type index) {
-  182|  12.3k|    while (index > 0) {
+  181|  6.98k|  void sift_up(size_type index) {
+  182|  10.9k|    while (index > 0) {
   ------------------
-  |  Branch (182:12): [True: 10.6k, False: 1.71k]
+  |  Branch (182:12): [True: 9.49k, False: 1.47k]
   ------------------
-  183|  10.6k|      const size_type parent = (index - 1) / 2;
-  184|  10.6k|      if (!comp_(storage_[parent], storage_[index])) {
+  183|  9.49k|      const size_type parent = (index - 1) / 2;
+  184|  9.49k|      if (!comp_(storage_[parent], storage_[index])) {
   ------------------
-  |  Branch (184:11): [True: 6.34k, False: 4.33k]
+  |  Branch (184:11): [True: 5.51k, False: 3.98k]
   ------------------
-  185|  6.34k|        return;  // parent already outranks the child: done
-  186|  6.34k|      }
-  187|  4.33k|      swap_slots(parent, index);
-  188|  4.33k|      index = parent;
-  189|  4.33k|    }
-  190|  8.05k|  }
+  185|  5.51k|        return;  // parent already outranks the child: done
+  186|  5.51k|      }
+  187|  3.98k|      swap_slots(parent, index);
+  188|  3.98k|      index = parent;
+  189|  3.98k|    }
+  190|  6.98k|  }
 _ZN4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEE10swap_slotsEmm:
-  226|  13.6k|  void swap_slots(size_type a, size_type b) {
-  227|  13.6k|    T temporary = std::move(storage_[a]);
-  228|  13.6k|    storage_[a] = std::move(storage_[b]);
-  229|  13.6k|    storage_[b] = std::move(temporary);
-  230|  13.6k|  }
+  226|  13.0k|  void swap_slots(size_type a, size_type b) {
+  227|  13.0k|    T temporary = std::move(storage_[a]);
+  228|  13.0k|    storage_[a] = std::move(storage_[b]);
+  229|  13.0k|    storage_[b] = std::move(temporary);
+  230|  13.0k|  }
 _ZN4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEE3popEv:
-  128|  4.89k|  void pop() noexcept(std::is_nothrow_move_assignable_v<T>) {
+  128|  4.56k|  void pop() noexcept(std::is_nothrow_move_assignable_v<T>) {
   129|       |    // Never stripped: the index arithmetic below underflows on an empty queue and
   130|       |    // METL_ASSERT is removed at low hardening levels.
-  131|  4.89k|    METL_HARDEN(!storage_.empty());
+  131|  4.56k|    METL_HARDEN(!storage_.empty());
   ------------------
-  |  |  113|  4.89k|  do {                                                             \
-  |  |  114|  4.89k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  113|  4.56k|  do {                                                             \
+  |  |  114|  4.56k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|  4.89k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  4.56k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 4.89k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 4.56k]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |  115|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |  116|      0|    }                                                              \
-  |  |  117|  4.89k|  } while (false)
+  |  |  117|  4.56k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (117:12): [Folded, False: 4.89k]
+  |  |  |  Branch (117:12): [Folded, False: 4.56k]
   |  |  ------------------
   ------------------
-  132|  4.89k|    const size_type last = storage_.size() - 1;
-  133|  4.89k|    if (last != 0) {
+  132|  4.56k|    const size_type last = storage_.size() - 1;
+  133|  4.56k|    if (last != 0) {
   ------------------
-  |  Branch (133:9): [True: 4.36k, False: 529]
+  |  Branch (133:9): [True: 4.16k, False: 400]
   ------------------
-  134|  4.36k|      storage_[0] = std::move(storage_[last]);
-  135|  4.36k|    }
-  136|  4.89k|    storage_.pop_back();
-  137|  4.89k|    if (!storage_.empty()) {
+  134|  4.16k|      storage_[0] = std::move(storage_[last]);
+  135|  4.16k|    }
+  136|  4.56k|    storage_.pop_back();
+  137|  4.56k|    if (!storage_.empty()) {
   ------------------
-  |  Branch (137:9): [True: 4.36k, False: 529]
+  |  Branch (137:9): [True: 4.16k, False: 400]
   ------------------
-  138|  4.36k|      sift_down(0);
-  139|  4.36k|    }
-  140|  4.89k|  }
+  138|  4.16k|      sift_down(0);
+  139|  4.16k|    }
+  140|  4.56k|  }
 _ZN4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEE9sift_downEm:
-  193|  13.1k|  void sift_down(size_type index) {
-  194|  13.1k|    const size_type count = storage_.size();
-  195|  22.5k|    for (;;) {
-  196|  22.5k|      const size_type left = (2 * index) + 1;
-  197|  22.5k|      if (left >= count) {
+  193|  10.8k|  void sift_down(size_type index) {
+  194|  10.8k|    const size_type count = storage_.size();
+  195|  19.9k|    for (;;) {
+  196|  19.9k|      const size_type left = (2 * index) + 1;
+  197|  19.9k|      if (left >= count) {
   ------------------
-  |  Branch (197:11): [True: 2.54k, False: 19.9k]
+  |  Branch (197:11): [True: 2.40k, False: 17.5k]
   ------------------
-  198|  2.54k|        return;  // no children
-  199|  2.54k|      }
-  200|  19.9k|      const size_type right = left + 1;
-  201|  19.9k|      size_type best = left;
-  202|  19.9k|      if (right < count && comp_(storage_[left], storage_[right])) {
+  198|  2.40k|        return;  // no children
+  199|  2.40k|      }
+  200|  17.5k|      const size_type right = left + 1;
+  201|  17.5k|      size_type best = left;
+  202|  17.5k|      if (right < count && comp_(storage_[left], storage_[right])) {
   ------------------
-  |  Branch (202:11): [True: 18.8k, False: 1.13k]
-  |  Branch (202:28): [True: 5.73k, False: 13.0k]
+  |  Branch (202:11): [True: 16.4k, False: 1.06k]
+  |  Branch (202:28): [True: 5.12k, False: 11.3k]
   ------------------
-  203|  5.73k|        best = right;
-  204|  5.73k|      }
-  205|  19.9k|      if (!comp_(storage_[index], storage_[best])) {
+  203|  5.12k|        best = right;
+  204|  5.12k|      }
+  205|  17.5k|      if (!comp_(storage_[index], storage_[best])) {
   ------------------
-  |  Branch (205:11): [True: 10.6k, False: 9.33k]
+  |  Branch (205:11): [True: 8.42k, False: 9.08k]
   ------------------
-  206|  10.6k|        return;  // already outranks the better child: done
-  207|  10.6k|      }
-  208|  9.33k|      swap_slots(index, best);
-  209|  9.33k|      index = best;
-  210|  9.33k|    }
-  211|  13.1k|  }
+  206|  8.42k|        return;  // already outranks the better child: done
+  207|  8.42k|      }
+  208|  9.08k|      swap_slots(index, best);
+  209|  9.08k|      index = best;
+  210|  9.08k|    }
+  211|  10.8k|  }
 fuzz_priority_queue.cpp:_ZN4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEE8erase_ifIZ22LLVMFuzzerTestOneInputE3$_0EEmT_:
-  155|  2.12k|  size_type erase_if(Pred pred) {
-  156|  2.12k|    const size_type before = storage_.size();
-  157|  2.12k|    size_type write = 0;
-  158|  22.5k|    for (size_type read = 0; read < before; ++read) {
+  155|  1.98k|  size_type erase_if(Pred pred) {
+  156|  1.98k|    const size_type before = storage_.size();
+  157|  1.98k|    size_type write = 0;
+  158|  17.3k|    for (size_type read = 0; read < before; ++read) {
   ------------------
-  |  Branch (158:30): [True: 20.3k, False: 2.12k]
+  |  Branch (158:30): [True: 15.3k, False: 1.98k]
   ------------------
-  159|  20.3k|      if (!pred(static_cast<const T&>(storage_[read]))) {
+  159|  15.3k|      if (!pred(static_cast<const T&>(storage_[read]))) {
   ------------------
-  |  Branch (159:11): [True: 18.5k, False: 1.85k]
+  |  Branch (159:11): [True: 14.0k, False: 1.34k]
   ------------------
-  160|  18.5k|        if (write != read) {
+  160|  14.0k|        if (write != read) {
   ------------------
-  |  Branch (160:13): [True: 1.44k, False: 17.0k]
+  |  Branch (160:13): [True: 972, False: 13.0k]
   ------------------
-  161|  1.44k|          storage_[write] = std::move(storage_[read]);
-  162|  1.44k|        }
-  163|  18.5k|        ++write;
-  164|  18.5k|      }
-  165|  20.3k|    }
-  166|  3.98k|    while (storage_.size() > write) {
+  161|    972|          storage_[write] = std::move(storage_[read]);
+  162|    972|        }
+  163|  14.0k|        ++write;
+  164|  14.0k|      }
+  165|  15.3k|    }
+  166|  3.33k|    while (storage_.size() > write) {
   ------------------
-  |  Branch (166:12): [True: 1.85k, False: 2.12k]
+  |  Branch (166:12): [True: 1.34k, False: 1.98k]
   ------------------
-  167|  1.85k|      storage_.pop_back();
-  168|  1.85k|    }
-  169|  2.12k|    heapify();
-  170|  2.12k|    return before - write;
-  171|  2.12k|  }
+  167|  1.34k|      storage_.pop_back();
+  168|  1.34k|    }
+  169|  1.98k|    heapify();
+  170|  1.98k|    return before - write;
+  171|  1.98k|  }
 _ZN4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEE7heapifyEv:
-  215|  2.12k|  void heapify() {
-  216|  2.12k|    size_type index = storage_.size() / 2;
-  217|  10.9k|    while (index > 0) {
+  215|  1.98k|  void heapify() {
+  216|  1.98k|    size_type index = storage_.size() / 2;
+  217|  8.65k|    while (index > 0) {
   ------------------
-  |  Branch (217:12): [True: 8.82k, False: 2.12k]
+  |  Branch (217:12): [True: 6.66k, False: 1.98k]
   ------------------
-  218|  8.82k|      --index;
-  219|  8.82k|      sift_down(index);
-  220|  8.82k|    }
-  221|  2.12k|  }
+  218|  6.66k|      --index;
+  219|  6.66k|      sift_down(index);
+  220|  6.66k|    }
+  221|  1.98k|  }
 _ZN4metl20fixed_priority_queueIjLm64ENSt3__14lessIjEEE5clearEv:
-  143|    758|  void clear() noexcept { storage_.clear(); }
+  143|    637|  void clear() noexcept { storage_.clear(); }
 
 _ZN4metl12fixed_vectorIjLm64EEC2Ev:
-   73|    264|  constexpr fixed_vector() noexcept : size_(0) { asan_poison_tail_(); }
+   73|    258|  constexpr fixed_vector() noexcept : size_(0) { asan_poison_tail_(); }
 _ZN4metl12fixed_vectorIjLm64EE17asan_poison_tail_Ev:
-  628|  16.3k|  constexpr void asan_poison_tail_() noexcept {}
+  628|  14.2k|  constexpr void asan_poison_tail_() noexcept {}
 _ZNK4metl12fixed_vectorIjLm64EE4sizeEv:
-  170|  51.1k|  METL_NODISCARD constexpr size_type size() const noexcept { return size_; }
+  170|  44.7k|  METL_NODISCARD constexpr size_type size() const noexcept { return size_; }
 _ZNK4metl12fixed_vectorIjLm64EE7as_spanEv:
-  606|  48.1k|  span<const T> as_span() const noexcept { return span<const T>(data(), size_); }
+  606|  43.1k|  span<const T> as_span() const noexcept { return span<const T>(data(), size_); }
 _ZNK4metl12fixed_vectorIjLm64EE4dataEv:
-  161|  66.5k|  METL_NODISCARD const_pointer data() const noexcept {
-  162|  66.5k|    return std::launder(reinterpret_cast<const_pointer>(storage_[0].addr()));
-  163|  66.5k|  }
+  161|  59.7k|  METL_NODISCARD const_pointer data() const noexcept {
+  162|  59.7k|    return std::launder(reinterpret_cast<const_pointer>(storage_[0].addr()));
+  163|  59.7k|  }
 _ZNK4metl12fixed_vectorIjLm64EE4fullEv:
-  168|  25.4k|  METL_NODISCARD constexpr bool full() const noexcept { return size_ == Capacity; }
+  168|  22.6k|  METL_NODISCARD constexpr bool full() const noexcept { return size_ == Capacity; }
 _ZN4metl12fixed_vectorIjLm64EED2Ev:
-  102|    264|  ~fixed_vector() {
-  103|    264|    clear();
+  102|    258|  ~fixed_vector() {
+  103|    258|    clear();
   104|       |    // Unpoison the whole buffer before the storage dies so no stale poison
   105|       |    // outlives it (which would false-positive when the memory is reused).
-  106|    264|    asan_unpoison_all_();
-  107|    264|  }
+  106|    258|    asan_unpoison_all_();
+  107|    258|  }
 _ZN4metl12fixed_vectorIjLm64EE5clearEv:
-  285|  1.02k|  void clear() noexcept {
-  286|  2.33k|    while (size_ > 0) {
+  285|    895|  void clear() noexcept {
+  286|  1.96k|    while (size_ > 0) {
   ------------------
-  |  Branch (286:12): [True: 1.31k, False: 1.02k]
+  |  Branch (286:12): [True: 1.07k, False: 895]
   ------------------
-  287|  1.31k|      pop_back();
-  288|  1.31k|    }
-  289|  1.02k|  }
+  287|  1.07k|      pop_back();
+  288|  1.07k|    }
+  289|    895|  }
 _ZN4metl12fixed_vectorIjLm64EE8pop_backEv:
-  276|  8.05k|  void pop_back() noexcept {
-  277|  8.05k|    METL_ASSERT(size_ > 0);
+  276|  6.98k|  void pop_back() noexcept {
+  277|  6.98k|    METL_ASSERT(size_ > 0);
   ------------------
-  |  |   91|  8.05k|  do {                                                             \
-  |  |   92|  8.05k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|  6.98k|  do {                                                             \
+  |  |   92|  6.98k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|  8.05k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  6.98k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 8.05k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 6.98k]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|  8.05k|  } while (false)
+  |  |   95|  6.98k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 8.05k]
+  |  |  |  Branch (95:12): [Folded, False: 6.98k]
   |  |  ------------------
   ------------------
-  278|  8.05k|    asan_unpoison_all_();
-  279|  8.05k|    data()[size_ - 1].~T();
-  280|  8.05k|    --size_;
-  281|  8.05k|    asan_poison_tail_();
-  282|  8.05k|  }
+  278|  6.98k|    asan_unpoison_all_();
+  279|  6.98k|    data()[size_ - 1].~T();
+  280|  6.98k|    --size_;
+  281|  6.98k|    asan_poison_tail_();
+  282|  6.98k|  }
 _ZN4metl12fixed_vectorIjLm64EE4dataEv:
-  158|   193k|  METL_NODISCARD pointer data() noexcept {
-  159|   193k|    return std::launder(reinterpret_cast<pointer>(storage_[0].addr()));
-  160|   193k|  }
+  158|   171k|  METL_NODISCARD pointer data() noexcept {
+  159|   171k|    return std::launder(reinterpret_cast<pointer>(storage_[0].addr()));
+  160|   171k|  }
 _ZN4metl12fixed_vectorIjLm64EE18asan_unpoison_all_Ev:
-  629|  16.3k|  constexpr void asan_unpoison_all_() noexcept {}
+  629|  14.2k|  constexpr void asan_unpoison_all_() noexcept {}
 _ZNK4metl12fixed_vectorIjLm64EE5emptyEv:
-  166|  48.8k|  METL_NODISCARD constexpr bool empty() const noexcept { return size_ == 0; }
+  166|  44.3k|  METL_NODISCARD constexpr bool empty() const noexcept { return size_ == 0; }
 _ZNK4metl12fixed_vectorIjLm64EE5frontEv:
-  217|  18.3k|  METL_NODISCARD const_reference front() const noexcept {
-  218|  18.3k|    METL_ASSERT(size_ > 0);
+  217|  16.6k|  METL_NODISCARD const_reference front() const noexcept {
+  218|  16.6k|    METL_ASSERT(size_ > 0);
   ------------------
-  |  |   91|  18.3k|  do {                                                             \
-  |  |   92|  18.3k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|  16.6k|  do {                                                             \
+  |  |   92|  16.6k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|  18.3k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  16.6k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 18.3k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 16.6k]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|  18.3k|  } while (false)
+  |  |   95|  16.6k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 18.3k]
+  |  |  |  Branch (95:12): [Folded, False: 16.6k]
   |  |  ------------------
   ------------------
-  219|  18.3k|    return data()[0];
-  220|  18.3k|  }
+  219|  16.6k|    return data()[0];
+  220|  16.6k|  }
 _ZN4metl12fixed_vectorIjLm64EE16try_emplace_backIJjEEEbDpOT_:
-  239|  8.69k|  METL_NODISCARD bool try_emplace_back(Args&&... args) {
-  240|  8.69k|    if (full()) {
+  239|  7.58k|  METL_NODISCARD bool try_emplace_back(Args&&... args) {
+  240|  7.58k|    if (full()) {
   ------------------
-  |  Branch (240:9): [True: 638, False: 8.05k]
+  |  Branch (240:9): [True: 603, False: 6.98k]
   ------------------
-  241|    638|      return false;
-  242|    638|    }
+  241|    603|      return false;
+  242|    603|    }
   243|       |
-  244|  8.05k|    asan_unpoison_all_();
-  245|  8.05k|    ::new (static_cast<void*>(slot_(size_))) T(std::forward<Args>(args)...);
-  246|  8.05k|    ++size_;
-  247|  8.05k|    asan_poison_tail_();
-  248|  8.05k|    return true;
-  249|  8.69k|  }
+  244|  6.98k|    asan_unpoison_all_();
+  245|  6.98k|    ::new (static_cast<void*>(slot_(size_))) T(std::forward<Args>(args)...);
+  246|  6.98k|    ++size_;
+  247|  6.98k|    asan_poison_tail_();
+  248|  6.98k|    return true;
+  249|  7.58k|  }
 _ZN4metl12fixed_vectorIjLm64EE5slot_Em:
-  609|  8.05k|  void* slot_(size_type index) noexcept { return storage_[index].addr(); }
+  609|  6.98k|  void* slot_(size_type index) noexcept { return storage_[index].addr(); }
 _ZN4metl12fixed_vectorIjLm64EEixEm:
-  180|   185k|  METL_NODISCARD reference operator[](size_type index) noexcept {
-  181|   185k|    METL_ASSERT(index < size_);
+  180|   164k|  METL_NODISCARD reference operator[](size_type index) noexcept {
+  181|   164k|    METL_ASSERT(index < size_);
   ------------------
-  |  |   91|   185k|  do {                                                             \
-  |  |   92|   185k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|   164k|  do {                                                             \
+  |  |   92|   164k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|   185k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|   164k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 185k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 164k]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|   185k|  } while (false)
+  |  |   95|   164k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 185k]
+  |  |  |  Branch (95:12): [Folded, False: 164k]
   |  |  ------------------
   ------------------
-  182|   185k|    return data()[index];
-  183|   185k|  }
+  182|   164k|    return data()[index];
+  183|   164k|  }
 
 _ZN4metl4spanIKjLm18446744073709551615EEC2EPS1_m:
-  118|  48.1k|  constexpr span(pointer ptr, size_type count) noexcept : storage_(ptr, count) {
-  119|  48.1k|    METL_ASSERT(Extent == dynamic_extent || count == Extent);
+  118|  43.1k|  constexpr span(pointer ptr, size_type count) noexcept : storage_(ptr, count) {
+  119|  43.1k|    METL_ASSERT(Extent == dynamic_extent || count == Extent);
   ------------------
-  |  |   91|  48.1k|  do {                                                             \
-  |  |   92|  48.1k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|  43.1k|  do {                                                             \
+  |  |   92|  43.1k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|  48.1k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  43.1k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [Folded, False: 48.1k]
-  |  |  |  |  |  Branch (25:70): [True: 48.1k, Folded]
+  |  |  |  |  |  Branch (25:34): [Folded, False: 43.1k]
+  |  |  |  |  |  Branch (25:70): [True: 43.1k, Folded]
   |  |  |  |  |  Branch (25:70): [True: 0, False: 0]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|  48.1k|  } while (false)
+  |  |   95|  43.1k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 48.1k]
+  |  |  |  Branch (95:12): [Folded, False: 43.1k]
   |  |  ------------------
   ------------------
-  120|  48.1k|  }
+  120|  43.1k|  }
 _ZN4metl6detail12span_storageIKjLm18446744073709551615EEC2EPS2_m:
-   81|  48.1k|  constexpr span_storage(T* ptr, std::size_t count) noexcept : data(ptr), size(count) {}
+   81|  43.1k|  constexpr span_storage(T* ptr, std::size_t count) noexcept : data(ptr), size(count) {}
 _ZNK4metl4spanIKjLm18446744073709551615EE4sizeEv:
-  200|  1.65M|  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size; }
+  200|  1.48M|  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size; }
 _ZNK4metl4spanIKjLm18446744073709551615EEixEm:
-  192|   961k|  constexpr reference operator[](size_type index) const noexcept {
-  193|   961k|    METL_ASSERT(index < size());
+  192|   860k|  constexpr reference operator[](size_type index) const noexcept {
+  193|   860k|    METL_ASSERT(index < size());
   ------------------
-  |  |   91|   961k|  do {                                                             \
-  |  |   92|   961k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |   91|   860k|  do {                                                             \
+  |  |   92|   860k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|   961k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|   860k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 961k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 860k]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |   93|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |   94|      0|    }                                                              \
-  |  |   95|   961k|  } while (false)
+  |  |   95|   860k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (95:12): [Folded, False: 961k]
+  |  |  |  Branch (95:12): [Folded, False: 860k]
   |  |  ------------------
   ------------------
-  194|   961k|    return storage_.data[index];
-  195|   961k|  }
+  194|   860k|    return storage_.data[index];
+  195|   860k|  }
 
 _ZNK4metl11storage_forIjE4addrEv:
-   36|  66.5k|  const void* addr() const noexcept { return &bytes[0]; }
+   36|  59.7k|  const void* addr() const noexcept { return &bytes[0]; }
 _ZN4metl11storage_forIjE4addrEv:
-   34|   201k|  void* addr() noexcept { return &bytes[0]; }
+   34|   178k|  void* addr() noexcept { return &bytes[0]; }
 
