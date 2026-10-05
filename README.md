@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  Header-only C++17 building blocks for firmware: no heap, no exceptions, no RTTI, a bounded worst case for every operation.
+  Header-only C++17 for firmware: no heap, no exceptions, no RTTI, fixed capacity.
 </p>
 
 <p align="center">
