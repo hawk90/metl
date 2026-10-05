@@ -140,7 +140,9 @@ runs:
 
           # `update` gets a slice, `install` whatever is still left, so a slow
           # index refresh cannot starve the download it exists to enable.
+          updated=0
           if timeout $(( remaining / 4 + 1 )) sudo apt-get "${APT_OPTS[@]}" update && \
+             updated=1 && \
              timeout $(( deadline - SECONDS )) \
                sudo apt-get "${APT_OPTS[@]}" install -y ${APT_PACKAGES}; then
             # Copy the archives somewhere the post-step cache save can actually
@@ -154,6 +156,25 @@ runs:
           fi
 
           echo "apt attempt ${attempt} failed or timed out" >&2
+
+          # A package with no candidate on a freshly updated index is a rename
+          # or a removal in this Ubuntu release, not a flaky mirror: retrying
+          # cannot fix it. (qemu-user-static on 26.04 retried 77 times for the
+          # full 480 s before this check existed.)
+          if (( updated )); then
+            missing=""
+            for package in ${APT_PACKAGES}; do
+              candidate="$(apt-cache policy "${package}" 2>/dev/null | awk '/Candidate:/ {print $2}')"
+              if [[ -z "${candidate}" || "${candidate}" == "(none)" ]]; then
+                missing="${missing} ${package}"
+              fi
+            done
+            if [[ -n "${missing}" ]]; then
+              echo "::error::no installable candidate on this image for:${missing}." \
+                   "Renamed or removed in this release -- not a mirror problem."
+              exit 1
+            fi
+          fi
           sleep 5
         done
 

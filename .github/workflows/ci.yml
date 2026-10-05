@@ -543,7 +543,10 @@ jobs:
       - name: Install big-endian toolchain + qemu-user
         uses: ./.github/actions/apt-install
         with:
-          packages: g++-powerpc64-linux-gnu qemu-user-static
+          # Ubuntu 26.04 dropped qemu-user-static (now only a virtual name for
+          # qemu-user-binfmt); qemu-user ships the emulator itself, and the
+          # test binary is linked -static, so no binfmt registration is needed.
+          packages: g++-powerpc64-linux-gnu qemu-user
           cache-key: powerpc64-qemu
 
       - name: Syntax-check every public header (big-endian frontend)
@@ -561,7 +564,7 @@ jobs:
       - name: Run the endian test under qemu (big-endian)
         run: |
           set -euo pipefail
-          qemu-ppc64-static ./endian_test_be
+          qemu-ppc64 ./endian_test_be
           echo "endian test passed on big-endian target"
 
   # ---------------------------------------------------------------------------
@@ -1509,7 +1512,7 @@ jobs:
   #
   # Do not set it from a local run. macOS/libc++ and Ubuntu/libstdc++ disagree
   # substantially even at the same clang-tidy version, and the versions differ
-  # too (this image ships clang-tidy 18): locally this tree reports 472 distinct
+  # too (this image ships clang-tidy 21): locally this tree reports 472 distinct
   # and *zero* `modernize-type-traits`, where CI reported 739 and 308. A budget
   # taken from the local number would have been ~3.7x slack and blocked nothing.
   #
@@ -1544,7 +1547,7 @@ jobs:
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Run clang-tidy on public headers (deduplicated ratchet)
-        run: tools/clang_tidy_report.py -p build --max 142
+        run: tools/clang_tidy_report.py -p build --max 155
 
   # ---------------------------------------------------------------------------
   # Single-header amalgamation

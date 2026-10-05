@@ -71,7 +71,10 @@ class monotonic_buffer {
     }
 
     offset_ += padding;
-    void* result = &storage_[offset_];
+    // Pointer arithmetic, not `&storage_[offset_]`: the check above bounds
+    // offset_ + bytes by Capacity, but GCC 15+ -Warray-bounds analyses the
+    // refused path too and reports the subscript there.
+    void* result = storage_ + offset_;
     offset_ += bytes;
     return result;
   }

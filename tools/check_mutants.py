@@ -121,13 +121,9 @@ MUTANTS = [
         "why": "try_append copies one character too few but reports the full "
                "length. The NUL terminator is still where size() says.",
         "kills": "ctest:fixed_string|format",
-        "old": """    for (size_type i = 0; i < input_size; ++i) {
-      storage_[size_ + i] = text[i];
-    }
+        "old": """    copy_in(size_, text, input_size);
 """,
-        "new": """    for (size_type i = 0; i + 1 < input_size; ++i) {
-      storage_[size_ + i] = text[i];
-    }
+        "new": """    copy_in(size_, text, input_size == 0 ? 0 : input_size - 1);
 """,
     },
     {
