@@ -50,11 +50,13 @@ Usage:
 """
 
 import argparse
+import os
 import pathlib
 import re
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 
 EXPECT = re.compile(r"^//\s*EXPECT-ERROR:\s*(.+?)\s*$", re.M)
 
@@ -289,7 +291,7 @@ def check_case(cxx, std, include_dir, case):
     return failures
 
 
-def run(cxx, std, include_dir, case_dir, quiet=False):
+def run(cxx, std, include_dir, case_dir, quiet=False, jobs=None):
     """`quiet` is for the self-test, whose fixtures are SUPPOSED to fail --
     printing ::error:: for them would put annotations on a green job."""
     def say(message, error=False):
@@ -304,9 +306,14 @@ def run(cxx, std, include_dir, case_dir, quiet=False):
             f"which is the failure this whole file is about.", error=True)
         return 1
 
+    # Cases are independent compiler processes, so they run in parallel; each
+    # case still does its control compile before its guarded one. `map` keeps
+    # the input order, so the report reads the same as a serial run.
+    with ThreadPoolExecutor(max_workers=jobs or os.cpu_count() or 1) as pool:
+        results = list(pool.map(lambda case: check_case(cxx, std, include_dir, case), cases))
+
     failures = []
-    for case in cases:
-        case_failures = check_case(cxx, std, include_dir, case)
+    for case, case_failures in zip(cases, results):
         status = "ok" if not case_failures else "FAILED"
         say(f"  {status:6}  {case.name}  ({expected_message(case) or 'no EXPECT-ERROR'})")
         failures.extend(case_failures)
@@ -477,11 +484,13 @@ def main():
     parser.add_argument("--include-dir", default="include")
     parser.add_argument("--case-dir", default="tests/compile_fail")
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--jobs", type=int, default=None,
+                        help="parallel compiles (default: CPU count)")
     args = parser.parse_args()
 
     if args.self_test:
         return self_test(args.cxx, args.std, args.include_dir)
-    return run(args.cxx, args.std, args.include_dir, args.case_dir)
+    return run(args.cxx, args.std, args.include_dir, args.case_dir, jobs=args.jobs)
 
 
 if __name__ == "__main__":
