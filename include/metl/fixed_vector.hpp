@@ -431,7 +431,7 @@ class fixed_vector {
   template <typename It, typename = std::enable_if_t<!std::is_integral_v<It>>>
   iterator insert(const_iterator pos, It first, It last) {
     METL_ASSERT(pos >= begin() && pos <= end());
-    METL_ASSERT(!aliases_own_storage_(first, last));
+    METL_ASSERT(!aliases_own_storage(first, last));
     const size_type index = static_cast<size_type>(pos - begin());
     iterator out = begin() + index;
     // Generic forward-iterator path: insert one-by-one.
@@ -581,7 +581,7 @@ class fixed_vector {
   ///      (docs/AUDIT.md G.9). Copy it out first.
   template <typename It, typename = std::enable_if_t<!std::is_integral_v<It>>>
   void assign(It first, It last) {
-    METL_ASSERT(!aliases_own_storage_(first, last));
+    METL_ASSERT(!aliases_own_storage(first, last));
     clear();
     for (It it = first; it != last; ++it) {
       METL_ASSERT(size_ < Capacity);
@@ -640,7 +640,7 @@ class fixed_vector {
   // like object_pool::index_of, because relational `<` on pointers that may not
   // share an array is unspecified (docs/AUDIT.md E.2, G.9).
   template <typename It>
-  bool aliases_own_storage_(It first, It last) const noexcept {
+  bool aliases_own_storage(It first, It last) const noexcept {
     if constexpr (std::is_pointer_v<It> && std::is_same_v<std::remove_cv_t<std::remove_pointer_t<It>>, T>) {
       if (first == last) {
         return false;
@@ -650,7 +650,7 @@ class fixed_vector {
       const auto first_address = reinterpret_cast<std::uintptr_t>(first);
       return first_address >= begin_address && first_address < end_address;
     } else if constexpr (detail::is_reverse_iterator_over_pointer_v<It>) {
-      return aliases_own_storage_(last.base(), first.base());
+      return aliases_own_storage(last.base(), first.base());
     } else {
       (void)first;
       (void)last;
