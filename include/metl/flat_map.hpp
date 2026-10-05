@@ -29,6 +29,7 @@
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/array_storage.hpp"
+#include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
 #include "metl/type_traits.hpp"
 
@@ -202,42 +203,48 @@ class flat_map {
   }
 
   /// @brief Iterator to the first element whose key is not less than @p key.
-  METL_NODISCARD iterator lower_bound(const key_type& key) noexcept {
+  METL_NODISCARD iterator lower_bound(const key_type& key) noexcept(compare_cannot_throw<key_type>) {
     return begin() + lower_bound_index(key);
   }
 
-  METL_NODISCARD const_iterator lower_bound(const key_type& key) const noexcept {
+  METL_NODISCARD const_iterator lower_bound(const key_type& key) const
+      noexcept(compare_cannot_throw<key_type>) {
     return begin() + lower_bound_index(key);
   }
 
   /// @brief Iterator to the first element whose key is greater than @p key.
-  METL_NODISCARD iterator upper_bound(const key_type& key) noexcept {
+  METL_NODISCARD iterator upper_bound(const key_type& key) noexcept(compare_cannot_throw<key_type>) {
     return begin() + upper_bound_index(key);
   }
 
-  METL_NODISCARD const_iterator upper_bound(const key_type& key) const noexcept {
+  METL_NODISCARD const_iterator upper_bound(const key_type& key) const
+      noexcept(compare_cannot_throw<key_type>) {
     return begin() + upper_bound_index(key);
   }
 
   /// @brief Range [first, last) of elements equal to @p key (empty range if none; keys are unique).
-  METL_NODISCARD std::pair<iterator, iterator> equal_range(const key_type& key) noexcept {
+  METL_NODISCARD std::pair<iterator, iterator> equal_range(const key_type& key) noexcept(
+      compare_cannot_throw<key_type>) {
     const size_type lo = lower_bound_index(key);
     const size_type hi = upper_bound_index_from(key, lo);
     return {begin() + lo, begin() + hi};
   }
 
-  METL_NODISCARD std::pair<const_iterator, const_iterator> equal_range(const key_type& key) const noexcept {
+  METL_NODISCARD std::pair<const_iterator, const_iterator> equal_range(const key_type& key) const
+      noexcept(compare_cannot_throw<key_type>) {
     const size_type lo = lower_bound_index(key);
     const size_type hi = upper_bound_index_from(key, lo);
     return {begin() + lo, begin() + hi};
   }
 
   /// @brief True if an element with the given key is present.
-  METL_NODISCARD bool contains(const key_type& key) const noexcept { return find(key) != nullptr; }
+  METL_NODISCARD bool contains(const key_type& key) const noexcept(compare_cannot_throw<key_type>) {
+    return find(key) != nullptr;
+  }
 
   /// @brief Key-based lookup: pointer to the mapped value for @p key, or @c nullptr if absent.
   /// @return Pointer to the mapped value, or @c nullptr when the key is not found.
-  METL_NODISCARD mapped_type* find(const key_type& key) noexcept {
+  METL_NODISCARD mapped_type* find(const key_type& key) noexcept(compare_cannot_throw<key_type>) {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index].key)) {
       return &data()[index].value;
@@ -245,7 +252,7 @@ class flat_map {
     return nullptr;
   }
 
-  METL_NODISCARD const mapped_type* find(const key_type& key) const noexcept {
+  METL_NODISCARD const mapped_type* find(const key_type& key) const noexcept(compare_cannot_throw<key_type>) {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index].key)) {
       return &data()[index].value;
@@ -257,35 +264,35 @@ class flat_map {
   template <
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD iterator lower_bound(const K& key) noexcept {
+  METL_NODISCARD iterator lower_bound(const K& key) noexcept(compare_cannot_throw<K>) {
     return begin() + lower_bound_index(key);
   }
 
   template <
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD const_iterator lower_bound(const K& key) const noexcept {
+  METL_NODISCARD const_iterator lower_bound(const K& key) const noexcept(compare_cannot_throw<K>) {
     return begin() + lower_bound_index(key);
   }
 
   template <
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD iterator upper_bound(const K& key) noexcept {
+  METL_NODISCARD iterator upper_bound(const K& key) noexcept(compare_cannot_throw<K>) {
     return begin() + upper_bound_index(key);
   }
 
   template <
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD const_iterator upper_bound(const K& key) const noexcept {
+  METL_NODISCARD const_iterator upper_bound(const K& key) const noexcept(compare_cannot_throw<K>) {
     return begin() + upper_bound_index(key);
   }
 
   template <
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD std::pair<iterator, iterator> equal_range(const K& key) noexcept {
+  METL_NODISCARD std::pair<iterator, iterator> equal_range(const K& key) noexcept(compare_cannot_throw<K>) {
     const size_type lo = lower_bound_index(key);
     const size_type hi = upper_bound_index_from(key, lo);
     return {begin() + lo, begin() + hi};
@@ -294,7 +301,8 @@ class flat_map {
   template <
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD std::pair<const_iterator, const_iterator> equal_range(const K& key) const noexcept {
+  METL_NODISCARD std::pair<const_iterator, const_iterator> equal_range(const K& key) const
+      noexcept(compare_cannot_throw<K>) {
     const size_type lo = lower_bound_index(key);
     const size_type hi = upper_bound_index_from(key, lo);
     return {begin() + lo, begin() + hi};
@@ -303,14 +311,14 @@ class flat_map {
   template <
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD bool contains(const K& key) const noexcept {
+  METL_NODISCARD bool contains(const K& key) const noexcept(compare_cannot_throw<K>) {
     return find(key) != nullptr;
   }
 
   template <
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD mapped_type* find(const K& key) noexcept {
+  METL_NODISCARD mapped_type* find(const K& key) noexcept(compare_cannot_throw<K>) {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index].key)) {
       return &data()[index].value;
@@ -321,7 +329,7 @@ class flat_map {
   template <
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD const mapped_type* find(const K& key) const noexcept {
+  METL_NODISCARD const mapped_type* find(const K& key) const noexcept(compare_cannot_throw<K>) {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index].key)) {
       return &data()[index].value;
@@ -332,7 +340,7 @@ class flat_map {
   template <
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
-  bool erase(const K& key) noexcept {
+  bool erase(const K& key) noexcept(compare_cannot_throw<K> && relocate_cannot_throw) {
     const size_type index = lower_bound_index(key);
     if (index >= size_ || comp_(key, data()[index].key)) {
       return false;
@@ -408,7 +416,7 @@ class flat_map {
 
   /// @brief Erase the element with the given key, if present.
   /// @return @c true if an element was erased; @c false if the key was not found.
-  bool erase(const key_type& key) noexcept {
+  bool erase(const key_type& key) noexcept(compare_cannot_throw<key_type> && relocate_cannot_throw) {
     const size_type index = lower_bound_index(key);
     if (index >= size_ || comp_(key, data()[index].key)) {
       return false;
@@ -426,6 +434,15 @@ class flat_map {
   }
 
  private:
+  // The lookups call the comparator in both argument orders; they are noexcept
+  // exactly when it cannot throw (docs/AUDIT.md G.9). See detail/nothrow_call.hpp
+  // for why std::less is looked through rather than taken at its word.
+  template <typename K>
+  static constexpr bool compare_cannot_throw =
+      detail::nothrow_binary_call_v<Compare, const K&, const key_type&> &&
+      detail::nothrow_binary_call_v<Compare, const key_type&, const K&>;
+  // erase relocates the tail by move construction.
+  static constexpr bool relocate_cannot_throw = std::is_nothrow_move_constructible_v<value_type>;
   // Empty map that MOVES its comparator in; the move constructor delegates
   // here (the public comparator constructor copies).
   struct adopt_compare {};
@@ -436,7 +453,7 @@ class flat_map {
   const value_type* data() const noexcept { return storage_.data(); }
 
   template <typename K>
-  size_type lower_bound_index(const K& key) const noexcept {
+  size_type lower_bound_index(const K& key) const noexcept(compare_cannot_throw<K>) {
     size_type first = 0;
     size_type count = size_;
     while (count > 0) {
@@ -453,7 +470,7 @@ class flat_map {
   }
 
   template <typename K>
-  size_type upper_bound_index(const K& key) const noexcept {
+  size_type upper_bound_index(const K& key) const noexcept(compare_cannot_throw<K>) {
     size_type first = 0;
     size_type count = size_;
     while (count > 0) {
@@ -470,7 +487,7 @@ class flat_map {
   }
 
   template <typename K>
-  size_type upper_bound_index_from(const K& key, size_type lo) const noexcept {
+  size_type upper_bound_index_from(const K& key, size_type lo) const noexcept(compare_cannot_throw<K>) {
     size_type first = lo;
     size_type count = size_ - lo;
     while (count > 0) {
@@ -566,11 +583,39 @@ class flat_map {
 #endif
   }
 
-  void erase_at(size_type index) noexcept {
+  // Closes the gap at `index` by move-constructing each later element one slot
+  // down. If such a move can throw, a throw at slot i leaves [0, i) live, slot i
+  // dead and (i, size_) live; the handler destroys exactly those and empties the
+  // container -- the same outcome as a throwing insert (docs/AUDIT.md G.9). It
+  // used to run inside an unconditional noexcept, so the throw terminated.
+  void erase_at(size_type index) noexcept(relocate_cannot_throw) {
     data()[index].~value_type();
-    for (size_type i = index; i + 1 < size_; ++i) {
-      new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i + 1]));
-      data()[i + 1].~value_type();
+    if constexpr (relocate_cannot_throw) {
+      for (size_type i = index; i + 1 < size_; ++i) {
+        new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i + 1]));
+        data()[i + 1].~value_type();
+      }
+    } else {
+      size_type i = index;
+#if !METL_NO_EXCEPTIONS
+      try {
+#endif
+        for (; i + 1 < size_; ++i) {
+          new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i + 1]));
+          data()[i + 1].~value_type();
+        }
+#if !METL_NO_EXCEPTIONS
+      } catch (...) {
+        for (size_type j = 0; j < i; ++j) {
+          data()[j].~value_type();
+        }
+        for (size_type j = i + 1; j < size_; ++j) {
+          data()[j].~value_type();
+        }
+        size_ = 0;
+        throw;
+      }
+#endif
     }
     --size_;
   }

@@ -24,6 +24,7 @@
 #include "metl/detail/array_storage.hpp"
 #include "metl/detail/construct.hpp"
 #include "metl/detail/crc.hpp"
+#include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/plain_integer.hpp"
 #include "metl/detail/ring_core.hpp"
 #include "metl/detail/transparent.hpp"

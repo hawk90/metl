@@ -2,6 +2,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/nothrow_call.hpp"
 #include "metl/fixed_vector.hpp"
 #include "metl/span.hpp"
 
@@ -189,14 +190,11 @@ class fixed_priority_queue {
 
  private:
   // Whether the comparator can throw. std::less / std::greater do not declare
-  // their call operator noexcept, but on a scalar T they apply a built-in
-  // operator that cannot throw; without this case the default comparator would
-  // strip `noexcept` from pop() for every queue of int.
-  static constexpr bool comparator_cannot_throw =
-      noexcept(std::declval<Compare&>()(std::declval<const T&>(), std::declval<const T&>())) ||
-      (std::is_scalar_v<T> &&
-       (std::is_same_v<Compare, std::less<T>> || std::is_same_v<Compare, std::greater<T>> ||
-        std::is_same_v<Compare, std::less<>> || std::is_same_v<Compare, std::greater<>>));
+  // their call operator noexcept, so detail::nothrow_binary_call looks through
+  // them to the operator they apply: pop() on a queue of int -- or of any type
+  // whose `<` is noexcept -- keeps its noexcept (docs/AUDIT.md G.9 replaced a
+  // scalar-only rule here).
+  static constexpr bool comparator_cannot_throw = detail::nothrow_binary_call_v<Compare, const T&, const T&>;
 
   /// Runs a step that reorders the heap. If an element move or the comparator
   /// throws part-way, the heap property is gone and later pops would come out in
