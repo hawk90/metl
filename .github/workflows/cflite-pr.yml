@@ -39,8 +39,30 @@ jobs:
       matrix:
         sanitizer: [address, undefined]
     steps:
+      # A documentation-only pull request changes no code to fuzz. The job
+      # still runs and reports -- both `cflite-pr (...)` contexts are required
+      # checks -- but skips the build and the fuzzing. ClusterFuzzLite fetches
+      # the source itself and its documented workflow has no checkout step, so
+      # the classification uses a checkout of its own in a side directory and
+      # removes it: the workspace the fuzzing steps see is unchanged.
+      - name: Checkout (classification only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          fetch-depth: 2
+          path: .classify-change
+
+      - name: Classify the change
+        id: classify
+        uses: ./.classify-change/.github/actions/classify-change
+        with:
+          path: .classify-change
+
+      - name: Remove the classification checkout
+        run: rm -rf .classify-change
+
       - name: Build fuzzers (${{ matrix.sanitizer }})
         id: build
+        if: steps.classify.outputs.code == 'true'
         uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
         with:
           language: c++
@@ -52,6 +74,7 @@ jobs:
 
       - name: Run fuzzers (${{ matrix.sanitizer }})
         id: run
+        if: steps.classify.outputs.code == 'true'
         uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

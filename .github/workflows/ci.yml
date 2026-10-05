@@ -58,33 +58,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
-          fetch-depth: 0
+          fetch-depth: 2
 
       - name: Classify the change
         id: classify
-        env:
-          EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-        run: |
-          set -euo pipefail
-          if [ "${EVENT}" != "pull_request" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "not a pull request: running everything"
-            exit 0
-          fi
-          changed="$(git diff --name-only "${BASE}...HEAD")"
-          printf 'changed files:\n%s\n' "${changed}"
-          # Code unless EVERY path is Markdown or LICENSE. An empty diff counts
-          # as code, so a classification failure can only ever run more. A
-          # here-string, not a pipe: under pipefail, `grep -q` exiting early can
-          # SIGPIPE the writer and turn "found code" into a failed pipeline,
-          # which the `!` would then read as documentation-only.
-          if [ -n "${changed}" ] && ! grep -qvE '(\.md|^LICENSE)$' <<< "${changed}"; then
-            echo "code=false" >> "$GITHUB_OUTPUT"
-            echo "documentation-only change: builds will be skipped"
-          else
-            echo "code=true" >> "$GITHUB_OUTPUT"
-          fi
+        uses: ./.github/actions/classify-change
 
       - name: Documentation gate (documentation-only changes)
         # The same check api-contract runs, which is skipped on this path.
