@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (breaking: hash values)
+
+- **`metl::fnv1a_hash` hashes by value** (docs/AUDIT.md G.2). It is transparent,
+  so equal values must hash equally across types, and three cases did not:
+  - `metl::fixed_string` was hashed by its object bytes, including stale bytes
+    past the terminator: two equal strings could hash differently and
+    `static_unordered_map::find` missed. Any character range (`data()` ->
+    `const char*` plus `size()`) now hashes its characters, so `fixed_string`
+    of any capacity, `span<const char>` and `const char*` interoperate.
+  - Integers hashed `sizeof(T)` bytes, so `find(5)` missed a `long` key `5L`.
+    Integrals and enums now hash their value widened to 64 bits.
+  - `metl::fnv1a(const T*, len)` hashed `len` bytes; it is documented, and now
+    behaves, as `len` elements.
+
+  Hash values for those arguments change. In-memory tables are unaffected;
+  anything that stored one of these values must recompute it.
+
 ### Added
 
 - **`metl/parse.hpp` — bounded text-to-integer**, the mirror of `metl/format.hpp`.

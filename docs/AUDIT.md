@@ -551,9 +551,26 @@ removed from `object_pool`.
 
 | Sev | Where | Finding | Status |
 |---|---|---|---|
-| HIGH | `hash.hpp` `fnv1a_hash` + `fixed_string` | `fixed_string` passes the `has_unique_object_representations` gate, but `assign`/`clear` leave stale bytes after the terminator. Equal strings hash differently and `static_unordered_map::find` misses. | ⏳ open |
-| MED | `hash.hpp` transparent `fnv1a_hash` | hashes the bytes of whatever type is passed, so `find(5)` misses a `long` key `5L`. | ⏳ open |
-| MED | `hash.hpp` `fnv1a(const T*, len)` | documented as `len` elements, hashes `len` bytes. | ⏳ open |
+| HIGH | `hash.hpp` `fnv1a_hash` + `fixed_string` | `fixed_string` passes the `has_unique_object_representations` gate, but `assign`/`clear` leave stale bytes after the terminator. Equal strings hash differently and `static_unordered_map::find` misses. | ✅ character ranges hash their `size()` characters |
+| MED | `hash.hpp` transparent `fnv1a_hash` | hashes the bytes of whatever type is passed, so `find(5)` misses a `long` key `5L`. | ✅ integrals and enums hash their value widened to 64 bits |
+| MED | `hash.hpp` `fnv1a(const T*, len)` | documented as `len` elements, hashes `len` bytes. | ✅ hashes `len * sizeof(T)` bytes |
+
+`fnv1a_hash` is transparent, so the rule it has to keep is the one transparent
+hashing always has: **values that compare equal hash equally, across types.**
+Hashing object bytes keeps that only for a single type with a unique
+representation and no slack -- which `fixed_string` claims (it passes the gate)
+but does not honour (stale tail bytes). The fix hashes by value for the two
+kinds of argument where value and bytes differ, and keeps the gated byte path
+for the rest. A side effect is that `const char*`, `metl::span<const char>` and
+`fixed_string` of any capacity now hash alike, so heterogeneous string lookup
+works with `std::equal_to<>` -- two tests had been writing their own hasher for
+exactly that.
+
+**This changes hash values** for integral, enum and character-range arguments,
+and for `fnv1a(const T*, n)` with `sizeof(T) > 1`. They were never documented
+as stable, and an in-memory table rehashes on the next build; anything that
+*persisted* one of these values has to recompute it. The CHANGELOG lists it
+under a breaking-change heading for that reason.
 
 ### G.3 — Divergence from `std` or from METL's own documentation
 
@@ -592,7 +609,9 @@ double/foreign free; hash-table tombstone churn at full capacity; `optional`,
 ### Regression coverage
 
 `tests/containers/alias_insert_test.cpp`, `tests/vocab/intrusive_ptr_alias_test.cpp`
-and block (4) of `tests/vocab/variant_selfassign_test.cpp` cover G.1. Each was
+and block (4) of `tests/vocab/variant_selfassign_test.cpp` cover G.1;
+`tests/bits/hash_by_value_test.cpp` covers G.2 (17 checks red against the
+unfixed header, after removing the one line that did not compile there). Each was
 run against the unfixed headers first and failed (12 checks across the three).
 They detect the stale read with a type that poisons itself on move and
 destruction, not with a sanitizer, so they mean the same thing on QEMU.

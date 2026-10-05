@@ -196,7 +196,7 @@ if(METL_BUILD_TESTS)
     vocab/variant_selfassign vocab/versioned_handle
     # bits/
     bits/bit bits/bitfield bits/crc8 bits/crc16 bits/crc32 bits/hash
-    bits/hash_unique_repr bits/endian bits/mmio bits/mmio_regression bits/register_access
+    bits/hash_unique_repr bits/hash_by_value bits/endian bits/mmio bits/mmio_regression bits/register_access
     bits/crc_table_equivalence bits/format bits/parse
     # control/
     control/fsm control/fsm_reentrancy control/event_dispatcher
