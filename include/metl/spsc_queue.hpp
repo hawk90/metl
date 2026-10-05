@@ -91,6 +91,8 @@ class spsc_queue {
   /// @param value Element to copy into the queue.
   /// @return True if enqueued; false if the queue is full.
   /// @note Producer-side only; call from the single producer thread.
+  /// @note `noexcept`: a `T` whose copy constructor throws terminates the
+  ///       program here (docs/AUDIT.md G.6).
   METL_NODISCARD bool try_push(const T& value) noexcept { return try_emplace(value); }
 
   /// @brief Producer: move-enqueue an element if space is available.

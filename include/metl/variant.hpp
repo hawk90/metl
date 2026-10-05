@@ -386,6 +386,9 @@ class variant {
   }
 
   /// @brief Destroys the active alternative and constructs `T` in place.
+  /// @pre `args` do not refer into the current alternative: it is destroyed before
+  ///      they are read (as for std::variant::emplace; docs/AUDIT.md G.6). Plain
+  ///      assignment (`operator=`) has no such restriction.
   /// @tparam T The (unique) alternative type to activate.
   /// @tparam Args Constructor argument types forwarded to `T`.
   /// @param args Arguments forwarded to `T`'s constructor.
@@ -403,6 +406,9 @@ class variant {
   }
 
   /// @brief Destroys the active alternative and constructs alternative `I`.
+  /// @pre `args` do not refer into the current alternative: it is destroyed before
+  ///      they are read (as for std::variant::emplace; docs/AUDIT.md G.6). Plain
+  ///      assignment (`operator=`) has no such restriction.
   /// @tparam I The zero-based alternative index to activate.
   /// @tparam Args Constructor argument types forwarded to the alternative.
   /// @param args Arguments forwarded to the alternative's constructor.

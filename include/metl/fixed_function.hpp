@@ -467,6 +467,11 @@ constexpr moveonly_ops<false, R, Args...> moveonly_ops_for_t<F, false, R, Args..
 /// @warning A callable larger than `Capacity` cannot be stored: `try_assign`
 ///          returns false, while the converting constructor / `assign` assert.
 ///          Alignment stricter than std::max_align_t fails a static_assert.
+/// @note Moving, move-assigning and swapping the wrapper relocate the stored
+///       callable inside `noexcept` functions, so a callable whose move
+///       constructor throws terminates the program there (docs/AUDIT.md G.6).
+///       Store callables with non-throwing moves -- every lambda whose captures
+///       have them does.
 template <typename Signature, std::size_t Capacity = 32>
 class fixed_function;  // primary template, undefined.
 
@@ -705,6 +710,11 @@ inline void swap(fixed_function<Sig, Cap>& lhs, fixed_function<Sig, Cap>& rhs) n
 /// @tparam Capacity Inline storage size in bytes (default 32).
 /// @warning A callable larger than `Capacity` cannot be stored: `try_assign`
 ///          returns false, while the converting constructor / `assign` assert.
+/// @note Moving, move-assigning and swapping the wrapper relocate the stored
+///       callable inside `noexcept` functions, so a callable whose move
+///       constructor throws terminates the program there (docs/AUDIT.md G.6).
+///       Store callables with non-throwing moves -- every lambda whose captures
+///       have them does.
 template <typename Signature, std::size_t Capacity = 32>
 class fixed_any_invocable;  // primary template, undefined.
 

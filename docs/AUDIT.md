@@ -684,6 +684,46 @@ hash constants, allocator `align_up` near the top of memory; copy, move,
 self-copy and self-move of every container with a counting `T`; 20k random
 comparisons against `std` containers including embedded NULs.
 
+### G.6 — Third pass: exception safety everywhere, and siblings of G.1–G.5
+
+Two targeted reviews after G.5: one walked every operation that constructs,
+copies, moves or assigns a user `T` and asked what a throw part-way leaves
+behind; the other looked for the G.1–G.5 root causes in functions the earlier
+passes did not read. Both tracked live objects **by address** -- a "dead" flag
+written in a destructor is a dead store the optimiser removes, and a plain live
+count hides a leak and a double destroy that cancel. Everything was reproduced.
+
+| Sev | Where | Finding | Status |
+|---|---|---|---|
+| HIGH | `ring_core::pop_front`, `fixed_deque::pop_back`, `static_message_queue::pop` | empty pop at `METL_HARDENING_NONE` destroyed a dead slot and wrapped `size_` to `SIZE_MAX`; the next push leaked, and a `fixed_queue` destructor looped ~2^64 times. G.5's `pop_back` sibling. | ✅ `METL_HARDEN(size_ > 0)` |
+| HIGH* | `fixed_vector::swap` (unequal sizes) | the tail was move-constructed into the shorter vector and only counted after the loop; a throwing move leaked every element moved before it. | ✅ count each element as it is built |
+| MED | `arena_allocator` | implicitly copyable and movable: a copy carried the destroy records into a second arena and each `reset()` ran the same destructors. And no destructor: objects left in the arena were never destroyed. | ✅ copy/move deleted (as `object_pool`, the queues); `~arena_allocator()` calls `reset()` |
+| MED | `fixed_vector::assign(n, v[0])` | `clear()` destroyed the source before it was copied. G.1 sibling. | ✅ copy first |
+| MED | `expected` cross-state `operator=` / `emplace` | destroyed the old member before reading an argument that could point into it (`e = e.error().fallback`). The `variant` fix of G.1, not carried over. | ✅ the new member is built first (`reinit_as_*` + `commit_*`) |
+| MED* | `flat_map`/`flat_set`, non-move-assignable element | G.5 fixed the assignable shift; the construct-and-destroy path still destroyed a slot twice on a throw. | ✅ the handler destroys exactly the live slots and empties the container |
+| MED* | `expected::swap` with both moves throwing | the last move was unguarded; a throw left a destroyed member under a stale discriminant. No rollback exists once both originals are gone. | ✅ `static_assert(nothrow T or E move)` -- `std::expected::swap`'s own requirement; compile-fail fixture |
+| LOW* | `fixed_priority_queue` push / emplace / pop / erase_if | a throw mid-sift left the heap unordered (later pops out of order). | ✅ cleared before rethrowing, as `flat_map` |
+| LOW* | `static_unordered_*::place_at` | the tombstone count was decremented before the constructor; each failed insert onto one tombstone decremented again, so it wrapped. Only the rebuild timing was affected. | ✅ decremented after construction |
+| DOC | `noexcept` paths that run user code: the unordered rebuild, moving `fixed_function`/`fixed_any_invocable`, `fsm::dispatch`, `lookup_table`, `spsc`/`mpmc` `try_push(const T&)` | a throwing `T` terminates there. A `static_assert` on nothrow moves would stop every type whose move constructor is merely not *declared* `noexcept` from compiling -- a loud break for a hazard only exceptions-enabled builds can reach. | 📝 `@note` at each |
+| DOC | `fixed_vector` range insert/assign from itself; `optional`/`variant`/`expected` `emplace` from their own member | the same undefined behaviour as `std`. | 📝 `@pre` at each |
+
+\* exceptions-enabled builds only.
+
+**Checked and held:** self-copy, self-move and self-swap, then reuse of the
+moved-from object, for all twelve containers, `fixed_string`, `optional`,
+`variant`, the three `expected` forms and both callable wrappers; every row of the
+iterator-invalidation table in `docs/CHOOSING.md`; every insertion entry point of
+the unordered containers on the rebuild path (they all build first); the
+remaining exception paths of `fixed_vector`, the rings, the pools and the
+allocators at every throw point from 0 to 39.
+
+**Regression coverage:** `tests/core/audit_g6_test.cpp` (runs on QEMU),
+blocks added to `tests/containers/throwing_element_test.cpp` (host only) and
+`tests/core/harden_floor_memory_test.cpp`, and
+`tests/compile_fail/expected_swap_two_throwing_moves.cpp`. Each was run against
+the unfixed headers and failed. The tombstone-count fix has no direct test: the
+count is private and only moves the rebuild's timing.
+
 ### Checked and found correct
 
 CRC check values (`"123456789"`, both table modes); `parse.hpp` exhaustively over

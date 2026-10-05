@@ -206,7 +206,11 @@ class static_message_queue {
   /// @brief Remove the front element without returning it.
   /// @pre The queue must not be empty.
   void pop() noexcept {
-    METL_ASSERT(size_ > 0);
+    // Hard, not METL_ASSERT: an empty pop at METL_HARDENING_NONE destroyed a
+    // dead slot and wrapped size_ to SIZE_MAX -- the next push leaked, and a
+    // destructor then looped ~2^64 times (docs/AUDIT.md G.6; fixed_vector's
+    // pop_back got the same guard in G.5).
+    METL_HARDEN(size_ > 0);
     pop_front();
   }
 

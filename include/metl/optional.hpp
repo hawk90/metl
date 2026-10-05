@@ -281,6 +281,9 @@ class optional {
   /// @tparam Args Constructor argument types forwarded to `T`.
   /// @param args Arguments forwarded to `T`'s constructor.
   /// @return Reference to the newly constructed value.
+  /// @pre `args` do not refer into the current value: it is destroyed before
+  ///      they are read (as for std::optional::emplace; docs/AUDIT.md G.6). Plain
+  ///      assignment (`operator=`) has no such restriction.
   template <typename... Args>
   T& emplace(Args&&... args) {
     reset();

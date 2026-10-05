@@ -42,6 +42,9 @@ struct lookup_entry {
 /// @tparam Key Key type (compared with operator==).
 /// @tparam Value Mapped value type.
 /// @tparam Size Number of entries (fixed at compile time).
+/// @note The constructor, `find` and `value_or` are `noexcept` and copy or
+///       compare `Key` / `Value`: a type whose copy or `operator==` throws
+///       terminates the program there (docs/AUDIT.md G.6).
 template <typename Key, typename Value, std::size_t Size>
 class lookup_table {
  public:

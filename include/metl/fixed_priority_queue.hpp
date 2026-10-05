@@ -93,7 +93,7 @@ class fixed_priority_queue {
     if (!storage_.try_emplace_back(std::forward<Args>(args)...)) {
       return false;
     }
-    sift_up(storage_.size() - 1);
+    keep_heap_or_clear([this] { sift_up(storage_.size() - 1); });
     return true;
   }
 
@@ -105,7 +105,7 @@ class fixed_priority_queue {
   template <typename... Args>
   void emplace(Args&&... args) {
     storage_.emplace_back(std::forward<Args>(args)...);
-    sift_up(storage_.size() - 1);
+    keep_heap_or_clear([this] { sift_up(storage_.size() - 1); });
   }
 
   /// Pushes a copy of `value` if there is room; false when full (contents unchanged).
@@ -129,14 +129,16 @@ class fixed_priority_queue {
     // Never stripped: the index arithmetic below underflows on an empty queue and
     // METL_ASSERT is removed at low hardening levels.
     METL_HARDEN(!storage_.empty());
-    const size_type last = storage_.size() - 1;
-    if (last != 0) {
-      storage_[0] = std::move(storage_[last]);
-    }
-    storage_.pop_back();
-    if (!storage_.empty()) {
-      sift_down(0);
-    }
+    keep_heap_or_clear([this] {
+      const size_type last = storage_.size() - 1;
+      if (last != 0) {
+        storage_[0] = std::move(storage_[last]);
+      }
+      storage_.pop_back();
+      if (!storage_.empty()) {
+        sift_down(0);
+      }
+    });
   }
 
   /// Removes all elements.
@@ -155,18 +157,20 @@ class fixed_priority_queue {
   size_type erase_if(Pred pred) {
     const size_type before = storage_.size();
     size_type write = 0;
-    for (size_type read = 0; read < before; ++read) {
-      if (!pred(static_cast<const T&>(storage_[read]))) {
-        if (write != read) {
-          storage_[write] = std::move(storage_[read]);
+    keep_heap_or_clear([&] {
+      for (size_type read = 0; read < before; ++read) {
+        if (!pred(static_cast<const T&>(storage_[read]))) {
+          if (write != read) {
+            storage_[write] = std::move(storage_[read]);
+          }
+          ++write;
         }
-        ++write;
       }
-    }
-    while (storage_.size() > write) {
-      storage_.pop_back();
-    }
-    heapify();
+      while (storage_.size() > write) {
+        storage_.pop_back();
+      }
+      heapify();
+    });
     return before - write;
   }
 
@@ -177,6 +181,24 @@ class fixed_priority_queue {
   METL_NODISCARD span<const T> as_span() const noexcept { return storage_.as_span(); }
 
  private:
+  /// Runs a step that reorders the heap. If an element move or the comparator
+  /// throws part-way, the heap property is gone and later pops would come out in
+  /// the wrong order, so the queue is cleared before rethrowing -- the same rule
+  /// as flat_map (docs/AUDIT.md G.6). Under METL_NO_EXCEPTIONS it is a plain call.
+  template <typename Step>
+  void keep_heap_or_clear(Step step) {
+#if METL_NO_EXCEPTIONS
+    step();
+#else
+    try {
+      step();
+    } catch (...) {
+      clear();
+      throw;
+    }
+#endif
+  }
+
   /// Move the element at `index` toward the root until its parent outranks it.
   void sift_up(size_type index) {
     while (index > 0) {

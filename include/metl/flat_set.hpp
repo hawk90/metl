@@ -496,11 +496,33 @@ class flat_set {
     }
   }
 
+  // Relocates [index, size_) one slot right by construct-then-destroy, for an
+  // element that cannot be move-assigned. A throw while constructing slot `i`
+  // leaves [0, i) live, slot i dead and (i, size_] holding relocated elements;
+  // the handler destroys exactly those and empties the container, the same
+  // outcome as the assignable path (docs/AUDIT.md G.6 -- G.5 fixed only that
+  // path, and this one still destroyed slot i a second time).
   void shift_right_from(size_type index) {
-    for (size_type i = size_; i > index; --i) {
-      new (storage_[i].addr()) value_type(static_cast<value_type&&>(data()[i - 1]));
-      data()[i - 1].~value_type();
+    size_type i = size_;
+#if !METL_NO_EXCEPTIONS
+    try {
+#endif
+      for (; i > index; --i) {
+        new (storage_[i].addr()) value_type(static_cast<value_type&&>(data()[i - 1]));
+        data()[i - 1].~value_type();
+      }
+#if !METL_NO_EXCEPTIONS
+    } catch (...) {
+      for (size_type j = 0; j < i; ++j) {
+        data()[j].~value_type();
+      }
+      for (size_type j = i + 1; j <= size_; ++j) {
+        data()[j].~value_type();
+      }
+      size_ = 0;
+      throw;
     }
+#endif
   }
 
   void erase_at(size_type index) noexcept {

@@ -41,6 +41,11 @@
 /// otherwise cheap, and a caller with a deadline on insertion needs to know it
 /// exists.
 ///
+/// @par Element moves during the rebuild
+/// The rebuild relocates elements inside a `noexcept` function, so an element
+/// type whose move constructor throws -- or a hasher that throws -- terminates
+/// the program there (docs/AUDIT.md G.6). Give element types non-throwing moves.
+///
 /// @par Iterator invalidation
 /// The open-addressing rule (`absl::flat_hash_map`, `boost::unordered_flat_map`):
 /// **`erase` invalidates only iterators, pointers and references to the erased
@@ -707,12 +712,14 @@ class static_unordered_map {
     // level nor a user-disabled METL_ASSERT can turn a full-table insert into a
     // wild out-of-bounds construct_at(npos, ...).
     METL_HARDEN(index < bucket_count);
+    ::new (storage_[index].addr()) value_type{std::forward<K>(key), std::forward<V>(value)};
+    // Reusing a tombstone slot reclaims it: keep the tombstone count accurate
+    // so the reclamation threshold reflects only live tombstones. Counted after
+    // the construction succeeds -- before it, each throwing insert onto the same
+    // tombstone decremented again, and the count wrapped (docs/AUDIT.md G.6).
     if (states_[index] == slot_state::tombstone) {
-      // Reusing a tombstone slot reclaims it: keep the tombstone count accurate
-      // so the reclamation threshold reflects only live tombstones.
       --tombstones_;
     }
-    ::new (storage_[index].addr()) value_type{std::forward<K>(key), std::forward<V>(value)};
     states_[index] = slot_state::occupied;
     ++size_;
   }

@@ -41,6 +41,11 @@
 /// otherwise cheap, and a caller with a deadline on insertion needs to know it
 /// exists.
 ///
+/// @par Element moves during the rebuild
+/// The rebuild relocates elements inside a `noexcept` function, so an element
+/// type whose move constructor throws -- or a hasher that throws -- terminates
+/// the program there (docs/AUDIT.md G.6). Give element types non-throwing moves.
+///
 /// @par Iterator invalidation
 /// As in `static_unordered_map`: **`erase` invalidates only the erased element**,
 /// so erasing while iterating visits every element; **inserting a new key may
@@ -604,12 +609,14 @@ class static_unordered_set {
     // into a wild out-of-bounds construct_at even at METL_HARDENING_NONE or with
     // a user-disabled METL_ASSERT.
     METL_HARDEN(index < bucket_count);
+    ::new (storage_[index].addr()) value_type(std::forward<K>(key));
+    // Reusing a tombstone slot reclaims it: keep the tombstone count accurate
+    // so the reclamation threshold reflects only live tombstones. Counted after
+    // the construction succeeds -- before it, each throwing insert onto the same
+    // tombstone decremented again, and the count wrapped (docs/AUDIT.md G.6).
     if (states_[index] == slot_state::tombstone) {
-      // Reusing a tombstone slot reclaims it: keep the tombstone count accurate
-      // so the reclamation threshold reflects only live tombstones.
       --tombstones_;
     }
-    ::new (storage_[index].addr()) value_type(std::forward<K>(key));
     states_[index] = slot_state::occupied;
     ++size_;
   }

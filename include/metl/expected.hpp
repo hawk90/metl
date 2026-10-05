@@ -488,6 +488,9 @@ class expected {
   /// @tparam Args Constructor argument types forwarded to `T`.
   /// @param args Arguments forwarded to `T`'s constructor.
   /// @return Reference to the newly constructed value.
+  /// @pre `args` do not refer into the current value: it is destroyed before
+  ///      they are read (as for std::expected::emplace; docs/AUDIT.md G.6). Plain
+  ///      assignment (`operator=`) has no such restriction.
   template <typename... Args>
   T& emplace(Args&&... args) {
     // Never destroy-then-construct: a throwing constructor would leave
@@ -770,19 +773,24 @@ class expected {
   }
 
   // Cross-state reinitialization (std::expected's "reinit-expected" pattern).
-  // Precondition: currently in the error state; switch to the value state.
-  // Guarantees a throwing T constructor never destroys the error while leaving
-  // has_value_ unchanged (which would double-destroy the error on ~expected).
+  // reinit_as_value: precondition, currently in the error state; switch to the
+  // value state (reinit_as_error is the mirror image). A throwing constructor
+  // never destroys the old member while leaving has_value_ unchanged (which
+  // would double-destroy it on ~expected).
   template <typename... Args>
   void reinit_as_value(Args&&... args) {
-    if constexpr (std::is_nothrow_constructible_v<T, Args&&...>) {
+    if constexpr (std::is_move_constructible_v<T>) {
+      // Build the new value BEFORE touching the old member: `args` may refer
+      // into it (`e = e.error().fallback`), and destroying first read a dead
+      // object (docs/AUDIT.md G.6, the expected sibling of variant's G.1 fix).
+      // A throw here leaves the state untouched.
+      T incoming(std::forward<Args>(args)...);
+      commit_value(static_cast<T&&>(incoming));
+    } else if constexpr (std::is_nothrow_constructible_v<T, Args&&...>) {
+      // A non-movable T cannot be built aside; aliasing the old member is a
+      // precondition violation here, as it is for std::expected.
       error_ptr()->~E();
       construct_value(std::forward<Args>(args)...);
-    } else if constexpr (std::is_nothrow_move_constructible_v<T>) {
-      // Build the new value first (may throw; error stays intact), then commit.
-      T tmp(std::forward<Args>(args)...);
-      error_ptr()->~E();
-      construct_value(static_cast<T&&>(tmp));
     } else {
 #if METL_NO_EXCEPTIONS
       error_ptr()->~E();
@@ -793,7 +801,7 @@ class expected {
       try {
         construct_value(std::forward<Args>(args)...);
       } catch (...) {
-        construct_error(static_cast<E&&>(backup));  // restore the error state
+        construct_error(static_cast<E&&>(backup));  // restore the previous state
         throw;
       }
 #endif
@@ -801,16 +809,43 @@ class expected {
     has_value_ = true;
   }
 
-  // Precondition: currently in the value state; switch to the error state.
+  // Replaces the old member with an already-built `incoming`. Only the move
+  // can throw now; if it does, the old member is restored from a backup.
+  void commit_value(T&& incoming) {
+    if constexpr (std::is_nothrow_move_constructible_v<T>) {
+      error_ptr()->~E();
+      construct_value(std::move(incoming));
+    } else {
+#if METL_NO_EXCEPTIONS
+      error_ptr()->~E();
+      construct_value(std::move(incoming));
+#else
+      E backup(static_cast<E&&>(*error_ptr()));
+      error_ptr()->~E();
+      try {
+        construct_value(std::move(incoming));
+      } catch (...) {
+        construct_error(static_cast<E&&>(backup));
+        throw;
+      }
+#endif
+    }
+  }
+
   template <typename... Args>
   void reinit_as_error(Args&&... args) {
-    if constexpr (std::is_nothrow_constructible_v<E, Args&&...>) {
+    if constexpr (std::is_move_constructible_v<E>) {
+      // Build the new error BEFORE touching the old member: `args` may refer
+      // into it (`e = e.value().code`), and destroying first read a dead
+      // object (docs/AUDIT.md G.6, the expected sibling of variant's G.1 fix).
+      // A throw here leaves the state untouched.
+      E incoming(std::forward<Args>(args)...);
+      commit_error(static_cast<E&&>(incoming));
+    } else if constexpr (std::is_nothrow_constructible_v<E, Args&&...>) {
+      // A non-movable E cannot be built aside; aliasing the old member is a
+      // precondition violation here, as it is for std::expected.
       value_ptr()->~T();
       construct_error(std::forward<Args>(args)...);
-    } else if constexpr (std::is_nothrow_move_constructible_v<E>) {
-      E tmp(std::forward<Args>(args)...);
-      value_ptr()->~T();
-      construct_error(static_cast<E&&>(tmp));
     } else {
 #if METL_NO_EXCEPTIONS
       value_ptr()->~T();
@@ -821,12 +856,35 @@ class expected {
       try {
         construct_error(std::forward<Args>(args)...);
       } catch (...) {
-        construct_value(static_cast<T&&>(backup));  // restore the value state
+        construct_value(static_cast<T&&>(backup));  // restore the previous state
         throw;
       }
 #endif
     }
     has_value_ = false;
+  }
+
+  // Replaces the old member with an already-built `incoming`. Only the move
+  // can throw now; if it does, the old member is restored from a backup.
+  void commit_error(E&& incoming) {
+    if constexpr (std::is_nothrow_move_constructible_v<E>) {
+      value_ptr()->~T();
+      construct_error(std::move(incoming));
+    } else {
+#if METL_NO_EXCEPTIONS
+      value_ptr()->~T();
+      construct_error(std::move(incoming));
+#else
+      T backup(static_cast<T&&>(*value_ptr()));
+      value_ptr()->~T();
+      try {
+        construct_error(std::move(incoming));
+      } catch (...) {
+        construct_value(static_cast<T&&>(backup));
+        throw;
+      }
+#endif
+    }
   }
 
   // Exception-safe cross-state swap: `v` holds a value, `e` holds an error.
@@ -835,6 +893,13 @@ class expected {
   // neither is left with a destroyed member under a stale discriminant.
   static void swap_value_error(expected& v, expected& e) noexcept(std::is_nothrow_move_constructible_v<T> &&
                                                                   std::is_nothrow_move_constructible_v<E>) {
+    // Both branches below end with one unguarded move. With one nothrow move a
+    // rollback is always possible; with two throwing moves the last step could
+    // fail after both originals are gone, leaving a destroyed member under a
+    // stale discriminant (docs/AUDIT.md G.6). std::expected::swap has the same
+    // requirement.
+    static_assert(std::is_nothrow_move_constructible_v<T> || std::is_nothrow_move_constructible_v<E>,
+                  "metl::expected::swap requires T or E to be nothrow move constructible");
     if constexpr (std::is_nothrow_move_constructible_v<E>) {
       E tmp(static_cast<E&&>(*e.error_ptr()));
       e.error_ptr()->~E();

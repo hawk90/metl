@@ -415,6 +415,9 @@ class fixed_vector {
 
   /// Inserts the elements in [first, last) before `pos`.
   /// @pre `pos` in [begin(), end()] and the range fits in the remaining capacity.
+  /// @pre [first, last) is not a range of this vector -- it is shifted or
+  ///      cleared before it is read (std::vector has the same precondition;
+  ///      docs/AUDIT.md G.6). Copy it out first.
   template <typename It, typename = std::enable_if_t<!std::is_integral_v<It>>>
   iterator insert(const_iterator pos, It first, It last) {
     METL_ASSERT(pos >= begin() && pos <= end());
@@ -549,14 +552,20 @@ class fixed_vector {
   /// @pre `n <= Capacity`; asserts otherwise.
   void assign(size_type n, const T& value) {
     METL_ASSERT(n <= Capacity);
+    // Copy first: `value` may be an element of this vector (`v.assign(3, v[0])`),
+    // which clear() destroys -- every copy then read a dead object (G.6).
+    const T copy(value);
     clear();
     for (size_type i = 0; i < n; ++i) {
-      emplace_back(value);
+      emplace_back(copy);
     }
   }
 
   /// Replaces the contents with the elements in [first, last).
   /// @pre The range fits within `Capacity`; asserts otherwise.
+  /// @pre [first, last) is not a range of this vector -- it is shifted or
+  ///      cleared before it is read (std::vector has the same precondition;
+  ///      docs/AUDIT.md G.6). Copy it out first.
   template <typename It, typename = std::enable_if_t<!std::is_integral_v<It>>>
   void assign(It first, It last) {
     clear();
@@ -581,29 +590,22 @@ class fixed_vector {
     for (size_type i = 0; i < common; ++i) {
       swap(data()[i], other.data()[i]);
     }
-    if (size_ < other.size_) {
-      // Move-construct tail from `other` into `this`, then shrink `other`.
-      for (size_type i = size_; i < other.size_; ++i) {
-        ::new (static_cast<void*>(slot_(i))) T(static_cast<T&&>(other.data()[i]));
+    if (size_ != other.size_) {
+      fixed_vector& shorter = (size_ < other.size_) ? *this : other;
+      fixed_vector& longer = (size_ < other.size_) ? other : *this;
+      const size_type old_shorter = shorter.size_;
+      // Move the tail across one element at a time, counting each into
+      // `shorter.size_` as soon as it exists. A throwing move then leaves each
+      // vector owning exactly the objects it holds; counting only after the
+      // loop leaked every element moved before the throw (docs/AUDIT.md G.6).
+      for (size_type i = old_shorter; i < longer.size_; ++i) {
+        ::new (static_cast<void*>(shorter.slot_(i))) T(static_cast<T&&>(longer.data()[i]));
+        ++shorter.size_;
       }
-      for (size_type i = other.size_; i > size_; --i) {
-        other.data()[i - 1].~T();
+      for (size_type i = longer.size_; i > old_shorter; --i) {
+        longer.data()[i - 1].~T();
       }
-      const size_type new_self = other.size_;
-      const size_type new_other = size_;
-      size_ = new_self;
-      other.size_ = new_other;
-    } else if (size_ > other.size_) {
-      for (size_type i = other.size_; i < size_; ++i) {
-        ::new (static_cast<void*>(other.slot_(i))) T(static_cast<T&&>(data()[i]));
-      }
-      for (size_type i = size_; i > other.size_; --i) {
-        data()[i - 1].~T();
-      }
-      const size_type new_self = other.size_;
-      const size_type new_other = size_;
-      size_ = new_self;
-      other.size_ = new_other;
+      longer.size_ = old_shorter;
     }
     asan_poison_tail_();
     other.asan_poison_tail_();

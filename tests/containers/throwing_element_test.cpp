@@ -21,6 +21,7 @@
 
 #include <metl/detail/ring_core.hpp>
 #include <metl/fixed_deque.hpp>
+#include <metl/fixed_priority_queue.hpp>
 #include <metl/fixed_vector.hpp>
 #include <metl/flat_map.hpp>
 #include <metl/flat_set.hpp>
@@ -91,6 +92,26 @@ struct armed {
   ~armed() { retire(this); }
   bool operator<(const armed& o) const { return value < o.value; }
   bool operator==(const armed& o) const { return value == o.value; }
+};
+
+// Like `armed`, but its move can throw and it cannot be move-assigned, which
+// sends flat_map / flat_set down their construct-and-destroy shift path.
+struct pinned_armed {
+  int value;
+
+  explicit pinned_armed(int v = 0) : value(v) { enroll(this); }
+  pinned_armed(const pinned_armed& o) : value(o.value) {
+    tick();
+    enroll(this);
+  }
+  pinned_armed(pinned_armed&& o) noexcept(false) : value(o.value) {
+    tick();
+    enroll(this);
+  }
+  pinned_armed& operator=(const pinned_armed&) = delete;
+  pinned_armed& operator=(pinned_armed&&) = delete;
+  ~pinned_armed() { retire(this); }
+  bool operator<(const pinned_armed& o) const { return value < o.value; }
 };
 
 struct armed_hash {
@@ -201,6 +222,100 @@ int main() {
       } else {
         CHECK(set.empty());
       }
+    }
+    CHECK_EQ(g_live, 0);
+    CHECK_EQ(g_double_destroys, 0);
+  }
+
+  // ---- G.6: fixed_vector::swap with unequal sizes, tail move throwing -------
+  for (int direction = 0; direction < 2; ++direction) {
+    g_live = 0;
+    g_double_destroys = 0;
+    {
+      metl::fixed_vector<armed, 8> shorter;
+      metl::fixed_vector<armed, 8> longer;
+      shorter.emplace_back(1);
+      for (int i = 0; i < 5; ++i) {
+        longer.emplace_back(10 + i);
+      }
+      // Swapping the one common element costs three operations (a move and two
+      // move-assignments); the next two tail moves succeed and the third throws.
+      g_countdown = 5;
+      bool threw = false;
+      try {
+        if (direction == 0) {
+          shorter.swap(longer);
+        } else {
+          longer.swap(shorter);
+        }
+      } catch (int) {
+        threw = true;
+      }
+      g_countdown = -1;
+      CHECK(threw);
+    }
+    CHECK_EQ(g_live, 0);  // used to leak the two elements moved before the throw
+    CHECK_EQ(g_double_destroys, 0);
+  }
+
+  // ---- G.6: flat_map / flat_set with a non-move-assignable element ---------
+  for (int which = 0; which < 2; ++which) {
+    g_live = 0;
+    g_double_destroys = 0;
+    {
+      metl::flat_map<int, pinned_armed, 8> map;
+      metl::flat_set<pinned_armed, 8> set;
+      for (int i = 1; i <= 5; ++i) {
+        map.emplace(i * 10, pinned_armed(i));
+        set.emplace(pinned_armed(i * 10));
+      }
+      g_countdown = 3;
+      bool threw = false;
+      try {
+        if (which == 0) {
+          map.emplace(0, pinned_armed(0));
+        } else {
+          set.emplace(pinned_armed(0));
+        }
+      } catch (int) {
+        threw = true;
+      }
+      g_countdown = -1;
+      CHECK(threw);
+      CHECK(which == 0 ? map.empty() : set.empty());
+    }
+    CHECK_EQ(g_live, 0);
+    CHECK_EQ(g_double_destroys, 0);
+  }
+
+  // ---- G.6: fixed_priority_queue keeps its heap order or empties ----------
+  {
+    g_live = 0;
+    g_double_destroys = 0;
+    {
+      metl::fixed_priority_queue<armed, 16> queue;
+      for (int i = 1; i <= 7; ++i) {
+        queue.push(armed(i));
+      }
+      g_countdown = 3;  // throws inside the sift
+      bool threw = false;
+      try {
+        queue.push(armed(100));
+      } catch (int) {
+        threw = true;
+      }
+      g_countdown = -1;
+      CHECK(threw);
+      // Either empty, or every pop comes out in non-increasing order.
+      int previous = 1 << 30;
+      bool ordered = true;
+      while (!queue.empty()) {
+        const int top = queue.top().value;
+        ordered = ordered && top <= previous;
+        previous = top;
+        queue.pop();
+      }
+      CHECK(ordered);
     }
     CHECK_EQ(g_live, 0);
     CHECK_EQ(g_double_destroys, 0);
