@@ -38,8 +38,63 @@ jobs:
   # fails in ~3 min instead of spinning up the full cross-compile/sanitizer fleet
   # (fail-fast + cheaper CI). Intentionally a single fast Debug build+test.
   # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # What changed. A pull request that touches only Markdown (and LICENSE) runs
+  # the documentation gate here and skips every build: #105 was docs-only and
+  # still ran all 61 jobs. Anything else -- a header, a test, a workflow,
+  # docs/Doxyfile.in -- is CODE and runs everything. A push to main always runs
+  # everything, so main is validated in full regardless.
+  #
+  # ci-gate accepts `skipped` ONLY when this job succeeded and reported
+  # code=false; otherwise a skip is still a failure, exactly as before.
+  # ---------------------------------------------------------------------------
+  changes:
+    name: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          fetch-depth: 0
+
+      - name: Classify the change
+        id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ "${EVENT}" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "not a pull request: running everything"
+            exit 0
+          fi
+          changed="$(git diff --name-only "${BASE}...HEAD")"
+          printf 'changed files:\n%s\n' "${changed}"
+          # Code unless EVERY path is Markdown or LICENSE. An empty diff counts
+          # as code, so a classification failure can only ever run more. A
+          # here-string, not a pipe: under pipefail, `grep -q` exiting early can
+          # SIGPIPE the writer and turn "found code" into a failed pipeline,
+          # which the `!` would then read as documentation-only.
+          if [ -n "${changed}" ] && ! grep -qvE '(\.md|^LICENSE)$' <<< "${changed}"; then
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "documentation-only change: builds will be skipped"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Documentation gate (documentation-only changes)
+        # The same check api-contract runs, which is skipped on this path.
+        if: steps.classify.outputs.code == 'false'
+        run: tools/check_docs.py
+
   preflight:
     name: preflight
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -2196,6 +2251,7 @@ jobs:
   ci-gate:
     name: ci-gate
     needs:
+      - changes
       - preflight
       - host-test
       - release-werror
@@ -2233,6 +2289,8 @@ jobs:
     steps:
       # `skipped` and `cancelled` are failures here. When preflight dies every
       # other job is skipped, and that must not read as thirty successes.
+      # The one exception: `changes` succeeded and classified the PR as
+      # documentation-only, which is the only path that skips on purpose.
       - name: Every job must have succeeded
         env:
           RESULTS: ${{ toJSON(needs) }}
@@ -2248,8 +2306,15 @@ jobs:
               sys.exit(f"::error::ci-gate is watching {len(results)} job(s), "
                        f"expected at least 30. Was a needs: entry deleted?")
 
+          changes = results.get("changes", {})
+          docs_only = (changes.get("result") == "success"
+                       and changes.get("outputs", {}).get("code") == "false")
+          allowed = {"success", "skipped"} if docs_only else {"success"}
+          if docs_only:
+              print("documentation-only change: skipped builds are expected")
           bad = {name: r["result"] for name, r in results.items()
-                 if r["result"] != "success"}
+                 if r["result"] not in allowed
+                 or (name == "changes" and r["result"] != "success")}
           for name, result in sorted(bad.items()):
               print(f"::error::{name}: {result}")
           if bad:
