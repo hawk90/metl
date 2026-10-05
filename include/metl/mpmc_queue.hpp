@@ -165,6 +165,8 @@ class mpmc_queue {
   }
 
   /// Copy-enqueues an element if a slot is available.
+  /// @note `noexcept`: a `T` whose copy constructor throws terminates the
+  ///       program here (docs/AUDIT.md G.6).
   METL_NODISCARD bool try_push(const T& value) noexcept { return try_emplace(value); }
 
   /// Move-enqueues an element if a slot is available.

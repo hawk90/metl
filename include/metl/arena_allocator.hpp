@@ -6,7 +6,7 @@
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
 ///   | `allocate`, `try_emplace`, `emplace`, `mark` | wait-free, bounded |
-///   | `rewind`, `reset` | wait-free, bounded by the records above the mark |
+///   | `rewind`, `reset`, destructor | wait-free, bounded by the records above the mark |
 ///
 /// An allocation is a pointer bump plus one fixed-size record write, so its cost
 /// does not depend on how much is already allocated. `rewind` walks those records
@@ -49,6 +49,21 @@ class arena_allocator {
 
   /// @brief Construct an empty arena with all storage available.
   constexpr arena_allocator() noexcept : offset_(0), storage_{} {}
+
+  /// @brief Destroys every object still in the arena (`reset()`), newest first.
+  /// @note Before 2026-10-05 the arena had no destructor: objects created by
+  ///       `try_emplace` were never destroyed unless the caller reset it, and an
+  ///       owning `T` leaked (docs/AUDIT.md G.6).
+  ~arena_allocator() { reset(); }
+
+  // Not copyable or movable. The destroy records point into this object's own
+  // storage, so a copy carried live objects' records into a second arena and
+  // each reset() ran the same destructors again -- object_pool, handle_pool and
+  // the queues delete these for the same reason (G.6).
+  arena_allocator(const arena_allocator&) = delete;
+  arena_allocator& operator=(const arena_allocator&) = delete;
+  arena_allocator(arena_allocator&&) = delete;
+  arena_allocator& operator=(arena_allocator&&) = delete;
 
   /// @brief Capture the current allocation position for a later `rewind`.
   /// @return A savepoint referring to the current top of the arena.

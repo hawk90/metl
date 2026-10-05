@@ -20,9 +20,13 @@
 #include <csetjmp>
 
 #include <metl/assert.hpp>
+#include <metl/fixed_deque.hpp>
+#include <metl/fixed_queue.hpp>
 #include <metl/fixed_stack.hpp>
 #include <metl/fixed_vector.hpp>
 #include <metl/monotonic_buffer.hpp>
+#include <metl/ring_buffer.hpp>
+#include <metl/static_message_queue.hpp>
 
 namespace {
 
@@ -90,6 +94,42 @@ int main() {
     void* ok = buffer.allocate(4, 4);
     CHECK(!g_fired);
     CHECK(ok != nullptr);
+  }
+
+  // Empty pops on the ring containers (G.6): destroyed a dead slot and wrapped
+  // size_ to SIZE_MAX; a fixed_queue destructor then looped ~2^64 times.
+  {
+    metl::ring_buffer<int, 4> ring;
+    g_fired = false;
+    if (setjmp(g_jump) == 0) {
+      ring.pop_front();
+    }
+    CHECK(g_fired);
+    CHECK_EQ(ring.size(), 0u);
+
+    metl::fixed_deque<int, 4> deque;
+    g_fired = false;
+    if (setjmp(g_jump) == 0) {
+      deque.pop_back();
+    }
+    CHECK(g_fired);
+    CHECK_EQ(deque.size(), 0u);
+
+    metl::fixed_queue<int, 4> queue;
+    g_fired = false;
+    if (setjmp(g_jump) == 0) {
+      queue.pop();
+    }
+    CHECK(g_fired);
+    CHECK_EQ(queue.size(), 0u);
+
+    metl::static_message_queue<int, 4> messages;
+    g_fired = false;
+    if (setjmp(g_jump) == 0) {
+      messages.pop();
+    }
+    CHECK(g_fired);
+    CHECK_EQ(messages.size(), 0u);
   }
 
   return metl_test::exit_code();

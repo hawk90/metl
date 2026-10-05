@@ -206,7 +206,7 @@ if(METL_BUILD_TESTS)
     # core/  (assert/compiler + the METL_HARDENING level checks + smoke)
     core/assert core/compiler core/smoke core/ram_footprint
     core/hardening_none core/hardening_fast core/hardening_debug
-    core/harden_floor_none core/harden_floor_memory core/low_findings
+    core/harden_floor_none core/harden_floor_memory core/low_findings core/audit_g6
   )
 
   foreach(_t IN LISTS _metl_tests)

@@ -58,6 +58,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Third review pass** (docs/AUDIT.md G.6):
+  - empty `pop` on `ring_buffer`/`fixed_deque`/`fixed_queue`/`static_message_queue`
+    at `METL_HARDENING_NONE` corrupted the container (now `METL_HARDEN`);
+  - `fixed_vector::swap` leaked on a throwing move; `assign(n, v[0])` copied a
+    destroyed element;
+  - `expected` read a destroyed member when switching state from an argument
+    that pointed into it;
+  - the non-assignable `flat_map`/`flat_set` shift still double-destroyed on a
+    throw; `fixed_priority_queue` lost its heap order on one (now cleared).
+- **`arena_allocator` now destroys its remaining objects in its destructor, and
+  is no longer copyable or movable** (a copy ran every destructor twice). Code
+  that copied an arena stops compiling; code that relied on objects *not* being
+  destroyed at end of scope changes behaviour.
+- **`expected::swap` requires `T` or `E` to be nothrow move constructible**, as
+  `std::expected::swap` does: with two throwing moves no rollback is possible.
 - **Exception safety of the containers** (docs/AUDIT.md G.5; exceptions-enabled
   builds only). A copy or move constructor of `fixed_vector`, `ring_buffer`,
   `fixed_deque`, `flat_map`, `flat_set`, `static_unordered_map`,
