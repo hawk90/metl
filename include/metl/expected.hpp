@@ -9,7 +9,8 @@
 ///   | `and_then`, `or_else`, `transform`, `transform_error` | bounded by the callable you pass |
 ///
 /// `expected` holds one `T` or one `E` inline and switches between them by
-/// destroying one and constructing the other, so every operation is a fixed number
+/// constructing the new member before destroying the old one (so a throwing
+/// constructor leaves the old state), so every operation is a fixed number
 /// of steps plus whatever `T` and `E` cost. There is no loop and no allocation.
 ///
 /// The monadic operations add one call; their bound is the bound of the callable,
@@ -521,6 +522,7 @@ class expected {
   // ---- swap ----------------------------------------------------------------
 
   /// @brief Swaps contents and state with another expected (exception-safe).
+  /// @pre `T` or `E` is nothrow move constructible (static_assert).
   void swap(expected& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
                                       std::is_nothrow_move_constructible_v<E> &&
                                       std::is_nothrow_move_assignable_v<T> &&

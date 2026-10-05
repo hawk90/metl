@@ -6,6 +6,7 @@
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
 ///   | `hash_mix`, hashing an integral, enum, or pointer | wait-free, bounded |
+///   | hashing a character range (`fixed_string`, `span<const char>`) | wait-free, bounded by `size()` |
 ///   | hashing an object by its bytes | wait-free, bounded by `sizeof(T)` |
 ///   | hashing a `const char*` | **bounded by the caller's NUL, not by METL** |
 ///

@@ -22,8 +22,9 @@ namespace metl {
 /// @brief Compile-time bitfield packed into an unsigned integer for register-style access.
 /// @tparam Lsb Bit position of the field's least significant bit within the storage word.
 /// @tparam Width Field width in bits; must be > 0.
-/// @tparam T Unsigned integral storage type (defaults to `std::uint32_t`).
-/// @pre `T` is unsigned integral, `Width > 0`, and `Lsb + Width <= sizeof(T) * 8` (enforced by
+/// @tparam T Unsigned integral storage type, not `bool` (defaults to `std::uint32_t`).
+/// @pre `T` is unsigned integral other than `bool`, `Width > 0`, and `Lsb + Width <= sizeof(T) * 8` (enforced
+/// by
 ///      static_assert).
 /// @note All operations are constexpr and heap-free, so the mask and shifted values fold to
 ///       immediates in optimized code.

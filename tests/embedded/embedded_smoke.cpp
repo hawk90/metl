@@ -124,7 +124,7 @@ static_assert(smoke_bitfield::width == 4, "bitfield width");
 static_assert(metl::cxx_standard >= 201703L, "compiler.hpp cxx_standard");
 
 // config.hpp -- inline constexpr.
-static_assert(metl::version_major == 0, "config.hpp version_major");
+static_assert(metl::version_major >= 1, "config.hpp version_major");
 
 // crc8/16/32.hpp -- exercise template instantiation; bind results to ODR-used
 // inline constexprs so the compiler emits the functions and walks the body.
@@ -296,7 +296,7 @@ static_assert(sizeof(metl::storage_for<int>) >= sizeof(int), "type_traits.hpp st
 [[maybe_unused]] metl::variant<int, char> _variant{0};
 
 // version.hpp
-static_assert(metl::version::major == 0, "version.hpp major");
+static_assert(metl::version::major == metl::version_major, "version.hpp major");
 
 }  // namespace
 

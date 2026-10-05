@@ -9,13 +9,15 @@ memory-corruption path is treated as a security issue.
 
 ## Supported versions
 
-metl is pre-1.0 and ships from a single line of development.
+metl follows Semantic Versioning from 1.0.0 and ships from a single line of
+development: security fixes land on `main` and in the next release of the
+current major version.
 
-| Version        | Supported                          |
-| -------------- | ---------------------------------- |
-| `main` (HEAD)  | ✅ Yes — fixes land here first     |
-| latest `0.1.x` | ✅ Yes                             |
-| older tags     | ❌ No — please upgrade             |
+| Version          | Supported                                    |
+| ---------------- | -------------------------------------------- |
+| `main` (HEAD)    | ✅ Yes — fixes land here first               |
+| latest `1.x`     | ✅ Yes                                       |
+| `0.1.0-alpha*`   | ❌ No — pre-releases; please upgrade to 1.x  |
 
 Because metl is header-only, "patching" is upgrading the vendored headers; there
 are no binary artifacts to rebuild or redistribute.
@@ -99,7 +101,10 @@ that is what everything else in this document and in CI is for.
 
 - **Every GitHub Action is pinned to a commit SHA**, not a tag. A tag can be
   moved; a SHA cannot.
-- **Renovate** proposes action updates weekly, grouped into one PR.
+- **Renovate** proposes updates weekly: action SHAs, and the clang-format,
+  Zephyr and ESP-IDF pins. Non-major updates merge automatically once CI is
+  green; major ones wait for approval on the dependency dashboard; security
+  alerts arrive whenever they are published.
 - **CodeQL** runs on every push and PR, and weekly so a newly published query
   finds the code without waiting for a commit.
 - **OpenSSF Scorecard** runs weekly against this repository. Its results go to
@@ -123,7 +128,7 @@ metl is continuously exercised for memory safety:
   nightly run had been discarding its corpus for its entire history.
 - **OSS-Fuzz — not submitted, and not "pending".** OSS-Fuzz's stated bar is that
   a project "must have a significant user base and/or be critical to the global
-  IT infrastructure". METL is pre-1.0 with no known dependents, so it does not
+  IT infrastructure". METL has only just reached 1.0 and has no known dependents, so it does not
   meet that bar, and the honest thing is to say so rather than leave it on a
   list as if it were queued. The build wiring is ready and is exercised on every
   PR; the project is not. Revisit when there are users to point at.

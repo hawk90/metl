@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-05
+
+The first stable release. From here on METL follows Semantic Versioning: the
+public API -- every header under `include/metl/` except `detail/`, everything in
+namespace `metl` except `metl::detail`, and the documented `METL_*`
+configuration macros -- changes incompatibly only in a new major version.
+Hash *values* are not part of that promise (see `fnv1a_hash` below).
+
+**Highlights since 0.1.0-alpha2.** Three whole-tree reviews (docs/AUDIT.md
+Section G) found and fixed about sixty defects -- aliasing, exception safety,
+hashing, `noexcept` paths that terminated the program, memory safety at
+`METL_HARDENING_NONE` -- each with a regression test that failed first. The
+contiguous containers are now well-defined C++17 (E.2). Every container's
+iterator-invalidation rules are documented in `docs/CHOOSING.md`.
+
+### Upgrading from 0.1.0-alpha2
+
+Changes that can break or alter existing code -- loud ones (compile errors,
+asserts) first:
+
+- **Compile errors:** copying or moving an `arena_allocator`;
+  `expected::swap` when neither `T` nor `E` is nothrow-movable;
+  `fixed_function` / `fixed_any_invocable` storing a callable whose move can
+  throw; `bitfield<..., bool>` and the mmio bit helpers on `bool`;
+  `static_message_queue<T, 0>`; `bit.hpp` functions on types wider than 64 bits.
+- **New asserts:** `fixed_vector::insert(pos, first, last)` / `assign(first, last)`
+  with the vector's own range; a null function pointer of a converting
+  signature stored in `fixed_function`; empty pops and a full positional
+  `emplace` now trip `METL_HARDEN` even at `METL_HARDENING_NONE`.
+- **Silent changes:** `o = {}` on a scalar `optional` now resets it;
+  `fnv1a_hash` values changed (recompute anything persisted); the unordered
+  containers rebuild on inserting a new key instead of on erase, so a pointer
+  from `find` held across such an insert can now dangle; `arena_allocator`
+  destroys its remaining objects when it goes out of scope; a throwing
+  constructor during `emplace` now leaves the old value in place.
+- **`noexcept` answers changed:** lookups of the flat and unordered containers,
+  `spsc_queue`/`mpmc_queue` pushes, `lookup_table` lookups and
+  `fixed_priority_queue::pop` are `noexcept` only when the user code they call
+  cannot throw; `fsm::dispatch` is no longer `noexcept`.
+
 ### Changed
 
 - **User code that throws no longer terminates the program behind a `noexcept`**

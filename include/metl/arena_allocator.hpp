@@ -6,7 +6,8 @@
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
 ///   | `allocate`, `try_emplace`, `emplace`, `mark` | wait-free, bounded |
-///   | `rewind`, `reset`, destructor | wait-free, bounded by the records above the mark |
+///   | `rewind`, `reset` | wait-free, bounded by the records above the mark |
+///   | destructor | wait-free, bounded by every remaining record |
 ///
 /// An allocation is a pointer bump plus one fixed-size record write, so its cost
 /// does not depend on how much is already allocated. `rewind` walks those records

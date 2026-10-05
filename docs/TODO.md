@@ -59,7 +59,7 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   OSS-Fuzz's stated bar is that a project "must have a significant user base
   and/or be critical to the global IT infrastructure"
   ([accepting new projects](https://google.github.io/oss-fuzz/getting-started/accepting-new-projects/)).
-  METL is pre-1.0 with no known dependents, so it does not meet that bar today,
+  METL has only just reached 1.0 and has no known dependents, so it does not meet that bar today,
   and submitting anyway spends a reviewer's time on an answer that is already
   knowable. Two mechanical gaps remain for whenever it does qualify:
   `.clusterfuzzlite/project.yaml` lacks the `homepage` and `primary_contact`
@@ -138,6 +138,12 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   breaks the thing the pin is for.
 
 ### 📦 Distribution / adoption
+- [x] **1.0.0** — 2026-10-05. The first stable release: Semantic Versioning from
+  here, with the public API defined in README "Status". The version now lives in
+  three places that are checked against each other on every CI run
+  (`project(VERSION)`, `metl::version_*` via `tests/core/version_test.cpp`, and
+  the ESP-IDF manifest at CMake configure time) instead of only CMake against
+  the tag at release time.
 - [x] **First release** — `v0.1.0-alpha2`, 2026-08-21. Pre-release (the hyphen
   makes `release.yml` pass `--prerelease` on its own), with
   `metl-0.1.0-single.hpp` attached and attested. The version check compares the
@@ -412,7 +418,7 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   (which the library itself still may not touch — the `invariants` job would
   catch that). The claim in `replay_main.cpp` was corrected to say so rather than
   left overstated.
-- [ ] README badges (add a docs/Pages badge; CI + license already present).
+- [ ] README badges (add a docs/Pages badge; CI + license + release already present).
 - [x] **Release automation** (2026-08-20) — `tools/amalgamate.py` flattens the
   public headers into one file; `.github/workflows/release.yml` turns a `vX.Y.Z`
   tag into a GitHub Release with that file attached and the matching CHANGELOG
@@ -505,7 +511,9 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   `fixed_string` eight; `span`, `variant` and `expected` gained the runtime and
   short-circuit coverage they lacked.
 - [ ] C++20-constexpr conversion of `expected` / `variant` / `fixed_vector` /
-  `flat_map` (helper `detail/construct.hpp` is in place). Optional backlog, not a
+  `flat_map` (helper `detail/construct.hpp` is in place; `detail/array_storage.hpp`,
+  which the contiguous containers now use, is not constant-evaluable and would
+  have to be bypassed). Optional backlog, not a
   blocker: the C++17 baseline stays, and #36 established that the C++20 arm
   builds and passes. Recommended order — `expected`, `variant`, `fixed_vector`,
   `flat_map`/`flat_set` — one PR each, verifying size, alignment,

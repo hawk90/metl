@@ -38,7 +38,7 @@ need one, see the driver section below.
 | You want | Use | Trade-off |
 |---|---|---|
 | Small table, sorted iteration, or `<` is all you have | [`flat_map`](../include/metl/flat_map.hpp) / [`flat_set`](../include/metl/flat_set.hpp) | O(log n) lookup, **O(n) insert** (shifts). Iterates in key order. |
-| Bigger table, hashing available, order does not matter | [`static_unordered_map`](../include/metl/static_unordered_map.hpp) / [`static_unordered_set`](../include/metl/static_unordered_set.hpp) | O(1) lookup, **unspecified iteration order**, tombstones on erase |
+| Bigger table, hashing available, order does not matter | [`static_unordered_map`](../include/metl/static_unordered_map.hpp) / [`static_unordered_set`](../include/metl/static_unordered_set.hpp) | O(1) lookup, **unspecified iteration order**, tombstones on erase, reclaimed by an occasional in-place rebuild on a new-key insert (which invalidates all iterators) |
 | A handful of entries fixed at compile time | [`lookup_table<K, V, N>`](../include/metl/lookup_table.hpp) | Immutable, linear scan — usually `constexpr`, and smaller than either map |
 
 > **`flat_map::operator[]` and `at()` take a POSITION, not a key** — the opposite
@@ -101,8 +101,8 @@ is narrower than `std`, but not empty, and the cases differ by container:
 | Container | Never invalidates | Invalidates |
 |---|---|---|
 | `fixed_vector`, `fixed_string` | `push_back` / `emplace_back` / `append`: everything except `end()` | `insert` / `emplace` / `erase` at `pos`: iterators, pointers and references **at and after `pos`** (those elements shift). `pop_back`: the last element and `end()`. `clear` / `assign`: all. |
-| `flat_map`, `flat_set` | lookups; assigning to an existing key's value | inserting a new key or `erase`: **at and after** its position (the array shifts). `clear`: all. |
-| `static_unordered_map`, `static_unordered_set` | lookups; assigning to an existing key; **`erase`** (only the erased element) | inserting a **new** key: **all iterators, pointers and references** -- the tombstone rebuild runs there. This is the open-addressing rule (`absl::flat_hash_map`, `boost::unordered_flat_map`); node-based `std::unordered_map` keeps references across a rehash, these tables cannot. `clear`: all. |
+| `flat_map`, `flat_set` | lookups; assigning to an existing key's value | inserting a new key or `erase`: **at and after** its position (the array shifts). `clear`: all. With exceptions on, a throw during the shift or `erase` clears the container: all. |
+| `static_unordered_map`, `static_unordered_set` | lookups; assigning to an existing key; **`erase`** (only the erased element) | inserting a **new** key: **all iterators, pointers and references** -- the tombstone rebuild runs there. This is the open-addressing rule (`absl::flat_hash_map`, `boost::unordered_flat_map`); node-based `std::unordered_map` keeps references across a rehash, these tables cannot. `clear`: all. With exceptions on, a hasher that throws during the rebuild empties the table: all. |
 | `ring_buffer`, `fixed_deque` | pointers and references to an element, until that element is popped (storage never moves) | **iterators are positions** (an index from the front): after `pop_front` / `push_front` the same iterator names a different element, so treat every iterator as invalidated. `push_back` invalidates only `end()`. `push_overwrite` on a full ring is a `pop_front` plus a `push_back`. |
 | `fixed_queue`, `fixed_stack`, `fixed_priority_queue` | -- | no iterators. A `front()` / `top()` reference survives pushes on `fixed_queue` and `fixed_stack` until its element is popped; on `fixed_priority_queue` any `push` or `pop` invalidates it (the heap reorders). |
 
@@ -136,7 +136,7 @@ METL has `guarded<T, Lock>` instead of locking containers; see
 | The same, but a stale reference must be **detectable** | [`handle_pool<T, N>`](../include/metl/handle_pool.hpp) | Per object; a freed handle resolves to `nullptr` instead of a recycled object |
 | Scratch memory for one tick, thrown away wholesale | [`monotonic_buffer<N>`](../include/metl/monotonic_buffer.hpp) | Only in bulk, via `reset()` |
 | The same, but typed | [`static_allocator<T, N>`](../include/metl/static_allocator.hpp) | Only in bulk |
-| Nested scratch that unwinds in LIFO order, running destructors | [`arena_allocator<N>`](../include/metl/arena_allocator.hpp) | `mark()` / `rewind()` |
+| Nested scratch that unwinds in LIFO order, running destructors | [`arena_allocator<N>`](../include/metl/arena_allocator.hpp) | `mark()` / `rewind()`, `reset()`, and its destructor; not copyable or movable |
 | Shared ownership of a long-lived object | [`intrusive_ptr<T>`](../include/metl/intrusive_ptr.hpp) | Refcount in the object itself — no control block, no allocation |
 
 A handle is a [`versioned_handle`](../include/metl/versioned_handle.hpp): four
@@ -158,7 +158,7 @@ runs that difference and prints it; the design argument is
 |---|---|---|
 | A **parameter** that takes any callable | [`function_ref<Sig>`](../include/metl/function_ref.hpp) | No — 2 words. Binds **lvalues only**, so a temporary cannot dangle |
 | A stored callback to a method on an object you own | [`delegate<Sig>`](../include/metl/delegate.hpp) | No — 2 words. The method is a template parameter, so there is no indirection |
-| A callable that must outlive the expression that made it | [`fixed_function<Sig, N>`](../include/metl/fixed_function.hpp) | **Yes** — N bytes inline; a capture that does not fit is a compile error, never a heap allocation |
+| A callable that must outlive the expression that made it | [`fixed_function<Sig, N>`](../include/metl/fixed_function.hpp) | **Yes** — N bytes inline; a capture that does not fit, or whose move can throw, is a compile error, never a heap allocation |
 | A fixed list of listeners notified together | [`event_dispatcher<Sig, N>`](../include/metl/event_dispatcher.hpp) | No — holds delegates |
 | Cleanup that must run on every exit path | [`scope_exit`](../include/metl/scope_exit.hpp) | Yes; the callable must be `noexcept` |
 
