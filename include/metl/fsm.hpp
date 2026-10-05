@@ -110,11 +110,13 @@ class fsm {
   ///       skipped, and this call's entry hook is skipped because the machine
   ///       has moved on. `a -> b` whose action dispatches `b -> c` runs
   ///       `exit a, enter c`.
-  /// @note `noexcept`: transition actions and entry/exit hooks run inside it, so
-  ///       one that throws terminates the program (docs/AUDIT.md G.6).
+  /// @note Not `noexcept`: an action or hook that throws propagates out of
+  ///       `dispatch` (it used to terminate the program, docs/AUDIT.md G.7). The
+  ///       new state is already committed by then and has not been entered, so
+  ///       a later dispatch out of it skips its exit hook.
   /// @pre Not called from an exit hook. The state being left is still current
   ///      there, so a dispatch would exit it twice; an entry hook may dispatch.
-  METL_NODISCARD bool dispatch(Event event) noexcept {
+  METL_NODISCARD bool dispatch(Event event) {
     const transition_type* transition = find_transition(current_state_, event);
     if (transition == nullptr) {
       return false;

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **User code that throws no longer terminates the program behind a `noexcept`**
+  (docs/AUDIT.md G.7): `spsc_queue`/`mpmc_queue` `try_emplace`/`try_push(const T&)`
+  and `lookup_table`'s lookups are `noexcept` only when the type's operations are
+  (`mpmc_queue` now constructs a throwing element before claiming a slot, so a
+  throw cannot stall consumers); `fsm::dispatch` is no longer `noexcept`; the
+  unordered containers skip the tombstone rebuild for elements whose move can
+  throw. **`fixed_function` / `fixed_any_invocable` reject a callable whose move
+  can throw** (compile error) -- the wrapper's own moves are `noexcept`.
 - **CI** (no library change): runners pinned to `ubuntu-24.04` (`zephyr` moved
   off `ubuntu-22.04` too; it runs inside the Zephyr CI container), `macos-26` (the
   `macos-14` image is deprecated, with brownouts from 2026-10-05) and

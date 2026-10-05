@@ -704,7 +704,7 @@ count hides a leak and a double destroy that cancel. Everything was reproduced.
 | MED* | `expected::swap` with both moves throwing | the last move was unguarded; a throw left a destroyed member under a stale discriminant. No rollback exists once both originals are gone. | ✅ `static_assert(nothrow T or E move)` -- `std::expected::swap`'s own requirement; compile-fail fixture |
 | LOW* | `fixed_priority_queue` push / emplace / pop / erase_if | a throw mid-sift left the heap unordered (later pops out of order). | ✅ cleared before rethrowing, as `flat_map`. **Follow-up (external review):** `pop()` stayed `noexcept` on move-assignment alone although the sift also move-constructs and calls the comparator, so a throw there terminated before the clear could run; its `noexcept` now covers all three, with the standard comparators on a scalar `T` counted as non-throwing so `pop()` on an `int` queue keeps it |
 | LOW* | `static_unordered_*::place_at` | the tombstone count was decremented before the constructor; each failed insert onto one tombstone decremented again, so it wrapped. Only the rebuild timing was affected. | ✅ decremented after construction |
-| DOC | `noexcept` paths that run user code: the unordered rebuild, moving `fixed_function`/`fixed_any_invocable`, `fsm::dispatch`, `lookup_table`, `spsc`/`mpmc` `try_push(const T&)` | a throwing `T` terminates there. A `static_assert` on nothrow moves would stop every type whose move constructor is merely not *declared* `noexcept` from compiling -- a loud break for a hazard only exceptions-enabled builds can reach. | 📝 `@note` at each |
+| DOC→FIX | `noexcept` paths that run user code: the unordered rebuild, moving `fixed_function`/`fixed_any_invocable`, `fsm::dispatch`, `lookup_table`, `spsc`/`mpmc` `try_push(const T&)` | a throwing `T` terminated there. First documented only, on the grounds that a blanket `static_assert` would be a loud break; each turned out to have a fix that breaks nothing it should not. | ✅ fixed in G.7 |
 | DOC | `fixed_vector` range insert/assign from itself; `optional`/`variant`/`expected` `emplace` from their own member | the same undefined behaviour as `std`. | 📝 `@pre` at each |
 
 \* exceptions-enabled builds only.
@@ -723,6 +723,34 @@ blocks added to `tests/containers/throwing_element_test.cpp` (host only) and
 `tests/compile_fail/expected_swap_two_throwing_moves.cpp`. Each was run against
 the unfixed headers and failed. The tombstone-count fix has no direct test: the
 count is private and only moves the rebuild's timing.
+
+### G.7 — The `noexcept` paths, fixed rather than documented
+
+G.6 left five `noexcept` functions that run user code documented, not fixed,
+because the obvious fix -- `static_assert` on nothrow moves everywhere -- would
+stop every type whose move constructor is merely not *declared* `noexcept` from
+compiling. Each one turned out to have a narrower fix:
+
+| Where | Fix | Why this one |
+|---|---|---|
+| `spsc_queue::try_emplace`, `try_push(const T&)` | `noexcept` made conditional on `T`'s constructor | construction happens before the tail is published, so a throw leaves nothing to undo |
+| `mpmc_queue::try_emplace`, `try_push(const T&)` | conditional `noexcept`; a constructor that can throw runs **before** a ticket is claimed, then the (nothrow, already asserted) move goes into the slot | constructing after the claim would leave a claimed slot that is never published, stalling every consumer behind it -- dropping `noexcept` alone would have turned a terminate into a hang |
+| `lookup_table` constructor, `find`, `contains`, `value_or`, `make_lookup_table` | `noexcept` conditional on `Key`'s `==` and the copies involved | nothing to undo: they only read |
+| `fsm::dispatch` | no longer `noexcept` | an action or hook that throws propagates; the committed-but-not-entered state is consistent with the G.3 chaining rule |
+| `static_unordered_map`/`set` rebuild | runs only when the element's move cannot throw; otherwise tombstones are never reclaimed (lookups stay bounded, misses slower) | an in-place rebuild cannot be undone half way, so it must not start when it can fail. The hasher is deliberately not part of the condition: requiring `noexcept` on it would silently switch the reclaim off for every hasher that just omits the keyword |
+| `fixed_function`, `fixed_any_invocable` | `static_assert` that the stored callable is nothrow move constructible, in the public `try_assign` | the wrapper is type-erased and cannot make its own `noexcept` depend on what it holds; dropping it would break every container that requires a nothrow-movable element. Lambdas move without throwing unless a capture does |
+
+**Behaviour changes.** `noexcept(q.try_push(x))`, `noexcept(table.find(k))` and
+`noexcept(fsm.dispatch(e))` now report `false` for types that can throw (code
+that static_asserted the old answer stops compiling -- loud). Storing a callable
+with a throwing move in `fixed_function` is a compile error (loud, two new
+compile-fail fixtures). An unordered table of a type with a throwing move no
+longer reclaims tombstones (silent, performance only).
+
+**Regression coverage.** Blocks in `tests/containers/throwing_element_test.cpp`:
+each was isolated and run against the unfixed headers, where four terminated the
+program (spsc, mpmc, `lookup_table`, `fsm`) and the rebuild check failed
+(an insert moved many elements), and all five pass after.
 
 ### Checked and found correct
 
