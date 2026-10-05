@@ -464,7 +464,7 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [x] Root-cause fixes DONE 2026-08-05: hard-coded test-source paths → single
   `env:` source of truth; workflow-level `defaults.run.shell: bash`; fuzz-smoke
   harness list derived from built binaries; `.pre-commit-config.yaml` pins
-  clang-format 18.1.8 so local == CI.
+  clang-format (now 23.1.2) so local == CI.
 - [x] **gcc Release + `-Werror` hardening** (#14, done #43): gcc is back in the
   `release-werror` matrix. The old entry here named four diagnostics and got three
   of the four *locations* wrong — `-Wnull-dereference` was in the pointer-returning
