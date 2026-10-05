@@ -114,6 +114,14 @@ struct pinned_armed {
   bool operator<(const pinned_armed& o) const { return value < o.value; }
 };
 
+// Ordering for the priority-queue pop check: throws on demand through tick().
+struct throwing_int_less {
+  bool operator()(int a, int b) const {
+    tick();
+    return a < b;
+  }
+};
+
 struct armed_hash {
   std::size_t operator()(const armed& a) const noexcept {
     return static_cast<std::size_t>(a.value) * 2654435761u;
@@ -319,6 +327,31 @@ int main() {
     }
     CHECK_EQ(g_live, 0);
     CHECK_EQ(g_double_destroys, 0);
+  }
+
+  // ---- fixed_priority_queue::pop with a throwing comparator --------------
+  // pop() was noexcept whenever T's move-assignment was, though it also calls
+  // the comparator and T's move constructor. For an int queue with a comparator
+  // that throws, the throw terminated instead of clearing and rethrowing.
+  static_assert(!noexcept(std::declval<metl::fixed_priority_queue<int, 8, throwing_int_less>&>().pop()),
+                "pop must not promise noexcept when the comparator can throw");
+  static_assert(noexcept(std::declval<metl::fixed_priority_queue<int, 8>&>().pop()),
+                "pop keeps noexcept for int with the default comparator");
+  {
+    metl::fixed_priority_queue<int, 8, throwing_int_less> queue;
+    for (int i = 1; i <= 6; ++i) {
+      queue.push(i);
+    }
+    g_countdown = 1;  // the second comparison inside pop throws
+    bool threw = false;
+    try {
+      queue.pop();
+    } catch (int) {
+      threw = true;
+    }
+    g_countdown = -1;
+    CHECK(threw);
+    CHECK(queue.empty());  // cleared, not left with a broken heap
   }
 
   return metl_test::exit_code();

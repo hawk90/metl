@@ -125,7 +125,14 @@ class fixed_priority_queue {
   /// @pre Queue is non-empty; asserts and aborts otherwise.
   /// @note No `try_pop`: on a single-threaded container `if (!q.empty()) q.pop();`
   ///       is already an exact, non-racy pre-check (SCOPE.md section 9, R5).
-  void pop() noexcept(std::is_nothrow_move_assignable_v<T>) {
+  /// @note `noexcept` only when nothing `pop` calls can throw: the sift moves
+  ///       elements by move-construction AND move-assignment (`swap_slots`) and
+  ///       calls the comparator. The condition used to name move-assignment
+  ///       only, so a throwing move constructor or comparator terminated the
+  ///       program instead of reaching the clear-and-rethrow below
+  ///       (docs/AUDIT.md G.7).
+  void pop() noexcept(std::is_nothrow_move_assignable_v<T> && std::is_nothrow_move_constructible_v<T> &&
+                      comparator_cannot_throw) {
     // Never stripped: the index arithmetic below underflows on an empty queue and
     // METL_ASSERT is removed at low hardening levels.
     METL_HARDEN(!storage_.empty());
@@ -181,6 +188,16 @@ class fixed_priority_queue {
   METL_NODISCARD span<const T> as_span() const noexcept { return storage_.as_span(); }
 
  private:
+  // Whether the comparator can throw. std::less / std::greater do not declare
+  // their call operator noexcept, but on a scalar T they apply a built-in
+  // operator that cannot throw; without this case the default comparator would
+  // strip `noexcept` from pop() for every queue of int.
+  static constexpr bool comparator_cannot_throw =
+      noexcept(std::declval<Compare&>()(std::declval<const T&>(), std::declval<const T&>())) ||
+      (std::is_scalar_v<T> &&
+       (std::is_same_v<Compare, std::less<T>> || std::is_same_v<Compare, std::greater<T>> ||
+        std::is_same_v<Compare, std::less<>> || std::is_same_v<Compare, std::greater<>>));
+
   /// Runs a step that reorders the heap. If an element move or the comparator
   /// throws part-way, the heap property is gone and later pops would come out in
   /// the wrong order, so the queue is cleared before rethrowing -- the same rule
