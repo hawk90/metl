@@ -52,6 +52,9 @@ class static_message_queue {
   // propagates normally. Likewise the copy ctor/copy-assign run T's copy but are not noexcept, and
   // the move ctor/move-assign are already conditionally noexcept, so none of them can terminate.
   // Requiring nothrow move/copy would over-constrain T without preventing any terminate.
+  static_assert(Capacity > 0,
+                "metl::static_message_queue needs Capacity > 0: a zero-capacity queue can hold nothing, and "
+                "its back-reference arithmetic would compute Capacity - 1");
   static_assert(std::is_nothrow_destructible_v<T>,
                 "metl::static_message_queue requires T to be nothrow destructible: metl is a "
                 "no-exception library and its noexcept pop()/clear()/destructor paths would "

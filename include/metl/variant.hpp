@@ -218,8 +218,9 @@ using variant_alternative_t = typename variant_alternative<I, V>::type;
 /// @brief A fixed-storage tagged union holding one of `Ts...` (in-place, no heap).
 ///
 /// Stores the active alternative inline in an aligned byte buffer sized/aligned
-/// for the largest alternative; it never allocates. Trivially copyable when all
-/// alternatives are.
+/// for the largest alternative; it never allocates. Copyable when all
+/// alternatives are, but never *trivially* copyable (user-provided copy
+/// constructor and destructor).
 /// @tparam Ts The alternative types (at least one required).
 /// @note `get<>()` (both free and by-index) ASSERTS (aborts by default) when the
 /// requested alternative is not active; it does NOT throw std::bad_variant_access.

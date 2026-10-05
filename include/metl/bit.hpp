@@ -31,7 +31,12 @@ namespace metl {
 namespace detail {
 
 template <typename T>
-using enable_if_unsigned_integral_t = std::enable_if_t<std::is_integral_v<T> && std::is_unsigned_v<T>, int>;
+// At most 64 bits: the builtin paths widen to `unsigned long long`, which
+// silently truncated `unsigned __int128` (integral under clang) -- wrong counts,
+// and `__builtin_ctz(0)` (docs/AUDIT.md G.4).
+using enable_if_unsigned_integral_t = std::enable_if_t<std::is_integral_v<T> && std::is_unsigned_v<T> &&
+                                                           (sizeof(T) <= sizeof(unsigned long long)),
+                                                       int>;
 
 template <typename T>
 inline constexpr int bit_width_v = static_cast<int>(sizeof(T) * CHAR_BIT);

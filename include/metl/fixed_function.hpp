@@ -77,7 +77,13 @@ struct moveonly_ops {
 template <typename F, typename R, typename... Args>
 R invoke_object(void* storage, Args&&... args) {
   auto* function = static_cast<F*>(storage);
-  return (*function)(std::forward<Args>(args)...);
+  if constexpr (std::is_void_v<R>) {
+    // A value-returning callable in a `void` signature: discard the result, as
+    // std::function does (the constraint already accepts it; AUDIT G.4).
+    (void)(*function)(std::forward<Args>(args)...);
+  } else {
+    return (*function)(std::forward<Args>(args)...);
+  }
 }
 
 template <typename F, typename R, typename... Args>
@@ -85,7 +91,11 @@ R invoke_object_nx(void* storage, Args&&... args) noexcept {
   static_assert(noexcept((*static_cast<F*>(storage))(std::forward<Args>(args)...)),
                 "callable must be noexcept to satisfy noexcept signature");
   auto* function = static_cast<F*>(storage);
-  return (*function)(std::forward<Args>(args)...);
+  if constexpr (std::is_void_v<R>) {
+    (void)(*function)(std::forward<Args>(args)...);
+  } else {
+    return (*function)(std::forward<Args>(args)...);
+  }
 }
 
 template <typename F>

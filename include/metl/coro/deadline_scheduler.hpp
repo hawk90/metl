@@ -148,9 +148,9 @@ class deadline_scheduler {
       queue_.pop();
       ++dispatched;
 
-      in_poll_ = true;
+      ++poll_depth_;
       const optional<Tick> next = due.poll(due.task, now);
-      in_poll_ = false;
+      --poll_depth_;
 
       if (next.has_value()) {
         // Guaranteed to fit: we popped one slot above and held it reserved for
@@ -178,11 +178,13 @@ class deadline_scheduler {
     bool operator()(const entry& lhs, const entry& rhs) const noexcept { return lhs.deadline > rhs.deadline; }
   };
 
-  /// One slot held back while a poll is on the stack, for that task's re-arm.
-  size_type reserved() const noexcept { return in_poll_ ? size_type{1} : size_type{0}; }
+  /// One slot held back per poll on the stack, for that task's re-arm. A depth,
+  /// not a flag: a poll that calls `run_due` nests a second poll, and the inner
+  /// one used to clear the flag while the outer was still running (G.5).
+  size_type reserved() const noexcept { return poll_depth_; }
 
   fixed_priority_queue<entry, Capacity, later_deadline> queue_;
-  bool in_poll_ = false;
+  size_type poll_depth_ = 0;
 };
 
 }  // namespace coro

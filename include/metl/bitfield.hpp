@@ -31,6 +31,8 @@ template <std::size_t Lsb, std::size_t Width, typename T = std::uint32_t>
 struct bitfield {
   static_assert(std::is_integral_v<T>, "bitfield T must be integral");
   static_assert(std::is_unsigned_v<T>, "bitfield T must be unsigned");
+  static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
+                "bitfield T must not be bool: ~mask on a bool is always true, so insert cannot clear a bit");
   static_assert(Width > 0, "bitfield Width must be > 0");
   static_assert(Lsb + Width <= sizeof(T) * 8, "bitfield Lsb + Width exceeds storage size");
 

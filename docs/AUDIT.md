@@ -617,14 +617,48 @@ address 0); the rest only change previously wrong results.
 
 | Where | Finding | Status |
 |---|---|---|
-| `mpmc_queue.hpp` `size_approx` | loads tail before head, so concurrent pops make the difference wrap to ~`SIZE_MAX` (84 in 20M samples); `empty()` and `full()` then both mislead. Load head first and clamp to `Capacity`. | ⏳ open |
-| `bit.hpp` builtin path | `unsigned __int128` is integral under clang and is truncated to 64 bits (wrong results, `__builtin_ctz(0)`). | ⏳ open |
-| `monotonic_buffer.hpp` `allocate` | no power-of-two check on `alignment`; `arena_allocator` has one. | ⏳ open |
-| `intrusive_ptr.hpp` `operator*`, `operator->` | `@pre` non-null with no `METL_ASSERT`. | ⏳ open |
-| `fixed_function.hpp`, `function_ref.hpp` | `R = void` with a value-returning callable passes the constraint, then fails to compile in the invoker. | ⏳ open |
-| `span.hpp` | `span<int>(arr, 0)` is ambiguous between `(T*, size_t)` and `(T*, T*)`. | ⏳ open |
-| `fixed_string.hpp` `operator<` | compares signed `char`; `std::string` compares as `unsigned char`. | ⏳ open |
-| `optional`/`expected`/`variant` docs | claim "trivially copyable when T is"; none are. | ⏳ open |
+| `mpmc_queue.hpp` `size_approx` | loads tail before head, so concurrent pops make the difference wrap to ~`SIZE_MAX` (84 in 20M samples); `empty()` and `full()` then both mislead. Load head first and clamp to `Capacity`. | ✅ head loaded first, result clamped to `Capacity` |
+| `bit.hpp` builtin path | `unsigned __int128` is integral under clang and is truncated to 64 bits (wrong results, `__builtin_ctz(0)`). | ✅ the overloads require `sizeof(T) <= sizeof(unsigned long long)`; `__int128` no longer matches |
+| `monotonic_buffer.hpp` `allocate` | no power-of-two check on `alignment`; `arena_allocator` has one. | ✅ `METL_HARDEN` power-of-two check, as `arena_allocator` |
+| `intrusive_ptr.hpp` `operator*`, `operator->` | `@pre` non-null with no `METL_ASSERT`. | ✅ `METL_ASSERT(ptr_ != nullptr)` |
+| `fixed_function.hpp`, `function_ref.hpp` | `R = void` with a value-returning callable passes the constraint, then fails to compile in the invoker. | ✅ the invokers discard the result for `R = void` |
+| `span.hpp` | `span<int>(arr, 0)` is ambiguous between `(T*, size_t)` and `(T*, T*)`. | ✅ the pointer-pair constructor is a template, as std::span's |
+| `fixed_string.hpp` `operator<` | compares signed `char`; `std::string` compares as `unsigned char`. | ✅ compares as `unsigned char` |
+| `optional`/`expected`/`variant` docs | claim "trivially copyable when T is"; none are. | ✅ corrected |
+
+### G.5 — Second pass (same day): the hardening floor, and reviewing the fixes
+
+A second review took different angles: `METL_HARDENING_NONE`, 32-bit `size_t`,
+the less-read headers, and an adversarial read of the G.1–G.3 fixes
+themselves. Everything below was reproduced.
+
+| Sev | Where | Finding | Status |
+|---|---|---|---|
+| HIGH | `fixed_vector.hpp` `emplace(pos, ...)` | on a full vector at `METL_HARDENING_NONE` the shift wrote one past the storage (over `size_`). E.3 lists the identical `static_unordered_*` case; this one was missed. `insert(pos, n, v)` and range insert loop over it. | ✅ `METL_HARDEN(size_ < Capacity)` |
+| MED | `fixed_vector.hpp` `pop_back` (and `fixed_stack::pop`) | empty pop at NONE destroyed `data()[-1]` and wrapped `size_` to `SIZE_MAX`; the next push wrote far out of bounds. `fixed_priority_queue::pop` already hardened this. | ✅ `METL_HARDEN(size_ > 0)` |
+| LOW | `static_message_queue.hpp` | `Capacity == 0`: `back_ref` computed `Capacity - 1`, a wild reference at NONE. | ✅ `static_assert(Capacity > 0)` |
+| LOW | `bitfield.hpp`, `mmio.hpp` bit helpers | `bool` passes `is_unsigned`, but `~mask` as a bool is always true: bits could be set and never cleared. | ✅ `static_assert` (bitfield type; mmio bit helpers only -- a bool register may still be read and written) |
+| LOW | `coro/deadline_scheduler.hpp` | `run_due` called from inside a poll cleared the "re-arm slot reserved" flag while the outer poll was still running; the outer re-arm then asserted (dropped at NONE). | ✅ a depth counter |
+| LOW | `event_dispatcher.hpp` ids | a `size_t` counter: wraps after 2^32 subscriptions on a 32-bit target, and issued id 0. | ✅ 0 skipped; the wrap is documented (not reachable in a test) |
+| LOW* | `fixed_deque.hpp` `try_emplace_front` | `head_` moved before the constructor ran; a throw left it on an unconstructed slot. | ✅ construct, then commit `head_` |
+| MED* | `flat_map`/`flat_set` shift; copy constructors of `fixed_vector`, the rings, `flat_map`, `static_unordered_map`, `static_message_queue` | a throwing element move/copy mid-operation double-destroys (shift) or leaks the already-copied elements (copy ctor). | ⏸ deferred, see below |
+| -- | own fixes: `ring_buffer::push_overwrite`, `expected::emplace` | the G.1/G.3 build-aside paths stopped compiling for a non-movable `T`. | ✅ `if constexpr` guards; regression tests |
+| -- | own fix: `fnv1a_hash` | G.2 missed `char*` (bound the template and hashed the ADDRESS) and non-const `char[N]` (hashed all N bytes). | ✅ both hash their characters |
+
+\* exceptions-enabled builds only.
+
+**Why the throwing-copy rows are deferred.** They need exceptions enabled, which
+METL's own builds and its intended targets do not have; making every shift and
+copy constructor transactional is a rewrite of each container's core loops for
+a configuration the library does not ship in. Section E.2 made the same call
+for `object_pool`'s pointer comparison: real, recorded, not worth its blast
+radius yet. The one-line `fixed_deque` fix was taken because it costs nothing.
+
+**What was checked and held:** 32-bit wrap in the spsc/mpmc/byte-ring index
+arithmetic, `handle_pool` at 65535, `versioned_handle` packing, bucket-count and
+hash constants, allocator `align_up` near the top of memory; copy, move,
+self-copy and self-move of every container with a counting `T`; 20k random
+comparisons against `std` containers including embedded NULs.
 
 ### Checked and found correct
 
@@ -645,7 +679,12 @@ G.3 is covered by new blocks in `optional_test`, `format_test`,
 `expected_regression_test` (host only: it throws), `static_unordered_set_test`
 and `fsm_reentrancy_test`, plus `tests/vocab/fixed_function_null_test.cpp`,
 which observes the assert through a longjmping handler so it also runs on QEMU.
-All six were red against the unfixed headers. Each was
+All six were red against the unfixed headers.
+G.4/G.5 are covered by `tests/core/harden_floor_memory_test.cpp` (runs at
+`METL_HARDENING_NONE`, observing `METL_HARDEN` through a longjmping handler, so
+it also runs on QEMU), `tests/core/low_findings_test.cpp`, three new
+`tests/compile_fail/` fixtures, and blocks added to `alias_insert_test`,
+`hash_by_value_test` and `expected_regression_test`. Each was
 run against the unfixed headers first and failed (12 checks across the three).
 They detect the stale read with a type that poisons itself on move and
 destruction, not with a sanitizer, so they mean the same thing on QEMU.

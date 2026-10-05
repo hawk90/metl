@@ -143,7 +143,12 @@ class function_ref<R(Args...)> {
   template <typename Referenced>
   static R invoke_object(storage bound, Args&&... args) {
     auto* function = static_cast<Referenced*>(bound.object);
-    return (*function)(std::forward<Args>(args)...);
+    if constexpr (std::is_void_v<R>) {
+      // Discard a value-returning callable's result in a `void` signature (AUDIT G.4).
+      (void)(*function)(std::forward<Args>(args)...);
+    } else {
+      return (*function)(std::forward<Args>(args)...);
+    }
   }
 
   storage storage_;

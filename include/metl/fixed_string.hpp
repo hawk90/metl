@@ -338,12 +338,13 @@ inline bool operator!=(const fixed_string<N1>& lhs, const fixed_string<N2>& rhs)
 template <std::size_t N1, std::size_t N2>
 inline bool operator<(const fixed_string<N1>& lhs, const fixed_string<N2>& rhs) noexcept {
   const std::size_t n = (lhs.size() < rhs.size()) ? lhs.size() : rhs.size();
+  // Compare as unsigned char, as std::char_traits<char>::compare does: a plain
+  // `char` is signed on most targets, which sorted "\xff" before "a" (AUDIT G.4).
   for (std::size_t i = 0; i < n; ++i) {
-    if (lhs[i] < rhs[i]) {
-      return true;
-    }
-    if (rhs[i] < lhs[i]) {
-      return false;
+    const auto l = static_cast<unsigned char>(lhs[i]);
+    const auto r = static_cast<unsigned char>(rhs[i]);
+    if (l != r) {
+      return l < r;
     }
   }
   return lhs.size() < rhs.size();

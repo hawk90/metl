@@ -210,10 +210,17 @@ class mpmc_queue {
   ///       `full()` answer *false* on a full queue -- optimistic, which is the
   ///       wrong direction for a hint. `spsc_queue::size_approx` always did the
   ///       plain subtraction; this now matches it.
+  ///       Head is loaded BEFORE tail (docs/AUDIT.md G.4): loaded the other way,
+  ///       pops landing between the two loads made `tail - head` wrap to about
+  ///       `SIZE_MAX`, so `empty()` and `full()` were both false-ish at once. A
+  ///       dequeue never overtakes the enqueue it consumes, so a later tail is
+  ///       never behind an earlier head; pushes between the loads can still
+  ///       overshoot, hence the clamp.
   METL_NODISCARD size_type size_approx() const noexcept {
-    const size_type tail = enqueue_pos_.load(std::memory_order_relaxed);
     const size_type head = dequeue_pos_.load(std::memory_order_relaxed);
-    return tail - head;
+    const size_type tail = enqueue_pos_.load(std::memory_order_relaxed);
+    const size_type count = tail - head;
+    return count < Capacity ? count : Capacity;
   }
 
   /// Approximate emptiness check; only a hint under concurrent access.

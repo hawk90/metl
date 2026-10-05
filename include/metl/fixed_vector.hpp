@@ -274,7 +274,9 @@ class fixed_vector {
   /// Removes the last element.
   /// @pre Container is non-empty; asserts and aborts otherwise.
   void pop_back() noexcept {
-    METL_ASSERT(size_ > 0);
+    // Hard: an empty pop would destroy data()[-1] and wrap size_ to SIZE_MAX,
+    // after which the next push writes far out of bounds (AUDIT G.5).
+    METL_HARDEN(size_ > 0);
     asan_unpoison_all_();
     data()[size_ - 1].~T();
     --size_;
@@ -366,7 +368,10 @@ class fixed_vector {
   template <typename... Args>
   iterator emplace(const_iterator pos, Args&&... args) {
     METL_ASSERT(pos >= begin() && pos <= end());
-    METL_ASSERT(size_ < Capacity);
+    // METL_HARDEN, not METL_ASSERT: on a full vector the shift below writes one
+    // past the storage, so stripping this check turns a precondition violation
+    // into memory corruption (docs/AUDIT.md E.3, G.5).
+    METL_HARDEN(size_ < Capacity);
     const size_type index = static_cast<size_type>(pos - begin());
     if (index == size_) {
       emplace_back(std::forward<Args>(args)...);
