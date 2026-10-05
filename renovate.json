@@ -67,6 +67,95 @@
       ],
       "automerge": false,
       "dependencyDashboardApproval": true
+    },
+    {
+      "description": "clang-format: both pins are one dependency (one PyPI lookup), so they always move to the same version in one PR; CI also checks they agree",
+      "matchPackageNames": [
+        "clang-format"
+      ],
+      "groupName": "clang-format"
+    },
+    {
+      "description": "Zephyr: the west release and its cache key move together; the CI container (ghcr.io/zephyrproject-rtos/ci) is paired with the SDK and is reviewed by hand",
+      "matchPackageNames": [
+        "zephyrproject-rtos/zephyr"
+      ],
+      "groupName": "zephyr"
+    },
+    {
+      "description": "Stay on the pinned LTS / release series: majors and minors of Zephyr and ESP-IDF need approval on the dashboard",
+      "matchPackageNames": [
+        "zephyrproject-rtos/zephyr",
+        "espressif/idf"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor"
+      ],
+      "automerge": false,
+      "dependencyDashboardApproval": true
+    }
+  ],
+  "customManagers": [
+    {
+      "description": "Zephyr release pinned in the west init of the zephyr CI job",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/ci\\.yml$/"
+      ],
+      "matchStrings": [
+        "west init -m https://github\\.com/zephyrproject-rtos/zephyr --mr (?<currentValue>v\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "zephyrproject-rtos/zephyr",
+      "datasourceTemplate": "github-tags"
+    },
+    {
+      "description": "Zephyr west cache key, kept in step with the release above",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/ci\\.yml$/"
+      ],
+      "matchStrings": [
+        "key: zephyr-west-(?<currentValue>v\\d+\\.\\d+\\.\\d+)-"
+      ],
+      "depNameTemplate": "zephyrproject-rtos/zephyr",
+      "datasourceTemplate": "github-tags"
+    },
+    {
+      "description": "ESP-IDF Docker tag passed to espressif/esp-idf-ci-action",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/ci\\.yml$/"
+      ],
+      "matchStrings": [
+        "esp_idf_version: (?<currentValue>v\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "espressif/idf",
+      "datasourceTemplate": "docker"
+    },
+    {
+      "description": "clang-format installed by the CI clang-format job; must move with the pre-commit pin",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/ci\\.yml$/"
+      ],
+      "matchStrings": [
+        "pipx install clang-format==(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "clang-format",
+      "datasourceTemplate": "pypi"
+    },
+    {
+      "description": "The pre-commit clang-format mirror, read from the SAME PyPI dependency as the CI pin so both always resolve to one version in one PR (the mirror's tags are the PyPI versions with a v)",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.pre-commit-config\\.yaml$/"
+      ],
+      "matchStrings": [
+        "repo: https://github\\.com/pre-commit/mirrors-clang-format\\s+rev: v(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "clang-format",
+      "datasourceTemplate": "pypi"
     }
   ]
 }
