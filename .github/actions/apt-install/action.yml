@@ -70,6 +70,14 @@ runs:
     # An earlier comment here noted that `partial/` is 0700 root:root and
     # narrowed the path to the .deb files; that was one step short, because the
     # .debs are unreadable to the runner too.
+    # The image release (ImageOS: ubuntu24, ubuntu26, ...) is part of the key:
+    # runner.os is only "Linux", so without it a runner-image upgrade would
+    # restore the previous release's .debs and never save its own.
+    - name: Identify the runner image
+      id: image
+      shell: bash
+      run: echo "os=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
+
     - name: Cache apt archives
       id: apt-cache
       # Must be >= v4.2.0: GitHub closed down the cache service API that
@@ -78,7 +86,7 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
       with:
         path: ~/.cache/metl-apt
-        key: apt-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key }}
+        key: apt-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ inputs.cache-key }}
 
     - name: Install apt packages (bounded retry)
       shell: bash
