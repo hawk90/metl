@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **CI** (no library change): runners pinned to `ubuntu-24.04` (except `zephyr`,
+  still `ubuntu-22.04` around the Zephyr CI container), `macos-26` (the
+  `macos-14` image is deprecated, with brownouts from 2026-10-05) and
+  `windows-2025`; Renovate replaces Dependabot; ccache on the CMake jobs;
+  documentation-only pull requests skip the builds, with `ci-gate` accepting a
+  skip only on that path; superseded ClusterFuzzLite PR runs are cancelled and
+  the two corpus writers serialised.
 - **`static_unordered_map` / `static_unordered_set`: the tombstone rebuild runs
   on inserting a new key, not on `erase`** (docs/AUDIT.md G.3). It used to run
   inside `erase` and moved live elements behind an iterator, so the

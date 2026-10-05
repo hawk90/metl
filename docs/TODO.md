@@ -23,8 +23,11 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [x] Release + `-Werror` hygiene gate; Doxygen 1.9.8 compat
 - [x] CI/CD: **preflight fail-fast gate** (dependency DAG, not flat fan-out),
   **GitHub Pages docs deploy** (gated on validation) → https://hawk90.github.io/metl/,
-  Dependabot (github-actions), actions on Node-24 (checkout@v5 / upload-artifact@v7),
-  runners pinned (ubuntu-24.04, macos-26 -- macos-14 was deprecated -- and windows-2025)
+  Renovate (github-actions; replaced Dependabot in #109), actions on Node-24
+  (checkout@v5 / upload-artifact@v7), runners pinned (ubuntu-24.04 -- zephyr still
+  ubuntu-22.04, see the open item below -- macos-26 --
+  macos-14 was deprecated -- and windows-2025), documentation-only PRs skip the
+  builds (#113), superseded PR fuzzing is cancelled (#108)
 
 ## ☐ Open — by priority
 
@@ -436,7 +439,16 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   apart by whether the job died at *exactly* the budget. The `timeout` wrappers in
   the action are the part that fixes this — a bare retry loop never reaches its
   second iteration when the command simply hangs.
-- [ ] ccache caching.
+- [x] ccache caching (#112). Measured on main after #114, which changed several
+  container headers: preflight 140 of 190 compiles were cache hits (74%). The
+  estimate that a header-only library would see almost no hits was wrong -- most
+  TUs do not include the headers a given PR touches.
+- [ ] Move the runners to Ubuntu 26.04 deliberately: tick the `ubuntu` v26 box on
+  the Renovate dashboard (#111), then re-measure the size, stack and clang-tidy
+  ratchets in that PR and record why each moved. The `zephyr` job is still on
+  `ubuntu-22.04` and has to come along: it runs inside the Zephyr CI container,
+  so its host label can move to 24.04 now at little risk, and 22.04 is the next
+  image GitHub will retire.
 - [ ] **(CI anti-pattern review 2026-08-05, deferred)** Collapse the five
   near-identical freestanding cross jobs (riscv-cross / arm-cross-clang /
   big-endian / newlib-link / picolibc-qemu) into one matrix or a composite
@@ -445,7 +457,7 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   (`google/clusterfuzzlite`, `espressif/esp-idf-ci-action`) already were; what was
   still tag-pinned was GitHub's own `actions/*`, which OpenSSF Scorecard counts
   too. All of them now carry a SHA with the version in a trailing comment, so the
-  human-readable version survives and Dependabot can still bump them.
+  human-readable version survives and Renovate can still bump them.
 - [x] **(caching)** Cache the Zephyr `west update` tree (re-cloned uncached every
   run, dominating the 60-min zephyr budget). The workspace cache is keyed to the
   pinned v3.7.0 release. apt is done, above.

@@ -61,7 +61,9 @@ int main() {
 > **New here?** [**docs/CHOOSING.md**](docs/CHOOSING.md) is organised by what you
 > are trying to do — "I need a FIFO", "I need to move bytes from an ISR" — and says
 > when *not* to use each type. The list below is the reference; that page is the
-> way in.
+> way in. It also has the table of
+> [what each operation invalidates](docs/CHOOSING.md#what-an-operation-invalidates)
+> -- which differs from `std` for the unordered containers and the rings.
 
 Core types
 
