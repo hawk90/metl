@@ -67,10 +67,24 @@ that is not `std::forward`ed, an rvalue-reference parameter that is not
 `std::move`d, identical `if constexpr` branch bodies, `!(a && b)` inside
 `METL_HARDEN`/`METL_ASSERT`, and a function name ending in `_`.
 
+## Before you push
+
+`pre-commit install` also registers a **pre-push hook**, `tools/pre_push.py`,
+which runs every CI check that can run on a workstation before the push leaves
+it: the checkers' self-tests, the source gates below, a Release `-Werror` build
+and ctest with each compiler it finds (the default `c++` and the newest
+`g++-NN`), and an ASan+UBSan build. About 20 s with `--quick` (no builds), a few
+minutes cold, less once its `build-prepush/` directories are warm. `--full` adds
+the mutation gate. The ARM size/stack/RAM budgets, the instruction counts,
+QEMU, Zephyr, ESP-IDF and the clang-tidy count stay on CI: they are measured on
+CI's toolchains. `git push --no-verify` skips the hook; CI still runs
+everything.
+
 ## Gates
 
 Beyond build and tests, CI runs scripts that each hold one claim of the
-repository. Run the ones your change touches:
+repository. `tools/pre_push.py` runs the ones that need no CI toolchain; run the
+others your change touches:
 
 | Script | Holds | Typical trigger |
 |---|---|---|

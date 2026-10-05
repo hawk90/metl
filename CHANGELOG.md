@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`fixed_string` and `monotonic_buffer` build cleanly with GCC 15+ and
+  `-Werror`.** GCC 15 analyses the refused path -- a literal longer than the
+  capacity, a request larger than the buffer -- where the bounds check has
+  already returned, and reported the dead subscript there as undefined
+  behaviour (`-Waggressive-loop-optimizations`, `-Warray-bounds`). Both now
+  write through a pointer. No behaviour change.
+
+### Changed
+
+- CI moved to Ubuntu 26.04 runners (GCC 15, clang-tidy 21), Zephyr 4.4.2 LTS
+  (CI image v0.29.4) and ESP-IDF 6.0.3. The instruction-count budgets and the
+  clang-tidy ratchet were re-measured on the new toolchains;
+  `portability-avoid-pragma-once` (new in clang-tidy 19) is disabled because
+  `#pragma once` is a design decision here.
+- `pre-commit install` now also installs a pre-push hook, `tools/pre_push.py`,
+  that runs every CI check a workstation can run (checker self-tests, source
+  gates, Release `-Werror` builds with each compiler found, ASan+UBSan) before
+  a push.
+
 ## [1.0.0] - 2026-10-05
 
 The first stable release. From here on METL follows Semantic Versioning: the
