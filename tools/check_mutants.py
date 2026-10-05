@@ -104,12 +104,12 @@ MUTANTS = [
         "why": "find returns the NEXT element's value. Keys stay sorted, size "
                "stays right, find and contains still agree with each other.",
         "kills": "ctest:flat_map|recoverable_api",
-        "old": """  METL_NODISCARD mapped_type* find(const key_type& key) noexcept {
+        "old": """  METL_NODISCARD mapped_type* find(const key_type& key) noexcept(compare_cannot_throw<key_type>) {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index].key)) {
       return &data()[index].value;
     }""",
-        "new": """  METL_NODISCARD mapped_type* find(const key_type& key) noexcept {
+        "new": """  METL_NODISCARD mapped_type* find(const key_type& key) noexcept(compare_cannot_throw<key_type>) {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index].key)) {
       return &data()[index + 1 < size_ ? index + 1 : index].value;

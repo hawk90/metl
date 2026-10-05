@@ -73,6 +73,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Re-examined trade-offs** (docs/AUDIT.md G.9):
+  - `fixed_vector::insert(pos, first, last)` / `assign(first, last)` with the
+    vector's own range now assert (it silently copied moved-from or destroyed
+    elements; std makes it a precondition, METL checks it);
+  - lookups and `erase` of `flat_map`, `flat_set`, `static_unordered_map` and
+    `static_unordered_set` are `noexcept` only when the comparator / hasher /
+    equality (and, for flat `erase`, the element move) cannot throw -- a throw
+    used to terminate the program;
+  - a hasher that throws during the unordered tombstone rebuild empties the table
+    and propagates instead of terminating.
 - **`emplace` from the object's own value** (docs/AUDIT.md G.8):
   `opt.emplace(*opt)`, `opt.emplace(opt->member)`, `v.emplace<0>(get<1>(v).x)`
   and same-state `e.emplace(e.value())` destroyed the current member before

@@ -48,7 +48,7 @@
 /// by `bucket_count` probes, only misses get slower under churn. (Before
 /// 2026-10-05 the rebuild ran regardless, inside a `noexcept` function, and a
 /// throwing move terminated the program; docs/AUDIT.md G.7.) A hasher that
-/// throws during the rebuild still terminates: hashers are expected not to.
+/// throws during the rebuild empties the table and propagates (G.9).
 ///
 /// @par Iterator invalidation
 /// As in `static_unordered_map`: **`erase` invalidates only the erased element**,
@@ -84,6 +84,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
 #include "metl/hash.hpp"
 #include "metl/type_traits.hpp"
@@ -326,47 +327,54 @@ class static_unordered_set {
   METL_NODISCARD size_type capacity() const noexcept { return Capacity; }
 
   /// @brief True if the given key is present.
-  METL_NODISCARD bool contains(const key_type& key) const noexcept { return find(key) != nullptr; }
+  METL_NODISCARD bool contains(const key_type& key) const noexcept(lookup_cannot_throw<key_type>) {
+    return find(key) != nullptr;
+  }
 
   /// @brief Key lookup: pointer to the stored element equal to @p key, or @c nullptr if absent.
   /// @return Pointer to the element, or @c nullptr when the key is not found.
-  METL_NODISCARD value_type* find(const key_type& key) noexcept {
+  METL_NODISCARD value_type* find(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
     const size_type index = find_existing_index(key);
     return index == npos ? nullptr : slot_value(index);
   }
 
-  METL_NODISCARD const value_type* find(const key_type& key) const noexcept {
+  METL_NODISCARD const value_type* find(const key_type& key) const noexcept(lookup_cannot_throw<key_type>) {
     const size_type index = find_existing_index(key);
     return index == npos ? nullptr : slot_value(index);
   }
 
   /// @brief Key lookup returning an iterator, or @c end() if the key is absent.
-  METL_NODISCARD iterator find_iterator(const key_type& key) noexcept {
+  METL_NODISCARD iterator find_iterator(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
     const size_type index = find_existing_index(key);
     return iterator(this, index == npos ? bucket_count : index);
   }
 
-  METL_NODISCARD const_iterator find_iterator(const key_type& key) const noexcept {
+  METL_NODISCARD const_iterator find_iterator(const key_type& key) const
+      noexcept(lookup_cannot_throw<key_type>) {
     const size_type index = find_existing_index(key);
     return const_iterator(this, index == npos ? bucket_count : index);
   }
 
   /// @brief STL-compatible iterator-returning find (alias for @c find_iterator).
-  METL_NODISCARD iterator find_iter(const key_type& key) noexcept { return find_iterator(key); }
-  METL_NODISCARD const_iterator find_iter(const key_type& key) const noexcept { return find_iterator(key); }
+  METL_NODISCARD iterator find_iter(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
+    return find_iterator(key);
+  }
+  METL_NODISCARD const_iterator find_iter(const key_type& key) const noexcept(lookup_cannot_throw<key_type>) {
+    return find_iterator(key);
+  }
 
   // ---- Heterogeneous lookup overloads ----
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD bool contains(const K& key) const noexcept {
+  METL_NODISCARD bool contains(const K& key) const noexcept(lookup_cannot_throw<K>) {
     return find_existing_index(key) != npos;
   }
 
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD value_type* find(const K& key) noexcept {
+  METL_NODISCARD value_type* find(const K& key) noexcept(lookup_cannot_throw<K>) {
     const size_type index = find_existing_index(key);
     return index == npos ? nullptr : slot_value(index);
   }
@@ -374,7 +382,7 @@ class static_unordered_set {
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD const value_type* find(const K& key) const noexcept {
+  METL_NODISCARD const value_type* find(const K& key) const noexcept(lookup_cannot_throw<K>) {
     const size_type index = find_existing_index(key);
     return index == npos ? nullptr : slot_value(index);
   }
@@ -382,7 +390,7 @@ class static_unordered_set {
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD iterator find_iterator(const K& key) noexcept {
+  METL_NODISCARD iterator find_iterator(const K& key) noexcept(lookup_cannot_throw<K>) {
     const size_type index = find_existing_index(key);
     return iterator(this, index == npos ? bucket_count : index);
   }
@@ -390,7 +398,7 @@ class static_unordered_set {
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD const_iterator find_iterator(const K& key) const noexcept {
+  METL_NODISCARD const_iterator find_iterator(const K& key) const noexcept(lookup_cannot_throw<K>) {
     const size_type index = find_existing_index(key);
     return const_iterator(this, index == npos ? bucket_count : index);
   }
@@ -398,21 +406,21 @@ class static_unordered_set {
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD iterator find_iter(const K& key) noexcept {
+  METL_NODISCARD iterator find_iter(const K& key) noexcept(lookup_cannot_throw<K>) {
     return find_iterator(key);
   }
 
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD const_iterator find_iter(const K& key) const noexcept {
+  METL_NODISCARD const_iterator find_iter(const K& key) const noexcept(lookup_cannot_throw<K>) {
     return find_iterator(key);
   }
 
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same_v<decay_t<K>, key_type>>>
-  bool erase(const K& key) noexcept {
+  bool erase(const K& key) noexcept(lookup_cannot_throw<K>) {
     const size_type index = find_existing_index(key);
     if (index == npos) {
       return false;
@@ -474,7 +482,7 @@ class static_unordered_set {
 
   /// @brief Erase the element equal to the given key, if present (leaves a tombstone slot).
   /// @return @c true if an element was erased; @c false if the key was not found.
-  bool erase(const key_type& key) noexcept {
+  bool erase(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
     const size_type index = find_existing_index(key);
     if (index == npos) {
       return false;
@@ -497,6 +505,44 @@ class static_unordered_set {
   }
 
  private:
+  // Lookups call the hasher and the key equality; they are noexcept exactly
+  // when neither can throw (docs/AUDIT.md G.9; see detail/nothrow_call.hpp).
+  template <typename K>
+  static constexpr bool lookup_cannot_throw =
+      detail::nothrow_unary_call_v<Hash, const K&> &&
+      detail::nothrow_binary_call_v<KeyEqual, const key_type&, const K&>;
+  static constexpr bool hash_cannot_throw = detail::nothrow_unary_call_v<Hash, const key_type&>;
+
+  // The one call in rehash_in_place that can throw: element moves cannot (the
+  // rebuild only runs for nothrow-movable elements), the hasher may. When it
+  // does, `carry` holds a live element and every slot marked occupied (placed)
+  // or tombstone (not yet placed) holds one too; destroy exactly those and empty
+  // the table, as a throwing insert elsewhere in the library does. It used to
+  // terminate the program (docs/AUDIT.md G.9).
+  size_type bucket_during_rebuild(storage_for<value_type>& carry) noexcept(hash_cannot_throw) {
+    if constexpr (hash_cannot_throw) {
+      return bucket_index(carry.ref());
+    } else {
+#if METL_NO_EXCEPTIONS
+      return bucket_index(carry.ref());
+#else
+      try {
+        return bucket_index(carry.ref());
+      } catch (...) {
+        carry.ptr()->~value_type();
+        for (size_type i = 0; i < bucket_count; ++i) {
+          if (states_[i] != slot_state::empty) {
+            slot_value(i)->~value_type();
+            states_[i] = slot_state::empty;
+          }
+        }
+        size_ = 0;
+        tombstones_ = 0;
+        throw;
+      }
+#endif
+    }
+  }
   // The rebuild moves every element inside rehash_in_place, which is noexcept:
   // a throw half way would leave the table unrecoverable. The hasher is not part
   // of the condition -- requiring `noexcept` on it would silently switch the
@@ -523,14 +569,14 @@ class static_unordered_set {
   const value_type* slot_value(size_type index) const noexcept { return storage_[index].ptr(); }
 
   template <typename K>
-  size_type bucket_index(const K& key) const noexcept {
+  size_type bucket_index(const K& key) const noexcept(lookup_cannot_throw<K>) {
     // Finalize/avalanche the hash so high-entropy bits reach the low bits that the mask keeps.
     // insert and lookup both route through here, so they always agree on the bucket.
     return static_cast<size_type>(detail::hash_mix(hasher_(key))) & (bucket_count - 1);
   }
 
   template <typename K>
-  size_type find_existing_index(const K& key) const noexcept {
+  size_type find_existing_index(const K& key) const noexcept(lookup_cannot_throw<K>) {
     if (Capacity == 0) {
       return npos;
     }
@@ -549,7 +595,7 @@ class static_unordered_set {
   }
 
   template <typename K>
-  bool locate_insert_index(const K& key, size_type* index_out) const noexcept {
+  bool locate_insert_index(const K& key, size_type* index_out) const noexcept(lookup_cannot_throw<K>) {
     if (Capacity == 0) {
       return false;
     }
@@ -650,7 +696,7 @@ class static_unordered_set {
   /// Live keys are re-placed through the SAME @c bucket_index() (identical avalanche mix), so the
   /// distribution is unchanged. Because the load factor is <= 50% (bucket_count >= 2*Capacity) an
   /// empty/unplaced slot always terminates each probe walk, so the inner loops cannot spin.
-  void rehash_in_place() noexcept {
+  void rehash_in_place() noexcept(hash_cannot_throw) {
     if (Capacity == 0) {
       return;
     }
@@ -676,7 +722,7 @@ class static_unordered_set {
       states_[i] = slot_state::empty;
 
       for (;;) {
-        size_type target = bucket_index(carry.ref());
+        size_type target = bucket_during_rebuild(carry);
         while (states_[target] == slot_state::occupied) {
           target = (target + 1) & (bucket_count - 1);
         }

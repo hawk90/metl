@@ -27,6 +27,7 @@
 #include "metl/type_traits.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <initializer_list>
 #include <iterator>
 #include <new>
@@ -45,6 +46,14 @@
 #endif
 
 namespace metl {
+namespace detail {
+template <typename It>
+struct is_reverse_iterator_over_pointer : std::false_type {};
+template <typename P>
+struct is_reverse_iterator_over_pointer<std::reverse_iterator<P>> : std::is_pointer<P> {};
+template <typename It>
+inline constexpr bool is_reverse_iterator_over_pointer_v = is_reverse_iterator_over_pointer<It>::value;
+}  // namespace detail
 
 /// Contiguous sequence container with a compile-time FIXED capacity.
 ///
@@ -415,11 +424,14 @@ class fixed_vector {
   /// Inserts the elements in [first, last) before `pos`.
   /// @pre `pos` in [begin(), end()] and the range fits in the remaining capacity.
   /// @pre [first, last) is not a range of this vector -- it is shifted or
-  ///      cleared before it is read (std::vector has the same precondition;
-  ///      docs/AUDIT.md G.6). Copy it out first.
+  ///      cleared before it is read (std::vector has the same precondition).
+  ///      Checked: a range of this vector's own pointers or reverse iterators
+  ///      asserts instead of silently copying moved-from or destroyed elements
+  ///      (docs/AUDIT.md G.9). Copy it out first.
   template <typename It, typename = std::enable_if_t<!std::is_integral_v<It>>>
   iterator insert(const_iterator pos, It first, It last) {
     METL_ASSERT(pos >= begin() && pos <= end());
+    METL_ASSERT(!aliases_own_storage(first, last));
     const size_type index = static_cast<size_type>(pos - begin());
     iterator out = begin() + index;
     // Generic forward-iterator path: insert one-by-one.
@@ -563,10 +575,13 @@ class fixed_vector {
   /// Replaces the contents with the elements in [first, last).
   /// @pre The range fits within `Capacity`; asserts otherwise.
   /// @pre [first, last) is not a range of this vector -- it is shifted or
-  ///      cleared before it is read (std::vector has the same precondition;
-  ///      docs/AUDIT.md G.6). Copy it out first.
+  ///      cleared before it is read (std::vector has the same precondition).
+  ///      Checked: a range of this vector's own pointers or reverse iterators
+  ///      asserts instead of silently copying moved-from or destroyed elements
+  ///      (docs/AUDIT.md G.9). Copy it out first.
   template <typename It, typename = std::enable_if_t<!std::is_integral_v<It>>>
   void assign(It first, It last) {
+    METL_ASSERT(!aliases_own_storage(first, last));
     clear();
     for (It it = first; it != last; ++it) {
       METL_ASSERT(size_ < Capacity);
@@ -617,6 +632,31 @@ class fixed_vector {
 
  private:
   void* slot_(size_type index) noexcept { return storage_.slot(index); }
+
+  // Whether [first, last) starts inside this vector's storage -- the self-range
+  // that insert and assign cannot read correctly. Only pointer iterators (this
+  // vector's own iterator type) and reverse iterators over them can point here;
+  // any other iterator type cannot, and answers false. Compared as integers,
+  // like object_pool::index_of, because relational `<` on pointers that may not
+  // share an array is unspecified (docs/AUDIT.md E.2, G.9).
+  template <typename It>
+  bool aliases_own_storage(It first, It last) const noexcept {
+    if constexpr (std::is_pointer_v<It> && std::is_same_v<std::remove_cv_t<std::remove_pointer_t<It>>, T>) {
+      if (first == last) {
+        return false;
+      }
+      const auto begin_address = reinterpret_cast<std::uintptr_t>(data());
+      const auto end_address = reinterpret_cast<std::uintptr_t>(data() + Capacity);
+      const auto first_address = reinterpret_cast<std::uintptr_t>(first);
+      return first_address >= begin_address && first_address < end_address;
+    } else if constexpr (detail::is_reverse_iterator_over_pointer_v<It>) {
+      return aliases_own_storage(last.base(), first.base());
+    } else {
+      (void)first;
+      (void)last;
+      return false;
+    }
+  }
 
 #if METL_FIXED_VECTOR_ASAN
   // Poison the unused-capacity tail [size_, Capacity). Rounding in the ASan

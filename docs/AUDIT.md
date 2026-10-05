@@ -812,6 +812,39 @@ QEMU) uses a type that poisons itself on destruction and on move. Against the
 unfixed headers 15 checks failed (at `-O0` and `-O2`), plus the two `noexcept`
 `static_assert`s; all pass after.
 
+### G.9 — Re-examining what was "deliberately not done"
+
+Asked to re-check every item left as a documented trade-off, against the
+project's own goals (checked by default, no silent surprises, no exceptions by
+default, bounded, size-budgeted). Two of the earlier verdicts were wrong, and
+one class of defect had been missed.
+
+| Item | Earlier verdict | On re-examination | Now |
+|---|---|---|---|
+| `fixed_vector` `insert(pos, first, last)` / `assign(first, last)` with the vector's own range | "needs a Capacity-sized stack buffer" | **Wrong reason.** It could be supported in place, but std::vector makes it a precondition and supporting it would put complex code in a core container for a case nobody should write. METL's answer to a precondition is to *check* it. | ✅ `METL_ASSERT` that the range does not start inside the vector's storage (integer address comparison, as `object_pool`); pointer and reverse-pointer iterators -- the vector's own iterator types -- are covered, other iterator types cannot point there. Covers `try_insert`/`try_assign` too |
+| A hasher that throws during the unordered tombstone rebuild | "terminates; making the hasher noexcept would silently disable the reclaim" | **Fixable.** The only call in `rehash_in_place` that can throw is the hasher; at that point the slot states say exactly which elements are alive. | ✅ `bucket_during_rebuild` destroys the carried element and every live slot, empties the table and rethrows (the library's clear-on-throw rule); `rehash_in_place` is `noexcept` only when the hasher is. Zero cost under `METL_NO_EXCEPTIONS` |
+| **Missed in G.7:** lookups of `flat_map`, `flat_set`, `static_unordered_map`, `static_unordered_set` (`find`, `contains`, `lower_bound`, `upper_bound`, `equal_range`, `erase`, ...) | -- | Unconditionally `noexcept`, yet they call the comparator, hasher and key equality; `flat_map`/`flat_set` `erase` also relocates elements. A throw terminated the program -- the class G.7 fixed for `lookup_table` and the queues. | ✅ conditional `noexcept` on the callables they invoke; `erase_at` relocates under a handler that destroys exactly the live slots and empties the container |
+| `guarded::with` returning a reference out of the lock | documented | Still right: the earlier attempt to reject `T&` rejected valid code (Section F). | unchanged |
+| per-element launder for `T` with const members | recorded residual | Still right: cannot be applied to iterators or `end()`. | unchanged |
+| `emplace` self-aliasing for a non-movable `T` | UB, as std | Still right: building aside needs a move. | unchanged |
+
+**One shared rule for "can this callable throw".** `std::less`,
+`std::greater` and `std::equal_to` do not declare their call operators
+`noexcept`, so taking `noexcept(comp(a, b))` at face value would strip
+`noexcept` from every lookup with a default comparator. The first version of
+this (#122, in `fixed_priority_queue`) special-cased scalar `T`; that was too
+narrow -- a `fixed_string` key, whose `<` is `noexcept`, still lost it.
+`detail/nothrow_call.hpp` now looks through those three to the operator they
+apply, and every container uses it.
+
+**Regression coverage.** `tests/containers/self_range_test.cpp` (QEMU too:
+the assert is caught through a longjmping handler) -- 4 checks red on the
+unfixed headers. In `throwing_element_test.cpp`: static_asserts on both
+answers of every new `noexcept` (4 fail to compile against the unfixed
+headers), a throwing comparator in `find`, a throwing relocation in
+`flat_map::erase`, and a hasher throwing on the second element of a rebuild --
+each isolated, each terminated the program (exit 134) on the unfixed headers.
+
 ### Checked and found correct
 
 CRC check values (`"123456789"`, both table modes); `parse.hpp` exhaustively over

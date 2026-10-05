@@ -122,6 +122,21 @@ struct pinned_armed {
   bool operator<(const pinned_armed& o) const { return value < o.value; }
 };
 
+// A hasher that throws on demand through tick().
+struct throwing_int_hash {
+  std::size_t operator()(int k) const {
+    tick();
+    return static_cast<std::size_t>(k) * 2654435761u;
+  }
+};
+
+// A key whose `<` is noexcept but not a scalar: std::less over it must keep the
+// containers' lookups noexcept (detail::nothrow_call looks through std::less).
+struct ranked {
+  int rank;
+  bool operator<(const ranked& o) const noexcept { return rank < o.rank; }
+};
+
 // Ordering for the priority-queue pop check: throws on demand through tick().
 struct throwing_int_less {
   bool operator()(int a, int b) const {
@@ -485,6 +500,91 @@ int main() {
       CHECK(map.find(5) != nullptr);
     }
     CHECK_EQ(g_live, 0);
+  }
+
+  // ---- G.9: lookups and erase are noexcept only when user code cannot throw --
+  using int_map = metl::flat_map<int, int, 8>;
+  using ranked_set = metl::flat_set<ranked, 8>;
+  using throwing_map = metl::flat_map<int, int, 8, throwing_int_less>;
+  using int_table = metl::static_unordered_map<int, int, 8>;
+  using throwing_table = metl::static_unordered_map<int, int, 8, throwing_int_hash>;
+  static_assert(noexcept(std::declval<const int_map&>().find(1)), "default comparator keeps noexcept");
+  static_assert(noexcept(std::declval<int_map&>().erase(1)), "nothrow-movable entries keep erase noexcept");
+  static_assert(noexcept(std::declval<const ranked_set&>().contains(ranked{1})),
+                "std::less over a noexcept operator< keeps noexcept");
+  static_assert(noexcept(std::declval<const int_table&>().find(1)),
+                "std::hash / std::equal_to keep noexcept");
+  static_assert(!noexcept(std::declval<const throwing_map&>().find(1)), "a throwing comparator propagates");
+  static_assert(!noexcept(std::declval<const throwing_table&>().find(1)), "a throwing hasher propagates");
+  static_assert(!noexcept(std::declval<metl::flat_map<int, armed, 8>&>().erase(1)),
+                "erase relocating a throwing-move element propagates");
+  static_assert(noexcept(std::declval<metl::fixed_priority_queue<ranked, 8>&>().pop()),
+                "pop keeps noexcept for std::less over a noexcept operator<");
+
+  // A throwing comparator in a lookup propagates (it terminated before).
+  {
+    throwing_map map;
+    (void)map.try_emplace(1, 10);
+    (void)map.try_emplace(2, 20);
+    g_countdown = 0;
+    bool threw = false;
+    try {
+      (void)map.find(2);
+    } catch (int) {
+      threw = true;
+    }
+    g_countdown = -1;
+    CHECK(threw);
+    CHECK_EQ(map.size(), 2u);  // a lookup changes nothing
+  }
+
+  // flat_map::erase whose relocation throws: cleared, nothing leaked or
+  // destroyed twice (the move ran inside a noexcept erase_at before).
+  {
+    g_live = 0;
+    g_double_destroys = 0;
+    {
+      metl::flat_map<int, armed, 8> map;
+      for (int i = 0; i < 5; ++i) {
+        map.emplace(i, armed(i));
+      }
+      g_countdown = 1;  // the second relocation throws
+      bool threw = false;
+      try {
+        (void)map.erase(0);
+      } catch (int) {
+        threw = true;
+      }
+      g_countdown = -1;
+      CHECK(threw);
+      CHECK(map.empty());
+    }
+    CHECK_EQ(g_live, 0);
+    CHECK_EQ(g_double_destroys, 0);
+  }
+
+  // A hasher that throws in the middle of the tombstone rebuild: the table is
+  // emptied and the exception propagates (rehash_in_place was noexcept).
+  {
+    throwing_table table;
+    for (int k = 0; k < 6; ++k) {
+      CHECK(table.try_emplace(k, k));
+    }
+    for (int k = 0; k < 3; ++k) {
+      CHECK(table.erase(k));  // 3 tombstones > bucket_count / 8, so the next new key rebuilds
+    }
+    g_countdown = 2;  // call 1: locating the new key; calls 2.. : the rebuild -> throws on the 2nd element
+    bool threw = false;
+    try {
+      (void)table.try_emplace(100, 100);
+    } catch (int) {
+      threw = true;
+    }
+    g_countdown = -1;
+    CHECK(threw);
+    CHECK(table.empty());
+    CHECK(table.try_emplace(7, 70));  // and it is still usable
+    CHECK(table.find(7) != nullptr);
   }
 
   return metl_test::exit_code();
