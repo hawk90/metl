@@ -50,7 +50,7 @@ jobs:
   # ---------------------------------------------------------------------------
   changes:
     name: changes
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       code: ${{ steps.classify.outputs.code }}
@@ -95,7 +95,7 @@ jobs:
     name: preflight
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -134,13 +134,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Every runner is pinned to a version, as ubuntu-24.04 is (#101): a
+        # Every runner is pinned to a version, as ubuntu-26.04 is (#101): a
         # moving `-latest` label swaps the toolchain under an unrelated PR.
         # The macOS 14 image is deprecated -- brownouts from 2026-10-05,
         # retired 2026-11-02 (actions/runner-images#13518). 26 rather than 15:
         # GitHub keeps the two newest macOS images, so 15 is next to go.
         # windows-2025 is what windows-latest points to today.
-        os: [ubuntu-24.04, macos-26, windows-2025]
+        os: [ubuntu-26.04, macos-26, windows-2025]
         build_type: [Debug, Release, MinSizeRel]
         compiler:
           - { cc: gcc, cxx: g++ }
@@ -220,7 +220,7 @@ jobs:
   # hardening pass is tracked separately.
   release-werror:
     name: release-werror / ${{ matrix.compiler.cc }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
     strategy:
@@ -275,7 +275,7 @@ jobs:
   # ---------------------------------------------------------------------------
   lto:
     name: lto
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
     steps:
@@ -318,7 +318,7 @@ jobs:
   # ---------------------------------------------------------------------------
   sanitizers:
     name: sanitizers / ${{ matrix.san }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
     strategy:
@@ -379,7 +379,7 @@ jobs:
   # ---------------------------------------------------------------------------
   arm-cross:
     name: arm-cross / ${{ matrix.cpu }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
     strategy:
@@ -476,7 +476,7 @@ jobs:
   # ---------------------------------------------------------------------------
   cross-syntax:
     name: ${{ matrix.name }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
     strategy:
@@ -532,7 +532,7 @@ jobs:
   # ---------------------------------------------------------------------------
   big-endian:
     name: big-endian / powerpc64
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
 
@@ -543,7 +543,10 @@ jobs:
       - name: Install big-endian toolchain + qemu-user
         uses: ./.github/actions/apt-install
         with:
-          packages: g++-powerpc64-linux-gnu qemu-user-static
+          # Ubuntu 26.04 dropped qemu-user-static (now only a virtual name for
+          # qemu-user-binfmt); qemu-user ships the emulator itself, and the
+          # test binary is linked -static, so no binfmt registration is needed.
+          packages: g++-powerpc64-linux-gnu qemu-user
           cache-key: powerpc64-qemu
 
       - name: Syntax-check every public header (big-endian frontend)
@@ -561,7 +564,7 @@ jobs:
       - name: Run the endian test under qemu (big-endian)
         run: |
           set -euo pipefail
-          qemu-ppc64-static ./endian_test_be
+          qemu-ppc64 ./endian_test_be
           echo "endian test passed on big-endian target"
 
   # ---------------------------------------------------------------------------
@@ -572,7 +575,7 @@ jobs:
   # ---------------------------------------------------------------------------
   newlib-link:
     name: newlib-link / cortex-m3
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
 
@@ -621,7 +624,7 @@ jobs:
   # ---------------------------------------------------------------------------
   invariants:
     name: invariants / ${{ matrix.cpu }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
     strategy:
@@ -828,7 +831,7 @@ jobs:
   # ---------------------------------------------------------------------------
   handle-atomics:
     name: handle-atomics / ${{ matrix.cpu }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
     strategy:
@@ -888,7 +891,7 @@ jobs:
   # ---------------------------------------------------------------------------
   picolibc-qemu:
     name: picolibc-qemu / mps2-an385
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
 
@@ -964,7 +967,7 @@ jobs:
   # ---------------------------------------------------------------------------
   qemu-conformance:
     name: qemu-conformance / ${{ matrix.cpu }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 30
     strategy:
@@ -1059,7 +1062,7 @@ jobs:
   # ---------------------------------------------------------------------------
   config-matrix:
     name: config-matrix / ${{ matrix.name }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
     strategy:
@@ -1153,7 +1156,7 @@ jobs:
   # ---------------------------------------------------------------------------
   coverage:
     name: coverage
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 20
 
@@ -1194,7 +1197,7 @@ jobs:
   # ---------------------------------------------------------------------------
   header-checks:
     name: header-checks
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
 
@@ -1270,7 +1273,7 @@ jobs:
   # ---------------------------------------------------------------------------
   api-contract:
     name: api-contract
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 10
 
@@ -1365,7 +1368,7 @@ jobs:
   # ---------------------------------------------------------------------------
   consumer-warnings:
     name: consumer-warnings / ${{ matrix.name }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
     strategy:
@@ -1444,7 +1447,7 @@ jobs:
   # ---------------------------------------------------------------------------
   mutants:
     name: mutants
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 20
 
@@ -1509,7 +1512,7 @@ jobs:
   #
   # Do not set it from a local run. macOS/libc++ and Ubuntu/libstdc++ disagree
   # substantially even at the same clang-tidy version, and the versions differ
-  # too (this image ships clang-tidy 18): locally this tree reports 472 distinct
+  # too (this image ships clang-tidy 21): locally this tree reports 472 distinct
   # and *zero* `modernize-type-traits`, where CI reported 739 and 308. A budget
   # taken from the local number would have been ~3.7x slack and blocked nothing.
   #
@@ -1520,7 +1523,7 @@ jobs:
   # ---------------------------------------------------------------------------
   clang-tidy:
     name: clang-tidy
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
 
@@ -1544,7 +1547,7 @@ jobs:
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Run clang-tidy on public headers (deduplicated ratchet)
-        run: tools/clang_tidy_report.py -p build --max 142
+        run: tools/clang_tidy_report.py -p build --max 155
 
   # ---------------------------------------------------------------------------
   # Single-header amalgamation
@@ -1558,7 +1561,7 @@ jobs:
   # ---------------------------------------------------------------------------
   amalgamation:
     name: amalgamation
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
 
@@ -1622,7 +1625,7 @@ jobs:
   # ---------------------------------------------------------------------------
   conan:
     name: conan
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
 
@@ -1662,7 +1665,7 @@ jobs:
   # ---------------------------------------------------------------------------
   clang-format:
     name: clang-format
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
 
@@ -1708,7 +1711,7 @@ jobs:
   # ---------------------------------------------------------------------------
   fuzz-smoke:
     name: fuzz-smoke
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
 
@@ -1801,7 +1804,7 @@ jobs:
   # ---------------------------------------------------------------------------
   bench-smoke:
     name: bench-smoke
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
 
@@ -1895,7 +1898,7 @@ jobs:
   # ---------------------------------------------------------------------------
   examples:
     name: examples / ${{ matrix.compiler.cc }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
     strategy:
@@ -1948,7 +1951,7 @@ jobs:
   # ---------------------------------------------------------------------------
   docs:
     name: docs
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
 
@@ -1987,7 +1990,7 @@ jobs:
   # ---------------------------------------------------------------------------
   install-check:
     name: install-check
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 15
 
@@ -2087,7 +2090,7 @@ jobs:
     name: zephyr / qemu_cortex_m3
     # The host only runs the container below, which carries the SDK, west and
     # QEMU; moved off ubuntu-22.04, the next image GitHub retires.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     container: ghcr.io/zephyrproject-rtos/ci:v0.29.4
     # metl IS a working Zephyr module (zephyr/module.yml + sample + docs). Both
@@ -2228,7 +2231,7 @@ jobs:
   # here; do not put the flag back silently.
   esp-idf:
     name: esp-idf / ${{ matrix.target }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 30
     strategy:
@@ -2300,7 +2303,7 @@ jobs:
       - zephyr
       - esp-idf
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
 
     steps:
@@ -2349,7 +2352,7 @@ jobs:
     name: deploy-docs
     needs: [docs, host-test, sanitizers]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       pages: write
       id-token: write

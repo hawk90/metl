@@ -199,9 +199,7 @@ class fixed_string {
       return false;
     }
 
-    for (size_type i = 0; i < input_size; ++i) {
-      storage_[i] = text[i];
-    }
+    copy_in(0, text, input_size);
 
     size_ = input_size;
     storage_[size_] = '\0';
@@ -228,9 +226,7 @@ class fixed_string {
       return false;
     }
 
-    for (size_type i = 0; i < input_size; ++i) {
-      storage_[size_ + i] = text[i];
-    }
+    copy_in(size_, text, input_size);
 
     size_ += input_size;
     storage_[size_] = '\0';
@@ -244,9 +240,7 @@ class fixed_string {
       return false;
     }
 
-    for (size_type i = 0; i < text.size(); ++i) {
-      storage_[size_ + i] = text[i];
-    }
+    copy_in(size_, text.data(), text.size());
 
     size_ += text.size();
     storage_[size_] = '\0';
@@ -304,6 +298,18 @@ class fixed_string {
   }
 
   constexpr bool can_append(size_type count) const noexcept { return count <= (Capacity - size_); }
+
+  // Copies `count` characters to `storage_[offset]`. Every caller has already
+  // checked `offset + count <= Capacity`. Written through a pointer rather than
+  // `storage_[offset + i]`: GCC 15+ (-Waggressive-loop-optimizations) analyses
+  // the refused path of a literal longer than Capacity, where that check has
+  // already returned, and reports the subscript there as undefined behaviour.
+  void copy_in(size_type offset, const char* source, size_type count) noexcept {
+    char* destination = storage_ + offset;
+    for (size_type i = 0; i != count; ++i) {
+      destination[i] = source[i];
+    }
+  }
 
   char storage_[Capacity + 1];
   size_type size_;

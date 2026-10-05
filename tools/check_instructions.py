@@ -70,31 +70,32 @@ import sys
 #
 # A budget goes DOWN freely -- a faster implementation should tighten it. It
 # goes UP only when the commit says what got more expensive and why.
-# Measured by the `bench-smoke` job on PR #81, run 32612187131, at
-# --iterations 5000. Two CI runs of the same source agreed to within 28
+# Re-measured by the `bench-smoke` job on PR #131 (the ubuntu-26.04 move, GCC
+# 13 -> 15), run 37311956880, at --iterations 5000: every entry moved with the
+# compiler, not with the library. First measured on PR #81, run 32612187131. Two CI runs of the same source agreed to within 28
 # instructions on every entry -- at most 0.06%, and on the larger ones exactly
 # zero. That is where TOLERANCE_FRACTION's headroom comes from: it is ~80x the
 # observed run-to-run spread, and still 1/20th of the smallest regression this
 # gate exists to catch.
 BUDGETS = {
-    "metl_bench_containers::crc32 over 1 KiB": 58_915_554,
-    "metl_bench_containers::fixed_vector<64> fill + clear": 1_150_326,
-    "metl_bench_containers::flat_map<256> find (hit)": 498_727,
-    "metl_bench_containers::flat_map<256> find (miss)": 644_710,
-    "metl_bench_containers::ring_buffer<64> push + pop": 100_666,
-    "metl_bench_containers::ring_buffer<64> push_overwrite": 50_315,
-    "metl_bench_containers::static_unordered_map<256> find (hit)": 191_374,
-    "metl_bench_containers::static_unordered_map<256> find (miss)": 208_924,
-    "metl_bench_mpmc::mpmc_queue push + pop": 183_047,
-    "metl_bench_mpmc::spsc_queue push + pop": 120_253,
-    "metl_bench_pools::handle_pool<1024> alloc+free": 216_589,
-    "metl_bench_pools::handle_pool<4>  alloc+free": 180_303,
-    "metl_bench_pools::handle_pool<64> alloc+free": 182_208,
-    "metl_bench_pools::handle_pool<64> get()": 50_668,
-    "metl_bench_pools::object_pool<1024> alloc+free": 15_675_139,
-    "metl_bench_pools::object_pool<4>  alloc+free": 165_328,
-    "metl_bench_pools::object_pool<64> alloc+free": 1_013_044,
-    "metl_bench_spsc::push + pop round trip": 120_150,
+    "metl_bench_containers::crc32 over 1 KiB": 58_915_533,
+    "metl_bench_containers::fixed_vector<64> fill + clear": 1_150_301,
+    "metl_bench_containers::flat_map<256> find (hit)": 503_612,
+    "metl_bench_containers::flat_map<256> find (miss)": 649_597,
+    "metl_bench_containers::ring_buffer<64> push + pop": 100_661,
+    "metl_bench_containers::ring_buffer<64> push_overwrite": 50_304,
+    "metl_bench_containers::static_unordered_map<256> find (hit)": 190_945,
+    "metl_bench_containers::static_unordered_map<256> find (miss)": 208_495,
+    "metl_bench_mpmc::mpmc_queue push + pop": 163_039,
+    "metl_bench_mpmc::spsc_queue push + pop": 120_245,
+    "metl_bench_pools::handle_pool<1024> alloc+free": 216_438,
+    "metl_bench_pools::handle_pool<4>  alloc+free": 195_287,
+    "metl_bench_pools::handle_pool<64> alloc+free": 182_195,
+    "metl_bench_pools::handle_pool<64> get()": 50_636,
+    "metl_bench_pools::object_pool<1024> alloc+free": 4_777_935,
+    "metl_bench_pools::object_pool<4>  alloc+free": 170_318,
+    "metl_bench_pools::object_pool<64> alloc+free": 902_059,
+    "metl_bench_spsc::push + pop round trip": 120_154,
 }
 
 # The budgets above are counts of work at ONE iteration count. Comparing them

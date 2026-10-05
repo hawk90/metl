@@ -70,6 +70,14 @@ runs:
     # An earlier comment here noted that `partial/` is 0700 root:root and
     # narrowed the path to the .deb files; that was one step short, because the
     # .debs are unreadable to the runner too.
+    # The image release (ImageOS: ubuntu24, ubuntu26, ...) is part of the key:
+    # runner.os is only "Linux", so without it a runner-image upgrade would
+    # restore the previous release's .debs and never save its own.
+    - name: Identify the runner image
+      id: image
+      shell: bash
+      run: echo "os=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
+
     - name: Cache apt archives
       id: apt-cache
       # Must be >= v4.2.0: GitHub closed down the cache service API that
@@ -78,7 +86,7 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
       with:
         path: ~/.cache/metl-apt
-        key: apt-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key }}
+        key: apt-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ inputs.cache-key }}
 
     - name: Install apt packages (bounded retry)
       shell: bash
@@ -132,7 +140,9 @@ runs:
 
           # `update` gets a slice, `install` whatever is still left, so a slow
           # index refresh cannot starve the download it exists to enable.
+          updated=0
           if timeout $(( remaining / 4 + 1 )) sudo apt-get "${APT_OPTS[@]}" update && \
+             updated=1 && \
              timeout $(( deadline - SECONDS )) \
                sudo apt-get "${APT_OPTS[@]}" install -y ${APT_PACKAGES}; then
             # Copy the archives somewhere the post-step cache save can actually
@@ -146,6 +156,25 @@ runs:
           fi
 
           echo "apt attempt ${attempt} failed or timed out" >&2
+
+          # A package with no candidate on a freshly updated index is a rename
+          # or a removal in this Ubuntu release, not a flaky mirror: retrying
+          # cannot fix it. (qemu-user-static on 26.04 retried 77 times for the
+          # full 480 s before this check existed.)
+          if (( updated )); then
+            missing=""
+            for package in ${APT_PACKAGES}; do
+              candidate="$(apt-cache policy "${package}" 2>/dev/null | awk '/Candidate:/ {print $2}')"
+              if [[ -z "${candidate}" || "${candidate}" == "(none)" ]]; then
+                missing="${missing} ${package}"
+              fi
+            done
+            if [[ -n "${missing}" ]]; then
+              echo "::error::no installable candidate on this image for:${missing}." \
+                   "Renamed or removed in this release -- not a mirror problem."
+              exit 1
+            fi
+          fi
           sleep 5
         done
 
