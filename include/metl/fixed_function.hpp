@@ -267,6 +267,14 @@ class fixed_function_impl {
     static_assert(alignof(decayed_type) <= alignof(std::max_align_t),
                   "callable alignment exceeds fixed_function storage alignment");
 
+    if constexpr (std::is_pointer_v<decayed_type> || std::is_member_pointer_v<decayed_type>) {
+      // A null pointer whose signature only CONVERTS to this one (`int (*)(long)`
+      // into `R(int)`) arrives here, not at the exact-signature overload, and
+      // was stored as an engaged target that jumps to 0. Hold it to the same
+      // non-null precondition (docs/AUDIT.md G.3).
+      METL_ASSERT(function != nullptr);
+    }
+
     if (sizeof(decayed_type) > Capacity) {
       return false;
     }
@@ -389,6 +397,14 @@ class fixed_any_invocable_impl {
                   "noexcept fixed_any_invocable requires a noexcept-invocable callable");
     static_assert(alignof(decayed_type) <= alignof(std::max_align_t),
                   "callable alignment exceeds fixed_any_invocable storage alignment");
+
+    if constexpr (std::is_pointer_v<decayed_type> || std::is_member_pointer_v<decayed_type>) {
+      // A null pointer whose signature only CONVERTS to this one (`int (*)(long)`
+      // into `R(int)`) arrives here, not at the exact-signature overload, and
+      // was stored as an engaged target that jumps to 0. Hold it to the same
+      // non-null precondition (docs/AUDIT.md G.3).
+      METL_ASSERT(function != nullptr);
+    }
 
     if (sizeof(decayed_type) > Capacity) {
       return false;

@@ -178,5 +178,16 @@ int main() {
     CHECK(folded);
   }
 
+  // An unsigned value above LLONG_MAX prints as itself, not as a negative
+  // number (docs/AUDIT.md G.3).
+  {
+    char wide[24] = {};
+    CHECK(text_is(metl::try_format_int(metl::span<char>(wide, sizeof(wide)), UINT64_MAX),
+                  "18446744073709551615"));
+    CHECK(text_is(metl::try_format_int(metl::span<char>(wide, sizeof(wide)), std::uint64_t{1} << 63U),
+                  "9223372036854775808"));
+    CHECK(text_is(metl::try_format_int(metl::span<char>(wide, sizeof(wide)), 42U), "42"));
+  }
+
   return metl_test::exit_code();
 }

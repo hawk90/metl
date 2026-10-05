@@ -308,5 +308,17 @@ int main() {
     }
   }
 
+  // emplace of a duplicate returns the stored element, as documented and as
+  // static_unordered_map::emplace does (docs/AUDIT.md G.3). It used to
+  // assert -- or, with asserts stripped, construct over the live element.
+  {
+    metl::static_unordered_set<int, 8> dup_set;
+    int& first = dup_set.emplace(5);
+    int& again = dup_set.emplace(5);
+    if (&first != &again || dup_set.size() != 1) {
+      return 19;
+    }
+  }
+
   return 0;
 }

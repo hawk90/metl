@@ -147,8 +147,13 @@ class optional {
 
   /// @brief Assigns a value, engaging the optional (constructs or assigns `T`).
   /// @param value The value forwarded into the contained `T`.
+  /// @note Disabled for a scalar `T` assigned its own type, as in `std::optional`. That case is
+  ///       served by the converting constructor plus move assignment, and the exclusion is what
+  ///       makes `o = {}` RESET a scalar optional: otherwise `{}` binds to `U = T` here and
+  ///       engages it with `T{}` (docs/AUDIT.md G.3).
   template <typename U = T,
             typename = std::enable_if_t<!std::is_same_v<std::decay_t<U>, optional> &&
+                                        !(std::is_scalar_v<T> && std::is_same_v<T, std::decay_t<U>>) &&
                                         std::is_constructible_v<T, U> && std::is_assignable_v<T&, U>>>
   optional& operator=(U&& value) {
     assign_or_construct(std::forward<U>(value));

@@ -576,13 +576,29 @@ under a breaking-change heading for that reason.
 
 | Sev | Where | Finding | Status |
 |---|---|---|---|
-| MED | `optional.hpp` `operator=(U&&)` | `o = {}` engages with `T{}`; `std::optional` resets. A silent behaviour difference on a common idiom. | ⏳ open |
-| MED | `fixed_function.hpp` generic `F&&` ctor | a null function pointer of a *different* signature is stored as engaged; calling it jumps to 0 with no assert. | ⏳ open |
-| MED | `static_unordered_set.hpp` `emplace` | documented to return the existing element on a duplicate; asserts instead, and at `METL_HARDENING=0` constructs over the live slot (leak, `size()` wrong). The map was fixed (Section D row 48); the set was not. | ⏳ open |
+| MED | `optional.hpp` `operator=(U&&)` | `o = {}` engages with `T{}`; `std::optional` resets. A silent behaviour difference on a common idiom. | ✅ `std::optional`'s constraint: the template is disabled for a scalar `T` assigned its own type |
+| MED | `fixed_function.hpp` generic `F&&` ctor | a null function pointer of a *different* signature is stored as engaged; calling it jumps to 0 with no assert. | ✅ the generic path asserts non-null for any pointer callable, like the exact overload |
+| MED | `static_unordered_set.hpp` `emplace` | documented to return the existing element on a duplicate; asserts instead, and at `METL_HARDENING=0` constructs over the live slot (leak, `size()` wrong). The map was fixed (Section D row 48); the set was not. | ✅ find-existing first, as the map does |
 | MED | `static_unordered_map/set` erase | `rehash_in_place` moves live elements behind an iterator, so erasing during iteration skips elements (62 of 64 visited). Undocumented — this is the open iterator-invalidation TODO item, with evidence. | ⏳ open |
-| MED | `fsm.hpp` `dispatch` | re-entrant `dispatch` from an action runs the outer entry hook after the inner transition: `exit A, exit B, enter C, enter B`, final state C. | ⏳ open |
-| MED | `format.hpp` `try_format_int` | accepts unsigned `T` and casts to `long long`: `UINT64_MAX` prints `-1`. | ⏳ open |
-| MED* | `expected.hpp` `emplace`, `emplace_error` (both specialisations) | destroy, then construct, without updating `has_value_`; a throwing constructor double-destroys. *Exceptions-enabled builds only. | ⏳ open |
+| MED | `fsm.hpp` `dispatch` | re-entrant `dispatch` from an action runs the outer entry hook after the inner transition: `exit A, exit B, enter C, enter B`, final state C. | ✅ chained: the passed-through state is neither entered nor exited (`exit a, enter c`); dispatch from an exit hook is now a stated precondition |
+| MED | `format.hpp` `try_format_int` | accepts unsigned `T` and casts to `long long`: `UINT64_MAX` prints `-1`. | ✅ an unsigned `T` is rendered by `try_format_uint` |
+| MED* | `expected.hpp` `emplace`, `emplace_error` (both specialisations) | destroy, then construct, without updating `has_value_`; a throwing constructor double-destroys. *Exceptions-enabled builds only. | ✅ same-state replace goes through `detail::replace_live` (the reinit pattern), cross-state through `reinit_as_*` |
+
+Two of these change behaviour silently, which `docs/SCOPE.md` treats as the
+dangerous kind of change, so both are deliberate:
+
+- **`o = {}` on a scalar optional now resets it.** Code that relied on it
+  engaging with `0` / `nullptr` changes meaning without a diagnostic. It is
+  taken anyway because the old behaviour was the surprise: every reader
+  familiar with `std::optional` expects a reset, and METL's own class-type
+  optionals already reset (only scalars bound `{}` to `U = T`).
+- **The `fsm` hook sequence for a dispatch chained from an action changes.**
+  The old sequence was not a usable contract -- it exited a state before
+  entering it and ended on an entry hook for a state already left -- so there
+  is no correct program it breaks.
+
+The `fixed_function` fix is loud (an assert where a null call used to jump to
+address 0); the rest only change previously wrong results.
 
 ### G.4 — Low
 
@@ -611,7 +627,12 @@ double/foreign free; hash-table tombstone churn at full capacity; `optional`,
 `tests/containers/alias_insert_test.cpp`, `tests/vocab/intrusive_ptr_alias_test.cpp`
 and block (4) of `tests/vocab/variant_selfassign_test.cpp` cover G.1;
 `tests/bits/hash_by_value_test.cpp` covers G.2 (17 checks red against the
-unfixed header, after removing the one line that did not compile there). Each was
+unfixed header, after removing the one line that did not compile there).
+G.3 is covered by new blocks in `optional_test`, `format_test`,
+`expected_regression_test` (host only: it throws), `static_unordered_set_test`
+and `fsm_reentrancy_test`, plus `tests/vocab/fixed_function_null_test.cpp`,
+which observes the assert through a longjmping handler so it also runs on QEMU.
+All six were red against the unfixed headers. Each was
 run against the unfixed headers first and failed (12 checks across the three).
 They detect the stale read with a type that poisons itself on move and
 destruction, not with a sanitizer, so they mean the same thing on QEMU.

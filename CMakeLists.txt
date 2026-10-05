@@ -191,7 +191,7 @@ if(METL_BUILD_TESTS)
     # vocab/
     vocab/optional vocab/optional_constexpr vocab/expected vocab/expected_regression
     vocab/variant vocab/variant_regression vocab/span vocab/function_ref
-    vocab/fixed_function vocab/fixed_function_const vocab/delegate
+    vocab/fixed_function vocab/fixed_function_const vocab/fixed_function_null vocab/delegate
     vocab/intrusive_ptr vocab/intrusive_ptr_contract vocab/intrusive_ptr_alias vocab/scope_exit vocab/type_traits
     vocab/variant_selfassign vocab/versioned_handle
     # bits/

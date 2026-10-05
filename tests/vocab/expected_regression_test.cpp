@@ -121,5 +121,71 @@ int main() {
   }
   CHECK_EQ(val::live, 0);
 
+#if defined(__cpp_exceptions)
+  // ---- (3) a throwing emplace / emplace_error must not double-destroy ----
+  // (docs/AUDIT.md G.3). These used to destroy the active member, then throw
+  // from the constructor with has_value_ unchanged, so ~expected destroyed it
+  // again: `live` went negative.
+  {
+    val::live = 0;
+    {
+      metl::expected<val, int> e(metl::in_place, 1);
+      val::arm = true;
+      bool threw = false;
+      try {
+        e.emplace(2);
+      } catch (int) {
+        threw = true;
+      }
+      CHECK(threw);
+      CHECK(e.has_value());
+      CHECK_EQ(e->x, 1);
+    }
+    CHECK_EQ(val::live, 0);
+
+    {
+      metl::expected<int, val> e(metl::unexpect, 1);
+      val::arm = true;
+      bool threw = false;
+      try {
+        e.emplace_error(2);
+      } catch (int) {
+        threw = true;
+      }
+      CHECK(threw);
+      CHECK(!e.has_value());
+      CHECK_EQ(e.error().x, 1);
+    }
+    CHECK_EQ(val::live, 0);
+
+    {
+      metl::expected<void, val> e(metl::unexpect, 1);
+      val::arm = true;
+      bool threw = false;
+      try {
+        e.emplace_error(2);
+      } catch (int) {
+        threw = true;
+      }
+      CHECK(threw);
+      CHECK(!e.has_value());
+      CHECK_EQ(e.error().x, 1);
+    }
+    CHECK_EQ(val::live, 0);
+
+    // The non-throwing path still replaces.
+    {
+      metl::expected<val, int> e(metl::in_place, 1);
+      e.emplace(3);
+      CHECK_EQ(e->x, 3);
+      e.emplace_error(4);
+      CHECK(!e.has_value());
+      e.emplace(5);
+      CHECK_EQ(e->x, 5);
+    }
+    CHECK_EQ(val::live, 0);
+  }
+#endif
+
   return metl_test::exit_code();
 }

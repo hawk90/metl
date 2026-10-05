@@ -150,6 +150,38 @@ struct is_metl_expected_with_value : false_type {};
 template <typename T, typename G>
 struct is_metl_expected_with_value<expected<T, G>, T> : true_type {};
 
+// Replaces the live `U` at `slot` with one built from `args`. If that
+// construction throws, `slot` still holds a live `U` -- the old object, or a
+// moved-back copy of it -- so the owning expected's `has_value_` stays true to
+// what is stored and its destructor destroys exactly once. The same three
+// branches as expected::reinit_as_value, for the same-state case
+// (docs/AUDIT.md G.3).
+template <typename U, typename... Args>
+void replace_live(U* slot, Args&&... args) {
+  if constexpr (std::is_nothrow_constructible_v<U, Args&&...>) {
+    slot->~U();
+    ::new (static_cast<void*>(slot)) U(std::forward<Args>(args)...);
+  } else if constexpr (std::is_nothrow_move_constructible_v<U>) {
+    U incoming(std::forward<Args>(args)...);
+    slot->~U();
+    ::new (static_cast<void*>(slot)) U(static_cast<U&&>(incoming));
+  } else {
+#if METL_NO_EXCEPTIONS
+    slot->~U();
+    ::new (static_cast<void*>(slot)) U(std::forward<Args>(args)...);
+#else
+    U backup(static_cast<U&&>(*slot));
+    slot->~U();
+    try {
+      ::new (static_cast<void*>(slot)) U(std::forward<Args>(args)...);
+    } catch (...) {
+      ::new (static_cast<void*>(slot)) U(static_cast<U&&>(backup));
+      throw;
+    }
+#endif
+  }
+}
+
 }  // namespace detail
 
 /// @brief A fixed-storage value-or-error result type (in-place, no heap).
@@ -454,9 +486,13 @@ class expected {
   /// @return Reference to the newly constructed value.
   template <typename... Args>
   T& emplace(Args&&... args) {
-    destroy_active();
-    construct_value(std::forward<Args>(args)...);
-    has_value_ = true;
+    // Never destroy-then-construct: a throwing constructor would leave
+    // has_value_ naming a destroyed member, destroyed again by ~expected.
+    if (has_value_) {
+      detail::replace_live(value_ptr(), std::forward<Args>(args)...);
+    } else {
+      reinit_as_value(std::forward<Args>(args)...);
+    }
     return *value_ptr();
   }
 
@@ -466,9 +502,11 @@ class expected {
   /// @return Reference to the newly constructed error.
   template <typename... Args>
   E& emplace_error(Args&&... args) {
-    destroy_active();
-    construct_error(std::forward<Args>(args)...);
-    has_value_ = false;
+    if (has_value_) {
+      reinit_as_error(std::forward<Args>(args)...);
+    } else {
+      detail::replace_live(error_ptr(), std::forward<Args>(args)...);
+    }
     return *error_ptr();
   }
 
@@ -1082,11 +1120,13 @@ class expected<void, E> {
   /// @return Reference to the newly constructed error.
   template <typename... Args>
   E& emplace_error(Args&&... args) {
-    if (!has_value_) {
-      error_ptr()->~E();
+    if (has_value_) {
+      construct_error(std::forward<Args>(args)...);
+      has_value_ = false;
+    } else {
+      // Same hazard as the primary template's emplace (docs/AUDIT.md G.3).
+      detail::replace_live(error_ptr(), std::forward<Args>(args)...);
     }
-    construct_error(std::forward<Args>(args)...);
-    has_value_ = false;
     return *error_ptr();
   }
 

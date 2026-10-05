@@ -43,6 +43,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Divergences from `std` and from METL's own documentation** (docs/AUDIT.md G.3):
+  - `optional<scalar> o; o = {};` now **resets** `o`, as `std::optional` does; it
+    used to engage it with `T{}`. Silent behaviour change for scalar `T` only.
+  - `fixed_function` / `fixed_any_invocable` now assert on a null function
+    pointer whose signature only converts to theirs; it used to be stored as an
+    engaged target that jumped to address 0 when called.
+  - `static_unordered_set::emplace` returns the existing element for a
+    duplicate, as documented; it used to assert (or, with asserts stripped,
+    construct over the live element).
+  - `fsm::dispatch` called from a transition action now chains: the state passed
+    through is neither entered nor exited. Hooks used to run `exit a, exit b,
+    enter c, enter b`. Dispatching from an exit hook is a stated precondition.
+  - `try_format_int` renders an unsigned value as itself; `UINT64_MAX` printed
+    as `-1`.
+  - `expected::emplace` / `emplace_error` no longer double-destroy when the new
+    member's constructor throws (exceptions-enabled builds only).
 - **Inserting or assigning a value that refers to an element of the same
   container read it after it was moved or destroyed** (docs/AUDIT.md G.1).
   Each case silently stored the wrong value:
