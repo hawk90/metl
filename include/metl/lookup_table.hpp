@@ -46,7 +46,7 @@ struct lookup_entry {
 /// @note `noexcept` on the constructor, `find`, `contains` and `value_or` is
 ///       conditional on `Key`/`Value` copies and `Key`'s `operator==` not
 ///       throwing, so a throwing type propagates its exception instead of
-///       terminating (docs/AUDIT.md G.7).
+///       terminating.
 template <typename Key, typename Value, std::size_t Size>
 class lookup_table {
  public:

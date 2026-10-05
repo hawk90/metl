@@ -6,19 +6,19 @@
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
 ///   | `try_push`, `try_emplace`, `try_pop` | wait-free, bounded |
-///   | `size`, `empty`, `full` | wait-free, bounded (and only a hint) |
-///   | `clear`, destructor | wait-free, bounded by `size()` -- **not** concurrency-safe |
+///   | `size_approx`, `empty`, `full` | wait-free, bounded (and only a hint) |
+///   | destructor | wait-free, bounded by the queued count -- **not** concurrency-safe |
 ///
 /// This is the queue that may cross an ISR boundary on a single core, and the
-/// reason is in the first row: a push or a pop is two atomic loads and one release
-/// store, with **no retry loop**. There is no compare-exchange to lose, so a
+/// reason is in the first row: a push or a pop is at most two atomic loads and one
+/// release store, with **no retry loop**. There is no compare-exchange to lose, so a
 /// producer preempted mid-push cannot make the consumer spin. `metl::mpmc_queue` is
 /// lock-free rather than wait-free and is therefore multi-core only.
 ///
-/// `size`, `empty`, and `full` read two counters that another thread may be moving,
+/// `size_approx`, `empty`, and `full` read two counters that another thread may be moving,
 /// so they are hints -- true at some instant during the call, not afterwards.
 ///
-/// `clear` and the destructor assume no concurrent access: they destroy the
+/// The destructor assumes no concurrent access: it destroys the
 /// remaining elements, which is a single-threaded operation by nature.
 
 #include "metl/config.hpp"
@@ -53,10 +53,11 @@ class spsc_queue {
   static_assert(Capacity >= 2, "spsc_queue Capacity must be at least 2");
   static_assert((Capacity & (Capacity - 1)) == 0, "Capacity must be power of two");
 
-  // metl is a NO-EXCEPTION library. try_push/try_emplace, try_pop, and the destructor are all
-  // marked noexcept while running T's move ctor (try_emplace), move-assign (try_pop) and destructor
-  // (try_pop / ~spsc_queue). If any of those threw, the exception would escape a noexcept boundary
-  // and call std::terminate at RUNTIME. Requiring nothrow here turns that latent runtime terminate
+  // metl is a NO-EXCEPTION library. try_push(T&&), try_pop and the destructor are noexcept while
+  // running T's move ctor (try_push), move-assign (try_pop) and destructor (try_pop / ~spsc_queue);
+  // try_emplace and try_push(const T&) are noexcept only when T's constructor is. If any of the
+  // noexcept paths threw, the exception would escape a noexcept boundary and call std::terminate at
+  // RUNTIME. Requiring nothrow here turns that latent runtime terminate
   // into a clear COMPILE-TIME error. (Copy is intentionally not required: it is only reachable via
   // the copy overload of try_push(const T&) and constraining it would reject nothrow-movable types.)
   static_assert(std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_assignable_v<T> &&
@@ -92,7 +93,7 @@ class spsc_queue {
   /// @return True if enqueued; false if the queue is full.
   /// @note Producer-side only; call from the single producer thread.
   /// @note `noexcept` only when `T`'s copy cannot throw. A throwing copy
-  ///       propagates with nothing published (docs/AUDIT.md G.7).
+  ///       propagates with nothing published.
   METL_NODISCARD bool try_push(const T& value) noexcept(std::is_nothrow_copy_constructible_v<T>) {
     return try_emplace(value);
   }

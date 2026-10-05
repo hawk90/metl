@@ -72,8 +72,8 @@ bool visit_does_not_truncate_a_wide_alternative() {
 // A visitor whose result type differs per alternative. metl::visit must refuse
 // it, as std::visit does -- and the TRAIT is what refuses, so the trait is what
 // can be tested here. Instantiating metl::visit with such a visitor is a hard
-// error by design, so the check stops one level short of the call; this
-// repository has no compile-failure harness (docs/TODO.md).
+// error by design, so the check stops one level short of the call; the
+// static_assert itself is pinned in tests/compile_fail/.
 //
 // Named structs rather than lambdas: a lambda in an unevaluated operand is C++20
 // and METL's baseline is C++17.

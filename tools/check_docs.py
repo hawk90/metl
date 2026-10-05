@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Keep the documentation's checkable claims checked.
 
-docs/COOKBOOK.md opens with "Every snippet below mirrors a compiled, CI-run
-example under examples/". That is a claim about CI, and until now nothing in CI
+docs/COOKBOOK.md opens with "Every section links a compiled, CI-run example
+under examples/". That is a claim about CI, and until now nothing in CI
 tested it -- the same shape of problem as a benchmark that asserts nothing or a
 checklist item nobody measures. This script tests the parts of it that a machine
 can settle:
@@ -24,7 +24,7 @@ can settle:
       Not "the copies agree" -- no copies. See below.
   D6  every tools/check_*.py appears in the gate table in docs/SCOPE.md section
       8, and the table names no checker that has been deleted or renamed.
-  D7  every "N tests" figure in README.md is a count tools/run_qemu_tests.sh
+  D7  every "N tests" figure in README.md is a count tools/run_qemu_tests.py
       still produces, asked of the runner itself via `--plan`. The figure is
       derived from a glob over tests/, so it moves whenever a test is added:
       README said 71 and 68 where the runner produced 76 and 72.
@@ -32,7 +32,7 @@ can settle:
 D5 is a different shape from the others and the difference is the point. D1-D4
 check that two things agree; D5 forbids the second thing from existing. It was
 added after the size budgets were raised in #66 and the figures quoted in
-.github/workflows/ci.yml and docs/TODO.md were not, so the repository stated
+.github/workflows/ci.yml and a planning note were not, so the repository stated
 three answers to "what is the Cortex-M0 budget" and two of them were a
 measurement that no longer existed. Nothing failed, because nothing was
 checking; the ratchet itself was correct the whole time.
@@ -61,7 +61,7 @@ import subprocess
 import sys
 
 DOCS = ["README.md", "docs/COOKBOOK.md", "docs/CHOOSING.md", "docs/SCOPE.md",
-        "docs/TODO.md", "docs/AUDIT.md"]
+        "CONTRIBUTING.md", "SECURITY.md"]
 
 # D1: `metl::` names the docs use on purpose that are not, and must not be,
 # symbols. Each carries its reason, so a reader sees a decision.
@@ -105,7 +105,7 @@ SIZE_SCANNED_SUFFIXES = (".md", ".yml", ".yaml", ".py", ".txt", ".sh")
 # opposite remedy: a byte budget can live in one file and be pointed at, while
 # this figure has no file to live in -- it is a property of the tree. So the
 # rule is that any such figure must be one a machine can currently produce.
-QEMU_RUNNER = "tools/run_qemu_tests.sh"
+QEMU_RUNNER = "tools/run_qemu_tests.py"
 QEMU_WORKFLOW = ".github/workflows/ci.yml"
 TEST_COUNT_FIGURE = re.compile(r"(?<![-\w.])(\d+)\s+tests\b")
 # The matrix rows of the qemu-conformance job: a cpu, then the tests that must
@@ -322,7 +322,7 @@ def qemu_run_counts(root):
 
     counts = {}
     for cpu, expect_build_fail in rows:
-        command = ["bash", str(runner), "--plan", "--cpu", cpu,
+        command = [sys.executable, str(runner), "--plan", "--cpu", cpu,
                    "--expect-build-fail", expect_build_fail]
         try:
             completed = subprocess.run(command, cwd=root, capture_output=True,
@@ -426,8 +426,8 @@ def self_test():
             "          - cpu: cortex-m3\n"
             "            machine: fake-board\n"
             "            expect_build_fail: \"\"\n")
-        runner = root / "tools" / "run_qemu_tests.sh"
-        runner.write_text("#!/usr/bin/env bash\necho 'would-run:    5'\n")
+        runner = root / "tools" / "run_qemu_tests.py"
+        runner.write_text("print('would-run:    5')\n")
         runner.chmod(0o755)
         readme_broken = ("`metl::fixed_vector` is fine and `metl::ghost_type` is not.\n"
                          "[missing](docs/nope.md)\n"
@@ -452,7 +452,7 @@ def self_test():
         runner.unlink()
         if not any(rule == "D7" for rule, _ in check(root)):
             failures.append("D7 did not fire when the runner it asks was missing")
-        runner.write_text("#!/usr/bin/env bash\necho 'would-run:    5'\n")
+        runner.write_text("print('would-run:    5')\n")
         runner.chmod(0o755)
 
         # And the clean case must stay clean.

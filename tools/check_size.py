@@ -3,7 +3,7 @@
 
 Why size and not speed. `bench-smoke` builds the benchmarks, runs them and
 prints the numbers -- and asserts nothing, so it is a job that can only pass.
-docs/TODO.md already rejected the obvious fix ("a threshold on a shared runner
+The obvious fix was rejected early ("a threshold on a shared runner
 either fires spuriously or never fires"), and that rejection is right: wall-clock
 on a shared GitHub runner is noise.
 

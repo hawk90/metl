@@ -5,7 +5,7 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `push_overwrite`, `push_back`, `pop_front`, `emplace_*`, `try_*` | wait-free, bounded |
+///   | `push_overwrite`, `emplace_back`, `pop_front`, `try_*` | wait-free, bounded |
 ///   | element access, `size`, `empty`, `full` | wait-free, bounded |
 ///   | `clear`, destructor | wait-free, bounded by `size()` |
 ///

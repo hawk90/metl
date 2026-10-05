@@ -5,7 +5,8 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `read`, `write`, `modify`, the bit helpers | wait-free, bounded -- one bus access each |
+///   | `read`, `write` | wait-free, bounded -- one bus access |
+///   | `modify`, the bit helpers | wait-free, bounded -- one read and one write, not atomic |
 ///
 /// There is no loop here and no retry: each operation is a single `volatile` load
 /// or store, and `modify` is one of each. What METL cannot state is how long a bus

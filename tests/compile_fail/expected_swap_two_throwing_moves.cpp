@@ -3,8 +3,8 @@
 // Swapping a value-state expected with an error-state one moves each member
 // across. With one nothrow move a throw can always be rolled back; with two
 // throwing moves the last step can fail after both originals are gone, leaving
-// a destroyed member under a stale discriminant -- a double destroy
-// (docs/AUDIT.md G.6). std::expected::swap carries the same requirement.
+// a destroyed member under a stale discriminant -- a double destroy.
+// std::expected::swap carries the same requirement.
 
 #include <metl/expected.hpp>
 

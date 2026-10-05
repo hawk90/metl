@@ -6,12 +6,14 @@
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
 ///   | `push_back`, `pop_back`, `emplace_back`, `try_*`, `back`, indexing | wait-free, bounded |
-///   | `insert`, `emplace`, `erase` | wait-free, bounded by `size()` moves |
+///   | `insert`/`emplace` of one element, `erase` | wait-free, bounded by `size()` moves |
+///   | `insert(pos, n, v)`, range `insert` | wait-free, bounded by `n * size()` moves |
 ///   | `clear`, `resize`, copy, destructor | wait-free, bounded by `size()` |
 ///
 /// Appending and removing at the end are one construction or destruction plus an
 /// index update; they do not depend on `size()`. Inserting or erasing in the middle
-/// shifts the tail, so the bound is `size()` moves of `T` -- at most `Capacity`.
+/// shifts the tail, so one element costs `size()` moves of `T` -- at most `Capacity`;
+/// inserting `n` elements shifts the tail `n` times.
 ///
 /// This is `O(n)` with a compile-time-known `n`, which docs/SCOPE.md section 1
 /// accepts and distinguishes from `O(1) amortized` with a reallocation cliff. There
@@ -85,7 +87,7 @@ class fixed_vector {
   // Element-inserting constructors delegate to the empty constructor first.
   // Once it returns the object is fully constructed, so if copying or moving
   // an element throws part-way, the destructor runs and destroys exactly the
-  // elements already inserted -- they used to leak (docs/AUDIT.md G.5).
+  // elements already inserted -- they used to leak.
   /// Copy-constructs by copying each element of `other`.
   fixed_vector(const fixed_vector& other) : fixed_vector() {
     for (const auto& value : other) {
@@ -184,7 +186,7 @@ class fixed_vector {
   /// Returns the number of bytes occupied by the current elements.
   METL_NODISCARD constexpr size_type size_bytes() const noexcept { return size_ * sizeof(T); }
 
-  /// Accesses the element at `index` without bounds-checking against std logic.
+  /// Accesses the element at `index`.
   /// @pre `index < size()`; out-of-range asserts and aborts (does not throw).
   METL_NODISCARD reference operator[](size_type index) noexcept {
     METL_ASSERT(index < size_);
@@ -284,7 +286,7 @@ class fixed_vector {
   /// @pre Container is non-empty; asserts and aborts otherwise.
   void pop_back() noexcept {
     // Hard: an empty pop would destroy data()[-1] and wrap size_ to SIZE_MAX,
-    // after which the next push writes far out of bounds (AUDIT G.5).
+    // after which the next push writes far out of bounds.
     METL_HARDEN(size_ > 0);
     asan_unpoison_all_();
     data()[size_ - 1].~T();
@@ -379,7 +381,7 @@ class fixed_vector {
     METL_ASSERT(pos >= begin() && pos <= end());
     // METL_HARDEN, not METL_ASSERT: on a full vector the shift below writes one
     // past the storage, so stripping this check turns a precondition violation
-    // into memory corruption (docs/AUDIT.md E.3, G.5).
+    // into memory corruption.
     METL_HARDEN(size_ < Capacity);
     const size_type index = static_cast<size_type>(pos - begin());
     if (index == size_) {
@@ -426,8 +428,8 @@ class fixed_vector {
   /// @pre [first, last) is not a range of this vector -- it is shifted or
   ///      cleared before it is read (std::vector has the same precondition).
   ///      Checked: a range of this vector's own pointers or reverse iterators
-  ///      asserts instead of silently copying moved-from or destroyed elements
-  ///      (docs/AUDIT.md G.9). Copy it out first.
+  ///      asserts instead of silently copying moved-from or destroyed elements.
+  ///      Copy it out first.
   template <typename It, typename = std::enable_if_t<!std::is_integral_v<It>>>
   iterator insert(const_iterator pos, It first, It last) {
     METL_ASSERT(pos >= begin() && pos <= end());
@@ -564,7 +566,7 @@ class fixed_vector {
   void assign(size_type n, const T& value) {
     METL_ASSERT(n <= Capacity);
     // Copy first: `value` may be an element of this vector (`v.assign(3, v[0])`),
-    // which clear() destroys -- every copy then read a dead object (G.6).
+    // which clear() destroys -- every copy then read a dead object.
     const T copy(value);
     clear();
     for (size_type i = 0; i < n; ++i) {
@@ -577,8 +579,8 @@ class fixed_vector {
   /// @pre [first, last) is not a range of this vector -- it is shifted or
   ///      cleared before it is read (std::vector has the same precondition).
   ///      Checked: a range of this vector's own pointers or reverse iterators
-  ///      asserts instead of silently copying moved-from or destroyed elements
-  ///      (docs/AUDIT.md G.9). Copy it out first.
+  ///      asserts instead of silently copying moved-from or destroyed elements.
+  ///      Copy it out first.
   template <typename It, typename = std::enable_if_t<!std::is_integral_v<It>>>
   void assign(It first, It last) {
     METL_ASSERT(!aliases_own_storage(first, last));
@@ -611,7 +613,7 @@ class fixed_vector {
       // Move the tail across one element at a time, counting each into
       // `shorter.size_` as soon as it exists. A throwing move then leaves each
       // vector owning exactly the objects it holds; counting only after the
-      // loop leaked every element moved before the throw (docs/AUDIT.md G.6).
+      // loop leaked every element moved before the throw.
       for (size_type i = old_shorter; i < longer.size_; ++i) {
         ::new (static_cast<void*>(shorter.slot_(i))) T(static_cast<T&&>(longer.data()[i]));
         ++shorter.size_;
@@ -638,7 +640,7 @@ class fixed_vector {
   // vector's own iterator type) and reverse iterators over them can point here;
   // any other iterator type cannot, and answers false. Compared as integers,
   // like object_pool::index_of, because relational `<` on pointers that may not
-  // share an array is unspecified (docs/AUDIT.md E.2, G.9).
+  // share an array is unspecified.
   template <typename It>
   bool aliases_own_storage(It first, It last) const noexcept {
     if constexpr (std::is_pointer_v<It> && std::is_same_v<std::remove_cv_t<std::remove_pointer_t<It>>, T>) {
@@ -680,7 +682,7 @@ class fixed_vector {
 #endif
 
   // Elements live in one aligned byte buffer reached as a single T[Capacity]
-  // array object, so data() + i is in-array arithmetic (docs/AUDIT.md E.2; the
+  // array object, so data() + i is in-array arithmetic (the
   // reasoning is in detail/array_storage.hpp). std::launder is not
   // constant-evaluable, so the constexpr labels here are effective only outside
   // constant evaluation.

@@ -5,8 +5,8 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `try_allocate`, `allocate`, `try_new`, `new_object` | wait-free, bounded |
-///   | `reset`, `used`, `remaining` | wait-free, bounded |
+///   | `try_allocate`, `allocate`, `try_new`, `create` | wait-free, bounded |
+///   | `reset`, `used_bytes`, `remaining_bytes`, `capacity_bytes` | wait-free, bounded |
 ///
 /// Allocation forwards to `metl::monotonic_buffer`: an alignment round-up and a
 /// pointer bump, with no free list to walk and no search for a fit. A request that

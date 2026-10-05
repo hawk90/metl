@@ -1,5 +1,5 @@
 // Regression tests for the 2026-08-21 audit of the headers that landed after
-// the 2026-07-07 audit (docs/AUDIT.md, Section F).
+// the 2026-07-07 audit.
 //
 // Each block here corresponds to one finding, and each was written by first
 // confirming it FAILS against the unfixed code -- a regression test that has
@@ -20,7 +20,7 @@
 
 namespace {
 
-/// E.1 -- a type with NO default constructor. `mpmc_queue`'s destructor used to
+/// A type with NO default constructor. `mpmc_queue`'s destructor used to
 /// drain through `try_pop`, which needed a `T discarded;` to pop into, so this
 /// type would not compile inside `mpmc_queue` at all. `spsc_queue` never had the
 /// requirement, and no static_assert stated it.
@@ -55,8 +55,8 @@ int counted::live = 0;
 
 int main() {
   // ---------------------------------------------------------------------
-  // E.1  mpmc_queue must not require a default-constructible T.
-  //      Before the fix this block did not compile.
+  // mpmc_queue must not require a default-constructible T.
+  // Before the fix this block did not compile.
   // ---------------------------------------------------------------------
   {
     metl::mpmc_queue<no_default, 4> queue;
@@ -98,13 +98,13 @@ int main() {
   CHECK_EQ(counted::live, 0);
 
   // ---------------------------------------------------------------------
-  // E.2  size_approx / full must not lie.
+  // size_approx / full must not lie.
   //
-  //      The wrap case that motivated this fix needs 2^size_t operations and
-  //      cannot be reached in a test -- the change makes the arithmetic
-  //      identical to spsc_queue's, which is the reference. What IS testable is
-  //      that the ordinary path still answers correctly, so a future "fix" that
-  //      reintroduces a comparison has something to fail.
+  // The wrap case that motivated this fix needs 2^size_t operations and
+  // cannot be reached in a test -- the change makes the arithmetic
+  // identical to spsc_queue's, which is the reference. What IS testable is
+  // that the ordinary path still answers correctly, so a future "fix" that
+  // reintroduces a comparison has something to fail.
   // ---------------------------------------------------------------------
   {
     metl::mpmc_queue<int, 4> queue;
@@ -127,7 +127,7 @@ int main() {
   }
 
   // ---------------------------------------------------------------------
-  // E.3  guarded::with must not let a reference to the guarded value escape.
+  // guarded::with must not let a reference to the guarded value escape.
   // ---------------------------------------------------------------------
   {
     using guard_type = metl::guarded<int, metl::null_lock>;
@@ -158,8 +158,8 @@ int main() {
   }
 
   // ---------------------------------------------------------------------
-  // E.4  the variadic constructor must not out-compete the deleted copy ctor.
-  //      `guarded` must still be non-copyable, and the error must say so.
+  // the variadic constructor must not out-compete the deleted copy ctor.
+  // `guarded` must still be non-copyable, and the error must say so.
   // ---------------------------------------------------------------------
   {
     static_assert(!std::is_copy_constructible_v<metl::guarded<int, metl::null_lock>>,

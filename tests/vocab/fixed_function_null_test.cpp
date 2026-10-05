@@ -1,5 +1,5 @@
 // Regression test: a null function pointer whose signature only CONVERTS to
-// the target's must be refused like an exact-signature one (docs/AUDIT.md G.3).
+// the target's must be refused like an exact-signature one.
 //
 // `int (*)(long)` into `fixed_function<int(int)>` takes the generic callable
 // path, not the exact-signature overload that asserts non-null, so it used to

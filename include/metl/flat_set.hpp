@@ -68,7 +68,7 @@ class flat_set {
   // Element-inserting constructors delegate to the empty constructor first.
   // Once it returns the object is fully constructed, so if copying or moving
   // an element throws part-way, the destructor runs and destroys exactly the
-  // elements already inserted -- they used to leak (docs/AUDIT.md G.5).
+  // elements already inserted -- they used to leak.
   flat_set(const flat_set& other) : flat_set(other.comp_) {
     for (const auto& item : other) {
       emplace(item);
@@ -367,7 +367,7 @@ class flat_set {
     const bool inserted = try_insert_at(index, std::forward<K>(key));
     METL_ASSERT(inserted);
     (void)inserted;
-    // Hard guard on the full-set path (docs/AUDIT.md, Section D) — see the twin
+    // Hard guard on the full-set path — see the twin
     // comment on flat_map::emplace. METL_ASSERT is stripped at low hardening
     // levels; METL_HARDEN never is.
     METL_HARDEN(index < size_);
@@ -395,7 +395,7 @@ class flat_set {
 
  private:
   // The lookups call the comparator in both argument orders; they are noexcept
-  // exactly when it cannot throw (docs/AUDIT.md G.9). See detail/nothrow_call.hpp
+  // exactly when it cannot throw. See detail/nothrow_call.hpp
   // for why std::less is looked through rather than taken at its word.
   template <typename K>
   static constexpr bool compare_cannot_throw =
@@ -479,7 +479,7 @@ class flat_set {
   // move-ASSIGN the rest backwards. Every slot in [0, size_) stays a live
   // object throughout, so a throwing move can no longer leave a destroyed slot
   // inside the range for the destructor to destroy a second time (the old
-  // construct-then-destroy loop did; docs/AUDIT.md G.5). A throw part-way
+  // construct-then-destroy loop did). A throw part-way
   // would still leave the order broken, so -- as std::flat_map does -- the
   // container is cleared to restore its invariant before rethrowing.
   void insert_shifting(size_type index, value_type&& entry) {
@@ -516,8 +516,8 @@ class flat_set {
   // element that cannot be move-assigned. A throw while constructing slot `i`
   // leaves [0, i) live, slot i dead and (i, size_] holding relocated elements;
   // the handler destroys exactly those and empties the container, the same
-  // outcome as the assignable path (docs/AUDIT.md G.6 -- G.5 fixed only that
-  // path, and this one still destroyed slot i a second time).
+  // outcome as the assignable path (this path used to destroy slot i a
+  // second time).
   void shift_right_from(size_type index) {
     size_type i = size_;
 #if !METL_NO_EXCEPTIONS
@@ -544,7 +544,7 @@ class flat_set {
   // Closes the gap at `index` by move-constructing each later element one slot
   // down. If such a move can throw, a throw at slot i leaves [0, i) live, slot i
   // dead and (i, size_) live; the handler destroys exactly those and empties the
-  // container -- the same outcome as a throwing insert (docs/AUDIT.md G.9). It
+  // container -- the same outcome as a throwing insert. It
   // used to run inside an unconditional noexcept, so the throw terminated.
   void erase_at(size_type index) noexcept(relocate_cannot_throw) {
     data()[index].~value_type();
@@ -581,7 +581,7 @@ class flat_set {
   Compare comp_;
   // Entries live in one aligned byte buffer reached as a single
   // value_type[Capacity] array object, so data() + i is in-array arithmetic
-  // (docs/AUDIT.md E.2; the reasoning is in detail/array_storage.hpp).
+  // (the reasoning is in detail/array_storage.hpp).
   // std::launder is not constant-evaluable, so the constexpr labels here are
   // effective only outside constant evaluation.
   detail::array_storage<value_type, (Capacity == 0 ? 1 : Capacity)> storage_;

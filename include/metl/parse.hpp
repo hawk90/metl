@@ -46,15 +46,16 @@
 //
 // Composes with the rest of the library through spans it already produces:
 //
-//     const auto line = ring.readable_span();          // spsc_byte_ring
+//     const auto bytes = ring.readable_span();         // spsc_byte_ring: span<const std::byte>
+//     const metl::span<const char> line(reinterpret_cast<const char*>(bytes.data()), bytes.size());
 //     const auto parsed = metl::try_parse_uint<std::uint16_t>(line);
 //
 // NOT CONSTANT-EVALUABLE TODAY, and this is the one place parse.hpp does not
 // mirror format.hpp. `try_format_uint` returns a `span`, which is a literal
 // type, so a table of text can be built at compile time. These return
-// `metl::expected`, whose storage is laundered aligned storage rather than a
-// union of {T, E} -- `expected.hpp` says so at its `storage_union`, and
-// docs/AUDIT.md Section A carries the rewrite as a deferred item. The
+// `metl::expected`, whose members live in laundered `storage_for` buffers rather
+// than a union of {T, E} -- `expected.hpp` says so at its `storage_union`, where
+// the rewrite is recorded as deferred. The
 // `constexpr` labels below are for the same reason `expected`'s own are: they
 // cost nothing, they document intent, and they start working the day that
 // rewrite lands. Until then a config table is parsed at startup, not at build

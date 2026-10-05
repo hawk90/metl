@@ -1,13 +1,14 @@
 # Compile-failure cases
 
-METL's public headers carry 17 user-facing `static_assert`s -- "Capacity must be
+METL's public headers carry dozens of user-facing `static_assert`s -- "Capacity must be
 power of two", "variant_alternative index out of range", "get_if<T> requires
 unique alternative type". For a template library those messages **are** the
 error handling: they are what a caller sees when they misuse the API, and they
 are the only thing standing between a misuse and whatever the compiler would
-otherwise say about a 40-line instantiation stack.
+otherwise say about a 40-line instantiation stack. (`tools/check_compile_fail.py`
+counts them; run it for the current figure.)
 
-Not one of them was verified to fire.
+Until this directory existed, not one of them was verified to fire.
 
 A `static_assert` whose condition is accidentally always true is invisible. It
 compiles, it never complains, and the contract it claims to enforce quietly
@@ -35,7 +36,7 @@ counts errors would not notice.
 
 ## Adding one
 
-    // EXPECT-ERROR: <substring of the diagnostic, usually the assert message>
+    // EXPECT-ERROR: <substring of the static_assert message>
     //
     // <what contract this pins, and why it is worth pinning>
 
@@ -49,4 +50,8 @@ counts errors would not notice.
     #endif
 
 `tools/check_compile_fail.py` finds every `*.cpp` here automatically; there is
-no list to keep in step.
+no list to keep in step. It also counts every user-facing `static_assert`
+message in `include/` and ratchets the number no case pins (`MAX_UNCOVERED`;
+the comment there explains its floor). So the EXPECT-ERROR text must match a
+`static_assert` message, not just any diagnostic, and a case that pins a
+previously uncovered message lowers `MAX_UNCOVERED` in the same change.

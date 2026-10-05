@@ -1,5 +1,5 @@
 // Regression test for intrusive_ptr assignment from a source that the release
-// destroys (docs/AUDIT.md, Section G).
+// destroys.
 //
 // `p = p->next` is the list-walk idiom: `p` holds the only reference to the
 // head, and the head's `next` holds the only reference to the second node.

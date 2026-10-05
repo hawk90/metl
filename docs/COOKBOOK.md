@@ -3,10 +3,16 @@
 Task-oriented recipes for common embedded / freestanding problems, using
 METL's header-only, heap-free, exception-free building blocks.
 
-Every snippet below mirrors a **compiled, CI-run example** under
-[`examples/`](../examples), so the code is known to build clean under
-`-Wall -Wextra -Werror -std=c++17` and to pass its own self-checks. Build the
-examples with:
+Every section links a **compiled, CI-run example** under
+[`examples/`](../examples) that builds clean under
+`-Wall -Wextra -Werror -std=c++17` and passes its own self-checks; the snippets
+here are excerpts of those programs. Build the examples with:
+
+```sh
+cmake -B build -S . -DMETL_BUILD_EXAMPLES=ON
+cmake --build build -j
+ctest --test-dir build -R metl_example --output-on-failure
+```
 
 > **What CI checks about this page, precisely.** `tools/check_docs.py` runs in
 > the `api-contract` job and settles three things: every `metl::` name used here
@@ -19,12 +25,6 @@ examples with:
 > prose introduces (`read_adc`, `toggle_led`). Turning each into a whole program
 > would duplicate `examples/` and make this page worse to read. Read a snippet
 > as a sketch; open the linked example when you want the program.
-
-```sh
-cmake -B build -S . -DMETL_BUILD_EXAMPLES=ON
-cmake --build build -j
-ctest --test-dir build -R metl_example --output-on-failure
-```
 
 ## Contents
 
@@ -58,26 +58,36 @@ the ones that bite people; read them before anything else.
 | `variant` `get<T>()` wrong alternative | **asserts** | throws `std::bad_variant_access` |
 | `flat_map::operator[]` / `at()` | **positional index** into sorted storage | key lookup / insert (`std::map`) |
 | A failed assert | is provably `[[noreturn]]` — **aborts**, never falls through | n/a |
-| `function_ref` construction | **rejects rvalue callables** (deleted overload) | — (P0792 also deletes this) |
+| `function_ref` construction | **rejects rvalue callables** (deleted overload) | — (`std::function_ref`, P0792, accepts temporaries) |
 
 Consequences:
 
-- **There are no `metl::bad_*_access` exceptions.** METL is exception-free.
-  Unchecked accessors (`value()`, `operator*`, `get<>()`, `at()`) assert on a
-  broken precondition and, by default, `std::abort()`. **Always branch on
+- **There are no `metl::bad_*_access` exceptions.** METL never throws an
+  exception of its own. With exceptions enabled it is exception-neutral: a throw
+  from your element type, hasher or callback propagates. The container is left
+  unchanged or, when the throw interrupts a reorder (a shift in `flat_map` /
+  `flat_set`, a sift in `fixed_priority_queue`, the tombstone rebuild in the
+  unordered containers), **emptied** -- never half-sorted. Unchecked accessors
+  (`value()`, `operator*`, `get<>()`, `at()`) assert on a broken precondition
+  and, by default, `std::abort()`. **Always branch on
   `has_value()` / `operator bool` / `holds_alternative<>()` first**, or use the
   total accessors `value_or(default)` / `find()` / `get_if()`.
 - **The assert path cannot continue.** `metl::detail::assertion_failed` and
   `panic` are `[[noreturn]]` and call `std::abort()` after invoking the
   (customizable) handler, so even a user handler that mistakenly `return`s
   cannot fall through a failed precondition into undefined behaviour.
+- **Checks are on in release builds by default.** `METL_HARDENING` keeps every
+  `METL_ASSERT` unless you select `METL_HARDENING_NONE`; there the precondition
+  asserts compile out and a broken precondition is undefined behaviour. Only the
+  `METL_HARDEN` memory-safety guards remain at that level.
 - **`flat_map` is not `std::map`.** `operator[]` and `at()` take an integer
   **position** into the key-sorted storage (like a vector), *not* a key. To work
   by key, use `find(key)` (returns `mapped_type*` / `nullptr`), `contains(key)`,
   `try_emplace(key, value)`, `try_insert_or_assign(key, value)`, or `erase(key)`.
 - **`function_ref` binds lvalues only.** Constructing one from a temporary
-  callable is a compile error, because the reference would dangle at the end of
-  the full expression. Bind a named callable or a function pointer instead.
+  callable is a compile error — **including passing a lambda directly as a
+  `function_ref` parameter**, which `std::function_ref` allows — because the
+  reference would dangle at the end of the full expression. Bind a named callable or a function pointer instead.
 
 ---
 
@@ -128,8 +138,10 @@ if (v.try_insert(v.begin(), 3, 0) == v.end()) { /* refused; v is untouched */ }
 ```
 
 `try_insert` returns `end()` on refusal rather than a `bool`, so a successful
-call still hands back the std-shaped iterator to the new element. A successful
-insert never yields `end()`, so the two outcomes cannot be confused.
+call still hands back the std-shaped iterator to the first new element. A
+successful insert of at least one element never yields `end()`; inserting zero
+elements at `end()` succeeds and returns `end()`, so check the count first if it
+can be zero.
 
 Two consequences worth knowing:
 
@@ -138,8 +150,9 @@ Two consequences worth knowing:
   single-pass source cannot be measured without being consumed. The compile
   error says exactly that.
 - A `bool` that answers a *question* rather than reporting a failure keeps its
-  plain name and may be ignored: `erase(key)` ("was it there"), `contains`,
-  `empty`, `full`. Only failures get the `try_` prefix. The full rule is
+  plain name: `erase(key)` ("was it there") stays discardable, while
+  `contains`, `empty` and `full` are ordinary `[[nodiscard]]` queries. Only
+  failures get the `try_` prefix. The full rule is
   [SCOPE.md §9](SCOPE.md#9-the-recoverable-api-contract).
 
 ## Key/value lookup with flat_map
@@ -155,8 +168,12 @@ see [contracts](#non-standard-contracts-you-must-know).
 
 metl::flat_map<std::uint8_t, std::int32_t, 16> readings;
 
-readings.try_emplace(3, 300);          // insert; returns false if key exists / full
-readings.try_insert_or_assign(2, 250); // insert-or-update; false only if a NEW key won't fit
+if (!readings.try_emplace(std::uint8_t{3}, 300)) {
+    /* key exists, or full */
+}
+if (!readings.try_insert_or_assign(std::uint8_t{2}, 250)) {
+    /* full: a NEW key won't fit */
+}
 
 if (const std::int32_t* r = readings.find(2)) {   // KEY lookup -> pointer or null
     use(*r);
@@ -167,7 +184,7 @@ for (const auto& kv : readings) {      // ascending key order
     use(kv.key, kv.value);
 }
 
-auto& first = readings[0];             // POSITIONAL: lowest-key entry, NOT key 0
+auto& first = readings.nth(0);         // POSITIONAL: lowest-key entry, NOT key 0
 readings.erase(1);                     // erase BY key
 ```
 
@@ -272,7 +289,7 @@ consumer. The canonical use is ISR (producer) to main loop (consumer):
 #include <metl/spsc_queue.hpp>
 
 metl::spsc_queue<adc_sample, 8> q;   // capacity must be a power of two;
-                                     // 8 -> 7 usable slots
+                                     // all 8 slots are usable
 
 // ---- in the ISR ----
 void adc_isr() {
@@ -289,7 +306,8 @@ while (q.try_pop(s)) {
 }
 ```
 
-Rules: one producer role, one consumer role, power-of-two capacity, and treat a
+Rules: one producer role, one consumer role, power-of-two capacity, a
+nothrow-movable `T`, and treat a
 full queue as an expected drop condition rather than blocking.
 
 ## Memory-mapped register access
@@ -317,7 +335,7 @@ cr.write(v | cr_enable::mask);
 // Raw primitives, if you don't want a wrapper:
 std::uint32_t x = metl::read_once(reg_ptr);
 metl::write_once(reg_ptr, x);
-metl::barrier_full();            // std::atomic_thread_fence, maps to DMB/DSB/mfence
+metl::barrier_full();            // atomic_thread_fence: DMB on ARM, mfence on x86
 ```
 
 All accesses route through `read_once` / `write_once` so the optimizer cannot
@@ -332,7 +350,6 @@ fold, reorder, or eliminate them.
 #include <metl/delegate.hpp>
 
 using transition = metl::fsm_transition<State, Event>;
-using action_t   = metl::delegate<void(State, Event, State)>;
 
 const std::array<transition, N> transitions{{
     {State::off, Event::turn_on,  State::on,       {}},
@@ -344,7 +361,7 @@ metl::fsm<State, Event, transitions.size(), entry_hooks.size(), 0>
     machine(State::off, transitions, entry_hooks, {});
 
 if (machine.dispatch(Event::turn_on)) {   // false if no matching transition
-    // ... entry hooks and transition action already ran ...
+    // ... any exit hook, action and entry hook have run, in that order ...
 }
 State s = machine.current_state();
 ```
@@ -440,7 +457,9 @@ Three things worth knowing before you wire this to a timer:
   call, which is legitimate for a catch-up timer but must not be unbounded.
 - **A poll may schedule and cancel**, including itself. One slot is reserved for
   the running task's own re-arm while its poll is on the stack, so `try_schedule`
-  reports full one slot early rather than letting the re-arm fail.
+  reports full one slot early rather than letting the re-arm fail. Cancelling
+  itself from inside its own poll does not stop it — its entry was already
+  popped — so return `nullopt` to retire.
 
 For the queue on its own — a work queue, a priority event list — use
 `fixed_priority_queue` directly. It is a max-heap by default like
@@ -536,8 +555,9 @@ Four things that are decisions rather than omissions:
   temporary you cannot size. An explicit `char[24]` is visible and safe anywhere.
 - **The result is not NUL-terminated.** It is a span, and its size is the length.
   Feed it to `fixed_string::try_append(span<const char>)` or write it straight out.
-- **A too-narrow fixed hex width is refused, not truncated.** `format_hex(out, 0xabcd, 2)`
-  returns empty rather than `"cd"`: a register dump missing its high nibbles is
+- **A too-narrow fixed hex width is refused, not truncated.**
+  `try_format_hex(out, 0xabcdu, 2)` returns empty (and `format_hex` asserts)
+  rather than producing `"cd"`: a register dump missing its high nibbles is
   worse than no dump.
 
 Passing a signed value to `format_uint` (or `format_hex`) is a compile error with a

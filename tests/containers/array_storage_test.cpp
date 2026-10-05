@@ -1,5 +1,5 @@
-// The contiguous containers reach their elements as one array (docs/AUDIT.md
-// E.2, include/metl/detail/array_storage.hpp). This test exercises what that
+// The contiguous containers reach their elements as one array
+// (include/metl/detail/array_storage.hpp). This test exercises what that
 // change must keep working: indexing and iteration through data() + i across
 // heavy churn (elements destroyed and re-created in place), element types with
 // a const member, an empty container's data(), and Capacity == 0. It runs

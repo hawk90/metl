@@ -5,7 +5,7 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `bind`, `from_function`, `reset`, `operator bool` | wait-free, bounded |
+///   | `bind`, `from_function`, `operator bool`, `has_value` | wait-free, bounded |
 ///   | `operator()` | one indirect call **plus the target's own cost** |
 ///
 /// A delegate stores two pointers and copies nothing, so binding and rebinding do

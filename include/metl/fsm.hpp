@@ -6,7 +6,8 @@
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
 ///   | `dispatch` | wait-free, bounded by the transition and hook tables |
-///   | `state`, `is_in` | wait-free, bounded |
+///   | `current_state` | wait-free, bounded |
+///   | `can_dispatch` | wait-free, bounded by `TransitionCount` comparisons |
 ///
 /// The transition table is scanned linearly, so a dispatch costs at most
 /// `TransitionCount` comparisons plus one scan of the entry/exit hook table. Both
@@ -110,10 +111,12 @@ class fsm {
   ///       skipped, and this call's entry hook is skipped because the machine
   ///       has moved on. `a -> b` whose action dispatches `b -> c` runs
   ///       `exit a, enter c`.
-  /// @note Not `noexcept`: an action or hook that throws propagates out of
-  ///       `dispatch` (it used to terminate the program, docs/AUDIT.md G.7). The
-  ///       new state is already committed by then and has not been entered, so
-  ///       a later dispatch out of it skips its exit hook.
+  /// @note Not `noexcept`: a transition action that throws propagates out of
+  ///       `dispatch` (it used to terminate the program). An entry or exit hook
+  ///       that throws still terminates: hooks are invoked from a `noexcept`
+  ///       helper. After a throwing action the new state is already
+  ///       committed and has not been entered, so a later dispatch out of it
+  ///       skips its exit hook.
   /// @pre Not called from an exit hook. The state being left is still current
   ///      there, so a dispatch would exit it twice; an entry hook may dispatch.
   METL_NODISCARD bool dispatch(Event event) {
@@ -139,8 +142,7 @@ class fsm {
     }
 
     // A dispatch from the action has already entered its own target; entering
-    // `next` now would run its entry hook after the machine left it
-    // (docs/AUDIT.md G.3).
+    // `next` now would run its entry hook after the machine left it.
     if (!entered_ && current_state_ == next) {
       entered_ = true;
       invoke_hook(entry_hooks_, next);

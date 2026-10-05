@@ -48,11 +48,11 @@ class monotonic_buffer {
 
   /// @brief Allocate a raw, uninitialized, aligned block by bumping the offset.
   /// @param bytes Number of bytes to allocate; a request of 0 returns null.
-  /// @param alignment Required alignment; must not exceed max alignment.
+  /// @param alignment Required alignment: a power of two (checked by `METL_HARDEN`).
   /// @return Pointer to the block, or null if the buffer lacks space (no throw).
   METL_NODISCARD void* allocate(size_type bytes, size_type alignment = alignof(std::max_align_t)) noexcept {
     // As arena_allocator: a non-power-of-two alignment makes align_up return a
-    // misaligned pointer, so this is a memory-safety floor (docs/AUDIT.md G.4).
+    // misaligned pointer, so this is a memory-safety floor.
     // Named first: inside METL_HARDEN's `!(expr)` the conjunction is a
     // readability-simplify-boolean-expr finding.
     const bool power_of_two = alignment != 0 && (alignment & (alignment - 1)) == 0;

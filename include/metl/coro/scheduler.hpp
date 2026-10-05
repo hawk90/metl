@@ -5,12 +5,13 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `attach`, `detach`, `is_attached` | wait-free, bounded by `Capacity` |
+///   | `try_attach`, `try_attach_protothread`, `try_attach_stepper` | wait-free, bounded |
+///   | `detach`, `is_attached` | wait-free, bounded by `Capacity` |
 ///   | `run_once` | bounded by the attached tasks and their own poll cost |
 ///   | `run_until_idle` | bounded by its `max_rounds` argument |
 ///
-/// The task table is a flat array searched linearly, so attaching and detaching are
-/// `Capacity`-bounded rather than constant -- the array is small and fixed, which is
+/// The task table is a flat array searched linearly, so detaching and lookup are
+/// `Capacity`-bounded rather than constant (attaching appends) -- the array is small and fixed, which is
 /// the trade this type makes for having no free list to corrupt.
 ///
 /// `run_once` visits each attached task once; its bound is therefore the sum of the

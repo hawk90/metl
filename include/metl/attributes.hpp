@@ -35,8 +35,8 @@
 
 /// @brief Force inlining regardless of optimizer heuristics. Maps to
 ///        `__forceinline` (MSVC) or `inline __attribute__((always_inline))`.
-// This is a stronger request than METL_FORCE_INLINE's hint and mirrors the
-// abseil ABSL_ATTRIBUTE_ALWAYS_INLINE spelling.
+// Expands exactly like METL_FORCE_INLINE (compiler.hpp); this is the abseil
+// ABSL_ATTRIBUTE_ALWAYS_INLINE spelling.
 #ifndef METL_ALWAYS_INLINE
 #if METL_COMPILER_MSVC
 #define METL_ALWAYS_INLINE __forceinline

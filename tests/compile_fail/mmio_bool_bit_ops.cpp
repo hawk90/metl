@@ -3,7 +3,7 @@
 // `bool` is a valid register type for read and write, so the type itself stays
 // allowed. The bit helpers are not: they clear with `~mask`, which is always
 // `true` as a bool, so `clear_bits(true)` and `modify(1, 0)` left the register
-// at 1 (docs/AUDIT.md G.5). The check sits on the bit helpers only.
+// at 1. The check sits on the bit helpers only.
 
 #include <cstdint>
 

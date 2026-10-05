@@ -144,7 +144,7 @@ template <typename T>
 METL_NODISCARD constexpr std::size_t fnv1a(const T* data, std::size_t len) noexcept {
   std::size_t hash = detail::active_fnv::offset;
   const unsigned char* bytes = reinterpret_cast<const unsigned char*>(data);
-  // `len` counts elements (docs/AUDIT.md G.2): hashing `len` bytes ignored all
+  // `len` counts elements: hashing `len` bytes ignored all
   // but the first `len` bytes of a wider buffer.
   const std::size_t byte_count = len * sizeof(T);
   for (std::size_t i = 0; i < byte_count; ++i) {
@@ -260,11 +260,11 @@ struct fnv1a_hash {
     } else if constexpr (std::is_same_v<T, char*>) {
       // A mutable `char*` prefers this template over the `const char*`
       // overload, and a pointer passes the unique-representation gate: it
-      // hashed the ADDRESS (docs/AUDIT.md G.2).
+      // hashed the ADDRESS.
       return (*this)(static_cast<const char*>(value));
     } else if constexpr (detail::is_char_range<T>::value) {
       // Not the object representation: metl::fixed_string keeps stale bytes
-      // past its terminator, so two equal strings can differ there (AUDIT G.2).
+      // past its terminator, so two equal strings can differ there.
       return fnv1a(value.data(), value.size());
     } else if constexpr (std::is_integral_v<T> || std::is_enum_v<T>) {
       const std::uint64_t wide = detail::widen_integral(value);

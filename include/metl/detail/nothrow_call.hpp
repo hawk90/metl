@@ -6,8 +6,8 @@
 ///
 /// The containers' lookups (`find`, `contains`, `lower_bound`, `erase`, ...) call
 /// user code: the comparator, the hasher, the key equality. They used to be
-/// `noexcept` unconditionally, so one that threw terminated the program
-/// (docs/AUDIT.md G.9). They are now `noexcept` exactly when that code cannot
+/// `noexcept` unconditionally, so one that threw terminated the program.
+/// They are now `noexcept` exactly when that code cannot
 /// throw.
 ///
 /// The answer cannot simply be `noexcept(comp(a, b))`: `std::less`,

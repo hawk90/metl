@@ -1,5 +1,5 @@
-// Regression tests for the low-severity findings of the 2026-10-05 review
-// (docs/AUDIT.md G.4 and G.5). Each block failed, or did not compile, before
+// Regression tests for the low-severity findings of the 2026-10-05 review.
+// Each block failed, or did not compile, before
 // its fix.
 
 #include "metl_check.hpp"

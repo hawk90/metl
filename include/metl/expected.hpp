@@ -153,10 +153,10 @@ struct is_metl_expected_with_value<expected<T, G>, T> : true_type {};
 
 // Replaces the live `U` at `slot` with one built from `args`. `args` may refer
 // into `*slot` (`e.emplace(e.value())`), so a movable `U` is always built
-// before the old one is touched (docs/AUDIT.md G.8). If anything throws, `slot`
+// before the old one is touched. If anything throws, `slot`
 // still holds a live `U` -- the old object, or a moved-back copy of it -- so the
 // owning expected's `has_value_` stays true to what is stored and its
-// destructor destroys exactly once (docs/AUDIT.md G.3).
+// destructor destroys exactly once.
 template <typename U, typename... Args>
 void replace_live(U* slot, Args&&... args) {
   if constexpr (!std::is_move_constructible_v<U>) {
@@ -492,7 +492,7 @@ class expected {
   /// @return Reference to the newly constructed value.
   /// @note `args` may refer into the current value or error (`e.emplace(e.value())`):
   ///       a movable new value is built before the old member is destroyed, at
-  ///       the cost of one move (docs/AUDIT.md G.8).
+  ///       the cost of one move.
   template <typename... Args>
   T& emplace(Args&&... args) {
     // Never destroy-then-construct: a throwing constructor would leave
@@ -785,7 +785,7 @@ class expected {
     if constexpr (std::is_move_constructible_v<T>) {
       // Build the new value BEFORE touching the old member: `args` may refer
       // into it (`e = e.error().fallback`), and destroying first read a dead
-      // object (docs/AUDIT.md G.6, the expected sibling of variant's G.1 fix).
+      // object (variant's converting assignment had the same bug).
       // A throw here leaves the state untouched.
       T incoming(std::forward<Args>(args)...);
       commit_value(static_cast<T&&>(incoming));
@@ -840,7 +840,7 @@ class expected {
     if constexpr (std::is_move_constructible_v<E>) {
       // Build the new error BEFORE touching the old member: `args` may refer
       // into it (`e = e.value().code`), and destroying first read a dead
-      // object (docs/AUDIT.md G.6, the expected sibling of variant's G.1 fix).
+      // object (variant's converting assignment had the same bug).
       // A throw here leaves the state untouched.
       E incoming(std::forward<Args>(args)...);
       commit_error(static_cast<E&&>(incoming));
@@ -899,7 +899,7 @@ class expected {
     // Both branches below end with one unguarded move. With one nothrow move a
     // rollback is always possible; with two throwing moves the last step could
     // fail after both originals are gone, leaving a destroyed member under a
-    // stale discriminant (docs/AUDIT.md G.6). std::expected::swap has the same
+    // stale discriminant. std::expected::swap has the same
     // requirement.
     static_assert(std::is_nothrow_move_constructible_v<T> || std::is_nothrow_move_constructible_v<E>,
                   "metl::expected::swap requires T or E to be nothrow move constructible");
@@ -952,8 +952,7 @@ class expected {
   // constant-evaluable, so the constexpr labels here are effective only outside
   // constant evaluation. Genuine constexpr (cf. metl::optional via
   // metl/detail/construct.hpp) would require a union-of-{T,E} rewrite that also
-  // preserves the exception-safe reinit/swap paths; deferred (see
-  // docs/AUDIT.md Section A).
+  // preserves the exception-safe reinit/swap paths; deferred.
   union storage_union {
     storage_union() {}
     ~storage_union() {}
@@ -1196,7 +1195,7 @@ class expected<void, E> {
       construct_error(std::forward<Args>(args)...);
       has_value_ = false;
     } else {
-      // Same hazard as the primary template's emplace (docs/AUDIT.md G.3).
+      // Same hazard as the primary template's emplace.
       detail::replace_live(error_ptr(), std::forward<Args>(args)...);
     }
     return *error_ptr();

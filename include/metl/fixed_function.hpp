@@ -81,7 +81,7 @@ R invoke_object(void* storage, Args&&... args) {
   auto* function = static_cast<F*>(storage);
   if constexpr (std::is_void_v<R>) {
     // A value-returning callable in a `void` signature: discard the result, as
-    // std::function does (the constraint already accepts it; AUDIT G.4).
+    // std::function does (the constraint already accepts it).
     (void)(*function)(std::forward<Args>(args)...);
   } else {
     return (*function)(std::forward<Args>(args)...);
@@ -283,7 +283,7 @@ class fixed_function_impl {
       // A null pointer whose signature only CONVERTS to this one (`int (*)(long)`
       // into `R(int)`) arrives here, not at the exact-signature overload, and
       // was stored as an engaged target that jumps to 0. Hold it to the same
-      // non-null precondition (docs/AUDIT.md G.3).
+      // non-null precondition.
       METL_ASSERT(function != nullptr);
     }
 
@@ -414,7 +414,7 @@ class fixed_any_invocable_impl {
       // A null pointer whose signature only CONVERTS to this one (`int (*)(long)`
       // into `R(int)`) arrives here, not at the exact-signature overload, and
       // was stored as an engaged target that jumps to 0. Hold it to the same
-      // non-null precondition (docs/AUDIT.md G.3).
+      // non-null precondition.
       METL_ASSERT(function != nullptr);
     }
 
@@ -471,7 +471,7 @@ constexpr moveonly_ops<false, R, Args...> moveonly_ops_for_t<F, false, R, Args..
 ///          Alignment stricter than std::max_align_t fails a static_assert.
 /// @note The stored callable must be nothrow move constructible (a
 ///       static_assert): moving, move-assigning and swapping the wrapper are
-///       `noexcept` and relocate it (docs/AUDIT.md G.7). Every lambda whose
+///       `noexcept` and relocate it. Every lambda whose
 ///       captures move without throwing qualifies.
 template <typename Signature, std::size_t Capacity = 32>
 class fixed_function;  // primary template, undefined.
@@ -556,7 +556,7 @@ class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<
     // Every public way of storing a callable comes through here. The wrapper's
     // own move, move-assignment and swap are noexcept and relocate the callable
     // through a type-erased move; a callable whose move can throw used to compile
-    // and terminate there (docs/AUDIT.md G.7). The wrapper cannot make its
+    // and terminate there. The wrapper cannot make its
     // noexcept depend on what it holds, so the callable is refused instead.
     // Lambdas whose captures move without throwing -- nearly all -- are fine.
     static_assert(std::is_nothrow_move_constructible_v<std::decay_t<F>>,
@@ -662,7 +662,7 @@ class fixed_function<R(Args...) noexcept, Capacity>
     // Every public way of storing a callable comes through here. The wrapper's
     // own move, move-assignment and swap are noexcept and relocate the callable
     // through a type-erased move; a callable whose move can throw used to compile
-    // and terminate there (docs/AUDIT.md G.7). The wrapper cannot make its
+    // and terminate there. The wrapper cannot make its
     // noexcept depend on what it holds, so the callable is refused instead.
     // Lambdas whose captures move without throwing -- nearly all -- are fine.
     static_assert(std::is_nothrow_move_constructible_v<std::decay_t<F>>,
@@ -729,7 +729,7 @@ inline void swap(fixed_function<Sig, Cap>& lhs, fixed_function<Sig, Cap>& rhs) n
 ///          returns false, while the converting constructor / `assign` assert.
 /// @note The stored callable must be nothrow move constructible (a
 ///       static_assert): moving, move-assigning and swapping the wrapper are
-///       `noexcept` and relocate it (docs/AUDIT.md G.7). Every lambda whose
+///       `noexcept` and relocate it. Every lambda whose
 ///       captures move without throwing qualifies.
 template <typename Signature, std::size_t Capacity = 32>
 class fixed_any_invocable;  // primary template, undefined.
@@ -813,7 +813,7 @@ class fixed_any_invocable<R(Args...), Capacity>
     // Every public way of storing a callable comes through here. The wrapper's
     // own move, move-assignment and swap are noexcept and relocate the callable
     // through a type-erased move; a callable whose move can throw used to compile
-    // and terminate there (docs/AUDIT.md G.7). The wrapper cannot make its
+    // and terminate there. The wrapper cannot make its
     // noexcept depend on what it holds, so the callable is refused instead.
     // Lambdas whose captures move without throwing -- nearly all -- are fine.
     static_assert(std::is_nothrow_move_constructible_v<std::decay_t<F>>,
@@ -919,7 +919,7 @@ class fixed_any_invocable<R(Args...) noexcept, Capacity>
     // Every public way of storing a callable comes through here. The wrapper's
     // own move, move-assignment and swap are noexcept and relocate the callable
     // through a type-erased move; a callable whose move can throw used to compile
-    // and terminate there (docs/AUDIT.md G.7). The wrapper cannot make its
+    // and terminate there. The wrapper cannot make its
     // noexcept depend on what it holds, so the callable is refused instead.
     // Lambdas whose captures move without throwing -- nearly all -- are fine.
     static_assert(std::is_nothrow_move_constructible_v<std::decay_t<F>>,

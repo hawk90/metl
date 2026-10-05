@@ -1,5 +1,5 @@
-// Regression test for the arena_allocator::try_emplace exception-safety fix
-// (AUDIT E.2): the destructor record must be registered only AFTER the object is
+// Regression test for the arena_allocator::try_emplace exception-safety fix:
+// the destructor record must be registered only AFTER the object is
 // constructed. The old code committed the record first, so a throwing
 // constructor left a record pointing at unconstructed storage and a later
 // rewind/reset ran ~T() on raw memory (UB). Only reachable when exceptions are

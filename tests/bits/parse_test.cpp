@@ -287,7 +287,7 @@ int main() {
   // The arithmetic core IS constant-evaluable, even though the public
   // functions are not: they return metl::expected, whose storage is laundered
   // aligned storage rather than a union (expected.hpp says so at its
-  // storage_union; docs/AUDIT.md Section A carries the rewrite). Testing the
+  // storage_union, which records the rewrite as deferred). Testing the
   // fold at compile time means the day that rewrite lands, the part that has to
   // keep working is already covered.
   // ---------------------------------------------------------------------

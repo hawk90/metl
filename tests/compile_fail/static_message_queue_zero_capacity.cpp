@@ -2,7 +2,7 @@
 //
 // A zero-capacity queue can hold nothing, and its back-reference arithmetic
 // computes `Capacity - 1`, which wraps to SIZE_MAX: at METL_HARDENING_NONE,
-// `emplace` returned a reference far outside the object (docs/AUDIT.md G.5).
+// `emplace` returned a reference far outside the object.
 
 #include <metl/static_message_queue.hpp>
 

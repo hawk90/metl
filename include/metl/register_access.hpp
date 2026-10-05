@@ -5,7 +5,7 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | every function in this header | wait-free, bounded -- one bus access each |
+///   | every function in this header | wait-free, bounded -- at most one access or fence |
 ///
 /// Each accessor is a single `volatile` load or store with no loop and no retry.
 /// As with `metl/mmio.hpp`, how long one access takes is a property of the target's
@@ -45,7 +45,7 @@ METL_FORCE_INLINE void write_once(volatile T* addr, T value) noexcept {
 /// @brief Full (sequentially consistent) memory barrier for ordering MMIO.
 ///
 /// Maps to `std::atomic_thread_fence` and lowers to the target's fence
-/// (DMB/DSB on ARM, mfence on x86, etc.).
+/// (DMB on ARM, mfence on x86, etc.; not a DSB).
 METL_FORCE_INLINE void barrier_full() noexcept {
   std::atomic_thread_fence(std::memory_order_seq_cst);
 }

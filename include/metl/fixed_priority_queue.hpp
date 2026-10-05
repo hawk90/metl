@@ -130,8 +130,7 @@ class fixed_priority_queue {
   ///       elements by move-construction AND move-assignment (`swap_slots`) and
   ///       calls the comparator. The condition used to name move-assignment
   ///       only, so a throwing move constructor or comparator terminated the
-  ///       program instead of reaching the clear-and-rethrow below
-  ///       (docs/AUDIT.md G.7).
+  ///       program instead of reaching the clear-and-rethrow below.
   void pop() noexcept(std::is_nothrow_move_assignable_v<T> && std::is_nothrow_move_constructible_v<T> &&
                       comparator_cannot_throw) {
     // Never stripped: the index arithmetic below underflows on an empty queue and
@@ -183,7 +182,7 @@ class fixed_priority_queue {
   }
 
   /// @brief Read-only view of the underlying heap array, in heap order.
-  /// @note Heap order is **not** sorted order — only `data()[0]` is meaningful as
+  /// @note Heap order is **not** sorted order — only `as_span()[0]` is meaningful as
   ///       "the greatest". Exposed for tests, invariant checks and serialisation,
   ///       not as an iteration order.
   METL_NODISCARD span<const T> as_span() const noexcept { return storage_.as_span(); }
@@ -192,14 +191,14 @@ class fixed_priority_queue {
   // Whether the comparator can throw. std::less / std::greater do not declare
   // their call operator noexcept, so detail::nothrow_binary_call looks through
   // them to the operator they apply: pop() on a queue of int -- or of any type
-  // whose `<` is noexcept -- keeps its noexcept (docs/AUDIT.md G.9 replaced a
-  // scalar-only rule here).
+  // whose `<` is noexcept -- keeps its noexcept (this replaced a
+  // scalar-only rule).
   static constexpr bool comparator_cannot_throw = detail::nothrow_binary_call_v<Compare, const T&, const T&>;
 
   /// Runs a step that reorders the heap. If an element move or the comparator
   /// throws part-way, the heap property is gone and later pops would come out in
   /// the wrong order, so the queue is cleared before rethrowing -- the same rule
-  /// as flat_map (docs/AUDIT.md G.6). Under METL_NO_EXCEPTIONS it is a plain call.
+  /// as flat_map. Under METL_NO_EXCEPTIONS it is a plain call.
   template <typename Step>
   void keep_heap_or_clear(Step step) {
 #if METL_NO_EXCEPTIONS

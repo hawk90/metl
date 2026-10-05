@@ -39,7 +39,7 @@ class event_dispatcher;
 /// their subscription. Subscribing returns a `listener_id` used to
 /// unsubscribe. Ids come from a 64-bit counter on every target, so they do not
 /// repeat in practice: a stale id cannot unsubscribe a newer listener short of
-/// 2^64 subscriptions (docs/AUDIT.md G.5). Id 0 is never issued; a slot whose
+/// 2^64 subscriptions. Id 0 is never issued; a slot whose
 /// id is 0 is free.
 /// @tparam Capacity Maximum number of simultaneous listeners.
 /// @note Not thread-safe: subscribe/unsubscribe/dispatch must not run

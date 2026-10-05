@@ -6,8 +6,8 @@
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
 ///   | `size`, `empty`, `capacity`, indexing, `c_str` | wait-free, bounded |
-///   | `append`, `assign`, `push_back`, comparison, hashing | wait-free, bounded by `Capacity` |
-///   | constructing or assigning from `const char*` | **bounded by the caller's NUL, not by `Capacity`** |
+///   | `append(span)`, `push_back`, comparison, hashing | wait-free, bounded by `Capacity` |
+///   | construct, assign or append from `const char*` | **bounded by the caller's NUL, not `Capacity`** |
 ///
 /// Everything that works on characters already inside the string is bounded by
 /// `Capacity`, which is known at compile time.
@@ -33,9 +33,9 @@ namespace metl {
 /// Null-terminated character string with a compile-time FIXED capacity.
 ///
 /// Stores up to `Capacity` characters (plus a terminating '\0') inline; performs
-/// NO heap allocation. Overflowing operations that assert (constructor,
-/// push_back) abort by default; the bool-returning members (assign, append,
-/// try_push_back, try_pop_back) report overflow/underflow instead. Not
+/// NO heap allocation. Overflowing operations that assert (constructor, assign,
+/// append, push_back) abort by default; the bool-returning members (try_assign,
+/// try_append, try_push_back, try_pop_back) report overflow/underflow instead. Not
 /// thread-safe.
 ///
 /// @tparam Capacity Maximum number of characters, excluding the terminator.
@@ -339,7 +339,7 @@ template <std::size_t N1, std::size_t N2>
 inline bool operator<(const fixed_string<N1>& lhs, const fixed_string<N2>& rhs) noexcept {
   const std::size_t n = (lhs.size() < rhs.size()) ? lhs.size() : rhs.size();
   // Compare as unsigned char, as std::char_traits<char>::compare does: a plain
-  // `char` is signed on most targets, which sorted "\xff" before "a" (AUDIT G.4).
+  // `char` is signed on most targets, which sorted "\xff" before "a".
   for (std::size_t i = 0; i < n; ++i) {
     const auto l = static_cast<unsigned char>(lhs[i]);
     const auto r = static_cast<unsigned char>(rhs[i]);

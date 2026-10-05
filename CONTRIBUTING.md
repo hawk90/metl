@@ -61,7 +61,7 @@ pre-commit `rev` and the CI pin move together (a CI step fails if they differ).
 Run `clang-tidy` over changed translation units. The project ships a
 `.clang-tidy` configuration; please address new diagnostics introduced by
 your change rather than disabling them globally. CI enforces a **ratchet on the
-count of distinct findings** (`tools/clang_tidy_report.sh --max`): a change may
+count of distinct findings** (`tools/clang_tidy_report.py --max`): a change may
 lower it, never raise it. Patterns that have tripped it: a forwarding reference
 that is not `std::forward`ed, an rvalue-reference parameter that is not
 `std::move`d, identical `if constexpr` branch bodies, `!(a && b)` inside
@@ -77,7 +77,7 @@ repository. Run the ones your change touches:
 | `tools/check_api_contract.py` | `try_*` naming / `[[nodiscard]]` rules | a new function returning `bool` (a query goes in its `BOOL_ALLOWLIST` with a reason) |
 | `tools/check_progress_guarantee.py` | every public header states its progress guarantee | a new public header |
 | `tools/check_compile_fail.py` | every user-facing `static_assert` is pinned by a case in `tests/compile_fail/` | a new `static_assert` outside `detail::` |
-| `tools/check_docs.py` | `metl::` names, links, examples and README test counts are real | docs edits; a new test changes the QEMU count -- take it from `tools/run_qemu_tests.sh --plan --cpu <cpu>` |
+| `tools/check_docs.py` | `metl::` names, links, examples and README test counts are real | docs edits; a new test changes the QEMU count -- take it from `tools/run_qemu_tests.py --plan --cpu <cpu>` |
 | `tools/check_mutants.py --build-dir <dir>` | the test suite still kills planted bugs | changing a function the mutants anchor on (e.g. a signature) |
 | `tools/check_ci_gate.py` | `ci-gate` fans in every CI job | a new CI job |
 
@@ -108,7 +108,7 @@ ThreadSanitizer (`-DMETL_ENABLE_TSAN=ON`, configured separately).
 - Tests live under [`tests/`](tests/) and are registered by adding them to the
   `_metl_tests` list in the root `CMakeLists.txt` (or with `metl_cc_test()` when
   they need options). Tests run freestanding on QEMU too unless listed, with a
-  reason, in `tools/run_qemu_tests.sh`'s deny-list.
+  reason, in `tools/run_qemu_tests.py`'s deny-list.
 - New tests must pass under the sanitizer configuration above.
 - **A regression test must fail first.** Run it against the unfixed headers
   (`git archive origin/main include | tar -x -C <dir>`), compiled on its own,

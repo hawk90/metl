@@ -123,7 +123,7 @@ int main() {
 
 #if defined(__cpp_exceptions)
   // ---- (3) a throwing emplace / emplace_error must not double-destroy ----
-  // (docs/AUDIT.md G.3). These used to destroy the active member, then throw
+  // These used to destroy the active member, then throw
   // from the constructor with has_value_ unchanged, so ~expected destroyed it
   // again: `live` went negative.
   {

@@ -309,7 +309,7 @@ int main() {
   }
 
   // emplace of a duplicate returns the stored element, as documented and as
-  // static_unordered_map::emplace does (docs/AUDIT.md G.3). It used to
+  // static_unordered_map::emplace does. It used to
   // assert -- or, with asserts stripped, construct over the live element.
   {
     metl::static_unordered_set<int, 8> dup_set;

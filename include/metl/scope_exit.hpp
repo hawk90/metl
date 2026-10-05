@@ -27,7 +27,7 @@ namespace metl {
 /// transfers the armed state; copy and assignment are disabled.
 /// @tparam F Callable type stored by value; MUST be noexcept-invocable.
 /// @warning The stored callable must be noexcept because the destructor is
-///          noexcept; a static_assert enforces this where F is invoked.
+///          noexcept; a static_assert on the class enforces this.
 template <typename F>
 class scope_exit {
   static_assert(noexcept(std::declval<F&>()()),

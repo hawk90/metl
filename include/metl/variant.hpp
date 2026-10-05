@@ -9,13 +9,13 @@
 ///   | `visit` | wait-free, bounded by the number of alternatives |
 ///   | destructor | bounded by the active alternative's destructor |
 ///
-/// Every alternative lives in one inline union, so changing which one is active is
+/// Every alternative lives in one inline aligned byte buffer, so changing which one is active is
 /// a destruction and a construction -- a fixed number of steps plus whatever those
 /// alternatives cost. Nothing is allocated and nothing is searched.
 ///
-/// `visit` dispatches on the discriminant through a table built at compile time; it
-/// does not test the alternatives one by one, so its cost does not depend on which
-/// one is active. The visitor itself is yours to bound.
+/// `visit` compares the discriminant against each index in turn (an `if` chain the
+/// compiler may turn into a jump table), so it costs at most one comparison per
+/// alternative. The visitor itself is yours to bound.
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
@@ -358,7 +358,7 @@ class variant {
     // Switching alternatives has the same hazard one level down: `value` can be
     // a subobject of the active alternative (`v = get<pair<string, int>>(v).first`
     // when `v` also holds a `string` alternative). Build the new value first,
-    // then emplace from it -- which emplace() itself does (docs/AUDIT.md G.8).
+    // then emplace from it -- which emplace() itself does.
     // A non-movable alternative has no such path and is constructed directly.
     if (index_ == detail::index_of_type<Decayed, Ts...>::value) {
       *std::launder(static_cast<Decayed*>(raw_addr())) = std::forward<T>(value);
@@ -382,10 +382,10 @@ class variant {
     return index_ != variant_npos && index_ == detail::index_of_type<T, Ts...>::value;
   }
 
-  /// @brief Destroys the active alternative and constructs `T` in place.
+  /// @brief Replaces the active alternative with a `T` constructed from `args`.
   /// @note `args` may refer into the current alternative (`v.emplace<0>(get<1>(v).x)`):
   ///       when a movable alternative is active, the new one is built before the
-  ///       old one is destroyed, at the cost of one move (docs/AUDIT.md G.8). A
+  ///       old one is destroyed, at the cost of one move. A
   ///       throwing constructor then leaves the variant unchanged.
   /// @tparam T The (unique) alternative type to activate.
   /// @tparam Args Constructor argument types forwarded to `T`.
@@ -404,10 +404,10 @@ class variant {
     return emplace<target_index>(std::forward<Args>(args)...);
   }
 
-  /// @brief Destroys the active alternative and constructs alternative `I`.
+  /// @brief Replaces the active alternative with alternative `I` constructed from `args`.
   /// @note `args` may refer into the current alternative (`v.emplace<0>(get<1>(v).x)`):
   ///       when a movable alternative is active, the new one is built before the
-  ///       old one is destroyed, at the cost of one move (docs/AUDIT.md G.8). A
+  ///       old one is destroyed, at the cost of one move. A
   ///       throwing constructor then leaves the variant unchanged.
   /// @tparam I The zero-based alternative index to activate.
   /// @tparam Args Constructor argument types forwarded to the alternative.
@@ -425,7 +425,7 @@ class variant {
                   "alternative must be constructible from the given arguments");
 
     // `args` may refer into the active alternative, which reset() destroys:
-    // build the new value first (docs/AUDIT.md G.8). Valueless: nothing to
+    // build the new value first. Valueless: nothing to
     // alias. Non-movable target: no such path, constructed directly as before.
     if constexpr (std::is_move_constructible_v<target_type>) {
       if (index_ != variant_npos) {
@@ -535,7 +535,7 @@ class variant {
   // constant-evaluable, so the constexpr labels here are effective only outside
   // constant evaluation. Genuine constexpr (cf. metl::optional via
   // metl/detail/construct.hpp) would require a recursive union rewrite;
-  // deferred (see docs/AUDIT.md Section A).
+  // deferred.
   storage_type storage_;
   std::size_t index_;
 };

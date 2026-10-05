@@ -1,4 +1,4 @@
-// Regression test for object_pool::contains / index_of (AUDIT E.2): the
+// Regression test for object_pool::contains / index_of: the
 // membership test must not use relational operators (`<`, `>=`) on a
 // caller-supplied pointer that may not point into the pool — that is UB for
 // unrelated pointers. The fix compares integer addresses instead. This test
