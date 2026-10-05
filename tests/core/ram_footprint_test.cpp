@@ -34,7 +34,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
+#include <metl/detail/array_storage.hpp>
 #include <metl/fixed_deque.hpp>
 #include <metl/fixed_priority_queue.hpp>
 #include <metl/fixed_queue.hpp>
@@ -47,6 +49,7 @@
 #include <metl/ring_buffer.hpp>
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
+#include <metl/type_traits.hpp>
 
 namespace {
 
@@ -100,6 +103,27 @@ constexpr bool fits(std::size_t payload, std::size_t words, std::size_t functors
 // Measured on the host (size_type 8): fixed_vector 1032 for 1024 of payload,
 // fixed_deque/ring_buffer/fixed_queue 1040, fixed_string<256> 272 for 257.
 // ---------------------------------------------------------------------------
+// detail::array_storage replaced storage_for<T>[N] in fixed_vector, flat_map
+// and flat_set (docs/AUDIT.md E.2). It must be the same bytes: same size, same
+// alignment, and no constructor (so a container's default constructor still
+// does no Capacity * sizeof(T) stores).
+namespace layout_pin {
+struct alignas(32) wide {
+  unsigned char payload[40];
+};
+template <typename T, std::size_t N>
+constexpr bool same_layout() {
+  return sizeof(metl::detail::array_storage<T, N>) == sizeof(metl::storage_for<T>[N]) &&
+         alignof(metl::detail::array_storage<T, N>) == alignof(metl::storage_for<T>[N]) &&
+         std::is_trivially_default_constructible_v<metl::detail::array_storage<T, N>>;
+}
+static_assert(same_layout<char, 1>(), "array_storage<char, 1> changed layout");
+static_assert(same_layout<char, 7>(), "array_storage<char, 7> changed layout");
+static_assert(same_layout<u32, 256>(), "array_storage<u32, 256> changed layout");
+static_assert(same_layout<std::uint64_t, 3>(), "array_storage<u64, 3> changed layout");
+static_assert(same_layout<wide, 5>(), "array_storage of an over-aligned type changed layout");
+}  // namespace layout_pin
+
 static_assert(fits<metl::fixed_vector<u32, 256>>(256 * sizeof(u32), 1),
               "fixed_vector should cost its elements plus a size");
 static_assert(fits<metl::fixed_stack<u32, 256>>(256 * sizeof(u32), 1),

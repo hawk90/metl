@@ -21,6 +21,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/array_storage.hpp"
 #include "metl/detail/transparent.hpp"
 #include "metl/type_traits.hpp"
 
@@ -391,10 +392,8 @@ class flat_set {
   flat_set(adopt_compare, Compare&& comp) noexcept(std::is_nothrow_move_constructible_v<Compare>)
       : comp_(static_cast<Compare&&>(comp)), size_(0) {}
 
-  value_type* data() noexcept { return std::launder(reinterpret_cast<value_type*>(storage_[0].addr())); }
-  const value_type* data() const noexcept {
-    return std::launder(reinterpret_cast<const value_type*>(storage_[0].addr()));
-  }
+  value_type* data() noexcept { return storage_.data(); }
+  const value_type* data() const noexcept { return storage_.data(); }
 
   template <typename K>
   size_type lower_bound_index(const K& key) const noexcept {
@@ -469,11 +468,11 @@ class flat_set {
   void insert_shifting(size_type index, value_type&& entry) {
     if constexpr (std::is_move_assignable_v<value_type>) {
       if (index == size_) {
-        new (storage_[size_].addr()) value_type(static_cast<value_type&&>(entry));
+        new (storage_.slot(size_)) value_type(static_cast<value_type&&>(entry));
         ++size_;
         return;
       }
-      new (storage_[size_].addr()) value_type(static_cast<value_type&&>(data()[size_ - 1]));
+      new (storage_.slot(size_)) value_type(static_cast<value_type&&>(data()[size_ - 1]));
       ++size_;
 #if !METL_NO_EXCEPTIONS
       try {
@@ -491,7 +490,7 @@ class flat_set {
     } else {
       // A non-assignable element can only be relocated by construct+destroy.
       shift_right_from(index);
-      new (storage_[index].addr()) value_type(static_cast<value_type&&>(entry));
+      new (storage_.slot(index)) value_type(static_cast<value_type&&>(entry));
       ++size_;
     }
   }
@@ -508,7 +507,7 @@ class flat_set {
     try {
 #endif
       for (; i > index; --i) {
-        new (storage_[i].addr()) value_type(static_cast<value_type&&>(data()[i - 1]));
+        new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i - 1]));
         data()[i - 1].~value_type();
       }
 #if !METL_NO_EXCEPTIONS
@@ -528,19 +527,19 @@ class flat_set {
   void erase_at(size_type index) noexcept {
     data()[index].~value_type();
     for (size_type i = index; i + 1 < size_; ++i) {
-      new (storage_[i].addr()) value_type(static_cast<value_type&&>(data()[i + 1]));
+      new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i + 1]));
       data()[i + 1].~value_type();
     }
     --size_;
   }
 
   Compare comp_;
-  // NOTE: entries live in laundered aligned storage, which is not
-  // constant-evaluable, so the constexpr labels here are effective only outside
-  // constant evaluation. Genuine constexpr (cf. metl::optional via
-  // metl/detail/construct.hpp) would require a union-of-value_type rewrite;
-  // deferred (see docs/AUDIT.md Section A).
-  storage_for<value_type> storage_[Capacity == 0 ? 1 : Capacity];
+  // Entries live in one aligned byte buffer reached as a single
+  // value_type[Capacity] array object, so data() + i is in-array arithmetic
+  // (docs/AUDIT.md E.2; the reasoning is in detail/array_storage.hpp).
+  // std::launder is not constant-evaluable, so the constexpr labels here are
+  // effective only outside constant evaluation.
+  detail::array_storage<value_type, (Capacity == 0 ? 1 : Capacity)> storage_;
   size_type size_;
 };
 

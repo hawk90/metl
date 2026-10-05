@@ -397,7 +397,36 @@ unchanged.
 | MED | **Required** — use-after-destruction on any target | converting `variant::operator=(T&&)` routes through `emplace<Decayed>` unconditionally → `reset()` destroys the active alternative *before* reading an aliasing RHS (`v = get<T>(v)`). Distinct from Section A's copy/move-assign exception-safety fix | `variant.hpp:338` | ✅ in-place assign when the active index already matches |
 | LOW | **Marginal** — throwing-ctor only; unreachable under `METL_NO_EXCEPTIONS` | `arena_allocator::try_emplace` commits the destroy record *before* running `T`'s ctor → a throwing ctor leaves a record over unconstructed storage; a later `rewind` runs `~T()` on it | `arena_allocator.hpp:62` | ✅ construct first, patch `destroy` after; + power-of-two `alignment` assert |
 | LOW | **Optional** — benign on flat memory, not UBSan-flagged | `object_pool::index_of` uses relational `<`/`>=` on an unrelated caller pointer (UB); switched to `uintptr_t` comparison — exact containment test on flat targets, no `<functional>` dependency | `object_pool.hpp:116` | ✅ `uintptr_t` range test |
-| LOW | **Deferred** — no real-target failure, high-risk core rewrite | `fixed_vector`/`flat_map`/`flat_set` form a contiguous `data()` over an array of per-element `storage_for<T>`; `data()+i` (i>0) is cross-object pointer arithmetic. A real fix needs a union-of-`T[N]` storage rewrite — the same reason Section A deferred the `constexpr` conversion of these types | `fixed_vector.hpp:138`, `flat_map.hpp:387`, `flat_set.hpp:373` | ⏸ deferred (documented) |
+| LOW | **Required** once C++20 was ruled out -- the deferral was tied to a conversion that will not happen | `fixed_vector`/`flat_map`/`flat_set` form a contiguous `data()` over an array of per-element `storage_for<T>`; `data()+i` (i>0) is cross-object pointer arithmetic, and `data()` on an empty container laundered a pointer to no object | `fixed_vector.hpp`, `flat_map.hpp`, `flat_set.hpp` | ✅ 2026-10-05: `detail::array_storage` -- see below |
+
+**Resolved 2026-10-05, in C++17.** The project will not move to C++20, which
+removed the reason to wait. The fix is narrower than the rewrite planned below:
+`storage_for` itself is untouched (rings, pools, queues, hash tables, `optional`,
+`expected` and `variant` reach one slot at a time and never do cross-slot
+arithmetic), and only the three containers that expose `data()` switched to
+`detail::array_storage<T, N>` -- one `alignas(T) unsigned char[N * sizeof(T)]`
+whose `data()` is `*std::launder(reinterpret_cast<T(*)[N]>(&bytes))`. That buffer
+implicitly provides a `T[N]` array object (P0593R6, adopted as a DR; arrays are
+implicit-lifetime for any element type), an element created exactly at
+`bytes + i * sizeof(T)` becomes element `i` of it ([intro.object]/2), and so
+`data() + i` is arithmetic inside one array -- the model C++20 gives
+`std::allocator::allocate`. A `union { T e[N]; }` was rejected: in C++17
+placement-new does not start an inactive member array's lifetime, so it would
+only move the problem. Against the conditions below: `sizeof`/`alignof` are
+unchanged and pinned (`ram_footprint_test.cpp`, new `layout_pin` static_asserts,
+plus `is_trivially_default_constructible` so no zero-fill appears); the
+G.5/G.6 exception paths only call `slot()`/`data()` and are unchanged; ASan
+poisoning covers byte-identical ranges; disassembly of a probe exercising the
+three containers is identical at `-Os` and differs at `-O2` only by one
+register-allocation reorder in `insert(begin, x)` (same instruction count);
+C++20 constant evaluation is moot. **Residual:** for a `T` with `const` or
+reference members, C++17 [basic.life]/8 still wants a per-element launder after
+an element is re-created; C++20 dropped that rule (P1971) and no compiler
+optimises on it -- recorded, not patched. No runtime tool detects this defect
+class, so the evidence is the argument above plus the unchanged code and layout;
+`tests/containers/array_storage_test.cpp` covers the behaviour that must not
+change (churn through `data() + i`, a `const`-member element type, an empty
+container's `data()`, `Capacity == 0`).
 
 **Revisit conditions for the `storage_for` rewrite (added 2026-08-19).** This is
 not an independent goal. `storage_for` is raw aligned storage with a clear role,
