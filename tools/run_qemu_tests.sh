@@ -86,9 +86,10 @@ core/assert_test.cpp|setjmp/longjmp around an abort path; host-runtime specific
 memory/arena_throwing_ctor_test.cpp|throws; needs -fexceptions
 vocab/expected_regression_test.cpp|throws; needs -fexceptions
 vocab/variant_regression_test.cpp|throws; needs -fexceptions
+containers/throwing_element_test.cpp|throws; needs -fexceptions
 sync/atomic_ref_test.cpp|atomic_ref<8-byte> needs libatomic on ARMv7-M; see atomic_ref.hpp"
 
-# The three `throws; needs -fexceptions` entries above deliberately `throw` to
+# The four `throws; needs -fexceptions` entries above deliberately `throw` to
 # check what METL does when a USER's type throws. The freestanding build is
 # -fno-exceptions (METL is a no-exception library), and enabling exceptions here
 # would need unwind tables this target's linker script does not provide.

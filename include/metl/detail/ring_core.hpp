@@ -163,14 +163,18 @@ class ring_core {
   ~ring_core() { clear(); }
 
   /// Copy-constructs by copying each element of `other` in order.
-  ring_core(const ring_core& other) : head_(0), size_(0) {
+  // Element-inserting constructors delegate to the empty constructor first.
+  // Once it returns the object is fully constructed, so if copying or moving
+  // an element throws part-way, the destructor runs and destroys exactly the
+  // elements already inserted -- they used to leak (docs/AUDIT.md G.5).
+  ring_core(const ring_core& other) : ring_core() {
     for (size_type i = 0; i < other.size_; ++i) {
       (void)emplace_back(other.at(i));
     }
   }
 
   /// Move-constructs by moving each element out of `other`, leaving it empty.
-  ring_core(ring_core&& other) noexcept(std::is_nothrow_move_constructible_v<T>) : head_(0), size_(0) {
+  ring_core(ring_core&& other) noexcept(std::is_nothrow_move_constructible_v<T>) : ring_core() {
     for (size_type i = 0; i < other.size_; ++i) {
       (void)emplace_back(static_cast<T&&>(other.at(i)));
     }

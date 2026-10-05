@@ -63,7 +63,11 @@ class flat_set {
       : comp_(comp), size_(0) {}
 
   /// @brief Copy-construct, copying every element from @p other.
-  flat_set(const flat_set& other) : comp_(other.comp_), size_(0) {
+  // Element-inserting constructors delegate to the empty constructor first.
+  // Once it returns the object is fully constructed, so if copying or moving
+  // an element throws part-way, the destructor runs and destroys exactly the
+  // elements already inserted -- they used to leak (docs/AUDIT.md G.5).
+  flat_set(const flat_set& other) : flat_set(other.comp_) {
     for (const auto& item : other) {
       emplace(item);
     }
@@ -72,7 +76,7 @@ class flat_set {
   /// @brief Move-construct, moving elements out of @p other and leaving it empty.
   flat_set(flat_set&& other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
                                       std::is_nothrow_move_constructible_v<Compare>)
-      : comp_(static_cast<Compare&&>(other.comp_)), size_(0) {
+      : flat_set(adopt_compare{}, static_cast<Compare&&>(other.comp_)) {
     for (auto& item : other) {
       emplace(static_cast<Key&&>(item));
     }
@@ -381,6 +385,12 @@ class flat_set {
   }
 
  private:
+  // Empty map that MOVES its comparator in; the move constructor delegates
+  // here (the public comparator constructor copies).
+  struct adopt_compare {};
+  flat_set(adopt_compare, Compare&& comp) noexcept(std::is_nothrow_move_constructible_v<Compare>)
+      : comp_(static_cast<Compare&&>(comp)), size_(0) {}
+
   value_type* data() noexcept { return std::launder(reinterpret_cast<value_type*>(storage_[0].addr())); }
   const value_type* data() const noexcept {
     return std::launder(reinterpret_cast<const value_type*>(storage_[0].addr()));
@@ -443,10 +453,47 @@ class flat_set {
       return false;
     }
 
-    shift_right_from(index);
-    new (storage_[index].addr()) value_type(std::forward<K>(key));
-    ++size_;
+    value_type entry(std::forward<K>(key));
+    insert_shifting(index, static_cast<value_type&&>(entry));
     return true;
+  }
+
+  // Inserts `entry` at `index`, shifting [index, size_) right by one, the way
+  // std::vector::insert does: move-construct the new last slot, then
+  // move-ASSIGN the rest backwards. Every slot in [0, size_) stays a live
+  // object throughout, so a throwing move can no longer leave a destroyed slot
+  // inside the range for the destructor to destroy a second time (the old
+  // construct-then-destroy loop did; docs/AUDIT.md G.5). A throw part-way
+  // would still leave the order broken, so -- as std::flat_map does -- the
+  // container is cleared to restore its invariant before rethrowing.
+  void insert_shifting(size_type index, value_type&& entry) {
+    if constexpr (std::is_move_assignable_v<value_type>) {
+      if (index == size_) {
+        new (storage_[size_].addr()) value_type(static_cast<value_type&&>(entry));
+        ++size_;
+        return;
+      }
+      new (storage_[size_].addr()) value_type(static_cast<value_type&&>(data()[size_ - 1]));
+      ++size_;
+#if !METL_NO_EXCEPTIONS
+      try {
+#endif
+        for (size_type i = size_ - 2; i > index; --i) {
+          data()[i] = static_cast<value_type&&>(data()[i - 1]);
+        }
+        data()[index] = static_cast<value_type&&>(entry);
+#if !METL_NO_EXCEPTIONS
+      } catch (...) {
+        clear();
+        throw;
+      }
+#endif
+    } else {
+      // A non-assignable element can only be relocated by construct+destroy.
+      shift_right_from(index);
+      new (storage_[index].addr()) value_type(static_cast<value_type&&>(entry));
+      ++size_;
+    }
   }
 
   void shift_right_from(size_type index) {

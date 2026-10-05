@@ -72,17 +72,19 @@ class fixed_vector {
   /// Constructs an empty vector.
   constexpr fixed_vector() noexcept : size_(0) { asan_poison_tail_(); }
 
+  // Element-inserting constructors delegate to the empty constructor first.
+  // Once it returns the object is fully constructed, so if copying or moving
+  // an element throws part-way, the destructor runs and destroys exactly the
+  // elements already inserted -- they used to leak (docs/AUDIT.md G.5).
   /// Copy-constructs by copying each element of `other`.
-  fixed_vector(const fixed_vector& other) : size_(0) {
-    asan_poison_tail_();
+  fixed_vector(const fixed_vector& other) : fixed_vector() {
     for (const auto& value : other) {
       emplace_back(value);
     }
   }
 
   /// Move-constructs by moving each element out of `other`, leaving it empty.
-  fixed_vector(fixed_vector&& other) noexcept(std::is_nothrow_move_constructible_v<T>) : size_(0) {
-    asan_poison_tail_();
+  fixed_vector(fixed_vector&& other) noexcept(std::is_nothrow_move_constructible_v<T>) : fixed_vector() {
     for (auto& value : other) {
       emplace_back(static_cast<T&&>(value));
     }
@@ -91,8 +93,7 @@ class fixed_vector {
 
   /// Constructs from an initializer list.
   /// @pre `il.size() <= Capacity` (asserts otherwise).
-  fixed_vector(std::initializer_list<T> il) : size_(0) {
-    asan_poison_tail_();
+  fixed_vector(std::initializer_list<T> il) : fixed_vector() {
     METL_ASSERT(il.size() <= Capacity);
     for (const auto& value : il) {
       emplace_back(value);
