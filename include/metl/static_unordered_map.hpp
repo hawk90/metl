@@ -666,7 +666,9 @@ class static_unordered_map {
   template <typename K, typename V>
   METL_NODISCARD size_type construct_at(size_type index, K&& key, V&& value) {
     METL_HARDEN(index < bucket_count);
-    if (reclaim_due()) {
+    // Tombstones past ~1/8 of the table: rebuild before placing the new key, so
+    // negative lookups keep stopping early at an empty slot.
+    if (tombstones_ > bucket_count / 8) {
       value_type entry{std::forward<K>(key), std::forward<V>(value)};
       rehash_in_place();
       const bool available = locate_insert_index(entry.key, &index);
@@ -770,11 +772,6 @@ class static_unordered_map {
       }
     }
   }
-
-  /// @brief Whether tombstones have crossed ~1/8 of the table, so the next new
-  /// key should rebuild it first. Bounds tombstone density so negative lookups
-  /// keep stopping early at an empty slot.
-  METL_NODISCARD bool reclaim_due() const noexcept { return tombstones_ > bucket_count / 8; }
 
   storage_for<value_type> storage_[bucket_count];
   slot_state states_[bucket_count];

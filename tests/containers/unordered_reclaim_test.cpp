@@ -4,8 +4,8 @@
 // tombstone, because clearing the slot would break the probe chain running
 // through it. A tombstone does not end a negative lookup -- only an empty slot
 // does -- so without something to clear them out, misses get steadily more
-// expensive under churn. `reclaim_due` is that something: past one eighth of
-// the table, the next new key makes `rehash_in_place` rebuild it.
+// expensive under churn. The reclaim is that something: past one eighth of the
+// table, the next new key makes `rehash_in_place` rebuild it.
 //
 // WHY THIS TEST EXISTS. Replacing that trigger with `if (false)` in both headers
 // leaves the entire rest of the suite green and every fuzz harness clean --
