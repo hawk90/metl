@@ -641,18 +641,42 @@ themselves. Everything below was reproduced.
 | LOW | `coro/deadline_scheduler.hpp` | `run_due` called from inside a poll cleared the "re-arm slot reserved" flag while the outer poll was still running; the outer re-arm then asserted (dropped at NONE). | ✅ a depth counter |
 | LOW | `event_dispatcher.hpp` ids | a `size_t` counter: wraps after 2^32 subscriptions on a 32-bit target, and issued id 0. | ✅ 0 skipped; the wrap is documented (not reachable in a test) |
 | LOW* | `fixed_deque.hpp` `try_emplace_front` | `head_` moved before the constructor ran; a throw left it on an unconstructed slot. | ✅ construct, then commit `head_` |
-| MED* | `flat_map`/`flat_set` shift; copy constructors of `fixed_vector`, the rings, `flat_map`, `static_unordered_map`, `static_message_queue` | a throwing element move/copy mid-operation double-destroys (shift) or leaks the already-copied elements (copy ctor). | ⏸ deferred, see below |
+| MED* | `flat_map`/`flat_set` shift; copy constructors of `fixed_vector`, the rings, `flat_map`, `static_unordered_map`, `static_message_queue` | a throwing element move/copy mid-operation double-destroys (shift) or leaks the already-copied elements (copy ctor). | ✅ fixed 2026-10-05, see below |
 | -- | own fixes: `ring_buffer::push_overwrite`, `expected::emplace` | the G.1/G.3 build-aside paths stopped compiling for a non-movable `T`. | ✅ `if constexpr` guards; regression tests |
 | -- | own fix: `fnv1a_hash` | G.2 missed `char*` (bound the template and hashed the ADDRESS) and non-const `char[N]` (hashed all N bytes). | ✅ both hash their characters |
 
 \* exceptions-enabled builds only.
 
-**Why the throwing-copy rows are deferred.** They need exceptions enabled, which
-METL's own builds and its intended targets do not have; making every shift and
-copy constructor transactional is a rewrite of each container's core loops for
-a configuration the library does not ship in. Section E.2 made the same call
-for `object_pool`'s pointer comparison: real, recorded, not worth its blast
-radius yet. The one-line `fixed_deque` fix was taken because it costs nothing.
+**The throwing-copy rows: first deferred, then fixed the same day.** They were
+deferred on the grounds that making every shift and copy constructor
+transactional meant rewriting each container's core loops. That overstated it:
+both have standard, near-free fixes, and the deferral was reversed once that was
+seen.
+
+- *Copy and move constructors* delegate to the container's empty constructor
+  first. When the delegated-to constructor returns, the object is fully
+  constructed, so if an element copy throws part-way the destructor runs and
+  destroys exactly the elements inserted so far. No `try`/`catch`, no runtime
+  cost. Applied to `fixed_vector` (incl. the `initializer_list` constructor),
+  `detail::ring_core` (so `ring_buffer` and `fixed_deque`), `flat_map`,
+  `flat_set`, `static_unordered_map`, `static_unordered_set` and
+  `static_message_queue`; the flat and unordered containers get a private tag
+  constructor so a move still moves the comparator / hasher.
+- *`flat_map`/`flat_set` insertion* now shifts the way `std::vector::insert`
+  does: move-construct the new last slot, then move-*assign* backwards. Every
+  slot in `[0, size_)` stays a live object, so there is nothing to destroy
+  twice. A throw part-way would leave the order broken, so the container is
+  cleared before rethrowing -- `std::flat_map`'s rule. Under
+  `METL_NO_EXCEPTIONS` the `try` compiles away; a non-assignable element keeps
+  the old construct-and-destroy path.
+
+`erase_at` is `noexcept`, so a throwing move there terminates rather than
+corrupting; it is unchanged.
+
+`tests/containers/throwing_element_test.cpp` (host only -- it throws) tracks live
+objects by address. On the old code it shows the leak in all eight container
+constructors and, for the shift, one leaked and one doubly destroyed object --
+which a plain live count misses, because the two cancel out.
 
 **What was checked and held:** 32-bit wrap in the spsc/mpmc/byte-ring index
 arithmetic, `handle_pool` at 65535, `versioned_handle` packing, bucket-count and

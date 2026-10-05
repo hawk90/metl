@@ -58,6 +58,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Exception safety of the containers** (docs/AUDIT.md G.5; exceptions-enabled
+  builds only). A copy or move constructor of `fixed_vector`, `ring_buffer`,
+  `fixed_deque`, `flat_map`, `flat_set`, `static_unordered_map`,
+  `static_unordered_set` or `static_message_queue` leaked the elements already
+  copied when an element's copy threw; they now delegate to the empty
+  constructor so the destructor cleans up. `flat_map`/`flat_set` insertion
+  shifted with construct-then-destroy, so a throwing move left a destroyed slot
+  to be destroyed again; it now move-assigns (as `std::vector::insert`) and, on a
+  throw, clears the container to restore its sorted invariant (as
+  `std::flat_map`).
 - **Memory safety at `METL_HARDENING_NONE`** (docs/AUDIT.md G.5):
   `fixed_vector::emplace(pos, ...)` on a full vector and `pop_back()` on an empty
   one (also `fixed_stack::pop`) wrote out of bounds with asserts stripped; both

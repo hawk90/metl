@@ -255,9 +255,12 @@ class static_unordered_map {
   static_unordered_map() noexcept : size_(0), hasher_(), key_equal_() { initialize_states(); }
 
   /// @brief Copy-construct, re-inserting every element from @p other.
+  // Element-inserting constructors delegate to an empty constructor first.
+  // Once it returns the object is fully constructed, so if copying or moving
+  // an element throws part-way, the destructor runs and destroys exactly the
+  // elements already inserted -- they used to leak (docs/AUDIT.md G.5).
   static_unordered_map(const static_unordered_map& other)
-      : size_(0), hasher_(other.hasher_), key_equal_(other.key_equal_) {
-    initialize_states();
+      : static_unordered_map(empty_with{}, other.hasher_, other.key_equal_) {
     for (const auto& item : other) {
       emplace(item.key, item.value);
     }
@@ -266,10 +269,8 @@ class static_unordered_map {
   /// @brief Move-construct, moving elements out of @p other and leaving it empty.
   static_unordered_map(static_unordered_map&& other) noexcept(
       std::is_nothrow_move_constructible_v<value_type>)
-      : size_(0),
-        hasher_(static_cast<Hash&&>(other.hasher_)),
-        key_equal_(static_cast<KeyEqual&&>(other.key_equal_)) {
-    initialize_states();
+      : static_unordered_map(
+            empty_with{}, static_cast<Hash&&>(other.hasher_), static_cast<KeyEqual&&>(other.key_equal_)) {
     for (auto& item : other) {
       emplace(static_cast<Key&&>(item.key), static_cast<T&&>(item.value));
     }
@@ -561,6 +562,16 @@ class static_unordered_map {
   }
 
  private:
+  // Empty table with the given hasher and key-equal; the copy and move
+  // constructors delegate here.
+  struct empty_with {};
+  template <typename H, typename E>
+  static_unordered_map(empty_with, H&& hasher, E&& key_equal) noexcept(
+      std::is_nothrow_constructible_v<Hash, H&&> && std::is_nothrow_constructible_v<KeyEqual, E&&>)
+      : size_(0), hasher_(std::forward<H>(hasher)), key_equal_(std::forward<E>(key_equal)) {
+    initialize_states();
+  }
+
   void initialize_states() noexcept {
     for (size_type i = 0; i < bucket_count; ++i) {
       states_[i] = slot_state::empty;

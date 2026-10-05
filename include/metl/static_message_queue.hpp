@@ -72,7 +72,11 @@ class static_message_queue {
   /// @brief Destroy the queue, running the destructor of every remaining element.
   ~static_message_queue() { clear(); }
 
-  static_message_queue(const static_message_queue& other) : head_(0), tail_(0), size_(0) {
+  // Element-inserting constructors delegate to the empty constructor first.
+  // Once it returns the object is fully constructed, so if copying or moving
+  // an element throws part-way, the destructor runs and destroys exactly the
+  // elements already inserted -- they used to leak (docs/AUDIT.md G.5).
+  static_message_queue(const static_message_queue& other) : static_message_queue() {
     for (size_type i = 0; i < other.size_; ++i) {
       const size_type index = other.physical_index(i);
       (void)emplace(other.storage_at(index));
@@ -80,7 +84,7 @@ class static_message_queue {
   }
 
   static_message_queue(static_message_queue&& other) noexcept(std::is_nothrow_move_constructible_v<T>)
-      : head_(0), tail_(0), size_(0) {
+      : static_message_queue() {
     for (size_type i = 0; i < other.size_; ++i) {
       const size_type index = other.physical_index(i);
       (void)emplace(static_cast<T&&>(other.storage_at(index)));
