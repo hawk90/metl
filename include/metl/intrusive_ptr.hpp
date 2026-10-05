@@ -215,6 +215,10 @@ class METL_ATTRIBUTE_TRIVIAL_ABI intrusive_ptr {
 
   /// @brief Copy assignment; releases the current reference and shares `other`.
   intrusive_ptr& operator=(const intrusive_ptr& other) {
+    if (this == &other) {
+      return *this;
+    }
+
     // Take the new reference before dropping the old one: the release can
     // destroy the object that owns `other` (`p = p->next` on a list).
     pointer incoming = other.ptr_;
