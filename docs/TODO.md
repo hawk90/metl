@@ -24,7 +24,7 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [x] CI/CD: **preflight fail-fast gate** (dependency DAG, not flat fan-out),
   **GitHub Pages docs deploy** (gated on validation) → https://hawk90.github.io/metl/,
   Dependabot (github-actions), actions on Node-24 (checkout@v5 / upload-artifact@v7),
-  macos-14 pinned
+  runners pinned (ubuntu-24.04, macos-26 -- macos-14 was deprecated -- and windows-2025)
 
 ## ☐ Open — by priority
 
