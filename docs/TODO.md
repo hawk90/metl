@@ -458,7 +458,7 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   human-readable version survives and Renovate can still bump them.
 - [x] **(caching)** Cache the Zephyr `west update` tree (re-cloned uncached every
   run, dominating the 60-min zephyr budget). The workspace cache is keyed to the
-  pinned v3.7.0 release. apt is done, above.
+  pinned v3.7.2 release. apt is done, above.
 - [ ] Cache pipx's clang-format environment separately; it is a small install
   and remains lower priority than the Zephyr workspace cache.
 - [x] Root-cause fixes DONE 2026-08-05: hard-coded test-source paths → single
