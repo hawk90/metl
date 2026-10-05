@@ -24,7 +24,7 @@
 // be flaky on a shared runner.
 //
 // WHERE THE REBUILD RUNS, and the second property this test holds. It runs on
-// the insertion of a new key and never on `erase` (docs/AUDIT.md G.3): a
+// the insertion of a new key and never on `erase`: a
 // rebuild relocates live elements, and doing it inside `erase` made erasing
 // during iteration skip elements. So `erase` must move NOTHING, ever -- the
 // same instrument checks that too.

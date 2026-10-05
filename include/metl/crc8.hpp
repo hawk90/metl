@@ -10,7 +10,7 @@
 ///   | a buffer | wait-free, bounded by the length you pass |
 ///   | a `const char*` | **bounded by the caller's NUL, not by METL** |
 ///
-/// Per-byte cost is a compile-time constant either way -- one table lookup, or a
+/// Per-byte cost is a compile-time constant either way -- two nibble-table lookups, or a
 /// fixed eight shift-and-conditional-xor steps. Whole-buffer cost is that constant
 /// times the length, and the length is the caller's, so a caller with a deadline
 /// bounds it by choosing how much to feed in at a time.

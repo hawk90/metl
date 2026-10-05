@@ -1,5 +1,5 @@
 // Verifies metl's security floor: METL_HARDEN is NOT stripped even at
-// METL_HARDENING_NONE (AUDIT E.3). This TU pins the lowest hardening level, so
+// METL_HARDENING_NONE. This TU pins the lowest hardening level, so
 // METL_ASSERT / METL_DASSERT are compiled out. A full-table insert into a
 // static_unordered_map reaches construct_at with an out-of-range index; only the
 // always-on METL_HARDEN guard stands between that and a wild out-of-bounds

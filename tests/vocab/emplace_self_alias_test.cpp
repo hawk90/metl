@@ -1,4 +1,4 @@
-// Regression tests for docs/AUDIT.md G.8: `emplace` whose arguments refer into
+// Regression tests for `emplace` whose arguments refer into
 // the object's own current value or alternative. Each block failed against the
 // unfixed headers, which destroyed the current member before reading `args`.
 //

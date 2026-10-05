@@ -20,7 +20,7 @@ struct recorder {
 
 using dispatcher3 = metl::event_dispatcher<void(int), 3>;
 
-// AUDIT G.5: ids are 64-bit on every target, so a stale id cannot alias a newer
+// Ids are 64-bit on every target, so a stale id cannot alias a newer
 // listener short of 2^64 subscriptions. A size_t id wraps after 2^32 on a 32-bit
 // target; there is no hook to start the counter near the wrap, so the width is
 // what is pinned.

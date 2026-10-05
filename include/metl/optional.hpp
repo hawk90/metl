@@ -151,7 +151,7 @@ class optional {
   /// @note Disabled for a scalar `T` assigned its own type, as in `std::optional`. That case is
   ///       served by the converting constructor plus move assignment, and the exclusion is what
   ///       makes `o = {}` RESET a scalar optional: otherwise `{}` binds to `U = T` here and
-  ///       engages it with `T{}` (docs/AUDIT.md G.3).
+  ///       engages it with `T{}`.
   template <typename U = T,
             typename = std::enable_if_t<!std::is_same_v<std::decay_t<U>, optional> &&
                                         !(std::is_scalar_v<T> && std::is_same_v<T, std::decay_t<U>>) &&
@@ -277,14 +277,14 @@ class optional {
 
   // ---- Modifiers ------------------------------------------------------------
 
-  /// @brief Destroys any current value and constructs a new one in place.
+  /// @brief Replaces any current value with one constructed from `args`.
   /// @tparam Args Constructor argument types forwarded to `T`.
   /// @param args Arguments forwarded to `T`'s constructor.
   /// @return Reference to the newly constructed value.
   /// @note `args` may refer into the current value (`o.emplace(*o)`,
   ///       `o.emplace(o->member)`): when engaged and `T` is move constructible,
   ///       the new value is built before the old one is destroyed, at the cost
-  ///       of one move (docs/AUDIT.md G.8). A throwing constructor then leaves
+  ///       of one move. A throwing constructor then leaves
   ///       the old value in place.
   template <typename... Args>
   T& emplace(Args&&... args) {
@@ -329,7 +329,7 @@ class optional {
     // both empty: nothing to do.
   }
 
-  // ---- Monadic operations (P2505) ------------------------------------------
+  // ---- Monadic operations (P0798) ------------------------------------------
 
   /// @brief Invokes `f` with the value if engaged, else returns an empty result.
   /// @param f Callable returning an optional; called only when engaged.

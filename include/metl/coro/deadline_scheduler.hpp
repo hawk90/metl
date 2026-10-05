@@ -180,7 +180,7 @@ class deadline_scheduler {
 
   /// One slot held back per poll on the stack, for that task's re-arm. A depth,
   /// not a flag: a poll that calls `run_due` nests a second poll, and the inner
-  /// one used to clear the flag while the outer was still running (G.5).
+  /// one used to clear the flag while the outer was still running.
   size_type reserved() const noexcept { return poll_depth_; }
 
   fixed_priority_queue<entry, Capacity, later_deadline> queue_;

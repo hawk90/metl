@@ -287,8 +287,8 @@ int main() {
     CHECK(!a.has_value());
   }
 
-  // `o = {}` resets a scalar optional, as it does in std::optional
-  // (docs/AUDIT.md G.3). It used to bind `{}` to `U = T` and engage the
+  // `o = {}` resets a scalar optional, as it does in std::optional.
+  // It used to bind `{}` to `U = T` and engage the
   // optional with `T{}`.
   {
     metl::optional<int> a{5};

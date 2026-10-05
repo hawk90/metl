@@ -86,11 +86,11 @@ class function_ref<R(Args...)> {
         callback_(&invoke_object<Referenced>) {}
 
   /// @brief Deleted rvalue-binding overload.
-  /// @warning Rejects temporaries to prevent dangling references (P0792). Bind
+  /// @warning Rejects temporaries to prevent dangling references. Bind
   ///          only to lvalues that outlive the function_ref.
   // Reject rvalue callables: function_ref would store a pointer to a temporary
-  // destroyed at the end of the full-expression (a dangling reference). This
-  // mirrors std::function_ref (P0792), which deletes rvalue binding. Function
+  // destroyed at the end of the full-expression (a dangling reference). This is
+  // STRICTER than std::function_ref (P0792), which accepts temporaries. Function
   // pointers are unaffected — they use the dedicated pointer constructor above.
   template <typename F,
             typename Decayed = std::decay_t<F>,
@@ -144,7 +144,7 @@ class function_ref<R(Args...)> {
   static R invoke_object(storage bound, Args&&... args) {
     auto* function = static_cast<Referenced*>(bound.object);
     if constexpr (std::is_void_v<R>) {
-      // Discard a value-returning callable's result in a `void` signature (AUDIT G.4).
+      // Discard a value-returning callable's result in a `void` signature.
       (void)(*function)(std::forward<Args>(args)...);
     } else {
       return (*function)(std::forward<Args>(args)...);

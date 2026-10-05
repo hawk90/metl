@@ -1,4 +1,4 @@
-// Regression tests for docs/AUDIT.md G.6 that need no exceptions, so they run
+// Regression tests from the third review pass that need no exceptions, so they run
 // on QEMU too. Each block failed against the unfixed headers.
 //
 // `poisoned` writes -1 into itself on destruction and -2 when moved from, so a

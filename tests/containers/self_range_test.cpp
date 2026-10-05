@@ -1,5 +1,5 @@
 // fixed_vector::insert(pos, first, last) and assign(first, last) with a range
-// of the vector's own elements (docs/AUDIT.md G.9). std::vector makes this a
+// of the vector's own elements. std::vector makes this a
 // precondition; METL checks it: the range is shifted or cleared before it is
 // read, so it used to copy moved-from or destroyed elements silently (insert
 // of v's own range gave `1 1 1 1 2 3`). The assert is observed through a

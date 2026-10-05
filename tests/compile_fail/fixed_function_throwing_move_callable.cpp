@@ -2,8 +2,8 @@
 //
 // The wrapper's move, move-assignment and swap are noexcept and relocate the
 // stored callable through a type-erased move. A callable whose move can throw
-// used to be accepted, and moving the wrapper then terminated the program
-// (docs/AUDIT.md G.7). The wrapper cannot make its own noexcept depend on what
+// used to be accepted, and moving the wrapper then terminated the program.
+// The wrapper cannot make its own noexcept depend on what
 // it holds, so the callable is refused when it is stored.
 
 #include <metl/fixed_function.hpp>

@@ -14,7 +14,7 @@
 /// on anything but the value and the buffer.
 ///
 /// A buffer too small to hold the result is a capacity failure like any other: the
-/// `try_` form returns `nullopt` and the asserting form aborts. Neither writes past
+/// `try_` form returns an empty span and the asserting form aborts. Neither writes past
 /// the span.
 
 // Bounded integer-to-text conversion for logs, diagnostics and protocol framing.
@@ -186,7 +186,7 @@ METL_NODISCARD constexpr span<char> try_format_int(span<char> out, T value) noex
                 "because printing them as numbers is almost never what was meant");
   if constexpr (std::is_unsigned_v<T>) {
     // Widening to `long long` below wraps an unsigned value above LLONG_MAX
-    // into a negative one: UINT64_MAX printed as "-1" (docs/AUDIT.md G.3).
+    // into a negative one: UINT64_MAX printed as "-1".
     return try_format_uint(out, value);
   }
   const auto widened = static_cast<long long>(value);

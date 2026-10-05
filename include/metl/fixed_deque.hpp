@@ -69,7 +69,7 @@ class fixed_deque : public detail::ring_core<T, Capacity> {
     }
 
     // Construct first, then commit head_: a throwing constructor used to leave
-    // head_ on an unconstructed slot that the destructor then destroyed (G.5).
+    // head_ on an unconstructed slot that the destructor then destroyed.
     const auto slot = this->retreat(this->head_);
     new (this->storage_[slot].addr()) T(std::forward<Args>(args)...);
     this->head_ = slot;
@@ -106,8 +106,8 @@ class fixed_deque : public detail::ring_core<T, Capacity> {
   void pop_back() noexcept {
     // Hard, not METL_ASSERT: an empty pop at METL_HARDENING_NONE destroyed a
     // dead slot and wrapped size_ to SIZE_MAX -- the next push leaked, and a
-    // destructor then looped ~2^64 times (docs/AUDIT.md G.6; fixed_vector's
-    // pop_back got the same guard in G.5).
+    // destructor then looped ~2^64 times (fixed_vector's
+    // pop_back has the same guard).
     METL_HARDEN(this->size_ > 0);
     this->storage_at(this->physical_index(this->size_ - 1)).~T();
     --this->size_;

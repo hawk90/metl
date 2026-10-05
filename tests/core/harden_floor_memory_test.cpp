@@ -1,4 +1,4 @@
-// The memory-safety floor at METL_HARDENING_NONE (docs/AUDIT.md E.3, G.5).
+// The memory-safety floor at METL_HARDENING_NONE.
 //
 // This TU strips METL_ASSERT. Each case below is a precondition violation that,
 // with only METL_ASSERT guarding it, wrote out of bounds:
@@ -96,7 +96,7 @@ int main() {
     CHECK(ok != nullptr);
   }
 
-  // Empty pops on the ring containers (G.6): destroyed a dead slot and wrapped
+  // Empty pops on the ring containers: destroyed a dead slot and wrapped
   // size_ to SIZE_MAX; a fixed_queue destructor then looped ~2^64 times.
   {
     metl::ring_buffer<int, 4> ring;

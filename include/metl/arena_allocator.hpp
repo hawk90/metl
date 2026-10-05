@@ -54,13 +54,13 @@ class arena_allocator {
   /// @brief Destroys every object still in the arena (`reset()`), newest first.
   /// @note Before 2026-10-05 the arena had no destructor: objects created by
   ///       `try_emplace` were never destroyed unless the caller reset it, and an
-  ///       owning `T` leaked (docs/AUDIT.md G.6).
+  ///       owning `T` leaked.
   ~arena_allocator() { reset(); }
 
   // Not copyable or movable. The destroy records point into this object's own
   // storage, so a copy carried live objects' records into a second arena and
   // each reset() ran the same destructors again -- object_pool, handle_pool and
-  // the queues delete these for the same reason (G.6).
+  // the queues delete these for the same reason.
   arena_allocator(const arena_allocator&) = delete;
   arena_allocator& operator=(const arena_allocator&) = delete;
   arena_allocator(arena_allocator&&) = delete;

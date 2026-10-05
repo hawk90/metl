@@ -104,7 +104,7 @@ constexpr bool fits(std::size_t payload, std::size_t words, std::size_t functors
 // fixed_deque/ring_buffer/fixed_queue 1040, fixed_string<256> 272 for 257.
 // ---------------------------------------------------------------------------
 // detail::array_storage replaced storage_for<T>[N] in fixed_vector, flat_map
-// and flat_set (docs/AUDIT.md E.2). It must be the same bytes: same size, same
+// and flat_set. It must be the same bytes: same size, same
 // alignment, and no constructor (so a container's default constructor still
 // does no Capacity * sizeof(T) stores).
 namespace layout_pin {

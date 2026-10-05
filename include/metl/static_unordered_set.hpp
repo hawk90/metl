@@ -47,14 +47,14 @@
 /// other type the tombstones are simply never reclaimed -- lookups stay bounded
 /// by `bucket_count` probes, only misses get slower under churn. (Before
 /// 2026-10-05 the rebuild ran regardless, inside a `noexcept` function, and a
-/// throwing move terminated the program; docs/AUDIT.md G.7.) A hasher that
-/// throws during the rebuild empties the table and propagates (G.9).
+/// throwing move terminated the program.) A hasher that
+/// throws during the rebuild empties the table and propagates.
 ///
 /// @par Iterator invalidation
 /// As in `static_unordered_map`: **`erase` invalidates only the erased element**,
 /// so erasing while iterating visits every element; **inserting a new key may
 /// invalidate all iterators, pointers and references** (the rebuild runs there).
-/// Lookups invalidate nothing (docs/AUDIT.md G.3).
+/// Lookups invalidate nothing.
 ///
 /// `tests/containers/unordered_reclaim_test.cpp` holds the reclaim to that: it
 /// counts moves of a key type through an insert, which is one unless a rebuild
@@ -252,7 +252,7 @@ class static_unordered_set {
   // Element-inserting constructors delegate to an empty constructor first.
   // Once it returns the object is fully constructed, so if copying or moving
   // an element throws part-way, the destructor runs and destroys exactly the
-  // elements already inserted -- they used to leak (docs/AUDIT.md G.5).
+  // elements already inserted -- they used to leak.
   static_unordered_set(const static_unordered_set& other)
       : static_unordered_set(empty_with{}, other.hasher_, other.key_equal_) {
     for (const auto& item : other) {
@@ -465,7 +465,7 @@ class static_unordered_set {
   reference emplace(K&& key) {
     // Find-existing first, as static_unordered_map::emplace does: a duplicate
     // returns the stored element as documented, instead of asserting -- or, at
-    // METL_HARDENING_NONE, constructing over the live element (AUDIT G.3).
+    // METL_HARDENING_NONE, constructing over the live element.
     const size_type existing = find_existing_index(key);
     if (existing != npos) {
       return *slot_value(existing);
@@ -506,7 +506,7 @@ class static_unordered_set {
 
  private:
   // Lookups call the hasher and the key equality; they are noexcept exactly
-  // when neither can throw (docs/AUDIT.md G.9; see detail/nothrow_call.hpp).
+  // when neither can throw (see detail/nothrow_call.hpp).
   template <typename K>
   static constexpr bool lookup_cannot_throw =
       detail::nothrow_unary_call_v<Hash, const K&> &&
@@ -518,7 +518,7 @@ class static_unordered_set {
   // does, `carry` holds a live element and every slot marked occupied (placed)
   // or tombstone (not yet placed) holds one too; destroy exactly those and empty
   // the table, as a throwing insert elsewhere in the library does. It used to
-  // terminate the program (docs/AUDIT.md G.9).
+  // terminate the program.
   size_type bucket_during_rebuild(storage_for<value_type>& carry) noexcept(hash_cannot_throw) {
     if constexpr (hash_cannot_throw) {
       return bucket_index(carry.ref());
@@ -632,7 +632,7 @@ class static_unordered_set {
 
   /// Places a new element at `index` and returns the slot it ended up in; see
   /// static_unordered_map::construct_at for why the reclaim runs here and not
-  /// on erase (docs/AUDIT.md G.3).
+  /// on erase.
   template <typename K>
   METL_NODISCARD size_type construct_at(size_type index, K&& key) {
     METL_HARDEN(index < bucket_count);
@@ -668,7 +668,7 @@ class static_unordered_set {
     // Reusing a tombstone slot reclaims it: keep the tombstone count accurate
     // so the reclamation threshold reflects only live tombstones. Counted after
     // the construction succeeds -- before it, each throwing insert onto the same
-    // tombstone decremented again, and the count wrapped (docs/AUDIT.md G.6).
+    // tombstone decremented again, and the count wrapped.
     if (states_[index] == slot_state::tombstone) {
       --tombstones_;
     }

@@ -47,7 +47,7 @@ This is a small open-source project maintained on a best-effort basis. We aim to
 
 - acknowledge a report within **7 days**,
 - confirm/triage and share an initial assessment within **30 days**, and
-- release a fix on `main` (with a `CHANGELOG.md` / `docs/AUDIT.md` entry)
+- release a fix on `main` (with a `CHANGELOG.md` entry and a regression test)
   before any public disclosure, coordinating timing with the reporter.
 
 We credit reporters in the advisory and changelog unless you ask otherwise.

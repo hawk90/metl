@@ -1,4 +1,4 @@
-// Regression tests for the converting variant::operator=(T&&) fix (AUDIT E.2):
+// Regression tests for the converting variant::operator=(T&&) fix:
 // when the active alternative already holds the target type, the assignment must
 // happen IN PLACE, not via reset()+reconstruct. The old code always routed
 // through emplace(), which destroyed the active alternative BEFORE reading the
@@ -70,8 +70,8 @@ int main() {
     CHECK_EQ(metl::get<int>(v), 99);
   }
 
-  // (4) Switching alternatives from a subobject of the active alternative
-  // (docs/AUDIT.md, Section G). The old path emplace()d directly, which
+  // (4) Switching alternatives from a subobject of the active alternative.
+  // The old path emplace()d directly, which
   // destroyed the `holder` before reading `holder::inner`. `poisoned` writes
   // -1 into itself on destruction, so the stale read shows up as a wrong value
   // even without a sanitizer.

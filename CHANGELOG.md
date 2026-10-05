@@ -15,12 +15,12 @@ namespace `metl` except `metl::detail`, and the documented `METL_*`
 configuration macros -- changes incompatibly only in a new major version.
 Hash *values* are not part of that promise (see `fnv1a_hash` below).
 
-**Highlights since 0.1.0-alpha2.** Three whole-tree reviews (docs/AUDIT.md
-Section G) found and fixed about sixty defects -- aliasing, exception safety,
-hashing, `noexcept` paths that terminated the program, memory safety at
-`METL_HARDENING_NONE` -- each with a regression test that failed first. The
-contiguous containers are now well-defined C++17 (E.2). Every container's
-iterator-invalidation rules are documented in `docs/CHOOSING.md`.
+**Highlights since 0.1.0-alpha2.** Three whole-tree reviews found and fixed
+about sixty defects -- aliasing, exception safety, hashing, `noexcept` paths
+that terminated the program, memory safety at `METL_HARDENING_NONE` -- each with
+a regression test that failed first. The contiguous containers are now
+well-defined C++17. Every container's iterator-invalidation rules are documented
+in `docs/CHOOSING.md`.
 
 ### Upgrading from 0.1.0-alpha2
 
@@ -49,8 +49,8 @@ asserts) first:
 
 ### Changed
 
-- **User code that throws no longer terminates the program behind a `noexcept`**
-  (docs/AUDIT.md G.7): `spsc_queue`/`mpmc_queue` `try_emplace`/`try_push(const T&)`
+- **User code that throws no longer terminates the program behind a `noexcept`**:
+  `spsc_queue`/`mpmc_queue` `try_emplace`/`try_push(const T&)`
   and `lookup_table`'s lookups are `noexcept` only when the type's operations are
   (`mpmc_queue` now constructs a throwing element before claiming a slot, so a
   throw cannot stall consumers); `fsm::dispatch` is no longer `noexcept`; the
@@ -65,7 +65,7 @@ asserts) first:
   skip only on that path; superseded ClusterFuzzLite PR runs are cancelled and
   the two corpus writers serialised.
 - **`static_unordered_map` / `static_unordered_set`: the tombstone rebuild runs
-  on inserting a new key, not on `erase`** (docs/AUDIT.md G.3). It used to run
+  on inserting a new key, not on `erase`**. It used to run
   inside `erase` and moved live elements behind an iterator, so the
   erase-while-iterating loop that is safe on `std::unordered_map` skipped
   elements. `erase` now never moves another element; inserting a new key may
@@ -79,7 +79,7 @@ asserts) first:
 
 ### Changed (breaking: hash values)
 
-- **`metl::fnv1a_hash` hashes by value** (docs/AUDIT.md G.2). It is transparent,
+- **`metl::fnv1a_hash` hashes by value**. It is transparent,
   so equal values must hash equally across types, and three cases did not:
   - `metl::fixed_string` was hashed by its object bytes, including stale bytes
     past the terminator: two equal strings could hash differently and
@@ -113,7 +113,7 @@ asserts) first:
 
 ### Fixed
 
-- **Re-examined trade-offs** (docs/AUDIT.md G.9):
+- **Re-examined trade-offs**:
   - `fixed_vector::insert(pos, first, last)` / `assign(first, last)` with the
     vector's own range now assert (it silently copied moved-from or destroyed
     elements; std makes it a precondition, METL checks it);
@@ -123,19 +123,19 @@ asserts) first:
     used to terminate the program;
   - a hasher that throws during the unordered tombstone rebuild empties the table
     and propagates instead of terminating.
-- **`emplace` from the object's own value** (docs/AUDIT.md G.8):
+- **`emplace` from the object's own value**:
   `opt.emplace(*opt)`, `opt.emplace(opt->member)`, `v.emplace<0>(get<1>(v).x)`
   and same-state `e.emplace(e.value())` destroyed the current member before
   reading the argument (undefined behaviour in `std` too). The new value is now
   built first for movable types: one extra move on the engaged path, and
   `variant::emplace` is `noexcept` only if the target's move is too.
-- **`fixed_vector`, `flat_map`, `flat_set`: `data() + i` is now well-defined C++17**
-  (docs/AUDIT.md E.2). Elements lived in N separate byte buffers, so indexing
+- **`fixed_vector`, `flat_map`, `flat_set`: `data() + i` is now well-defined C++17**.
+  Elements lived in N separate byte buffers, so indexing
   across them was pointer arithmetic between unrelated objects; they now live in
   one buffer reached as a single implicitly created `T[N]`
   (`detail::array_storage`). No API, layout or `sizeof` change; generated code is
   identical at `-Os`.
-- **Third review pass** (docs/AUDIT.md G.6):
+- **Third review pass**:
   - empty `pop` on `ring_buffer`/`fixed_deque`/`fixed_queue`/`static_message_queue`
     at `METL_HARDENING_NONE` corrupted the container (now `METL_HARDEN`);
   - `fixed_vector::swap` leaked on a throwing move; `assign(n, v[0])` copied a
@@ -150,7 +150,7 @@ asserts) first:
   destroyed at end of scope changes behaviour.
 - **`expected::swap` requires `T` or `E` to be nothrow move constructible**, as
   `std::expected::swap` does: with two throwing moves no rollback is possible.
-- **Exception safety of the containers** (docs/AUDIT.md G.5; exceptions-enabled
+- **Exception safety of the containers** (exceptions-enabled
   builds only). A copy or move constructor of `fixed_vector`, `ring_buffer`,
   `fixed_deque`, `flat_map`, `flat_set`, `static_unordered_map`,
   `static_unordered_set` or `static_message_queue` leaked the elements already
@@ -160,12 +160,12 @@ asserts) first:
   to be destroyed again; it now move-assigns (as `std::vector::insert`) and, on a
   throw, clears the container to restore its sorted invariant (as
   `std::flat_map`).
-- **Memory safety at `METL_HARDENING_NONE`** (docs/AUDIT.md G.5):
+- **Memory safety at `METL_HARDENING_NONE`**:
   `fixed_vector::emplace(pos, ...)` on a full vector and `pop_back()` on an empty
   one (also `fixed_stack::pop`) wrote out of bounds with asserts stripped; both
   are now `METL_HARDEN`. `monotonic_buffer::allocate` hardens its alignment like
   `arena_allocator`.
-- **Low-severity fixes** (G.4/G.5): `mpmc_queue::size_approx` no longer wraps to
+- **Low-severity fixes**: `mpmc_queue::size_approx` no longer wraps to
   ~`SIZE_MAX` under contention; `fixed_string` `<` compares as `unsigned char`;
   `span(ptr, 0)` is no longer ambiguous; a value-returning callable works in a
   `void` `fixed_function` / `function_ref`; `intrusive_ptr` `*`/`->` assert
@@ -175,7 +175,7 @@ asserts) first:
 - **Rejected at compile time now:** `bit.hpp` functions on a type wider than 64
   bits (they truncated `unsigned __int128`), `bitfield<..., bool>` and the mmio bit
   helpers on `bool` (could not clear a bit), `static_message_queue<T, 0>`.
-- **Divergences from `std` and from METL's own documentation** (docs/AUDIT.md G.3):
+- **Divergences from `std` and from METL's own documentation**:
   - `optional<scalar> o; o = {};` now **resets** `o`, as `std::optional` does; it
     used to engage it with `T{}`. Silent behaviour change for scalar `T` only.
   - `fixed_function` / `fixed_any_invocable` now assert on a null function
@@ -192,7 +192,7 @@ asserts) first:
   - `expected::emplace` / `emplace_error` no longer double-destroy when the new
     member's constructor throws (exceptions-enabled builds only).
 - **Inserting or assigning a value that refers to an element of the same
-  container read it after it was moved or destroyed** (docs/AUDIT.md G.1).
+  container read it after it was moved or destroyed**.
   Each case silently stored the wrong value:
   - `intrusive_ptr`: `p = p->next` destroyed the next node too and left `p` null.
   - `fixed_vector::insert`/`emplace`: `v.insert(v.begin(), v[0])`.
@@ -200,7 +200,7 @@ asserts) first:
     from the same map.
   - `ring_buffer::push_overwrite(rb.front())` on a full ring (use-after-free).
   - `variant`: switching alternatives from a subobject of the active one
-    (use-after-free). The E.2 fix had covered only the same-alternative case.
+    (use-after-free). The earlier fix had covered only the same-alternative case.
 - **`metl::visit` silently truncated a visitor's result** when the visitor
   returned a different type per alternative. The result type was deduced from
   alternative **zero** and every other alternative was converted to it, so
@@ -211,9 +211,9 @@ asserts) first:
   single return type"*), and METL now does too, with a message naming the
   one-line fix. **Source-breaking** for callers who relied on the conversion:
   give the visitor an explicit return type.
-- **`event_dispatcher` listener ids are 64-bit on every target** (docs/AUDIT.md
-  G.5). They came from a `size_t` counter, which on a 32-bit target repeats
-  after 2^32 subscriptions, so a stale id could unsubscribe a newer listener.
+- **`event_dispatcher` listener ids are 64-bit on every target**. They came
+  from a `size_t` counter, which on a 32-bit target repeats after 2^32
+  subscriptions, so a stale id could unsubscribe a newer listener.
   The per-slot `active` flag is gone (id 0, never issued, marks a free slot), so
   the cost on ARM32 is the counter only: `event_dispatcher<void(int), 4>` goes
   from 68 to 72 bytes. On a 64-bit host it shrinks from 136 to 104.
@@ -227,6 +227,19 @@ asserts) first:
   change.
 - The CRC headers' progress guarantees now state that their `const char*`
   overload is bounded by the caller's NUL, matching `hash` and `fixed_string`.
+- **Repository tooling is Python only.** `tools/run_qemu_tests.sh`,
+  `tools/coverage.sh` and `tools/clang_tidy_report.sh` are now `.py` scripts
+  with the same options and output. The one shell script left is
+  `.clusterfuzzlite/build.sh`, whose name and language the OSS-Fuzz build
+  image requires.
+- The internal working notes (`docs/AUDIT.md`, `docs/TODO.md`, `docs/RFP.md`)
+  are no longer published. Code comments that cited them now carry their own
+  reasoning; the design record is `docs/SCOPE.md`.
+- Doc comments re-checked against the code: progress tables that named
+  members which do not exist (`spsc_queue::clear`, `delegate::reset`,
+  `fsm::state`, `coro::scheduler::attach`, ...), `atomic_handle`'s strong
+  CAS and `exchange` (lock-free, not wait-free, on LL/SC targets), and
+  `fsm::dispatch`'s throw behaviour (a throwing hook still terminates).
 
 ## [0.1.0-alpha2] - 2026-08-21
 
@@ -561,7 +574,7 @@ would cost a deprecation cycle; today they cost a recompile.
   `benchmark::benchmark` was absent, which was always. It now builds for real,
   and three suites ship with it — containers and lookup paths, `object_pool` vs
   `handle_pool`, and `spsc_queue` throughput including the two-thread case.
-  **Deviation from `docs/TODO.md`:** built on a dependency-free in-repo harness
+  **Deviation from the original plan:** built on a dependency-free in-repo harness
   (`bench/metl_bench.hpp`) rather than google/benchmark, which would have been
   this repo's first external dependency and would cost CI a network fetch plus a
   framework build — the same call already made in choosing `tests/metl_check.hpp`
@@ -749,8 +762,7 @@ would cost a deprecation cycle; today they cost a recompile.
   guards whose failure would be a wild out-of-bounds write. `METL_DASSERT`
   remains the debug-only tier for genuinely expensive checks. **ODR note:**
   `METL_HARDENING` must be uniform across all TUs of a program (same constraint as
-  `NDEBUG`/`_LIBCPP_HARDENING_MODE`); documented at `config.hpp`. See
-  `docs/AUDIT.md` Section E.
+  `NDEBUG`/`_LIBCPP_HARDENING_MODE`); documented at `config.hpp`.
 - **`metl_cc_test(... INCLUDES ...)`** — the Bazel-style test rule now accepts an
   `INCLUDES` attribute (mirroring `metl_cc_library`), used to put the shared
   `tests/metl_check.hpp` helper on every test's include path after the test-suite
@@ -783,15 +795,14 @@ would cost a deprecation cycle; today they cost a recompile.
   under `fuzz/corpus/`, failing on any crash/leak/timeout. No library defect was
   found (200k+ runs per target clean); one over-strict harness invariant
   (`fixed_string` `strlen == size`, false by design for embedded NULs) was fixed
-  during bring-up to `strlen <= size`. See `docs/AUDIT.md` Section C.
+  during bring-up to `strlen <= size`.
 - **ClusterFuzzLite continuous fuzzing (OSS-Fuzz tech, no upstream
   registration).** `.clusterfuzzlite/` (`Dockerfile`, `build.sh`, `project.yaml`)
   plus non-blocking `cflite-pr` (per-PR, code-change mode) and `cflite-batch`
   (scheduled) GitHub Actions workflows run the OSS-Fuzz toolchain directly in
   CI. The `build.sh`/`Dockerfile` are OSS-Fuzz-compatible, so upstream
-  google/oss-fuzz registration remains a drop-in follow-up (tracked in
-  `docs/TODO.md`). These workflows are `continue-on-error` (non-blocking); the
-  blocking, always-green memory-safety gate is the in-repo `fuzz-smoke` job.
+  google/oss-fuzz registration remains a drop-in follow-up. These workflows
+  are `continue-on-error` (non-blocking); the blocking, always-green memory-safety gate is the in-repo `fuzz-smoke` job.
 - **`SECURITY.md` — vulnerability disclosure policy.** How to report privately
   (GitHub security advisory), supported versions, response expectations, and a
   clear statement that an abort from a documented precondition violation is
@@ -894,7 +905,7 @@ would cost a deprecation cycle; today they cost a recompile.
   the built binaries (no longer a hand-maintained list that could silently skip a
   new fuzzer); and a `.pre-commit-config.yaml` pins clang-format 18.1.8 so local
   formatting matches CI. Deeper CI cleanups (cross-job matrix dedup, caching,
-  action SHA pinning) are tracked in `docs/TODO.md`.
+  action SHA pinning) were left for later.
 - **optional — genuine `constexpr` on C++20:** `metl::optional` now stores its
   value in a union (the active member is named directly, no `std::launder`) and
   routes its object lifetime through the new `metl::detail::construct_at` /
@@ -907,7 +918,7 @@ would cost a deprecation cycle; today they cost a recompile.
   `constexpr` too. The remaining laundered-storage types
   (`expected`/`variant`/`fixed_vector`/`flat_map`/`flat_set`) carry an honest
   source note that their `constexpr` labels are effective only outside constant
-  evaluation; a genuine conversion is deferred (see `docs/AUDIT.md`).
+  evaluation; a genuine conversion is deferred.
 - **function_ref — dropped the `<memory>` include.** It was pulled in solely
   for `std::addressof` in one constructor; replaced with a tiny local
   `metl::detail::function_ref_addressof` (`__builtin_addressof`, universally
@@ -1092,7 +1103,7 @@ would cost a deprecation cycle; today they cost a recompile.
   `atomic_ref` counter, so the ThreadSanitizer CI job validates real
   concurrency.
 - Added focused correctness regression tests (all using `CHECK`/`CHECK_EQ`) for
-  the Section A fixes: `coro_scheduler_reentrancy`, `static_unordered_map_emplace`,
+  these fixes: `coro_scheduler_reentrancy`, `static_unordered_map_emplace`,
   `variant_regression`, `expected_regression`, `mmio_regression`,
   `allocator_overflow`, `fixed_function_const`, `fsm_reentrancy`,
   `hash_unique_repr`, and `intrusive_ptr_contract`. Several exercise the fixed

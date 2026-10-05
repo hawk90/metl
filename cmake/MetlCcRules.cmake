@@ -167,7 +167,7 @@ endfunction()
 # metl_cc_benchmark
 #
 # Builds against the in-repo harness (bench/metl_bench.hpp), not google/benchmark.
-# That is a deliberate departure from what docs/TODO.md originally called for:
+# That is a deliberate departure from what the original plan called for:
 # google/benchmark would be the first external dependency in a repo that has
 # none, and it would cost CI a network fetch plus a framework build. This project
 # already made the same call once, preferring a hand-rolled tests/metl_check.hpp

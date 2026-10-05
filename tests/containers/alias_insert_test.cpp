@@ -1,5 +1,5 @@
 // Regression tests for inserting a value that refers to an element of the same
-// container (docs/AUDIT.md, Section G).
+// container.
 //
 // Each of these used to move or destroy existing elements before reading the
 // argument, so `v.insert(v.begin(), v[0])` copied a moved-from or destroyed

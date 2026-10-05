@@ -58,11 +58,14 @@ inline constexpr bool has_lock_free_handle_atomic_v = has_lock_free_handle_atomi
 ///
 ///   | Operation                       | Guarantee          |
 ///   |---------------------------------|--------------------|
-///   | `load` / `store` / `exchange`   | wait-free, bounded |
-///   | `compare_exchange_*`            | wait-free, bounded |
+///   | `load` / `store`                | wait-free, bounded |
+///   | `compare_exchange_weak`         | wait-free, bounded |
+///   | `exchange`, `compare_exchange_strong` | **lock-free** on LL/SC targets |
 ///   | a caller's CAS retry loop       | lock-free          |
 ///
-/// The individual operations are wait-free; a retry loop built from them is
+/// `load`, `store` and one `compare_exchange_weak` attempt are wait-free; on
+/// LDREX/STREX targets `exchange` and the strong CAS are retry loops (see
+/// `atomic_ref.hpp`). A retry loop built from them is
 /// lock-free, not wait-free, because another thread can always win the race.
 /// That distinction is why this is **not** usable for ISR↔main-loop
 /// synchronisation on a single core: an ISR that preempts a retry loop and

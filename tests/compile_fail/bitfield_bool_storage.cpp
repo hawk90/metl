@@ -2,7 +2,7 @@
 //
 // `bool` passes `is_unsigned`, but a bitfield clears its bits with `~mask`, and
 // `~mask` converted back to bool is always `true`. `insert(true, false)` then
-// returned 1: the field could be set and never cleared (docs/AUDIT.md G.5).
+// returned 1: the field could be set and never cleared.
 
 #include <cstdint>
 

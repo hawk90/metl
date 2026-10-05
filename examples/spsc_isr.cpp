@@ -16,7 +16,7 @@
 //   * EXACTLY ONE producer calls try_push/try_emplace, EXACTLY ONE consumer
 //     calls try_pop. (Here that is ISR vs main loop.)
 //   * Capacity must be a power of two.
-//   * The queue holds Capacity-1 usable slots (one slot separates full/empty).
+//   * All Capacity slots are usable (free-running indices tell full from empty).
 //   * On a full queue try_push returns false — the ISR must decide to drop the
 //     sample (and bump an overrun counter) rather than block.
 //
@@ -37,7 +37,7 @@ struct adc_sample {
   std::uint16_t value;
 };
 
-constexpr std::size_t kCapacity = 8;  // power of two -> 7 usable slots
+constexpr std::size_t kCapacity = 8;  // power of two; all 8 slots usable
 using sample_queue = metl::spsc_queue<adc_sample, kCapacity>;
 
 // Called "from the ISR": push one sample, drop + count on overrun. Never

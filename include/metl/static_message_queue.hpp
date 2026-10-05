@@ -5,7 +5,7 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `push`, `pop`, `emplace`, `try_*`, `front`, `back` | wait-free, bounded |
+///   | `push`, `pop`, `emplace`, `try_*`, `front` | wait-free, bounded |
 ///   | `size`, `empty`, `full` | wait-free, bounded |
 ///   | `clear`, copy, destructor | wait-free, bounded by `size()` |
 ///
@@ -75,7 +75,7 @@ class static_message_queue {
   // Element-inserting constructors delegate to the empty constructor first.
   // Once it returns the object is fully constructed, so if copying or moving
   // an element throws part-way, the destructor runs and destroys exactly the
-  // elements already inserted -- they used to leak (docs/AUDIT.md G.5).
+  // elements already inserted -- they used to leak.
   static_message_queue(const static_message_queue& other) : static_message_queue() {
     for (size_type i = 0; i < other.size_; ++i) {
       const size_type index = other.physical_index(i);
@@ -208,8 +208,8 @@ class static_message_queue {
   void pop() noexcept {
     // Hard, not METL_ASSERT: an empty pop at METL_HARDENING_NONE destroyed a
     // dead slot and wrapped size_ to SIZE_MAX -- the next push leaked, and a
-    // destructor then looped ~2^64 times (docs/AUDIT.md G.6; fixed_vector's
-    // pop_back got the same guard in G.5).
+    // destructor then looped ~2^64 times (fixed_vector's
+    // pop_back has the same guard).
     METL_HARDEN(size_ > 0);
     pop_front();
   }

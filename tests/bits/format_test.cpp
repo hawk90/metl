@@ -179,7 +179,7 @@ int main() {
   }
 
   // An unsigned value above LLONG_MAX prints as itself, not as a negative
-  // number (docs/AUDIT.md G.3).
+  // number.
   {
     char wide[24] = {};
     CHECK(text_is(metl::try_format_int(metl::span<char>(wide, sizeof(wide)), UINT64_MAX),

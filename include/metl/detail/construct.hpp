@@ -2,7 +2,7 @@
 
 /// @file
 /// @brief Object-lifetime helpers: `metl::detail::construct_at` / `destroy_at`
-///        and the `METL_CONSTEXPR20` marker. Public-facing detail utilities.
+///        and the `METL_CONSTEXPR20` marker. Internal.
 
 // Internal object-lifetime helpers: metl::detail::construct_at / destroy_at.
 //

@@ -7,10 +7,8 @@
 ///   |-----------|-----------|
 ///   | every function in this header | wait-free, bounded by `sizeof(T)` |
 ///
-/// Byte swapping lowers to `REV`/`REV16` on ARM and `bswap` on x86; the portable
-/// fallback is a loop over the bytes of `T`, so the worst case is eight iterations
-/// for a 64-bit type. Unaligned load and store helpers copy exactly `sizeof(T)`
-/// bytes.
+/// Byte swapping is a loop over the bytes of `T`, at most eight iterations for a
+/// 64-bit type; GCC and Clang usually recognise it and emit `REV`/`REV16` or `bswap`.
 
 #include "metl/compiler.hpp"
 

@@ -1,5 +1,5 @@
-// Containers must stay memory-safe when an element's copy or move throws
-// (docs/AUDIT.md G.5). Exceptions-enabled builds only: METL itself never
+// Containers must stay memory-safe when an element's copy or move throws.
+// Exceptions-enabled builds only: METL itself never
 // throws, but a user's T may, and these paths used to
 //
 //   - leak every element already copied, when a copy or move CONSTRUCTOR of
@@ -281,7 +281,7 @@ int main() {
     CHECK_EQ(g_double_destroys, 0);
   }
 
-  // ---- G.6: fixed_vector::swap with unequal sizes, tail move throwing -------
+  // ---- fixed_vector::swap with unequal sizes, tail move throwing -------
   for (int direction = 0; direction < 2; ++direction) {
     g_live = 0;
     g_double_destroys = 0;
@@ -312,7 +312,7 @@ int main() {
     CHECK_EQ(g_double_destroys, 0);
   }
 
-  // ---- G.6: flat_map / flat_set with a non-move-assignable element ---------
+  // ---- flat_map / flat_set with a non-move-assignable element ---------
   for (int which = 0; which < 2; ++which) {
     g_live = 0;
     g_double_destroys = 0;
@@ -342,7 +342,7 @@ int main() {
     CHECK_EQ(g_double_destroys, 0);
   }
 
-  // ---- G.6: fixed_priority_queue keeps its heap order or empties ----------
+  // ---- fixed_priority_queue keeps its heap order or empties ----------
   {
     g_live = 0;
     g_double_destroys = 0;
@@ -400,7 +400,7 @@ int main() {
     CHECK(queue.empty());  // cleared, not left with a broken heap
   }
 
-  // ---- G.7: noexcept paths that run user code now propagate -------------
+  // ---- noexcept paths that run user code now propagate -------------
   // Before, each of these was noexcept and a throwing T terminated the program.
   static_assert(!noexcept(std::declval<metl::spsc_queue<copy_throws, 4>&>().try_push(
                     std::declval<const copy_throws&>())),
@@ -502,7 +502,7 @@ int main() {
     CHECK_EQ(g_live, 0);
   }
 
-  // ---- G.9: lookups and erase are noexcept only when user code cannot throw --
+  // ---- lookups and erase are noexcept only when user code cannot throw --
   using int_map = metl::flat_map<int, int, 8>;
   using ranked_set = metl::flat_set<ranked, 8>;
   using throwing_map = metl::flat_map<int, int, 8, throwing_int_less>;

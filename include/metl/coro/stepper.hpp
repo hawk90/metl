@@ -5,10 +5,10 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `step`, `reset`, state queries | wait-free, bounded |
+///   | `poll`, `reset`, state queries | wait-free, bounded |
 ///   | the step body itself | **bounded by the body you write** |
 ///
-/// `step` is one indirect call through a stored function pointer plus a state
+/// `poll` is one virtual call to `step()` plus a state
 /// update. Everything else is the work you put in the step body, which this header
 /// cannot bound.
 

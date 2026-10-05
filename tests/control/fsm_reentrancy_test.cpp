@@ -91,7 +91,7 @@ int main() {
   CHECK_EQ(log.bc_count, 1);
   CHECK(machine.current_state() == st::c);
 
-  // Hooks around a chained dispatch (docs/AUDIT.md G.3). `b` is passed
+  // Hooks around a chained dispatch. `b` is passed
   // through inside a transition action, so it is neither entered nor exited:
   // the hooks run `exit a, enter c`. They used to run `exit a, exit b,
   // enter c, enter b` -- `b` exited before it was entered, and the last entry

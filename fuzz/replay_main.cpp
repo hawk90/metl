@@ -21,14 +21,14 @@
 // machine.
 //
 // STATED LIMIT, because the first version of this comment overstated it: "every
-// platform" does NOT include the cross targets. tools/run_qemu_tests.sh
+// platform" does NOT include the cross targets. tools/run_qemu_tests.py
 // discovers `tests/**/*_test.cpp`, and these targets are not tests/, so no
 // oracle runs on Cortex-M. That is the interesting half -- 32-bit size_type and
 // a different ABI are where a container's index arithmetic would differ from
 // the host -- and it is open, not covered. The obstacle is not the driver: the
 // oracles are std::map, which allocates, and this file uses <random> and
 // std::vector, so a freestanding build is real work rather than a glob change.
-// docs/TODO.md carries it.
+// It is not done yet.
 //
 // Determinism is the point, so nothing here may consult the clock, the
 // environment, or an unseeded generator: the same binary must fail on the same

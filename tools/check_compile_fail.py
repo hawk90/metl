@@ -69,7 +69,7 @@ GUARD = "METL_COMPILE_FAIL"
 # the sentence implied about half. Nobody typed a wrong number on purpose: the
 # figure was true when written, it is DERIVED from the headers, and headers kept
 # arriving. A denominator that only a human can reproduce is not a denominator,
-# which is the lesson docs/TODO.md already records for fuzz coverage -- read the
+# which is the lesson fuzz coverage already taught -- read the
 # denominator, not the percentage.
 #
 # So it is counted, and the count is RATCHETED on the gap rather than the total:
@@ -97,7 +97,7 @@ GUARD = "METL_COMPILE_FAIL"
 #   range` both sit in the body of a function whose RETURN TYPE is
 #   variant_alternative_t<I, ...>, which asserts `variant_alternative index out
 #   of range` first. The caller still gets a correct diagnostic, so nothing is
-#   broken -- but those two lines can never run. See docs/TODO.md.
+#   broken -- but those two lines can never run.
 #
 # So the floor is 7. Lowering it means changing the library, not adding a case.
 MAX_UNCOVERED = 7

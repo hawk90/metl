@@ -84,8 +84,8 @@ class mpmc_queue {
                 "on any single-core target, where a lock-free retry loop preempted by an ISR "
                 "would spin forever.");
 
-  // Same reasoning as spsc_queue: this is a no-exception library and the push /
-  // pop paths are noexcept, so a throwing move or destructor would terminate at
+  // Same reasoning as spsc_queue: this is a no-exception library and the move
+  // into a slot and the pop path are noexcept, so a throwing move or destructor would terminate at
   // runtime. Requiring nothrow here turns that into a compile error.
   static_assert(std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_assignable_v<T> &&
                     std::is_nothrow_destructible_v<T>,
@@ -138,7 +138,7 @@ class mpmc_queue {
       // slot that is never published would stall every later consumer. The
       // move into the slot cannot throw (static_assert above). Until 2026-10-05
       // this function was noexcept and such a constructor terminated the
-      // program (docs/AUDIT.md G.7).
+      // program.
       T value(std::forward<Args>(args)...);
       return try_claim_and_construct(static_cast<T&&>(value));
     }
@@ -146,7 +146,7 @@ class mpmc_queue {
 
   /// Copy-enqueues an element if a slot is available.
   /// @note `noexcept` only when `T`'s copy cannot throw; a throwing copy
-  ///       propagates before any slot is claimed (docs/AUDIT.md G.7).
+  ///       propagates before any slot is claimed.
   METL_NODISCARD bool try_push(const T& value) noexcept(std::is_nothrow_copy_constructible_v<T>) {
     return try_emplace(value);
   }
@@ -194,7 +194,7 @@ class mpmc_queue {
   ///       `full()` answer *false* on a full queue -- optimistic, which is the
   ///       wrong direction for a hint. `spsc_queue::size_approx` always did the
   ///       plain subtraction; this now matches it.
-  ///       Head is loaded BEFORE tail (docs/AUDIT.md G.4): loaded the other way,
+  ///       Head is loaded BEFORE tail: loaded the other way,
   ///       pops landing between the two loads made `tail - head` wrap to about
   ///       `SIZE_MAX`, so `empty()` and `full()` were both false-ish at once. A
   ///       dequeue never overtakes the enqueue it consumes, so a later tail is

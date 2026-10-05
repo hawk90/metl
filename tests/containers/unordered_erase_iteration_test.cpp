@@ -1,5 +1,5 @@
 // Regression test: erasing while iterating a static unordered container must
-// visit every element (docs/AUDIT.md G.3).
+// visit every element.
 //
 // The tombstone reclaim used to run inside `erase`. Once it fired, it moved live
 // elements to slots the iterator had already passed, so the std-safe loop

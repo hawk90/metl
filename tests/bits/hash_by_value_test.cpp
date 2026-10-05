@@ -1,5 +1,4 @@
-// Regression tests for hashing by value rather than by object bytes
-// (docs/AUDIT.md, Section G.2).
+// Regression tests for hashing by value rather than by object bytes.
 //
 // fnv1a_hash is transparent, so a lookup may hash a key of a different type
 // from the stored one. Every case here is a pair of EQUAL values that used to

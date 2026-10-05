@@ -6,12 +6,12 @@ flash. `tests/core/ram_footprint_test.cpp` pins `sizeof` -- the storage a caller
 declares. Neither can see the memory METL uses *while an operation runs*, in the
 frame of whatever function is executing.
 
-WHAT THIS GUARDS. `static_unordered_map::erase` reclaims tombstones through
-`rehash_in_place`, and "in place" is the whole claim: it rebuilds the table
+WHAT THIS GUARDS. `static_unordered_map` reclaims tombstones through
+`rehash_in_place` when a new key is inserted, and "in place" is the whole claim: it rebuilds the table
 without a second copy. The simpler implementation -- build into a local array,
 copy back -- is correct, passes every test here and every fuzz harness, and puts
 `bucket_count * sizeof(value_type)` on the stack. At the capacity in the probe
-that is EIGHT KILOBYTES, reachable through `erase`, on parts that have 8 KB of
+that is EIGHT KILOBYTES, reachable through an insert, on parts that have 8 KB of
 SRAM in total. Nothing in this repository could currently see that happen.
 
 Measured before this was written, so the claim is not theoretical: today the

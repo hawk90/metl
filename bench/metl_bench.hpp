@@ -3,7 +3,7 @@
 // Tiny dependency-free micro-benchmark harness, the counterpart to
 // tests/metl_check.hpp.
 //
-// Why not google/benchmark, which docs/TODO.md originally named: it would be the
+// Why not google/benchmark, which the original plan named: it would be the
 // first external dependency in a repo that has none, and pulling it in — even
 // opt-in — costs CI a network fetch and a framework build. This library already
 // made the same call once, choosing a hand-rolled metl_check.hpp over gtest. The
