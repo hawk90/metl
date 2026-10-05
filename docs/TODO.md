@@ -24,7 +24,8 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [x] CI/CD: **preflight fail-fast gate** (dependency DAG, not flat fan-out),
   **GitHub Pages docs deploy** (gated on validation) → https://hawk90.github.io/metl/,
   Renovate (github-actions; replaced Dependabot in #109), actions on Node-24
-  (checkout@v5 / upload-artifact@v7), runners pinned (ubuntu-24.04, macos-26 --
+  (checkout@v5 / upload-artifact@v7), runners pinned (ubuntu-24.04 -- zephyr still
+  ubuntu-22.04, see the open item below -- macos-26 --
   macos-14 was deprecated -- and windows-2025), documentation-only PRs skip the
   builds (#113), superseded PR fuzzing is cancelled (#108)
 
@@ -444,7 +445,10 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   TUs do not include the headers a given PR touches.
 - [ ] Move the runners to Ubuntu 26.04 deliberately: tick the `ubuntu` v26 box on
   the Renovate dashboard (#111), then re-measure the size, stack and clang-tidy
-  ratchets in that PR and record why each moved.
+  ratchets in that PR and record why each moved. The `zephyr` job is still on
+  `ubuntu-22.04` and has to come along: it runs inside the Zephyr CI container,
+  so its host label can move to 24.04 now at little risk, and 22.04 is the next
+  image GitHub will retire.
 - [ ] **(CI anti-pattern review 2026-08-05, deferred)** Collapse the five
   near-identical freestanding cross jobs (riscv-cross / arm-cross-clang /
   big-endian / newlib-link / picolibc-qemu) into one matrix or a composite
