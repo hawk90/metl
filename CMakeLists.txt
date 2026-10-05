@@ -194,7 +194,7 @@ if(METL_BUILD_TESTS)
     vocab/variant vocab/variant_regression vocab/span vocab/function_ref
     vocab/fixed_function vocab/fixed_function_const vocab/fixed_function_null vocab/delegate
     vocab/intrusive_ptr vocab/intrusive_ptr_contract vocab/intrusive_ptr_alias vocab/scope_exit vocab/type_traits
-    vocab/variant_selfassign vocab/versioned_handle
+    vocab/variant_selfassign vocab/emplace_self_alias vocab/versioned_handle
     # bits/
     bits/bit bits/bitfield bits/crc8 bits/crc16 bits/crc32 bits/hash
     bits/hash_unique_repr bits/hash_by_value bits/endian bits/mmio bits/mmio_regression bits/register_access

@@ -281,11 +281,23 @@ class optional {
   /// @tparam Args Constructor argument types forwarded to `T`.
   /// @param args Arguments forwarded to `T`'s constructor.
   /// @return Reference to the newly constructed value.
-  /// @pre `args` do not refer into the current value: it is destroyed before
-  ///      they are read (as for std::optional::emplace; docs/AUDIT.md G.6). Plain
-  ///      assignment (`operator=`) has no such restriction.
+  /// @note `args` may refer into the current value (`o.emplace(*o)`,
+  ///       `o.emplace(o->member)`): when engaged and `T` is move constructible,
+  ///       the new value is built before the old one is destroyed, at the cost
+  ///       of one move (docs/AUDIT.md G.8). A throwing constructor then leaves
+  ///       the old value in place.
   template <typename... Args>
   T& emplace(Args&&... args) {
+    if constexpr (std::is_move_constructible_v<T>) {
+      if (has_value_) {
+        T incoming(std::forward<Args>(args)...);
+        reset();
+        construct(static_cast<T&&>(incoming));
+        return *data();
+      }
+    }
+    // Disengaged: nothing for `args` to alias. Non-movable T: no build-first
+    // path exists, so it is constructed directly, as std does.
     reset();
     construct(std::forward<Args>(args)...);
     return *data();
