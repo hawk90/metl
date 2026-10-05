@@ -117,10 +117,10 @@ void drive_optional(metl_fuzz::byte_reader& in) {
     // count must be the number of them that are engaged -- no more, no less.
     const int engaged = (opt.has_value() ? 1 : 0) + (other.has_value() ? 1 : 0);
     if (g_live != engaged) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     if (opt.has_value() && opt->value != opt.value().value) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
   }
 }
@@ -144,7 +144,7 @@ void drive_expected(metl_fuzz::byte_reader& in) {
         break;
       case 3:
         if (r.has_value() && r->value != r.value().value) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         break;
       default:
@@ -159,10 +159,10 @@ void drive_expected(metl_fuzz::byte_reader& in) {
     // neither, or both, lands here.
     if (r.has_value()) {
       if (g_live != 1 || g_live_other != 0) {
-        __builtin_trap();
+        METL_FUZZ_TRAP();
       }
     } else if (g_live != 0 || g_live_other != 1) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
   }
 }
@@ -191,14 +191,14 @@ void drive_variant(metl_fuzz::byte_reader& in) {
         // so it is only reached once get_if has proven which one is active.
         if (const payload* p = metl::get_if<payload>(&v)) {
           if (p->value != metl::get<payload>(v).value) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
           if (v.index() != 0) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
         } else if (const other_payload* q = metl::get_if<other_payload>(&v)) {
           if (q->value != metl::get<other_payload>(v).value || v.index() != 1) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
         }
         break;
@@ -222,12 +222,12 @@ void drive_variant(metl_fuzz::byte_reader& in) {
     }
 
     if (v.valueless_by_exception()) {
-      __builtin_trap();  // unreachable without exceptions; if it happens, say so
+      METL_FUZZ_TRAP();  // unreachable without exceptions; if it happens, say so
     }
     // Exactly one alternative alive, and it is the one `index()` claims.
     const bool first = v.index() == 0;
     if (g_live != (first ? 1 : 0) || g_live_other != (first ? 0 : 1)) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
   }
 }
@@ -252,7 +252,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
   // Everything above went out of scope. Anything still counted is a payload the
   // destructor never reached.
   if (g_live != 0 || g_live_other != 0) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   return 0;
 }

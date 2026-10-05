@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **METL compiles with MSVC.** `compiler.hpp` -- included by every header --
+  used `__has_cpp_attribute` in an ordinary expression, which only GCC and
+  Clang accept (the standard allows it only in `#if`), so every header failed
+  on MSVC. And `metl::cxx_standard` read `__cplusplus`, which MSVC leaves at
+  `199711L` without `/Zc:__cplusplus`; it now uses `_MSVC_LANG` there. No
+  Windows build had ever run in CI; a `windows-2025` / MSVC row now does.
 - **`fixed_string` and `monotonic_buffer` build cleanly with GCC 15+ and
   `-Werror`.** GCC 15 analyses the refused path -- a literal longer than the
   capacity, a request larger than the buffer -- where the bounds check has

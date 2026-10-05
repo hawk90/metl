@@ -32,6 +32,8 @@
 #ifndef METL_FUZZ_FUZZ_MODEL_HPP
 #define METL_FUZZ_FUZZ_MODEL_HPP
 
+#include "fuzz_helpers.hpp"
+
 #include <cstddef>
 #include <map>
 
@@ -42,7 +44,7 @@ namespace metl_fuzz {
 /// it, so the failing opcode stream comes out of a failure for free.
 inline void require(bool condition) noexcept {
   if (!condition) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 }
 
@@ -127,7 +129,7 @@ class map_oracle {
       // An explicit trap rather than require(): gcc's -Wnull-dereference cannot
       // see through require() when it is not inlined (MinSizeRel), and warned.
       if (found == nullptr) {
-        __builtin_trap();
+        METL_FUZZ_TRAP();
       }
       require(*found == entry.second);
     }

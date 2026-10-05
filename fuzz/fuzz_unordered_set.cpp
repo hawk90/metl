@@ -38,17 +38,17 @@ using set_type = metl::static_unordered_set<std::uint16_t, kCapacity>;
 /// while both still look internally consistent.
 void check_invariants(const set_type& set) {
   if (set.size() > kCapacity) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   std::size_t seen = 0;
   for (const auto& key : set) {
     if (!set.contains(key)) {
-      __builtin_trap();  // present in storage, unreachable by lookup
+      METL_FUZZ_TRAP();  // present in storage, unreachable by lookup
     }
     ++seen;
   }
   if (seen != set.size()) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 }
 
@@ -71,19 +71,19 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         const bool inserted = set.try_emplace(std::uint16_t{key});
         if (inserted) {
           if (present_before) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
           if (set.size() != size_before + 1 || !set.contains(key)) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
         } else {
           // Refused: either a duplicate, or the table is full. Either way the
           // set must be unchanged.
           if (set.size() != size_before) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
           if (!present_before && set.size() < kCapacity) {
-            __builtin_trap();  // refused a new key while there was room
+            METL_FUZZ_TRAP();  // refused a new key while there was room
           }
         }
         break;
@@ -93,19 +93,19 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         const std::size_t size_before = set.size();
         const bool erased = set.erase(key);
         if (erased != present_before) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         if (set.size() != size_before - (erased ? 1u : 0u)) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         if (set.contains(key)) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         break;
       }
       case 2: {  // find / contains must agree
         if ((set.find(key) != nullptr) != set.contains(key)) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         break;
       }
@@ -114,7 +114,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
           (void)set.try_emplace(std::uint16_t{k});
         }
         if (set.size() != kCapacity) {
-          __builtin_trap();  // could not fill a table that reports room
+          METL_FUZZ_TRAP();  // could not fill a table that reports room
         }
         for (std::uint16_t k = 0; k < 64; k += 2) {
           (void)set.erase(k);
@@ -127,7 +127,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
       default: {
         set.clear();
         if (!set.empty() || set.size() != 0) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         break;
       }

@@ -77,27 +77,27 @@ void drive_handle_pool(metl_fuzz::byte_reader& in) {
         // A live handle must resolve, and to ITS value -- not to whatever now
         // occupies the slot.
         if (resolved == nullptr || resolved->value != r.value) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         if (!pool.contains(r.handle)) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
       } else {
         // THE POINT OF THE TYPE. A destroyed handle must never resolve again,
         // however many times its slot has been recycled since.
         if (resolved != nullptr || pool.contains(r.handle)) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
       }
     }
     if (pool.size() != live_count) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     if (g_live != static_cast<int>(live_count)) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     if (pool.available() != kCapacity - live_count) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
   };
 
@@ -108,14 +108,14 @@ void drive_handle_pool(metl_fuzz::byte_reader& in) {
         const handle_type handle = pool.try_emplace(payload{value});
         if (handle.valid()) {
           if (live_count >= kCapacity) {
-            __builtin_trap();  // handed out a slot it did not have
+            METL_FUZZ_TRAP();  // handed out a slot it did not have
           }
           ++live_count;
           if (count < kTracked) {
             seen[count++] = record{handle, value, true};
           }
         } else if (live_count != kCapacity) {
-          __builtin_trap();  // refused while it had room
+          METL_FUZZ_TRAP();  // refused while it had room
         }
         break;
       }
@@ -127,7 +127,7 @@ void drive_handle_pool(metl_fuzz::byte_reader& in) {
         record& r = seen[pick];
         const bool destroyed = pool.destroy(r.handle);
         if (destroyed != r.live) {
-          __builtin_trap();  // destroy() must answer "was this a live slot"
+          METL_FUZZ_TRAP();  // destroy() must answer "was this a live slot"
         }
         if (destroyed) {
           r.live = false;
@@ -141,7 +141,7 @@ void drive_handle_pool(metl_fuzz::byte_reader& in) {
         }
         const std::size_t pick = in.byte() % count;
         if (!seen[pick].live && pool.destroy(seen[pick].handle)) {
-          __builtin_trap();  // a second destroy must be refused, not repeated
+          METL_FUZZ_TRAP();  // a second destroy must be refused, not repeated
         }
         break;
       }
@@ -169,17 +169,17 @@ void drive_object_pool(metl_fuzz::byte_reader& in) {
   auto recheck_all = [&]() {
     for (std::size_t i = 0; i < count; ++i) {
       if (held[i] == nullptr || held[i]->value != expected[i]) {
-        __builtin_trap();
+        METL_FUZZ_TRAP();
       }
       if (!pool.contains(held[i])) {
-        __builtin_trap();
+        METL_FUZZ_TRAP();
       }
     }
     if (pool.size() != count || g_live != static_cast<int>(count)) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     if (pool.available() != kCapacity - count) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
   };
 
@@ -190,13 +190,13 @@ void drive_object_pool(metl_fuzz::byte_reader& in) {
         payload* p = pool.try_emplace(payload{value});
         if (p != nullptr) {
           if (count >= kCapacity) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
           held[count] = p;
           expected[count] = value;
           ++count;
         } else if (count != kCapacity) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         break;
       }
@@ -206,7 +206,7 @@ void drive_object_pool(metl_fuzz::byte_reader& in) {
         }
         const std::size_t pick = in.byte() % count;
         if (!pool.destroy(held[pick])) {
-          __builtin_trap();  // we believed it was live
+          METL_FUZZ_TRAP();  // we believed it was live
         }
         // No stale-pointer check here, deliberately: object_pool CANNOT detect
         // one, which is the whole reason handle_pool exists. Checking for it
@@ -237,7 +237,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
   }
 
   if (g_live != 0) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   return 0;
 }

@@ -72,22 +72,22 @@ class model {
 
 void check_invariants(const ring_type& ring, const model& expected) {
   if (ring.readable_size() != expected.size()) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   if (ring.readable_size() + ring.writable_size() != kCapacity) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   // The readable span is a contiguous run, so it can only be shorter than the
   // readable size -- never longer, which would hand the consumer bytes the
   // producer has not published.
   const metl::span<const std::byte> readable = ring.readable_span();
   if (readable.size() > ring.readable_size()) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   // ...and the bytes it exposes must be the ones that went in, in order.
   for (std::size_t i = 0; i < readable.size(); ++i) {
     if (static_cast<std::uint8_t>(readable[i]) != expected.peek(i)) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
   }
 }
@@ -104,7 +104,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
       case 0: {  // zero-copy write across the seam
         const metl::span<std::byte> out = ring.writable_span();
         if (out.size() > ring.writable_size()) {
-          __builtin_trap();  // the span may be shorter than the free space, never longer
+          METL_FUZZ_TRAP();  // the span may be shorter than the free space, never longer
         }
         // Fill a bounded prefix and commit exactly that much -- committing more
         // than the span held is a contract violation, not a bug to find.
@@ -133,10 +133,10 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
             expected.push(bytes[i]);
           }
           if (ring.readable_size() != before + len) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
         } else if (ring.readable_size() != before) {
-          __builtin_trap();  // a refused write must leave the ring untouched
+          METL_FUZZ_TRAP();  // a refused write must leave the ring untouched
         }
         break;
       }
@@ -145,7 +145,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         const std::size_t take = readable.empty() ? 0 : (in.byte() % (readable.size() + 1));
         for (std::size_t i = 0; i < take; ++i) {
           if (static_cast<std::uint8_t>(readable[i]) != expected.peek(i)) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
         }
         for (std::size_t i = 0; i < take; ++i) {
@@ -159,11 +159,11 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         std::byte out[kCapacity];
         const std::size_t got = ring.read(metl::span<std::byte>(out, want));
         if (got > want) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         for (std::size_t i = 0; i < got; ++i) {
           if (static_cast<std::uint8_t>(out[i]) != expected.pop()) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
         }
         break;
@@ -175,16 +175,16 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         }
         ring.consume(all);
         if (!ring.empty() || ring.readable_size() != 0) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         break;
       }
       default: {  // query-only step, so the state machine can idle at any offset
         if (ring.full() && ring.writable_size() != 0) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         if (ring.empty() && ring.readable_size() != 0) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         break;
       }

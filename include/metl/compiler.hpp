@@ -32,7 +32,12 @@
 #define METL_COMPILER_GCC_VERSION_PATCH 0
 #endif
 
-#if defined(__cplusplus)
+// MSVC leaves __cplusplus at 199711L unless the user passes /Zc:__cplusplus;
+// _MSVC_LANG always carries the real standard. Without this, cxx_standard read
+// C++98 on every MSVC build.
+#if defined(_MSVC_LANG)
+#define METL_CXX_STANDARD _MSVC_LANG
+#elif defined(__cplusplus)
 #define METL_CXX_STANDARD __cplusplus
 #else
 #define METL_CXX_STANDARD 0L

@@ -18,6 +18,17 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+
+// A harness that finds a broken invariant must stop the process: libFuzzer then
+// saves the input. __builtin_trap is GCC/Clang-only, and the harnesses are also
+// built by every host-test row as replay tests -- including MSVC, which has no
+// such builtin. std::abort ends the process there just as well.
+#if defined(_MSC_VER) && !defined(__clang__)
+#define METL_FUZZ_TRAP() std::abort()
+#else
+#define METL_FUZZ_TRAP() __builtin_trap()
+#endif
 
 namespace metl_fuzz {
 

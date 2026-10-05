@@ -62,21 +62,21 @@ struct payload {
 template <typename Container>
 void check(const Container& container, std::size_t expected_size) {
   if (container.size() != expected_size) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   if (container.size() > kCapacity) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   if (container.empty() != (expected_size == 0)) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   if (container.full() != (expected_size == kCapacity)) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   // THE ONE THAT MATTERS. Elements live inline, so a leaked or double-run
   // destructor is invisible to ASan; only this counter sees it.
   if (g_live != static_cast<int>(expected_size)) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 }
 
@@ -130,7 +130,7 @@ void drive_deque(metl_fuzz::byte_reader& in) {
       case 2:
         if (!deque.empty()) {
           if (deque.front().value != model.front()) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
           deque.pop_front();
           model.pop_front();
@@ -139,7 +139,7 @@ void drive_deque(metl_fuzz::byte_reader& in) {
       case 3:
         if (!deque.empty()) {
           if (deque.back().value != model.back()) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
           deque.pop_back();
           model.pop_back();
@@ -149,14 +149,14 @@ void drive_deque(metl_fuzz::byte_reader& in) {
                // wrong slot without changing any size
         for (std::size_t i = 0; i < deque.size(); ++i) {
           if (deque[i].value != model.at(i)) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
         }
         break;
       case 5:
         if (!deque.empty()) {
           if (deque.front().value != model.front() || deque.back().value != model.back()) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
         }
         break;
@@ -191,7 +191,7 @@ void drive_ring(metl_fuzz::byte_reader& in) {
       case 2:
         if (!ring.empty()) {
           if (ring.front().value != model.front()) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
           ring.pop_front();
           model.pop_front();
@@ -200,7 +200,7 @@ void drive_ring(metl_fuzz::byte_reader& in) {
       case 3:
         for (std::size_t i = 0; i < ring.size(); ++i) {
           if (ring[i].value != model.at(i)) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
         }
         break;
@@ -228,7 +228,7 @@ void drive_queue(metl_fuzz::byte_reader& in) {
       case 1:
         if (!queue.empty()) {
           if (queue.front().value != model.front() || queue.back().value != model.back()) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
           queue.pop();
           model.pop_front();
@@ -236,7 +236,7 @@ void drive_queue(metl_fuzz::byte_reader& in) {
         break;
       case 2:
         if (!queue.empty() && queue.front().value != model.front()) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         break;
       default:
@@ -264,7 +264,7 @@ void drive_stack(metl_fuzz::byte_reader& in) {
       case 1:
         if (!stack.empty()) {
           if (stack.top().value != model[depth - 1]) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
           stack.pop();
           --depth;
@@ -272,7 +272,7 @@ void drive_stack(metl_fuzz::byte_reader& in) {
         break;
       case 2:
         if (!stack.empty() && stack.top().value != model[depth - 1]) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         break;
       default:
@@ -308,7 +308,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
   // destructor that missed elements shows up here even if every intermediate
   // size check happened to agree.
   if (g_live != 0) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   return 0;
 }

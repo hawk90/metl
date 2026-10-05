@@ -25,10 +25,10 @@ void check_null_terminated(const metl::fixed_string<kCapacity>& s) {
   // buffer MAY contain embedded NULs (try_push_back accepts any char), so
   // strlen() can be shorter than size() — it can never legitimately exceed it.
   if (s.c_str()[s.size()] != '\0') {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   if (std::strlen(s.c_str()) > s.size()) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 }
 
@@ -55,7 +55,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         if (ok) {
           // On success the contents must equal the source exactly.
           if (std::strcmp(str.c_str(), buf) != 0) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
         }
         break;
@@ -102,7 +102,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     }
     check_null_terminated(str);
     if (str.size() > str.capacity()) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
   }
 
