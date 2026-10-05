@@ -705,7 +705,7 @@ count hides a leak and a double destroy that cancel. Everything was reproduced.
 | LOW* | `fixed_priority_queue` push / emplace / pop / erase_if | a throw mid-sift left the heap unordered (later pops out of order). | ✅ cleared before rethrowing, as `flat_map`. **Follow-up (external review):** `pop()` stayed `noexcept` on move-assignment alone although the sift also move-constructs and calls the comparator, so a throw there terminated before the clear could run; its `noexcept` now covers all three, with the standard comparators on a scalar `T` counted as non-throwing so `pop()` on an `int` queue keeps it |
 | LOW* | `static_unordered_*::place_at` | the tombstone count was decremented before the constructor; each failed insert onto one tombstone decremented again, so it wrapped. Only the rebuild timing was affected. | ✅ decremented after construction |
 | DOC→FIX | `noexcept` paths that run user code: the unordered rebuild, moving `fixed_function`/`fixed_any_invocable`, `fsm::dispatch`, `lookup_table`, `spsc`/`mpmc` `try_push(const T&)` | a throwing `T` terminated there. First documented only, on the grounds that a blanket `static_assert` would be a loud break; each turned out to have a fix that breaks nothing it should not. | ✅ fixed in G.7 |
-| DOC | `fixed_vector` range insert/assign from itself; `optional`/`variant`/`expected` `emplace` from their own member | the same undefined behaviour as `std`. | 📝 `@pre` at each |
+| DOC | `fixed_vector` range insert/assign from itself; `optional`/`variant`/`expected` `emplace` from their own member | the same undefined behaviour as `std`. | 📝 `@pre` on the range insert/assign; `emplace` ✅ fixed in G.8 |
 
 \* exceptions-enabled builds only.
 
@@ -751,6 +751,37 @@ longer reclaims tombstones (silent, performance only).
 each was isolated and run against the unfixed headers, where four terminated the
 program (spsc, mpmc, `lookup_table`, `fsm`) and the rebuild check failed
 (an insert moved many elements), and all five pass after.
+
+### G.8 — `emplace` from the object's own value
+
+G.6 left `emplace` documented with a `@pre`: its arguments must not refer into
+the member it replaces. `std` has the same undefined behaviour, but METL
+promises to be safer than `std`, and G.1 and G.6 had already fixed the same
+pattern in `variant`'s converting `operator=` and `expected`'s cross-state
+paths. `emplace` was the last entry point that destroyed first.
+
+| Where | Finding | Fix |
+|---|---|---|
+| `optional::emplace` | `o.emplace(*o)`, `o.emplace(o->member)`: `reset()` ran before `args` were read | engaged and `T` movable: build `incoming`, then reset and move it in |
+| `variant::emplace<T>`, `emplace<I>` | `v.emplace<P>(get<P>(v))`, `v.emplace<0>(get<1>(v).x)`: the active alternative was destroyed first | the same, when an alternative is active and the target is movable; `emplace<T>` forwards to `emplace<I>`, and the converting `operator=` now forwards to `emplace` instead of building its own copy |
+| `expected` same-state `emplace` / `emplace_error` (`detail::replace_live`) | the nothrow-constructible branch destroyed first; the throwing-move branch moved the old value into its rollback backup **before** reading `args`, so `e.emplace(e.value())` read a moved-from object | movable `U`: always build `incoming` first; a throwing move keeps the backup/rollback |
+
+**Cost and behaviour changes.** One extra move of the new value on the
+engaged path; the disengaged/valueless path is unchanged. A constructor that
+throws now leaves the old value in place (before, `optional` was left empty and
+`variant` valueless). `variant::emplace` is `noexcept` only if the target's
+move constructor is too (the same term `operator=` already had). A
+non-movable type cannot be built aside: it keeps the direct path, and aliasing
+it remains undefined, as in `std`. Detecting the alias instead would need the
+pointer-range comparison E.2 removed as UB.
+
+**Not in scope.** `fixed_vector` range insert/assign from its own elements keeps
+its `@pre`: building first would need an `N * sizeof(T)` temporary on the stack.
+
+**Regression coverage.** `tests/vocab/emplace_self_alias_test.cpp` (runs on
+QEMU) uses a type that poisons itself on destruction and on move. Against the
+unfixed headers 15 checks failed (at `-O0` and `-O2`), plus the two `noexcept`
+`static_assert`s; all pass after.
 
 ### Checked and found correct
 

@@ -358,13 +358,10 @@ class variant {
     // Switching alternatives has the same hazard one level down: `value` can be
     // a subobject of the active alternative (`v = get<pair<string, int>>(v).first`
     // when `v` also holds a `string` alternative). Build the new value first,
-    // then emplace from it. A non-movable alternative has no such path and is
-    // constructed directly, as before.
+    // then emplace from it -- which emplace() itself does (docs/AUDIT.md G.8).
+    // A non-movable alternative has no such path and is constructed directly.
     if (index_ == detail::index_of_type<Decayed, Ts...>::value) {
       *std::launder(static_cast<Decayed*>(raw_addr())) = std::forward<T>(value);
-    } else if constexpr (std::is_move_constructible_v<Decayed>) {
-      Decayed incoming(std::forward<T>(value));
-      emplace<Decayed>(static_cast<Decayed&&>(incoming));
     } else {
       emplace<Decayed>(std::forward<T>(value));
     }
@@ -386,29 +383,32 @@ class variant {
   }
 
   /// @brief Destroys the active alternative and constructs `T` in place.
-  /// @pre `args` do not refer into the current alternative: it is destroyed before
-  ///      they are read (as for std::variant::emplace; docs/AUDIT.md G.6). Plain
-  ///      assignment (`operator=`) has no such restriction.
+  /// @note `args` may refer into the current alternative (`v.emplace<0>(get<1>(v).x)`):
+  ///       when a movable alternative is active, the new one is built before the
+  ///       old one is destroyed, at the cost of one move (docs/AUDIT.md G.8). A
+  ///       throwing constructor then leaves the variant unchanged.
   /// @tparam T The (unique) alternative type to activate.
   /// @tparam Args Constructor argument types forwarded to `T`.
   /// @param args Arguments forwarded to `T`'s constructor.
   /// @return Reference to the newly constructed alternative.
   template <typename T, typename... Args>
   T& emplace(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...> &&
+                                      (!std::is_move_constructible_v<T> ||
+                                       std::is_nothrow_move_constructible_v<T>) &&
                                       detail::all_nothrow_destructible<Ts...>::value) {
     constexpr std::size_t target_index = detail::index_of_type<T, Ts...>::value;
     static_assert(target_index != variant_npos, "type is not an alternative of this variant");
     static_assert(detail::count_of_type<T, Ts...>::value == 1, "emplace<T> requires unique alternative type");
     static_assert(std::is_constructible_v<T, Args&&...>, "T must be constructible from the given arguments");
 
-    reset();
-    return construct<T>(std::forward<Args>(args)...);
+    return emplace<target_index>(std::forward<Args>(args)...);
   }
 
   /// @brief Destroys the active alternative and constructs alternative `I`.
-  /// @pre `args` do not refer into the current alternative: it is destroyed before
-  ///      they are read (as for std::variant::emplace; docs/AUDIT.md G.6). Plain
-  ///      assignment (`operator=`) has no such restriction.
+  /// @note `args` may refer into the current alternative (`v.emplace<0>(get<1>(v).x)`):
+  ///       when a movable alternative is active, the new one is built before the
+  ///       old one is destroyed, at the cost of one move (docs/AUDIT.md G.8). A
+  ///       throwing constructor then leaves the variant unchanged.
   /// @tparam I The zero-based alternative index to activate.
   /// @tparam Args Constructor argument types forwarded to the alternative.
   /// @param args Arguments forwarded to the alternative's constructor.
@@ -416,12 +416,26 @@ class variant {
   template <std::size_t I, typename... Args>
   variant_alternative_t<I, variant>& emplace(Args&&... args) noexcept(
       std::is_nothrow_constructible_v<typename detail::nth_type<I, Ts...>::type, Args&&...> &&
+      (!std::is_move_constructible_v<typename detail::nth_type<I, Ts...>::type> ||
+       std::is_nothrow_move_constructible_v<typename detail::nth_type<I, Ts...>::type>) &&
       detail::all_nothrow_destructible<Ts...>::value) {
     static_assert(I < sizeof...(Ts), "emplace<I> index out of range");
     using target_type = typename detail::nth_type<I, Ts...>::type;
     static_assert(std::is_constructible_v<target_type, Args&&...>,
                   "alternative must be constructible from the given arguments");
 
+    // `args` may refer into the active alternative, which reset() destroys:
+    // build the new value first (docs/AUDIT.md G.8). Valueless: nothing to
+    // alias. Non-movable target: no such path, constructed directly as before.
+    if constexpr (std::is_move_constructible_v<target_type>) {
+      if (index_ != variant_npos) {
+        target_type incoming(std::forward<Args>(args)...);
+        reset();
+        new (raw_addr()) target_type(static_cast<target_type&&>(incoming));
+        index_ = I;
+        return *std::launder(static_cast<target_type*>(raw_addr()));
+      }
+    }
     reset();
     new (raw_addr()) target_type(std::forward<Args>(args)...);
     index_ = I;

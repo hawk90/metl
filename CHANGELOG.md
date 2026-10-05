@@ -73,6 +73,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`emplace` from the object's own value** (docs/AUDIT.md G.8):
+  `opt.emplace(*opt)`, `opt.emplace(opt->member)`, `v.emplace<0>(get<1>(v).x)`
+  and same-state `e.emplace(e.value())` destroyed the current member before
+  reading the argument (undefined behaviour in `std` too). The new value is now
+  built first for movable types: one extra move on the engaged path, and
+  `variant::emplace` is `noexcept` only if the target's move is too.
 - **Third review pass** (docs/AUDIT.md G.6):
   - empty `pop` on `ring_buffer`/`fixed_deque`/`fixed_queue`/`static_message_queue`
     at `METL_HARDENING_NONE` corrupted the container (now `METL_HARDEN`);

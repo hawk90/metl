@@ -150,39 +150,40 @@ struct is_metl_expected_with_value : false_type {};
 template <typename T, typename G>
 struct is_metl_expected_with_value<expected<T, G>, T> : true_type {};
 
-// Replaces the live `U` at `slot` with one built from `args`. If that
-// construction throws, `slot` still holds a live `U` -- the old object, or a
-// moved-back copy of it -- so the owning expected's `has_value_` stays true to
-// what is stored and its destructor destroys exactly once. The same three
-// branches as expected::reinit_as_value, for the same-state case
-// (docs/AUDIT.md G.3).
+// Replaces the live `U` at `slot` with one built from `args`. `args` may refer
+// into `*slot` (`e.emplace(e.value())`), so a movable `U` is always built
+// before the old one is touched (docs/AUDIT.md G.8). If anything throws, `slot`
+// still holds a live `U` -- the old object, or a moved-back copy of it -- so the
+// owning expected's `has_value_` stays true to what is stored and its
+// destructor destroys exactly once (docs/AUDIT.md G.3).
 template <typename U, typename... Args>
 void replace_live(U* slot, Args&&... args) {
-  if constexpr (std::is_nothrow_constructible_v<U, Args&&...> || !std::is_move_constructible_v<U>) {
-    // Nothrow: nothing to roll back. Non-movable: nothing CAN be set aside for a
-    // rollback -- std::expected::emplace rejects such a U outright; METL keeps
-    // accepting it, without the guarantee.
+  if constexpr (!std::is_move_constructible_v<U>) {
+    // Nothing can be built aside or set aside for a rollback -- std::expected::
+    // emplace rejects such a U outright; METL keeps accepting it, without the
+    // aliasing support or the guarantee.
     slot->~U();
     ::new (static_cast<void*>(slot)) U(std::forward<Args>(args)...);
-  } else if constexpr (std::is_nothrow_move_constructible_v<U>) {
+  } else if constexpr (std::is_nothrow_move_constructible_v<U> || METL_NO_EXCEPTIONS) {
+    // Only the constructor can throw, and it runs while the old value is intact.
     U incoming(std::forward<Args>(args)...);
     slot->~U();
     ::new (static_cast<void*>(slot)) U(static_cast<U&&>(incoming));
-  } else {
-#if METL_NO_EXCEPTIONS
-    slot->~U();
-    ::new (static_cast<void*>(slot)) U(std::forward<Args>(args)...);
-#else
+  }
+#if !METL_NO_EXCEPTIONS
+  else {
+    // The final move can throw: keep the old value in `backup` to move back.
+    U incoming(std::forward<Args>(args)...);
     U backup(static_cast<U&&>(*slot));
     slot->~U();
     try {
-      ::new (static_cast<void*>(slot)) U(std::forward<Args>(args)...);
+      ::new (static_cast<void*>(slot)) U(static_cast<U&&>(incoming));
     } catch (...) {
       ::new (static_cast<void*>(slot)) U(static_cast<U&&>(backup));
       throw;
     }
-#endif
   }
+#endif
 }
 
 }  // namespace detail
@@ -488,9 +489,9 @@ class expected {
   /// @tparam Args Constructor argument types forwarded to `T`.
   /// @param args Arguments forwarded to `T`'s constructor.
   /// @return Reference to the newly constructed value.
-  /// @pre `args` do not refer into the current value: it is destroyed before
-  ///      they are read (as for std::expected::emplace; docs/AUDIT.md G.6). Plain
-  ///      assignment (`operator=`) has no such restriction.
+  /// @note `args` may refer into the current value or error (`e.emplace(e.value())`):
+  ///       a movable new value is built before the old member is destroyed, at
+  ///       the cost of one move (docs/AUDIT.md G.8).
   template <typename... Args>
   T& emplace(Args&&... args) {
     // Never destroy-then-construct: a throwing constructor would leave
