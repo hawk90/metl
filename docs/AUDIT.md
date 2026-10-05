@@ -262,9 +262,9 @@ Surveyed the heavy standard headers pulled in by public headers (`<functional>`,
   `CHECK`/`CHECK_EQ` (run in Release too), and a `release-werror` CI job
   (gcc + clang, `Release` + `METL_WARNINGS_AS_ERRORS=ON`, build + ctest) now
   gates optimized/NDEBUG warning hygiene going forward.
-4. Promote clang-tidy from advisory (`ci.yml:186 continue-on-error`) to blocking.
-5. Code coverage gate (the `try_*`/full-container branches are easy to leave uncovered).
-6. Real google/benchmark benchmarks or remove the dead `metl_cc_benchmark` stub + README claim.
+4. ✅ **DONE** — clang-tidy is blocking, as a ratchet on the distinct-finding count (`tools/clang_tidy_report.sh --max`).
+5. ✅ **DONE** — coverage gate (`tools/coverage.sh --min-lines 90 --min-branches 72`, the `coverage` job).
+6. ✅ **DONE** — real benchmarks in `bench/`, smoke-run by the `bench-smoke` job.
 7. ✅ **DONE** — Per-symbol API docs (Doxygen) — especially the
    non-standard contracts above. Landed earlier: a `docs/Doxyfile.in` + CMake
    `docs` target + a `docs` CI job (generates HTML from `include/metl`, fails on
@@ -291,12 +291,15 @@ Surveyed the heavy standard headers pulled in by public headers (`<functional>`,
 
 **P2 — API correctness/ergonomics**
 8. ✅ **DONE** — Make the assert handler `[[noreturn]]`-safe (fact ①) — collapses the conditional-UB class.
-9. Reconcile `std::`-divergences: `at()` asserts not throws; `flat_map::operator[]` positional; `value()`/`get()` assert. Rename/document.
-10. Fix the concrete High/Med bugs above.
+9. ✅ **DONE (documented)** — the divergences are surfaced at each symbol with `@warning` (item 7). Behavioural divergences found later are in Section G.3.
+10. ✅ **DONE** — Section A.
 11. Missing utilities: `fixed_bitset`, documented iterator-invalidation contracts, `expected` monadic ops, `try_value()` recoverable paths, compile-time `static_string_map`.
     **Update (2026-08-20):** `try_value()` is closed as *not needed* — see `docs/SCOPE.md` §9 R5:
     `has_value()` is an exact, non-racy pre-check on a single-threaded vocabulary type, so the
-    recoverable form would add API surface without adding a capability. The remaining items stand.
+    recoverable form would add API surface without adding a capability.
+    **Update (2026-10-05):** `expected` monadic ops shipped (`and_then`, `or_else`, `transform`,
+    `transform_error`). Iterator-invalidation contracts: see Section G. `fixed_bitset` and
+    `static_string_map` remain deferred pending a caller (`docs/SCOPE.md`).
 
 ## Section C — Fuzzing / security (bug bounty)
 

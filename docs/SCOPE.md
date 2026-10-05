@@ -115,7 +115,7 @@ stability promises do not apply.
 
 Because `header-checks` verifies umbrella completeness and per-header
 self-containment *separately*, an opt-in header that a user must name
-explicitly (`#include <metl/exp/mpmc_queue.hpp>`) does not violate the
+explicitly (`#include <metl/exp/...>`) does not violate the
 "host and embedded parity" principle in the README: the user opted out of parity
 themselves. This is the extension space, and it already exists in the CI
 structure — no policy change needed to use it.
