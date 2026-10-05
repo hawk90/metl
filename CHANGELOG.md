@@ -79,6 +79,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reading the argument (undefined behaviour in `std` too). The new value is now
   built first for movable types: one extra move on the engaged path, and
   `variant::emplace` is `noexcept` only if the target's move is too.
+- **`fixed_vector`, `flat_map`, `flat_set`: `data() + i` is now well-defined C++17**
+  (docs/AUDIT.md E.2). Elements lived in N separate byte buffers, so indexing
+  across them was pointer arithmetic between unrelated objects; they now live in
+  one buffer reached as a single implicitly created `T[N]`
+  (`detail::array_storage`). No API, layout or `sizeof` change; generated code is
+  identical at `-Os`.
 - **Third review pass** (docs/AUDIT.md G.6):
   - empty `pop` on `ring_buffer`/`fixed_deque`/`fixed_queue`/`static_message_queue`
     at `METL_HARDENING_NONE` corrupted the container (now `METL_HARDEN`);

@@ -179,7 +179,7 @@ if(METL_BUILD_TESTS)
     containers/static_unordered_map_emplace containers/lookup_table
     containers/recoverable_api containers/fixed_priority_queue
     containers/operation_count containers/alias_insert containers/unordered_erase_iteration
-    containers/throwing_element
+    containers/throwing_element containers/array_storage
     # memory/
     memory/arena_allocator memory/static_allocator memory/monotonic_buffer
     memory/object_pool memory/allocator_overflow

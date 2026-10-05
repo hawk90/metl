@@ -22,6 +22,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/array_storage.hpp"
 #include "metl/span.hpp"
 #include "metl/type_traits.hpp"
 
@@ -156,12 +157,10 @@ class fixed_vector {
   METL_NODISCARD const_reverse_iterator crend() const noexcept { return const_reverse_iterator(begin()); }
 
   /// Returns a pointer to the underlying contiguous element storage.
-  METL_NODISCARD pointer data() noexcept {
-    return std::launder(reinterpret_cast<pointer>(storage_[0].addr()));
-  }
-  METL_NODISCARD const_pointer data() const noexcept {
-    return std::launder(reinterpret_cast<const_pointer>(storage_[0].addr()));
-  }
+  /// @note A pointer into one `T[Capacity]` array object, so `data() + i` is
+  ///       well-defined for every `i <= Capacity` (see detail/array_storage.hpp).
+  METL_NODISCARD pointer data() noexcept { return storage_.data(); }
+  METL_NODISCARD const_pointer data() const noexcept { return storage_.data(); }
 
   /// Returns true if the vector holds no elements.
   METL_NODISCARD constexpr bool empty() const noexcept { return size_ == 0; }
@@ -617,7 +616,7 @@ class fixed_vector {
   span<const T> as_span() const noexcept { return span<const T>(data(), size_); }
 
  private:
-  void* slot_(size_type index) noexcept { return storage_[index].addr(); }
+  void* slot_(size_type index) noexcept { return storage_.slot(index); }
 
 #if METL_FIXED_VECTOR_ASAN
   // Poison the unused-capacity tail [size_, Capacity). Rounding in the ASan
@@ -625,13 +624,13 @@ class fixed_vector {
   // and iteration never false-positive.
   void asan_poison_tail_() noexcept {
     if (size_ < Capacity) {
-      ASAN_POISON_MEMORY_REGION(&storage_[size_], (Capacity - size_) * sizeof(storage_for<T>));
+      ASAN_POISON_MEMORY_REGION(storage_.slot(size_), (Capacity - size_) * sizeof(T));
     }
   }
   // Expose the whole buffer while a mutating op rearranges elements internally.
   void asan_unpoison_all_() noexcept {
     if (Capacity != 0) {
-      ASAN_UNPOISON_MEMORY_REGION(&storage_[0], Capacity * sizeof(storage_for<T>));
+      ASAN_UNPOISON_MEMORY_REGION(storage_.slot(0), Capacity * sizeof(T));
     }
   }
 #else
@@ -640,13 +639,12 @@ class fixed_vector {
   constexpr void asan_unpoison_all_() noexcept {}
 #endif
 
-  // NOTE: elements live in an aligned byte buffer accessed through
-  // std::launder, which is not constant-evaluable, so the constexpr labels
-  // here are effective only outside constant evaluation. Genuine constexpr
-  // (as done for metl::optional via metl/detail/construct.hpp) would require a
-  // union-of-T storage rewrite that also has to reconcile with the ASan
-  // tail-poisoning above; deferred (see docs/AUDIT.md Section A).
-  storage_for<T> storage_[Capacity == 0 ? 1 : Capacity];
+  // Elements live in one aligned byte buffer reached as a single T[Capacity]
+  // array object, so data() + i is in-array arithmetic (docs/AUDIT.md E.2; the
+  // reasoning is in detail/array_storage.hpp). std::launder is not
+  // constant-evaluable, so the constexpr labels here are effective only outside
+  // constant evaluation.
+  detail::array_storage<T, (Capacity == 0 ? 1 : Capacity)> storage_;
   size_type size_;
 };
 
