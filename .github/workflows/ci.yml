@@ -46,6 +46,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: ${{ github.job }}-${{ runner.os }}
+          max-size: 300M
+
       - name: Install build deps
         uses: ./.github/actions/apt-install
         with:
@@ -57,7 +63,8 @@ jobs:
           CC: clang
           CXX: clang++
         run: |
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DMETL_WARNINGS_AS_ERRORS=ON
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DMETL_WARNINGS_AS_ERRORS=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j
           ctest --test-dir build -j --output-on-failure
 
@@ -97,6 +104,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
+      - name: ccache
+        if: runner.os != 'Windows'
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: ${{ github.job }}-${{ runner.os }}-${{ matrix.compiler.cc }}-${{ matrix.build_type }}
+          max-size: 300M
+
       - name: Install build deps (Linux)
         if: runner.os == 'Linux'
         uses: ./.github/actions/apt-install
@@ -112,7 +126,9 @@ jobs:
         env:
           CC: ${{ matrix.compiler.cc }}
           CXX: ${{ matrix.compiler.cxx }}
-        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        run: |
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Configure (Windows / MSVC)
         if: runner.os == 'Windows'
@@ -163,6 +179,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: ${{ github.job }}-${{ runner.os }}-${{ matrix.compiler.cc }}
+          max-size: 300M
+
       - name: Install build deps
         uses: ./.github/actions/apt-install
         with:
@@ -175,6 +197,7 @@ jobs:
           CXX: ${{ matrix.compiler.cxx }}
         run: |
           cmake -B build -S . \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=Release \
             -DMETL_WARNINGS_AS_ERRORS=ON
 
@@ -204,6 +227,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: ${{ github.job }}-${{ runner.os }}
+          max-size: 300M
+
       - name: Install build deps
         uses: ./.github/actions/apt-install
         with:
@@ -219,6 +248,7 @@ jobs:
         # which run in Debug where asserts — and their operands — are live).
         run: |
           cmake -B build -S . \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
 
@@ -249,6 +279,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: ${{ github.job }}-${{ runner.os }}-${{ matrix.san }}
+          max-size: 300M
+
       - name: Install build deps
         uses: ./.github/actions/apt-install
         with:
@@ -261,6 +297,7 @@ jobs:
           CXX: clang++
         run: |
           cmake -B build -S . \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=Debug \
             -DMETL_WARNINGS_AS_ERRORS=ON \
             ${{ matrix.opts }}
@@ -299,6 +336,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: ${{ github.job }}-${{ runner.os }}-${{ matrix.cpu }}
+          max-size: 300M
+
       - name: Install ARM toolchain
         uses: ./.github/actions/apt-install
         with:
@@ -308,6 +351,7 @@ jobs:
       - name: Configure
         run: |
           cmake -B build-arm -S . \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake \
             -DMETL_ARM_CPU=${{ matrix.cpu }} \
             -DMETL_BUILD_TESTS=OFF \
@@ -326,6 +370,7 @@ jobs:
       - name: Configure (MinSizeRel, -Os)
         run: |
           cmake -B build-arm-minsizerel -S . \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake \
             -DMETL_ARM_CPU=${{ matrix.cpu }} \
             -DCMAKE_BUILD_TYPE=MinSizeRel \
@@ -984,6 +1029,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: ${{ github.job }}-${{ runner.os }}-${{ matrix.name }}
+          max-size: 300M
+
       - name: Install build deps
         uses: ./.github/actions/apt-install
         with:
@@ -996,6 +1047,7 @@ jobs:
           CXX: clang++
         run: |
           cmake -B build-config -S . \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=Debug \
             -DMETL_WARNINGS_AS_ERRORS=ON \
             -DMETL_INSTALL=OFF \
@@ -1054,6 +1106,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: ${{ github.job }}-${{ runner.os }}
+          max-size: 300M
+
       - name: Install build deps
         uses: ./.github/actions/apt-install
         with:
@@ -1064,6 +1122,8 @@ jobs:
         env:
           CC: clang
           CXX: clang++
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
         run: tools/coverage.sh --min-lines 90 --min-branches 72
 
       - name: Upload the report on failure
@@ -1086,6 +1146,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: ${{ github.job }}-${{ runner.os }}
+          max-size: 300M
 
       - name: Install build deps
         uses: ./.github/actions/apt-install
@@ -1115,7 +1181,9 @@ jobs:
         env:
           CC: clang
           CXX: clang++
-        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DMETL_WARNINGS_AS_ERRORS=ON
+        run: |
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DMETL_WARNINGS_AS_ERRORS=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build self-containment target
         run: cmake --build build -j --target metl_header_self_contained
@@ -1329,6 +1397,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: ${{ github.job }}-${{ runner.os }}
+          max-size: 300M
+
       - name: Install build deps
         uses: ./.github/actions/apt-install
         with:
@@ -1341,6 +1415,7 @@ jobs:
           CXX: clang++
         run: |
           cmake -B build-mutants -S . \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=Debug \
             -DMETL_INSTALL=OFF
 
@@ -1571,6 +1646,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: ${{ github.job }}-${{ runner.os }}
+          max-size: 300M
+
       - name: Install build deps
         uses: ./.github/actions/apt-install
         with:
@@ -1583,6 +1664,7 @@ jobs:
           CXX: clang++
         run: |
           cmake -B build-fuzz -S . \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=Debug \
             -DMETL_BUILD_TESTS=OFF \
             -DMETL_INSTALL=OFF \
@@ -1657,6 +1739,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: ${{ github.job }}-${{ runner.os }}
+          max-size: 300M
+
       - name: Install build deps
         uses: ./.github/actions/apt-install
         with:
@@ -1669,6 +1757,7 @@ jobs:
           CXX: clang++
         run: |
           cmake -B build-bench -S . \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=Release \
             -DMETL_BUILD_BENCHMARKS=ON \
             -DMETL_BUILD_TESTS=OFF \
@@ -1750,6 +1839,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: ${{ github.job }}-${{ runner.os }}-${{ matrix.compiler.cc }}
+          max-size: 300M
+
       - name: Install build deps
         uses: ./.github/actions/apt-install
         with:
@@ -1762,6 +1857,7 @@ jobs:
           CXX: ${{ matrix.compiler.cxx }}
         run: |
           cmake -B build -S . \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=Debug \
             -DMETL_BUILD_TESTS=OFF \
             -DMETL_INSTALL=OFF \
@@ -1829,6 +1925,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: ${{ github.job }}-${{ runner.os }}
+          max-size: 300M
+
       - name: Install build deps
         uses: ./.github/actions/apt-install
         with:
@@ -1841,6 +1943,7 @@ jobs:
           CXX: g++
         run: |
           cmake -B build -S . \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=Release \
             -DMETL_INSTALL=ON
 
