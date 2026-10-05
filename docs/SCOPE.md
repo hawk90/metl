@@ -110,8 +110,8 @@ the worst case) and bloats the image for the targets that matter.
 ### Tier 2 — Experimental
 
 Lives under `metl::exp::` / `metl/exp/`, is **not** included by the umbrella
-header, and carries an explicit "may be removed before 1.0" notice. API
-stability promises do not apply.
+header, and carries an explicit "experimental: may change or be removed in a
+minor release" notice. The 1.0 Semantic Versioning promise does not cover it.
 
 Because `header-checks` verifies umbrella completeness and per-header
 self-containment *separately*, an opt-in header that a user must name

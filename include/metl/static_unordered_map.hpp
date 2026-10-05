@@ -5,8 +5,8 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `find`, `contains`, `count`, `at`, `operator[]` | wait-free, bounded by `bucket_count` probes |
-///   | `insert`, `try_emplace` (new key) | wait-free, `bucket_count` probes **plus, at times, a rebuild** |
+///   | `find`, `contains`, `find_iterator` | wait-free, bounded by `bucket_count` probes |
+///   | new key, incl. `operator[]` | wait-free, `bucket_count` probes **plus, at times, a rebuild** |
 ///   | `erase` | wait-free, bounded by `bucket_count` probes; moves nothing |
 ///   | `clear`, iteration, copy, destructor | wait-free, bounded by `bucket_count` |
 ///
@@ -788,7 +788,7 @@ class static_unordered_map {
     }
   }
 
-  /// @brief Rebuild the table in place, clearing every tombstone, so lookups stay bounded.
+  /// @brief Rebuild the table in place, clearing every tombstone, so misses stop early again.
   ///
   /// Open addressing turns each erase into a tombstone that negative probes must still scan.
   /// Under sustained insert/erase churn these accumulate; once no @c empty slot remains, a

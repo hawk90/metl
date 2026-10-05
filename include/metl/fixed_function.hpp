@@ -37,6 +37,8 @@
 //     require RTTI to be useful in the general case.
 //   - Storage is aligned to alignof(std::max_align_t); callables with stricter
 //     alignment requirements fail a static_assert at assign time.
+//   - A callable whose move constructor can throw fails a static_assert, so
+//     the wrappers' own moves are noexcept.
 
 namespace metl {
 

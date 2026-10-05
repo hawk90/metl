@@ -4,6 +4,7 @@ Modern Embedded Template Library
 
 [![CI](https://github.com/hawk90/metl/actions/workflows/ci.yml/badge.svg)](https://github.com/hawk90/metl/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/hawk90/metl)](https://github.com/hawk90/metl/releases/latest)
 
 ## Overview
 
@@ -138,7 +139,8 @@ by the `api-contract` job, not just written down.
 Function objects
 
 - [`fixed_function`](include/metl/fixed_function.hpp) — SBO function with
-  `noexcept` signature and `fixed_any_invocable`.
+  `noexcept` signature and `fixed_any_invocable`; a callable whose move can
+  throw is a compile error.
 - [`function_ref`](include/metl/function_ref.hpp) — non-owning callable
   (**lvalue callables only** — rvalue temporaries are rejected to avoid
   dangling).
@@ -472,8 +474,8 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | Host LTO | Release + IPO/LTO | build + `ctest` | `lto` |
 | Sanitizers | Linux / clang — ASan+UBSan, TSan (Debug, `-Werror`) | build + `ctest` (incl. threaded tests) | `sanitizers` |
 | ARM Cortex-M (gcc) | Cortex-M0/M3/M4/M7, freestanding | cross-compile + code size | `arm-cross` |
-| **ARM Cortex-M (run)** | **Cortex-M3 / M4 / M7 under qemu-system-arm** (mps2-an385 / an386 / an500) | **cross-compile + RUN the test suite** — 87 tests per core | `qemu-conformance` |
-| ARM Cortex-M0 (run) | an **ARMv6-M build** executed on the AN385's ARMv7-M core — QEMU has no M0 board | runs 83 tests, and asserts that the three CAS-requiring types — `mpmc_queue`, `atomic_handle`, `intrusive_ptr`, across four test files — *fail to compile*. Proves the M0 **build** runs, **not** that an M0 **core** runs it: core-level differences (unaligned access, absent VTOR) are out of scope, which is why the interrupt test skips itself there | `qemu-conformance` |
+| **ARM Cortex-M (run)** | **Cortex-M3 / M4 / M7 under qemu-system-arm** (mps2-an385 / an386 / an500) | **cross-compile + RUN the test suite** — 88 tests per core | `qemu-conformance` |
+| ARM Cortex-M0 (run) | an **ARMv6-M build** executed on the AN385's ARMv7-M core — QEMU has no M0 board | runs 84 tests, and asserts that the three CAS-requiring types — `mpmc_queue`, `atomic_handle`, `intrusive_ptr`, across four test files — *fail to compile*. Proves the M0 **build** runs, **not** that an M0 **core** runs it: core-level differences (unaligned access, absent VTOR) are out of scope, which is why the interrupt test skips itself there | `qemu-conformance` |
 | ARM Cortex-M (clang) | cortex-m4, `arm-none-eabi` target | second frontend, `-fsyntax-only` | `arm-cross-clang` |
 | RISC-V | rv64 (linux-gnu g++) | freestanding `-fsyntax-only` | `riscv-cross` |
 | Xtensa (ESP32) | ESP-IDF component, `esp32` target | `idf.py build` (Docker) | `esp-idf` |
@@ -504,8 +506,8 @@ Release, MinSizeRel (`-Os`), plus LTO. Runtime configs: no-exceptions, no-RTTI,
 freestanding, newlib-nano and picolibc libcs.
 
 The distinction worth drawing out: most embedded C++ libraries are *cross-compiled*
-in CI. METL's test suite is **executed** under emulation — 87 tests on each of
-Cortex-M3, M4 and M7, and 80 for an ARMv6-M (M0) build — so container, queue, allocator and vocabulary behaviour is verified on
+in CI. METL's test suite is **executed** under emulation — 88 tests on each of
+Cortex-M3, M4 and M7, and 84 for an ARMv6-M (M0) build — so container, queue, allocator and vocabulary behaviour is verified on
 the target rather than inferred from a host run. `irq_lock` in particular is
 checked against a **real SysTick interrupt**: the test observes that the handler
 does not run while the lock is held, after first confirming it does run when the
@@ -540,7 +542,9 @@ CI that automatically verifies them. They are supported on a best-effort basis:
 
 - No hidden allocation — every allocation is visible at the call site.
 - Explicit ownership — types describe lifetime and storage clearly.
-- Deterministic execution time — no surprise reallocation or rehashing.
+- Deterministic execution time — no reallocation; the one in-place rebuild (a
+  new-key insert into the unordered containers) is bounded and documented in
+  its header.
 - Exception-free friendly — errors are returned via `expected`-style values.
 - Low-overhead abstractions — zero-cost wherever possible.
 - Host and embedded parity — the same code runs in both environments, and the
@@ -584,7 +588,13 @@ METL is licensed under the [Apache License, Version 2.0](LICENSE).
 
 ## Status
 
-Pre-alpha (`v0.1.0-alpha2`). The public API may change without notice before
-the 1.0 release — `alpha2` contains a deliberate breaking change to the
-recoverable-API naming, made while there was still no tag to be compatible with.
-See [CHANGELOG.md](CHANGELOG.md) for the current state and the migration.
+**1.0.0** — stable. METL follows [Semantic Versioning](https://semver.org/): the
+public API changes incompatibly only in a new major version. "Public" means every
+header under `include/metl/` except `detail/`, everything in namespace `metl`
+except `metl::detail`, and the documented `METL_*` configuration macros. Not
+covered: `metl::detail` and `include/metl/detail/`, hash *values* (they may
+change in a minor release -- do not persist them), exact code size, and the
+wording of assert messages.
+
+Coming from `0.1.0-alpha2`? [CHANGELOG.md](CHANGELOG.md) has an "Upgrading"
+list, loud changes (compile errors, asserts) first and silent ones after.

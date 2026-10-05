@@ -5,8 +5,8 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | lookup: `find`, `contains`, `lower_bound`, `at` | wait-free, `log2(Capacity) + 2` comparisons |
-///   | `insert`, `try_emplace`, `erase` | wait-free, bounded by `Capacity` moves |
+///   | lookups (`find`, `contains`, `*_bound`, `equal_range`) | wait-free, `log2(Capacity) + 2` comparisons |
+///   | `try_emplace`, `emplace`, `insert_or_assign`, `erase` | wait-free, bounded by `Capacity` moves |
 ///   | `clear`, iteration, copy, destructor | wait-free, bounded by `size()` |
 ///
 /// Storage is one sorted array, so lookup is a binary search and modification

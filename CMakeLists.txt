@@ -2,11 +2,23 @@ cmake_minimum_required(VERSION 3.16)
 
 project(
   metl
-  VERSION 0.1.0
+  VERSION 1.0.0
   DESCRIPTION "Modern Embedded Template Library"
   HOMEPAGE_URL "https://github.com/hawk90/metl"
   LANGUAGES CXX
 )
+
+# The version is written in three places a release must agree on: here, the
+# metl::version_* constants in include/metl/config.hpp (checked by
+# tests/core/version_test.cpp) and the ESP-IDF component manifest (checked
+# here, at configure time, so every CI job catches a mismatch -- not only the
+# release job, after the tag is already pushed).
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/components/metl/idf_component.yml" _metl_idf_version
+     REGEX "^version: \"[0-9.]+\"$")
+if(NOT _metl_idf_version STREQUAL "version: \"${PROJECT_VERSION}\"")
+  message(FATAL_ERROR "components/metl/idf_component.yml has '${_metl_idf_version}', "
+                      "but project(VERSION) is ${PROJECT_VERSION}. Move them together.")
+endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(MetlCcRules)
@@ -204,7 +216,7 @@ if(METL_BUILD_TESTS)
     control/coro_protothread control/coro_scheduler control/coro_scheduler_reentrancy
     control/coro_stepper control/coro_deadline_scheduler
     # core/  (assert/compiler + the METL_HARDENING level checks + smoke)
-    core/assert core/compiler core/smoke core/ram_footprint
+    core/assert core/compiler core/smoke core/ram_footprint core/version
     core/hardening_none core/hardening_fast core/hardening_debug
     core/harden_floor_none core/harden_floor_memory core/low_findings core/audit_g6
   )
@@ -219,6 +231,11 @@ if(METL_BUILD_TESTS)
       LABELS "metl"
     )
   endforeach()
+  # tests/core/version_test.cpp compares metl::version with these.
+  target_compile_definitions(metl_version_test PRIVATE
+    METL_EXPECTED_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+    METL_EXPECTED_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+    METL_EXPECTED_VERSION_PATCH=${PROJECT_VERSION_PATCH})
 
   # -------------------------------------------------------------------------
   # Multi-threaded concurrency test (needs a threading runtime). Built and run

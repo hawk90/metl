@@ -43,18 +43,46 @@ warnings-as-errors during development, add `-DMETL_WARNINGS_AS_ERRORS=ON`.
 ## Code style
 
 All C++ source is formatted with `clang-format` using the project
-[`.clang-format`](.clang-format) configuration. Format your changes before
-opening a pull request:
+[`.clang-format`](.clang-format) configuration, at the **exact version** the CI
+`clang-format` job installs (23.1.2). Use the pinned pre-commit hook rather than
+whatever `clang-format` is on your `PATH` -- a different major version reformats
+lines the CI one leaves alone:
 
 ```sh
-clang-format -i $(git diff --name-only --diff-filter=ACMR | grep -E '\.(hpp|cpp)$')
+pipx install pre-commit && pre-commit install   # once
+pre-commit run clang-format --files $(git diff --name-only --diff-filter=ACMR | grep -E '\.(hpp|cpp)$')
 ```
+
+Format only the files you changed; do not reformat whole headers by hand. The
+pre-commit `rev` and the CI pin move together (a CI step fails if they differ).
 
 ## Static checks
 
 Run `clang-tidy` over changed translation units. The project ships a
 `.clang-tidy` configuration; please address new diagnostics introduced by
-your change rather than disabling them globally.
+your change rather than disabling them globally. CI enforces a **ratchet on the
+count of distinct findings** (`tools/clang_tidy_report.sh --max`): a change may
+lower it, never raise it. Patterns that have tripped it: a forwarding reference
+that is not `std::forward`ed, an rvalue-reference parameter that is not
+`std::move`d, identical `if constexpr` branch bodies, `!(a && b)` inside
+`METL_HARDEN`/`METL_ASSERT`, and a function name ending in `_`.
+
+## Gates
+
+Beyond build and tests, CI runs scripts that each hold one claim of the
+repository. Run the ones your change touches:
+
+| Script | Holds | Typical trigger |
+|---|---|---|
+| `tools/check_api_contract.py` | `try_*` naming / `[[nodiscard]]` rules | a new function returning `bool` (a query goes in its `BOOL_ALLOWLIST` with a reason) |
+| `tools/check_progress_guarantee.py` | every public header states its progress guarantee | a new public header |
+| `tools/check_compile_fail.py` | every user-facing `static_assert` is pinned by a case in `tests/compile_fail/` | a new `static_assert` outside `detail::` |
+| `tools/check_docs.py` | `metl::` names, links, examples and README test counts are real | docs edits; a new test changes the QEMU count -- take it from `tools/run_qemu_tests.sh --plan --cpu <cpu>` |
+| `tools/check_mutants.py --build-dir <dir>` | the test suite still kills planted bugs | changing a function the mutants anchor on (e.g. a signature) |
+| `tools/check_ci_gate.py` | `ci-gate` fans in every CI job | a new CI job |
+
+A new header under `include/metl/detail/` must also be added to
+`include/metl/metl.hpp` (the umbrella test covers `detail/`).
 
 ## Sanitizers
 
@@ -77,9 +105,17 @@ ThreadSanitizer (`-DMETL_ENABLE_TSAN=ON`, configured separately).
 
 - Every public API must be covered by at least one test.
 - Host-only tests are acceptable; tests must not require target hardware.
-- Tests live under [`tests/`](tests/) and are registered via
-  `metl_cc_test()` in the corresponding `CMakeLists.txt`.
+- Tests live under [`tests/`](tests/) and are registered by adding them to the
+  `_metl_tests` list in the root `CMakeLists.txt` (or with `metl_cc_test()` when
+  they need options). Tests run freestanding on QEMU too unless listed, with a
+  reason, in `tools/run_qemu_tests.sh`'s deny-list.
 - New tests must pass under the sanitizer configuration above.
+- **A regression test must fail first.** Run it against the unfixed headers
+  (`git archive origin/main include | tar -x -C <dir>`), compiled on its own,
+  and show it failing; a test that has never been red proves only that it
+  compiles. For lifetime bugs, detect dead or moved-from objects with a type
+  that poisons itself or registers its address -- a "destroyed" flag written in
+  a destructor is a dead store the optimiser removes.
 
 ## Pull request checklist
 
@@ -88,14 +124,18 @@ Before requesting review:
 - [ ] Build is warning-clean with `-DMETL_WARNINGS_AS_ERRORS=ON`.
 - [ ] `ctest` passes locally.
 - [ ] Tests pass under ASAN + UBSAN.
-- [ ] `clang-format` and `clang-tidy` have been run.
+- [ ] `clang-format` (pinned hook) and `clang-tidy` have been run; the gates
+      above that your change touches pass.
+- [ ] A bug fix comes with a regression test that failed before the fix.
 - [ ] [`CHANGELOG.md`](CHANGELOG.md) is updated under the `[Unreleased]`
-      section.
+      section. A change that breaks or silently alters existing code says so --
+      after 1.0 that means a new major version (see README "Status").
 - [ ] Public API changes are documented in headers and, where appropriate,
       in [`README.md`](README.md).
 - [ ] The [`docs/SCOPE.md`](docs/SCOPE.md) invariant checklist is satisfied —
       including a stated progress guarantee (wait-free bounded / lock-free /
-      blocking bounded) for anything concurrent, and a CI job for any new tier.
+      blocking bounded) in every public header
+      (`tools/check_progress_guarantee.py`), and a CI job for any new tier.
 
 ## Commit messages
 
