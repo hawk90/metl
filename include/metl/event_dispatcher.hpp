@@ -25,6 +25,7 @@
 #include "metl/optional.hpp"
 
 #include <cstddef>
+#include <cstdint>
 
 namespace metl {
 
@@ -36,10 +37,10 @@ class event_dispatcher;
 /// Holds up to `Capacity` listeners in an inline array — no heap allocation.
 /// Each listener is a non-owning `delegate`, so the bound targets must outlive
 /// their subscription. Subscribing returns a `listener_id` used to
-/// unsubscribe. Ids come from a `size_t` counter: unique across 2^32
-/// subscriptions on a 32-bit target, after which they repeat, so a stale id
-/// held across that many subscribe calls could unsubscribe a newer listener
-/// (docs/AUDIT.md G.5). Id 0 is never issued.
+/// unsubscribe. Ids come from a 64-bit counter on every target, so they do not
+/// repeat in practice: a stale id cannot unsubscribe a newer listener short of
+/// 2^64 subscriptions (docs/AUDIT.md G.5). Id 0 is never issued; a slot whose
+/// id is 0 is free.
 /// @tparam Capacity Maximum number of simultaneous listeners.
 /// @note Not thread-safe: subscribe/unsubscribe/dispatch must not run
 ///       concurrently.
@@ -51,7 +52,7 @@ class event_dispatcher<R(Args...), Capacity> {
 
   /// @brief Opaque handle identifying a subscribed listener.
   struct listener_id {
-    size_type value;
+    std::uint64_t value;
   };
 
   /// @brief Constructs an empty dispatcher with no listeners.
@@ -68,13 +69,12 @@ class event_dispatcher<R(Args...), Capacity> {
     }
 
     for (size_type i = 0; i < Capacity; ++i) {
-      if (!slots_[i].active) {
+      if (slots_[i].id.value == 0) {
         slots_[i].listener = listener;
         slots_[i].id = listener_id{next_id_++};
         if (next_id_ == 0) {
-          next_id_ = 1;  // wrapped: keep 0 unissued
+          next_id_ = 1;  // wrapped: keep 0 unissued, it marks a free slot
         }
-        slots_[i].active = true;
         return slots_[i].id;
       }
     }
@@ -86,9 +86,12 @@ class event_dispatcher<R(Args...), Capacity> {
   /// @param id Handle returned by subscribe.
   /// @return true if a matching active listener was found and removed.
   METL_NODISCARD bool unsubscribe(listener_id id) noexcept {
+    if (id.value == 0) {
+      return false;  // never issued; would otherwise match a free slot
+    }
     for (size_type i = 0; i < Capacity; ++i) {
-      if (slots_[i].active && slots_[i].id.value == id.value) {
-        slots_[i].active = false;
+      if (slots_[i].id.value == id.value) {
+        slots_[i].id = listener_id{0};
         slots_[i].listener = delegate_type();
         return true;
       }
@@ -100,7 +103,7 @@ class event_dispatcher<R(Args...), Capacity> {
   /// @brief Removes all listeners.
   void clear() noexcept {
     for (size_type i = 0; i < Capacity; ++i) {
-      slots_[i].active = false;
+      slots_[i].id = listener_id{0};
       slots_[i].listener = delegate_type();
     }
   }
@@ -112,7 +115,7 @@ class event_dispatcher<R(Args...), Capacity> {
   METL_NODISCARD size_type size() const noexcept {
     size_type count = 0;
     for (size_type i = 0; i < Capacity; ++i) {
-      if (slots_[i].active) {
+      if (slots_[i].id.value != 0) {
         ++count;
       }
     }
@@ -126,20 +129,22 @@ class event_dispatcher<R(Args...), Capacity> {
   /// @note Listeners are called in slot order; any return values are discarded.
   void dispatch(Args... args) const {
     for (size_type i = 0; i < Capacity; ++i) {
-      if (slots_[i].active) {
+      if (slots_[i].id.value != 0) {
         slots_[i].listener(args...);
       }
     }
   }
 
  private:
+  // No separate `active` flag: id 0 is never issued, so it marks a free slot.
+  // That keeps a slot at id + delegate (16 B on ARM32, as before the ids went
+  // 64-bit) instead of paying 8-byte-alignment padding after a bool.
   struct slot {
     listener_id id;
     delegate_type listener;
-    bool active;
   };
 
-  size_type next_id_;
+  std::uint64_t next_id_;
   slot slots_[Capacity == 0 ? 1 : Capacity];
 };
 

@@ -149,6 +149,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   single return type"*), and METL now does too, with a message naming the
   one-line fix. **Source-breaking** for callers who relied on the conversion:
   give the visitor an explicit return type.
+- **`event_dispatcher` listener ids are 64-bit on every target** (docs/AUDIT.md
+  G.5). They came from a `size_t` counter, which on a 32-bit target repeats
+  after 2^32 subscriptions, so a stale id could unsubscribe a newer listener.
+  The per-slot `active` flag is gone (id 0, never issued, marks a free slot), so
+  the cost on ARM32 is the counter only: `event_dispatcher<void(int), 4>` goes
+  from 68 to 72 bytes. On a 64-bit host it shrinks from 136 to 104.
 
 ### Changed
 
