@@ -105,7 +105,13 @@ class fsm {
   /// @return true if a transition fired, false if no rule matched (state unchanged).
   /// @note The new state is committed BEFORE the transition action runs, so a
   ///       reentrant `dispatch()` from within the action observes the updated
-  ///       state and cannot re-fire this same transition.
+  ///       state and cannot re-fire this same transition. Such a dispatch
+  ///       chains: the state it leaves was never entered, so its exit hook is
+  ///       skipped, and this call's entry hook is skipped because the machine
+  ///       has moved on. `a -> b` whose action dispatches `b -> c` runs
+  ///       `exit a, enter c`.
+  /// @pre Not called from an exit hook. The state being left is still current
+  ///      there, so a dispatch would exit it twice; an entry hook may dispatch.
   METL_NODISCARD bool dispatch(Event event) noexcept {
     const transition_type* transition = find_transition(current_state_, event);
     if (transition == nullptr) {
@@ -114,18 +120,27 @@ class fsm {
 
     const State previous = current_state_;
     const State next = transition->to;
-    invoke_hook(exit_hooks_, previous);
+    if (entered_) {
+      invoke_hook(exit_hooks_, previous);
+    }
 
     // Commit the state transition BEFORE running the action. If the action
     // reentrantly calls dispatch(), it must observe the new state; otherwise it
     // would still see `previous` and could re-fire this very transition.
     current_state_ = next;
+    entered_ = false;
 
     if (transition->action) {
       transition->action(previous, event, next);
     }
 
-    invoke_hook(entry_hooks_, next);
+    // A dispatch from the action has already entered its own target; entering
+    // `next` now would run its entry hook after the machine left it
+    // (docs/AUDIT.md G.3).
+    if (!entered_ && current_state_ == next) {
+      entered_ = true;
+      invoke_hook(entry_hooks_, next);
+    }
     return true;
   }
 
@@ -150,6 +165,10 @@ class fsm {
   }
 
   State current_state_;
+  // False between committing a state and running its entry hook, i.e. while a
+  // transition action runs. A dispatch from there leaves a state that was
+  // never entered, so it must not run that state's exit hook.
+  bool entered_ = true;
   std::array<transition_type, TransitionCount> transitions_;
   std::array<state_hook_type, EntryHookCount> entry_hooks_;
   std::array<state_hook_type, ExitHookCount> exit_hooks_;

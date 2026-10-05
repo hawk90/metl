@@ -437,11 +437,19 @@ class static_unordered_set {
   ///      handle a full set without asserting.
   template <typename K>
   reference emplace(K&& key) {
+    // Find-existing first, as static_unordered_map::emplace does: a duplicate
+    // returns the stored element as documented, instead of asserting -- or, at
+    // METL_HARDENING_NONE, constructing over the live element (AUDIT G.3).
+    const size_type existing = find_existing_index(key);
+    if (existing != npos) {
+      return *slot_value(existing);
+    }
+
+    METL_ASSERT(size_ < Capacity);
     size_type index = npos;
     const bool available = locate_insert_index(key, &index);
     METL_ASSERT(available);
     METL_ASSERT(states_[index] != slot_state::occupied);
-    METL_ASSERT(size_ < Capacity);
     construct_at(index, std::forward<K>(key));
     return *slot_value(index);
   }

@@ -175,7 +175,8 @@ constexpr span<char> format_uint(span<char> out, T value) noexcept {
 
 /// @brief Write @p value as decimal into @p out, with a leading `-` when negative.
 /// @param out Destination characters.
-/// @param value The signed value to render.
+/// @param value The value to render. An unsigned value is rendered as
+///        `try_format_uint` would.
 /// @return The text written, or an empty span if @p out is too small (@p out
 ///         unmodified).
 template <typename T>
@@ -183,6 +184,11 @@ METL_NODISCARD constexpr span<char> try_format_int(span<char> out, T value) noex
   static_assert(detail::is_plain_integer_v<T>,
                 "try_format_int takes an integer: bool and the character types are excluded "
                 "because printing them as numbers is almost never what was meant");
+  if constexpr (std::is_unsigned_v<T>) {
+    // Widening to `long long` below wraps an unsigned value above LLONG_MAX
+    // into a negative one: UINT64_MAX printed as "-1" (docs/AUDIT.md G.3).
+    return try_format_uint(out, value);
+  }
   const auto widened = static_cast<long long>(value);
   const unsigned long long magnitude = detail::magnitude_of(widened);
   const std::size_t digits = detail::decimal_digits(magnitude);
