@@ -23,6 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   clang-tidy ratchet were re-measured on the new toolchains;
   `portability-avoid-pragma-once` (new in clang-tidy 19) is disabled because
   `#pragma once` is a design decision here.
+- **Releases are gated on main's CI.** A `v*` tag now publishes only a commit
+  that is on `main` and whose full `ci-gate` passed there; the release job
+  waits for a CI run still in progress, and refuses a branch commit or a
+  failed one instead of shipping it after a single host build.
+- **Conventional Commits are checked.** `tools/check_commit_message.py`
+  holds the type list (`build chore ci docs feat fix perf refactor revert
+  style test`) and the 72-character subject rule; CI checks every
+  pull-request title (`pr-title`, a required check) and `pre-commit install`
+  adds a commit-msg hook.
+- Documentation-only pull requests also skip the CodeQL analysis and PR
+  fuzzing (both still report, as required checks must).
 - `pre-commit install` now also installs a pre-push hook, `tools/pre_push.py`,
   that runs every CI check a workstation can run (checker self-tests, source
   gates, Release `-Werror` builds with each compiler found, ASan+UBSan) before

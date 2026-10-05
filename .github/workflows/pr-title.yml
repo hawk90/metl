@@ -1,0 +1,36 @@
+name: PR title
+
+# The repository squash-merges with the pull-request title as the commit
+# subject, so the title is what lands on main. This holds it to Conventional
+# Commits (tools/check_commit_message.py has the rule and the reasons).
+# `edited` is in the trigger so fixing a title re-runs the check without a push.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    name: pr-title
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Self-test the checker
+        run: tools/check_commit_message.py --self-test
+
+      - name: Check the title
+        env:
+          # Through the environment, never interpolated into the script: a
+          # title is untrusted text.
+          TITLE: ${{ github.event.pull_request.title }}
+        run: tools/check_commit_message.py --title "${TITLE}"
