@@ -189,14 +189,13 @@ struct is_char_range<
     : std::is_same<std::remove_cv_t<std::remove_pointer_t<decltype(std::declval<const T&>().data())>>, char> {
 };
 
-// Widens an integral or enum value to 64 bits by VALUE (sign-extending signed
-// types), so equal values of different integer types widen identically.
+// Widens an integral or enum value to 64 bits by VALUE, so equal values of
+// different integer types widen identically. Conversion to an unsigned type is
+// modular, so a negative value sign-extends: -1 becomes 2^64 - 1 from any width.
 template <typename T>
 constexpr std::uint64_t widen_integral(T value) noexcept {
   if constexpr (std::is_enum_v<T>) {
     return widen_integral(static_cast<std::underlying_type_t<T>>(value));
-  } else if constexpr (std::is_signed_v<T>) {
-    return static_cast<std::uint64_t>(static_cast<std::int64_t>(value));
   } else {
     return static_cast<std::uint64_t>(value);
   }
