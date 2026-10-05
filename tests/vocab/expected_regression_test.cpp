@@ -187,5 +187,23 @@ int main() {
   }
 #endif
 
+  // A non-movable value whose constructor may throw still emplaces (the
+  // rollback path cannot set it aside, so it constructs in place as before).
+  {
+    struct pinned {
+      int x;
+      explicit pinned(int v) noexcept(false) : x(v) {}
+      pinned(const pinned&) = delete;
+      pinned(pinned&&) = delete;
+      pinned& operator=(const pinned&) = delete;
+      pinned& operator=(pinned&&) = delete;
+      ~pinned() = default;
+    };
+    metl::expected<pinned, int> e(metl::in_place, 1);
+    e.emplace(2);
+    e.emplace(3);
+    CHECK_EQ(e->x, 3);
+  }
+
   return metl_test::exit_code();
 }

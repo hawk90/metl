@@ -165,6 +165,11 @@ void replace_live(U* slot, Args&&... args) {
     U incoming(std::forward<Args>(args)...);
     slot->~U();
     ::new (static_cast<void*>(slot)) U(static_cast<U&&>(incoming));
+  } else if constexpr (!std::is_move_constructible_v<U>) {
+    // Nothing can be set aside for a rollback. std::expected::emplace rejects
+    // such a U outright; METL keeps accepting it, without the guarantee.
+    slot->~U();
+    ::new (static_cast<void*>(slot)) U(std::forward<Args>(args)...);
   } else {
 #if METL_NO_EXCEPTIONS
     slot->~U();
