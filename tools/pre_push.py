@@ -63,8 +63,8 @@ def step(title, command, **kwargs):
     # friends. A checker that then runs git in a temporary directory (the
     # self-test fixtures do) would be answered about the real repository, so
     # every step gets an environment without them.
-    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
-    env.update(kwargs.pop("env", {}))
+    merged = {**os.environ, **kwargs.pop("env", {})}
+    env = {name: value for name, value in merged.items() if not name.startswith("GIT_")}
     result = subprocess.run(command, cwd=REPO, capture_output=True, text=True, env=env, **kwargs)
     elapsed = time.monotonic() - started
     if result.returncode != 0:
