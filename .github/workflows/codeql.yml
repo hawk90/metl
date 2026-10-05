@@ -44,14 +44,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          fetch-depth: 2
+
+      # A documentation-only pull request has no code to analyse. The job
+      # still runs and reports, because `analyze / c-cpp` is a required check
+      # and one that never reports leaves the pull request pending forever;
+      # only the build and the analysis are skipped. main and the weekly
+      # schedule always analyse.
+      - name: Classify the change
+        id: classify
+        uses: ./.github/actions/classify-change
 
       - name: Install build deps
+        if: steps.classify.outputs.code == 'true'
         uses: ./.github/actions/apt-install
         with:
           packages: build-essential clang
           cache-key: build-essential-clang
 
       - name: Initialize CodeQL
+        if: steps.classify.outputs.code == 'true'
         uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2  # v4.38.2
         with:
           languages: c-cpp
@@ -62,6 +75,7 @@ jobs:
           queries: security-and-quality
 
       - name: Build (instantiates the templates CodeQL needs to see)
+        if: steps.classify.outputs.code == 'true'
         env:
           CC: clang
           CXX: clang++
@@ -70,6 +84,7 @@ jobs:
           cmake --build build -j
 
       - name: Perform CodeQL analysis
+        if: steps.classify.outputs.code == 'true'
         uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2  # v4.38.2
         with:
           category: /language:c-cpp
