@@ -467,11 +467,10 @@ constexpr moveonly_ops<false, R, Args...> moveonly_ops_for_t<F, false, R, Args..
 /// @warning A callable larger than `Capacity` cannot be stored: `try_assign`
 ///          returns false, while the converting constructor / `assign` assert.
 ///          Alignment stricter than std::max_align_t fails a static_assert.
-/// @note Moving, move-assigning and swapping the wrapper relocate the stored
-///       callable inside `noexcept` functions, so a callable whose move
-///       constructor throws terminates the program there (docs/AUDIT.md G.6).
-///       Store callables with non-throwing moves -- every lambda whose captures
-///       have them does.
+/// @note The stored callable must be nothrow move constructible (a
+///       static_assert): moving, move-assigning and swapping the wrapper are
+///       `noexcept` and relocate it (docs/AUDIT.md G.7). Every lambda whose
+///       captures move without throwing qualifies.
 template <typename Signature, std::size_t Capacity = 32>
 class fixed_function;  // primary template, undefined.
 
@@ -552,6 +551,14 @@ class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<
   /// @return true on success; false if the callable exceeds `Capacity`.
   template <typename F>
   METL_NODISCARD bool try_assign(F&& function) {
+    // Every public way of storing a callable comes through here. The wrapper's
+    // own move, move-assignment and swap are noexcept and relocate the callable
+    // through a type-erased move; a callable whose move can throw used to compile
+    // and terminate there (docs/AUDIT.md G.7). The wrapper cannot make its
+    // noexcept depend on what it holds, so the callable is refused instead.
+    // Lambdas whose captures move without throwing -- nearly all -- are fine.
+    static_assert(std::is_nothrow_move_constructible_v<std::decay_t<F>>,
+                  "fixed_function requires a callable that is nothrow move constructible");
     return this->try_assign_callable(std::forward<F>(function));
   }
 
@@ -650,6 +657,14 @@ class fixed_function<R(Args...) noexcept, Capacity>
   /// @return true on success; false if the callable exceeds `Capacity`.
   template <typename F>
   METL_NODISCARD bool try_assign(F&& function) {
+    // Every public way of storing a callable comes through here. The wrapper's
+    // own move, move-assignment and swap are noexcept and relocate the callable
+    // through a type-erased move; a callable whose move can throw used to compile
+    // and terminate there (docs/AUDIT.md G.7). The wrapper cannot make its
+    // noexcept depend on what it holds, so the callable is refused instead.
+    // Lambdas whose captures move without throwing -- nearly all -- are fine.
+    static_assert(std::is_nothrow_move_constructible_v<std::decay_t<F>>,
+                  "fixed_function requires a callable that is nothrow move constructible");
     return this->try_assign_callable(std::forward<F>(function));
   }
 
@@ -710,11 +725,10 @@ inline void swap(fixed_function<Sig, Cap>& lhs, fixed_function<Sig, Cap>& rhs) n
 /// @tparam Capacity Inline storage size in bytes (default 32).
 /// @warning A callable larger than `Capacity` cannot be stored: `try_assign`
 ///          returns false, while the converting constructor / `assign` assert.
-/// @note Moving, move-assigning and swapping the wrapper relocate the stored
-///       callable inside `noexcept` functions, so a callable whose move
-///       constructor throws terminates the program there (docs/AUDIT.md G.6).
-///       Store callables with non-throwing moves -- every lambda whose captures
-///       have them does.
+/// @note The stored callable must be nothrow move constructible (a
+///       static_assert): moving, move-assigning and swapping the wrapper are
+///       `noexcept` and relocate it (docs/AUDIT.md G.7). Every lambda whose
+///       captures move without throwing qualifies.
 template <typename Signature, std::size_t Capacity = 32>
 class fixed_any_invocable;  // primary template, undefined.
 
@@ -794,6 +808,14 @@ class fixed_any_invocable<R(Args...), Capacity>
   /// @return true on success; false if the callable exceeds `Capacity`.
   template <typename F>
   METL_NODISCARD bool try_assign(F&& function) {
+    // Every public way of storing a callable comes through here. The wrapper's
+    // own move, move-assignment and swap are noexcept and relocate the callable
+    // through a type-erased move; a callable whose move can throw used to compile
+    // and terminate there (docs/AUDIT.md G.7). The wrapper cannot make its
+    // noexcept depend on what it holds, so the callable is refused instead.
+    // Lambdas whose captures move without throwing -- nearly all -- are fine.
+    static_assert(std::is_nothrow_move_constructible_v<std::decay_t<F>>,
+                  "fixed_any_invocable requires a callable that is nothrow move constructible");
     return this->try_assign_callable(std::forward<F>(function));
   }
 
@@ -892,6 +914,14 @@ class fixed_any_invocable<R(Args...) noexcept, Capacity>
   /// @return true on success; false if the callable exceeds `Capacity`.
   template <typename F>
   METL_NODISCARD bool try_assign(F&& function) {
+    // Every public way of storing a callable comes through here. The wrapper's
+    // own move, move-assignment and swap are noexcept and relocate the callable
+    // through a type-erased move; a callable whose move can throw used to compile
+    // and terminate there (docs/AUDIT.md G.7). The wrapper cannot make its
+    // noexcept depend on what it holds, so the callable is refused instead.
+    // Lambdas whose captures move without throwing -- nearly all -- are fine.
+    static_assert(std::is_nothrow_move_constructible_v<std::decay_t<F>>,
+                  "fixed_any_invocable requires a callable that is nothrow move constructible");
     return this->try_assign_callable(std::forward<F>(function));
   }
 

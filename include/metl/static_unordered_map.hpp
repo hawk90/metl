@@ -42,9 +42,13 @@
 /// exists.
 ///
 /// @par Element moves during the rebuild
-/// The rebuild relocates elements inside a `noexcept` function, so an element
-/// type whose move constructor throws -- or a hasher that throws -- terminates
-/// the program there (docs/AUDIT.md G.6). Give element types non-throwing moves.
+/// The rebuild relocates every element in place, which cannot be undone half
+/// way. It therefore runs only when the element's move cannot throw; for any
+/// other type the tombstones are simply never reclaimed -- lookups stay bounded
+/// by `bucket_count` probes, only misses get slower under churn. (Before
+/// 2026-10-05 the rebuild ran regardless, inside a `noexcept` function, and a
+/// throwing move terminated the program; docs/AUDIT.md G.7.) A hasher that
+/// throws during the rebuild still terminates: hashers are expected not to.
 ///
 /// @par Iterator invalidation
 /// The open-addressing rule (`absl::flat_hash_map`, `boost::unordered_flat_map`):
@@ -567,6 +571,11 @@ class static_unordered_map {
   }
 
  private:
+  // The rebuild moves every element inside rehash_in_place, which is noexcept:
+  // a throw half way would leave the table unrecoverable. The hasher is not part
+  // of the condition -- requiring `noexcept` on it would silently switch the
+  // reclaim off for every ordinary hasher that merely omits the keyword.
+  static constexpr bool rebuild_cannot_throw = std::is_nothrow_move_constructible_v<value_type>;
   // Empty table with the given hasher and key-equal; the copy and move
   // constructors delegate here.
   struct empty_with {};
@@ -684,7 +693,7 @@ class static_unordered_map {
     METL_HARDEN(index < bucket_count);
     // Tombstones past ~1/8 of the table: rebuild before placing the new key, so
     // negative lookups keep stopping early at an empty slot.
-    if (tombstones_ > bucket_count / 8) {
+    if (rebuild_cannot_throw && tombstones_ > bucket_count / 8) {
       value_type entry{std::forward<K>(key), std::forward<V>(value)};
       rehash_in_place();
       // After a rebuild there are no tombstones and the load factor is at most

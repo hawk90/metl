@@ -130,44 +130,26 @@ class mpmc_queue {
   /// Constructs an element in place if a slot is available.
   /// @return true if enqueued; false if the queue appeared full.
   template <typename... Args>
-  METL_NODISCARD bool try_emplace(Args&&... args) noexcept {
-    cell* target = nullptr;
-    size_type pos = enqueue_pos_.load(std::memory_order_relaxed);
-
-    for (;;) {
-      target = &cells_[pos & mask];
-      const size_type sequence = target->sequence.load(std::memory_order_acquire);
-      // Signed difference: sequence and pos both wrap, and only their *distance*
-      // is meaningful. Comparing them directly would break at the wrap point.
-      const std::ptrdiff_t difference =
-          static_cast<std::ptrdiff_t>(sequence) - static_cast<std::ptrdiff_t>(pos);
-
-      if (difference == 0) {
-        // The slot is waiting for exactly this ticket; claim the ticket.
-        if (enqueue_pos_.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
-          break;
-        }
-        // Lost the race: `pos` was refreshed by the failed exchange, retry.
-      } else if (difference < 0) {
-        // The slot still holds an element a consumer has not taken: full.
-        return false;
-      } else {
-        // Another producer already advanced past us; re-read and retry.
-        pos = enqueue_pos_.load(std::memory_order_relaxed);
-      }
+  METL_NODISCARD bool try_emplace(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>) {
+    if constexpr (std::is_nothrow_constructible_v<T, Args&&...>) {
+      return try_claim_and_construct(std::forward<Args>(args)...);
+    } else {
+      // A constructor that can throw runs BEFORE a ticket is claimed: a claimed
+      // slot that is never published would stall every later consumer. The
+      // move into the slot cannot throw (static_assert above). Until 2026-10-05
+      // this function was noexcept and such a constructor terminated the
+      // program (docs/AUDIT.md G.7).
+      T value(std::forward<Args>(args)...);
+      return try_claim_and_construct(static_cast<T&&>(value));
     }
-
-    ::new (target->storage.addr()) T(std::forward<Args>(args)...);
-    // Release: publishes the element, and hands the slot to the consumer whose
-    // ticket is pos + 1.
-    target->sequence.store(pos + 1, std::memory_order_release);
-    return true;
   }
 
   /// Copy-enqueues an element if a slot is available.
-  /// @note `noexcept`: a `T` whose copy constructor throws terminates the
-  ///       program here (docs/AUDIT.md G.6).
-  METL_NODISCARD bool try_push(const T& value) noexcept { return try_emplace(value); }
+  /// @note `noexcept` only when `T`'s copy cannot throw; a throwing copy
+  ///       propagates before any slot is claimed (docs/AUDIT.md G.7).
+  METL_NODISCARD bool try_push(const T& value) noexcept(std::is_nothrow_copy_constructible_v<T>) {
+    return try_emplace(value);
+  }
 
   /// Move-enqueues an element if a slot is available.
   METL_NODISCARD bool try_push(T&& value) noexcept { return try_emplace(std::move(value)); }
@@ -235,6 +217,42 @@ class mpmc_queue {
   METL_NODISCARD static constexpr size_type capacity() noexcept { return Capacity; }
 
  private:
+  // The lock-free enqueue proper: claim a ticket, construct, publish. Only ever
+  // called with arguments whose construction cannot throw.
+  template <typename... Args>
+  METL_NODISCARD bool try_claim_and_construct(Args&&... args) noexcept {
+    cell* target = nullptr;
+    size_type pos = enqueue_pos_.load(std::memory_order_relaxed);
+
+    for (;;) {
+      target = &cells_[pos & mask];
+      const size_type sequence = target->sequence.load(std::memory_order_acquire);
+      // Signed difference: sequence and pos both wrap, and only their *distance*
+      // is meaningful. Comparing them directly would break at the wrap point.
+      const std::ptrdiff_t difference =
+          static_cast<std::ptrdiff_t>(sequence) - static_cast<std::ptrdiff_t>(pos);
+
+      if (difference == 0) {
+        // The slot is waiting for exactly this ticket; claim the ticket.
+        if (enqueue_pos_.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
+          break;
+        }
+        // Lost the race: `pos` was refreshed by the failed exchange, retry.
+      } else if (difference < 0) {
+        // The slot still holds an element a consumer has not taken: full.
+        return false;
+      } else {
+        // Another producer already advanced past us; re-read and retry.
+        pos = enqueue_pos_.load(std::memory_order_relaxed);
+      }
+    }
+
+    ::new (target->storage.addr()) T(std::forward<Args>(args)...);
+    // Release: publishes the element, and hands the slot to the consumer whose
+    // ticket is pos + 1.
+    target->sequence.store(pos + 1, std::memory_order_release);
+    return true;
+  }
   static constexpr size_type mask = Capacity - 1;
 
   // The sequence number shares a line with the slot it describes on purpose: a

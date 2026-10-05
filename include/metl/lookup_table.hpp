@@ -21,6 +21,7 @@
 
 #include <array>
 #include <cstddef>
+#include <type_traits>
 #include <utility>
 
 namespace metl {
@@ -42,9 +43,10 @@ struct lookup_entry {
 /// @tparam Key Key type (compared with operator==).
 /// @tparam Value Mapped value type.
 /// @tparam Size Number of entries (fixed at compile time).
-/// @note The constructor, `find` and `value_or` are `noexcept` and copy or
-///       compare `Key` / `Value`: a type whose copy or `operator==` throws
-///       terminates the program there (docs/AUDIT.md G.6).
+/// @note `noexcept` on the constructor, `find`, `contains` and `value_or` is
+///       conditional on `Key`/`Value` copies and `Key`'s `operator==` not
+///       throwing, so a throwing type propagates its exception instead of
+///       terminating (docs/AUDIT.md G.7).
 template <typename Key, typename Value, std::size_t Size>
 class lookup_table {
  public:
@@ -53,11 +55,18 @@ class lookup_table {
   using value_type = lookup_entry<Key, Value>;
   using size_type = std::size_t;
 
+ private:
+  static constexpr bool nothrow_compare = noexcept(std::declval<const Key&>() == std::declval<const Key&>());
+  static constexpr bool nothrow_copy_entries = std::is_nothrow_copy_constructible_v<value_type>;
+  static constexpr bool nothrow_copy_value = std::is_nothrow_copy_constructible_v<Value>;
+
+ public:
   /// Constructs a table with value-initialized entries.
   constexpr lookup_table() noexcept : entries_{} {}
 
   /// Constructs a table from an array of `Size` entries.
-  constexpr lookup_table(const std::array<value_type, Size>& entries) noexcept : entries_(entries) {}
+  constexpr lookup_table(const std::array<value_type, Size>& entries) noexcept(nothrow_copy_entries)
+      : entries_(entries) {}
 
   /// Returns the fixed number of entries (`Size`).
   METL_NODISCARD constexpr size_type size() const noexcept { return Size; }
@@ -80,11 +89,13 @@ class lookup_table {
   }
 
   /// Returns true if any entry has a key equal to `key`.
-  METL_NODISCARD constexpr bool contains(const key_type& key) const noexcept { return find(key) != nullptr; }
+  METL_NODISCARD constexpr bool contains(const key_type& key) const noexcept(nothrow_compare) {
+    return find(key) != nullptr;
+  }
 
   /// Finds the value mapped to `key` via a linear scan.
   /// @return Pointer to the mapped value, or nullptr if `key` is not present.
-  METL_NODISCARD constexpr const mapped_type* find(const key_type& key) const noexcept {
+  METL_NODISCARD constexpr const mapped_type* find(const key_type& key) const noexcept(nothrow_compare) {
     for (size_type i = 0; i < Size; ++i) {
       if (entries_[i].key == key) {
         return &entries_[i].value;
@@ -94,7 +105,8 @@ class lookup_table {
   }
 
   /// Returns the value mapped to `key`, or `fallback` if `key` is not present.
-  METL_NODISCARD constexpr mapped_type value_or(const key_type& key, mapped_type fallback) const noexcept {
+  METL_NODISCARD constexpr mapped_type value_or(const key_type& key, mapped_type fallback) const
+      noexcept(nothrow_compare && nothrow_copy_value && std::is_nothrow_move_constructible_v<Value>) {
     const mapped_type* value = find(key);
     return value != nullptr ? *value : fallback;
   }
@@ -105,8 +117,9 @@ class lookup_table {
 
 /// Creates a lookup_table from an array of entries, deducing its template args.
 template <typename Key, typename Value, std::size_t Size>
-METL_NODISCARD constexpr lookup_table<Key, Value, Size> make_lookup_table(
-    const std::array<lookup_entry<Key, Value>, Size>& entries) noexcept {
+METL_NODISCARD constexpr lookup_table<Key, Value, Size>
+make_lookup_table(const std::array<lookup_entry<Key, Value>, Size>& entries) noexcept(
+    std::is_nothrow_copy_constructible_v<lookup_entry<Key, Value>>) {
   return lookup_table<Key, Value, Size>(entries);
 }
 

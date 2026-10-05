@@ -17,7 +17,9 @@
 
 #include "metl_check.hpp"
 
+#include <array>
 #include <cstddef>
+#include <utility>
 
 #include <metl/detail/ring_core.hpp>
 #include <metl/fixed_deque.hpp>
@@ -25,7 +27,11 @@
 #include <metl/fixed_vector.hpp>
 #include <metl/flat_map.hpp>
 #include <metl/flat_set.hpp>
+#include <metl/fsm.hpp>
+#include <metl/lookup_table.hpp>
+#include <metl/mpmc_queue.hpp>
 #include <metl/ring_buffer.hpp>
+#include <metl/spsc_queue.hpp>
 #include <metl/static_message_queue.hpp>
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
@@ -57,6 +63,7 @@ void retire(const void* self) {
   ++g_double_destroys;  // destroying something that is not alive
 }
 int g_countdown = -1;  ///< throws when it reaches 0; negative = never
+int g_moves = 0;       ///< move constructions of `armed`, for the rebuild check
 
 void tick() {
   if (g_countdown > 0) {
@@ -77,6 +84,7 @@ struct armed {
   }
   armed(armed&& o) noexcept(false) : value(o.value) {
     tick();
+    ++g_moves;
     enroll(this);
   }
   armed& operator=(const armed& o) {
@@ -121,6 +129,29 @@ struct throwing_int_less {
     return a < b;
   }
 };
+
+// Copy can throw; move cannot -- what the lock-free queues require of T.
+struct copy_throws {
+  int value = 0;
+  copy_throws() = default;
+  explicit copy_throws(int v) noexcept : value(v) {}
+  copy_throws(const copy_throws& o) : value(o.value) { tick(); }
+  copy_throws(copy_throws&&) noexcept = default;
+  copy_throws& operator=(const copy_throws& o) {
+    tick();
+    value = o.value;
+    return *this;
+  }
+  copy_throws& operator=(copy_throws&&) noexcept = default;
+  ~copy_throws() = default;
+  bool operator==(const copy_throws& o) const { return value == o.value; }
+};
+
+enum class fsm_state { idle, busy };
+enum class fsm_event { go };
+void throwing_action(fsm_state, fsm_event, fsm_state) {
+  throw 42;
+}
 
 struct armed_hash {
   std::size_t operator()(const armed& a) const noexcept {
@@ -352,6 +383,108 @@ int main() {
     g_countdown = -1;
     CHECK(threw);
     CHECK(queue.empty());  // cleared, not left with a broken heap
+  }
+
+  // ---- G.7: noexcept paths that run user code now propagate -------------
+  // Before, each of these was noexcept and a throwing T terminated the program.
+  static_assert(!noexcept(std::declval<metl::spsc_queue<copy_throws, 4>&>().try_push(
+                    std::declval<const copy_throws&>())),
+                "a throwing copy must not be hidden behind noexcept");
+  static_assert(noexcept(std::declval<metl::spsc_queue<int, 4>&>().try_push(1)),
+                "a nothrow T keeps the noexcept guarantee");
+  static_assert(noexcept(std::declval<metl::mpmc_queue<int, 4>&>().try_push(1)),
+                "a nothrow T keeps the noexcept guarantee");
+  {
+    metl::spsc_queue<copy_throws, 4> queue;
+    const copy_throws item(5);
+    g_countdown = 0;
+    bool threw = false;
+    try {
+      (void)queue.try_push(item);
+    } catch (int) {
+      threw = true;
+    }
+    g_countdown = -1;
+    CHECK(threw);
+    CHECK(queue.empty());  // nothing was published
+    CHECK(queue.try_push(copy_throws(7)));
+  }
+  {
+    metl::mpmc_queue<copy_throws, 4> queue;
+    const copy_throws item(5);
+    g_countdown = 0;
+    bool threw = false;
+    try {
+      (void)queue.try_push(item);
+    } catch (int) {
+      threw = true;
+    }
+    g_countdown = -1;
+    CHECK(threw);
+    // No ticket was claimed: the queue is still usable end to end. (A claimed,
+    // never-published slot would make this pop spin as "not ready".)
+    CHECK(queue.try_push(copy_throws(7)));
+    copy_throws out;
+    CHECK(queue.try_pop(out));
+    CHECK_EQ(out.value, 7);
+  }
+  {
+    const auto table = metl::make_lookup_table<int, copy_throws, 2>(
+        std::array<metl::lookup_entry<int, copy_throws>, 2>{{{1, copy_throws(10)}, {2, copy_throws(20)}}});
+    g_countdown = 0;
+    bool threw = false;
+    try {
+      (void)table.value_or(1, copy_throws(0));
+    } catch (int) {
+      threw = true;
+    }
+    g_countdown = -1;
+    CHECK(threw);
+  }
+  {
+    const std::array<metl::fsm_transition<fsm_state, fsm_event>, 1> table{
+        {{fsm_state::idle,
+          fsm_event::go,
+          fsm_state::busy,
+          metl::delegate<void(fsm_state, fsm_event, fsm_state)>::from_function<&throwing_action>()}}};
+    metl::fsm<fsm_state, fsm_event, 1> machine(fsm_state::idle, table);
+    bool threw = false;
+    try {
+      (void)machine.dispatch(fsm_event::go);
+    } catch (int) {
+      threw = true;
+    }
+    CHECK(threw);
+    CHECK(machine.current_state() == fsm_state::busy);
+  }
+  // An unordered map of a type whose move can throw no longer runs the
+  // noexcept rebuild, which terminated the program on such a throw. The
+  // rebuild is visible as an insert that moves many elements; an insert that
+  // does not rebuild moves exactly one (into its slot).
+  {
+    g_live = 0;
+    g_double_destroys = 0;
+    {
+      metl::static_unordered_map<int, armed, 16> map;
+      int most_moves_in_one_insert = 0;
+      for (int round = 0; round < 20; ++round) {
+        for (int k = 0; k < 10; ++k) {
+          armed value(k);
+          const int before = g_moves;
+          CHECK(map.try_emplace(round * 100 + k, static_cast<armed&&>(value)));
+          const int moved = g_moves - before;
+          most_moves_in_one_insert = moved > most_moves_in_one_insert ? moved : most_moves_in_one_insert;
+        }
+        for (int k = 0; k < 10; ++k) {
+          CHECK(map.erase(round * 100 + k));
+        }
+      }
+      CHECK_EQ(most_moves_in_one_insert, 1);  // never rebuilt
+      CHECK(map.empty());
+      CHECK(map.try_emplace(5, armed(5)));
+      CHECK(map.find(5) != nullptr);
+    }
+    CHECK_EQ(g_live, 0);
   }
 
   return metl_test::exit_code();

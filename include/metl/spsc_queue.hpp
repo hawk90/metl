@@ -91,9 +91,11 @@ class spsc_queue {
   /// @param value Element to copy into the queue.
   /// @return True if enqueued; false if the queue is full.
   /// @note Producer-side only; call from the single producer thread.
-  /// @note `noexcept`: a `T` whose copy constructor throws terminates the
-  ///       program here (docs/AUDIT.md G.6).
-  METL_NODISCARD bool try_push(const T& value) noexcept { return try_emplace(value); }
+  /// @note `noexcept` only when `T`'s copy cannot throw. A throwing copy
+  ///       propagates with nothing published (docs/AUDIT.md G.7).
+  METL_NODISCARD bool try_push(const T& value) noexcept(std::is_nothrow_copy_constructible_v<T>) {
+    return try_emplace(value);
+  }
 
   /// @brief Producer: move-enqueue an element if space is available.
   /// @param value Element to move into the queue.
@@ -106,7 +108,7 @@ class spsc_queue {
   /// @note Producer-side only; call from the single producer thread. Publishes the
   ///       new element with a release store on the tail.
   template <typename... Args>
-  METL_NODISCARD bool try_emplace(Args&&... args) noexcept {
+  METL_NODISCARD bool try_emplace(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>) {
     const std::size_t tail = tail_.load(std::memory_order_relaxed);
     const std::size_t next = tail + 1;
     // Fast path: decide from the producer's own cached copy of the consumer
