@@ -11,11 +11,10 @@
  * harness) greps for. Returns 0 on success.
  */
 
-#include <zephyr/kernel.h>
-
 #include <metl/expected.hpp>
 #include <metl/fixed_vector.hpp>
 #include <metl/span.hpp>
+#include <zephyr/kernel.h>
 
 namespace {
 

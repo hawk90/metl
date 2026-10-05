@@ -179,7 +179,9 @@ int main() {
 
   // --- and it resumes afterwards ----------------------------------------------
   // A lock that blocked interrupts permanently would pass everything above.
-  { CHECK(iterations_until_tick(kTickBudget) > 0); }
+  {
+    CHECK(iterations_until_tick(kTickBudget) > 0);
+  }
 
   // --- guarded<> holds the mask across the whole body -------------------------
   {
