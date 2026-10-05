@@ -4,8 +4,8 @@
 // tombstone, because clearing the slot would break the probe chain running
 // through it. A tombstone does not end a negative lookup -- only an empty slot
 // does -- so without something to clear them out, misses get steadily more
-// expensive under churn. `reclaim_if_needed` is that something: past one eighth
-// of the table, `rehash_in_place` rebuilds it.
+// expensive under churn. `reclaim_due` is that something: past one eighth of
+// the table, the next new key makes `rehash_in_place` rebuild it.
 //
 // WHY THIS TEST EXISTS. Replacing that trigger with `if (false)` in both headers
 // leaves the entire rest of the suite green and every fuzz harness clean --
@@ -16,12 +16,18 @@
 // reclaim could have been deleted by a refactor and no gate in this repository
 // would have said a word.
 //
-// HOW IT IS OBSERVED, without adding API for it. `erase` moves nothing -- it
-// destroys one element in place -- EXCEPT when it triggers a rebuild, which
-// move-constructs every live element. So a key type that counts its own moves
-// reports rebuilds exactly: moves during an erase is zero, or a rebuild fired.
-// That is a count and not a duration, so there is nothing here to be flaky on a
-// shared runner.
+// HOW IT IS OBSERVED, without adding API for it. Inserting a new key moves it
+// into its slot exactly once -- EXCEPT when the insert triggers a rebuild, which
+// also move-constructs every live element. So a key type that counts its own
+// moves reports rebuilds exactly: more than one move during an insert means a
+// rebuild fired. That is a count and not a duration, so there is nothing here to
+// be flaky on a shared runner.
+//
+// WHERE THE REBUILD RUNS, and the second property this test holds. It runs on
+// the insertion of a new key and never on `erase` (docs/AUDIT.md G.3): a
+// rebuild relocates live elements, and doing it inside `erase` made erasing
+// during iteration skip elements. So `erase` must move NOTHING, ever -- the
+// same instrument checks that too.
 
 #include "metl_check.hpp"
 
@@ -83,33 +89,36 @@ int churn(Container& container, Erase erase_one, Insert insert_one) {
   }
 
   int erases = 0;
-  int erases_that_rebuilt = 0;
+  int inserts_that_rebuilt = 0;
 
   for (int round = 0; round < kRounds; ++round) {
     for (std::uint32_t k = 0; k < kLive; ++k) {
       const std::size_t before = g_moves;
       if (erase_one(container, k)) {
         ++erases;
-        if (g_moves > before) {
-          ++erases_that_rebuilt;
-        }
+        // erase never relocates another element, so iteration survives it.
+        CHECK_EQ(g_moves, before);
       }
     }
     for (std::uint32_t k = 0; k < kLive; ++k) {
+      const std::size_t before = g_moves;
       insert_one(container, k);
+      if (g_moves > before + 1) {
+        ++inserts_that_rebuilt;
+      }
     }
   }
 
   // The churn itself has to have happened, or the counts below prove nothing.
   CHECK(erases > 0);
-  return erases_that_rebuilt;
+  return inserts_that_rebuilt;
 }
 
 }  // namespace
 
 int main() {
   // ---------------------------------------------------------------------
-  // set: erasing under churn must, sometimes, rebuild.
+  // set: inserting under churn must, sometimes, rebuild.
   // ---------------------------------------------------------------------
   {
     metl::static_unordered_set<counted_key, kCapacity, counted_hash, counted_equal> set;
@@ -118,8 +127,8 @@ int main() {
         [](auto& s, std::uint32_t k) { return s.erase(counted_key{k}); },
         [](auto& s, std::uint32_t k) { (void)s.try_emplace(counted_key{k}); });
 
-    // THE ASSERTION. Zero here means `reclaim_if_needed` never fired across
-    // hundreds of erases that left far more than `bucket_count / 8` tombstones.
+    // THE ASSERTION. Zero here means the reclaim never fired across hundreds
+    // of inserts into a table holding far more than `bucket_count / 8` tombstones.
     // The set would still be correct; it would just have stopped bounding what
     // a miss costs, and the header's progress guarantee would be describing
     // code that no longer runs.

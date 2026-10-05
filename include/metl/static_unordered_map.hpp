@@ -6,8 +6,8 @@
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
 ///   | `find`, `contains`, `count`, `at`, `operator[]` | wait-free, bounded by `bucket_count` probes |
-///   | `insert`, `try_emplace` | wait-free, bounded by `bucket_count` probes |
-///   | `erase` | wait-free, bounded by `bucket_count` probes **plus, occasionally, a full rebuild** |
+///   | `insert`, `try_emplace` (new key) | wait-free, `bucket_count` probes **plus, at times, a rebuild** |
+///   | `erase` | wait-free, bounded by `bucket_count` probes; moves nothing |
 ///   | `clear`, iteration, copy, destructor | wait-free, bounded by `bucket_count` |
 ///
 /// Open addressing with linear probing: the worst case is a probe run the length of
@@ -28,21 +28,36 @@
 /// slot does -- so a table that only ever accumulated them would answer "not
 /// present" by walking further and further, until every miss cost the full
 /// `bucket_count`. Still bounded; steadily worse. So once tombstones pass one
-/// eighth of the table, `rehash_in_place` rebuilds it without allocating, and
-/// misses go back to stopping early.
+/// eighth of the table, the next insertion of a new key runs `rehash_in_place`
+/// first, which rebuilds the table without allocating, and misses go back to
+/// stopping early.
 ///
-/// The price is on `erase`, and it is why that row is split above. Most erases are
-/// a probe run. The one that crosses the threshold also move-constructs every live
-/// element -- up to `bucket_count` of them, plus the probing to re-place each. That
-/// rebuild is bounded (it visits each slot once, and its inner carry loop
-/// terminates because every iteration turns one more slot permanently occupied),
-/// but it is a latency spike on an operation that is otherwise cheap, and a caller
-/// with a deadline on `erase` needs to know it exists.
+/// The price is on inserting a new key, and it is why that row is split above.
+/// Most inserts are a probe run. The one that finds the threshold crossed also
+/// move-constructs every live element -- up to `bucket_count` of them, plus the
+/// probing to re-place each. That rebuild is bounded (it visits each slot once,
+/// and its inner carry loop terminates because every iteration turns one more
+/// slot permanently occupied), but it is a latency spike on an operation that is
+/// otherwise cheap, and a caller with a deadline on insertion needs to know it
+/// exists.
+///
+/// @par Iterator invalidation
+/// The open-addressing rule (`absl::flat_hash_map`, `boost::unordered_flat_map`):
+/// **`erase` invalidates only iterators, pointers and references to the erased
+/// element**, so the erase-while-iterating loop (`auto k = it->key; ++it;
+/// m.erase(k);`) visits every element. **Inserting a new key may invalidate all
+/// iterators, pointers and references**, because that is where the rebuild runs
+/// -- unlike node-based `std::unordered_map`, a pointer from `find` does not
+/// survive it.
+/// Assigning to an existing key and lookups invalidate nothing. The rebuild used
+/// to run inside `erase`, which skipped elements during iteration
+/// (docs/AUDIT.md G.3).
 ///
 /// `tests/containers/unordered_reclaim_test.cpp` holds the reclaim to that: it
-/// counts moves of a key type through an erase, which is zero unless a rebuild
-/// fired. Without it the reclaim could be deleted and nothing would notice -- the
-/// type stays correct, only slower, which no other test or fuzz harness can see.
+/// counts moves of a key type through an insert, which is one unless a rebuild
+/// fired -- and through an erase, which must always be zero. Without it the
+/// reclaim could be deleted and nothing would notice -- the type stays correct,
+/// only slower, which no other test or fuzz harness can see.
 ///
 /// @par Memory footprint -- read this before picking a capacity
 /// `bucket_count` is `bit_ceil(Capacity * 2)`, so the table always holds at
@@ -410,7 +425,6 @@ class static_unordered_map {
     }
 
     destroy_at(index, slot_state::tombstone);
-    reclaim_if_needed();
     return true;
   }
 
@@ -437,7 +451,7 @@ class static_unordered_map {
       return false;
     }
 
-    construct_at(index, std::forward<K>(key), std::forward<V>(value));
+    (void)construct_at(index, std::forward<K>(key), std::forward<V>(value));
     return true;
   }
 
@@ -459,7 +473,7 @@ class static_unordered_map {
     const bool available = locate_insert_index(key, &index);
     METL_ASSERT(available);
     METL_ASSERT(states_[index] != slot_state::occupied);
-    construct_at(index, std::forward<K>(key), std::forward<V>(value));
+    index = construct_at(index, std::forward<K>(key), std::forward<V>(value));
     return *slot_value(index);
   }
 
@@ -501,7 +515,7 @@ class static_unordered_map {
     const bool available = locate_insert_index(key, &index);
     METL_ASSERT(available);
     METL_ASSERT(states_[index] != slot_state::occupied);
-    construct_at(index, key, mapped_type{});
+    index = construct_at(index, key, mapped_type{});
     return slot_value(index)->value;
   }
 
@@ -518,7 +532,7 @@ class static_unordered_map {
     const bool available = locate_insert_index(key, &index);
     METL_ASSERT(available);
     METL_ASSERT(states_[index] != slot_state::occupied);
-    construct_at(index, static_cast<key_type&&>(key), mapped_type{});
+    index = construct_at(index, static_cast<key_type&&>(key), mapped_type{});
     return slot_value(index)->value;
   }
 
@@ -531,7 +545,6 @@ class static_unordered_map {
     }
 
     destroy_at(index, slot_state::tombstone);
-    reclaim_if_needed();
     return true;
   }
 
@@ -641,12 +654,34 @@ class static_unordered_map {
       return npos;
     }
 
-    construct_at(index, std::forward<K>(key), std::forward<V>(value));
+    return construct_at(index, std::forward<K>(key), std::forward<V>(value));
+  }
+
+  /// Places a new element at `index` (from locate_insert_index) and returns the
+  /// slot it ended up in. That is `index` unless the tombstone reclaim runs
+  /// first: it runs here, on insertion of a new key, and never on erase, so
+  /// erasing never moves another element and iteration survives it
+  /// (docs/AUDIT.md G.3). The rebuild moves elements, and `value` may refer to
+  /// one of them, so on that path the new element is built before the rebuild.
+  template <typename K, typename V>
+  METL_NODISCARD size_type construct_at(size_type index, K&& key, V&& value) {
+    METL_HARDEN(index < bucket_count);
+    if (reclaim_due()) {
+      value_type entry{std::forward<K>(key), std::forward<V>(value)};
+      rehash_in_place();
+      const bool available = locate_insert_index(entry.key, &index);
+      METL_HARDEN(available && index < bucket_count && states_[index] == slot_state::empty);
+      ::new (storage_[index].addr()) value_type(static_cast<value_type&&>(entry));
+      states_[index] = slot_state::occupied;
+      ++size_;
+      return index;
+    }
+    place_at(index, std::forward<K>(key), std::forward<V>(value));
     return index;
   }
 
   template <typename K, typename V>
-  void construct_at(size_type index, K&& key, V&& value) {
+  void place_at(size_type index, K&& key, V&& value) {
     // Hard guard against the full-table path: locate_insert_index returns
     // false (leaving index == npos) only when the table is full. The callers
     // assert on that precondition, but guard this with the always-on METL_HARDEN
@@ -736,13 +771,10 @@ class static_unordered_map {
     }
   }
 
-  /// @brief Trigger an in-place rebuild once tombstones cross ~1/8 of the table.
-  /// Bounds the tombstone density so negative lookups always terminate at an empty slot.
-  void reclaim_if_needed() noexcept {
-    if (tombstones_ > bucket_count / 8) {
-      rehash_in_place();
-    }
-  }
+  /// @brief Whether tombstones have crossed ~1/8 of the table, so the next new
+  /// key should rebuild it first. Bounds tombstone density so negative lookups
+  /// keep stopping early at an empty slot.
+  METL_NODISCARD bool reclaim_due() const noexcept { return tombstones_ > bucket_count / 8; }
 
   storage_for<value_type> storage_[bucket_count];
   slot_state states_[bucket_count];
