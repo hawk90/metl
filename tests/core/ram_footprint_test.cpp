@@ -111,17 +111,18 @@ namespace layout_pin {
 struct alignas(32) wide {
   unsigned char payload[40];
 };
+// A variable template, not a constexpr function: CodeQL's unused-function
+// query does not count uses inside static_assert and flagged the function.
 template <typename T, std::size_t N>
-constexpr bool same_layout() {
-  return sizeof(metl::detail::array_storage<T, N>) == sizeof(metl::storage_for<T>[N]) &&
-         alignof(metl::detail::array_storage<T, N>) == alignof(metl::storage_for<T>[N]) &&
-         std::is_trivially_default_constructible_v<metl::detail::array_storage<T, N>>;
-}
-static_assert(same_layout<char, 1>(), "array_storage<char, 1> changed layout");
-static_assert(same_layout<char, 7>(), "array_storage<char, 7> changed layout");
-static_assert(same_layout<u32, 256>(), "array_storage<u32, 256> changed layout");
-static_assert(same_layout<std::uint64_t, 3>(), "array_storage<u64, 3> changed layout");
-static_assert(same_layout<wide, 5>(), "array_storage of an over-aligned type changed layout");
+constexpr bool same_layout_v =
+    sizeof(metl::detail::array_storage<T, N>) == sizeof(metl::storage_for<T>[N]) &&
+    alignof(metl::detail::array_storage<T, N>) == alignof(metl::storage_for<T>[N]) &&
+    std::is_trivially_default_constructible_v<metl::detail::array_storage<T, N>>;
+static_assert(same_layout_v<char, 1>, "array_storage<char, 1> changed layout");
+static_assert(same_layout_v<char, 7>, "array_storage<char, 7> changed layout");
+static_assert(same_layout_v<u32, 256>, "array_storage<u32, 256> changed layout");
+static_assert(same_layout_v<std::uint64_t, 3>, "array_storage<u64, 3> changed layout");
+static_assert(same_layout_v<wide, 5>, "array_storage of an over-aligned type changed layout");
 }  // namespace layout_pin
 
 static_assert(fits<metl::fixed_vector<u32, 256>>(256 * sizeof(u32), 1),
