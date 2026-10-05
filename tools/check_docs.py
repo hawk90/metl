@@ -119,7 +119,11 @@ QEMU_MATRIX_ROW = re.compile(
     r"\s+expect_build_fail:\s*\"([^\"]*)\"")
 
 QUALIFIED = re.compile(r"\bmetl::([a-zA-Z_][a-zA-Z_0-9]*)")
-RELATIVE_LINK = re.compile(r"\]\(((?!https?:|#)[^)\s]+\.(?:cpp|hpp|md|py|yml|txt))[^)]*\)")
+RELATIVE_LINK = re.compile(r"\]\(((?!https?:|#)[^)\s]+\.(?:cpp|hpp|md|py|yml|txt|svg|png))[^)]*\)")
+# The README header is HTML (a centred logo and badges), so its links are
+# `href=` / `src=` / `srcset=` attributes, which the markdown pattern above
+# never sees.
+HTML_LINK = re.compile(r'(?:href|src|srcset)="((?!https?:|#|mailto:)[^"\s#]+)')
 EXAMPLE_REF = re.compile(r"examples/([a-zA-Z_0-9]+)\.cpp")
 
 
@@ -214,7 +218,7 @@ def check(repo_root="."):
                                        f"header defines"))
 
         # D2
-        for target in sorted(set(RELATIVE_LINK.findall(text))):
+        for target in sorted(set(RELATIVE_LINK.findall(text)) | set(HTML_LINK.findall(text))):
             if not (path.parent / target).resolve().exists():
                 problems.append(("D2", f"{doc}: links to `{target}`, which does not exist"))
 
@@ -401,6 +405,7 @@ def self_test():
         (root / "README.md").write_text(
             "`metl::fixed_vector` is fine and `metl::ghost_type` is not.\n"
             "[missing](docs/nope.md)\n"
+            "<img src=\"docs/nope.svg\" alt=\"\">\n"
             "[unbuilt](examples/never.cpp)\n")
         for extra in DOCS[1:]:
             (root / extra).parent.mkdir(parents=True, exist_ok=True)
@@ -431,6 +436,7 @@ def self_test():
         runner.chmod(0o755)
         readme_broken = ("`metl::fixed_vector` is fine and `metl::ghost_type` is not.\n"
                          "[missing](docs/nope.md)\n"
+                         "<img src=\"docs/nope.svg\" alt=\"\">\n"
                          "[unbuilt](examples/never.cpp)\n"
                          "runs 9 tests per core\n")
         (root / "README.md").write_text(readme_broken)
@@ -439,6 +445,10 @@ def self_test():
         for rule in ("D1", "D2", "D3", "D4", "D5", "D6", "D7"):
             if rule not in found:
                 failures.append(f"{rule} did not fire on a tree that violates it")
+
+        # D2 must see HTML attributes too, not just markdown links.
+        if not any(rule == "D2" and "nope.svg" in message for rule, message in check(root)):
+            failures.append("D2 did not flag a broken HTML <img src=> link")
 
         # D5 must have fired on the restated budget and NOT on the -mcpu flag.
         d5 = [message for rule, message in check(root) if rule == "D5"]

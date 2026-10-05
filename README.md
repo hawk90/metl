@@ -1,10 +1,29 @@
-# METL
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/metl-logo-dark.svg">
+    <img src="docs/assets/metl-logo-light.svg" alt="METL — Modern Embedded Template Library" width="360">
+  </picture>
+</p>
 
-Modern Embedded Template Library
+<p align="center">
+  Header-only C++17 building blocks for firmware: no heap, no exceptions, no RTTI, a bounded worst case for every operation.
+</p>
 
-[![CI](https://github.com/hawk90/metl/actions/workflows/ci.yml/badge.svg)](https://github.com/hawk90/metl/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/hawk90/metl)](https://github.com/hawk90/metl/releases/latest)
+<p align="center">
+  <a href="https://github.com/hawk90/metl/actions/workflows/ci.yml"><img src="https://github.com/hawk90/metl/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/hawk90/metl/releases/latest"><img src="https://img.shields.io/github/v/release/hawk90/metl" alt="Release"></a>
+  <img src="https://img.shields.io/badge/C%2B%2B-17-blue.svg" alt="C++17">
+  <a href="https://hawk90.github.io/metl/"><img src="https://img.shields.io/badge/docs-API-blue.svg" alt="API docs"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="docs/CHOOSING.md">Choosing a container</a> ·
+  <a href="docs/COOKBOOK.md">Cookbook</a> ·
+  <a href="docs/SCOPE.md">Scope</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
 
 ## Overview
 
