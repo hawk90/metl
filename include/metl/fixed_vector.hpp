@@ -372,6 +372,9 @@ class fixed_vector {
       emplace_back(std::forward<Args>(args)...);
       return begin() + index;
     }
+    // Build the new value before shifting: `args` may refer to an element of
+    // this vector (`v.insert(v.begin(), v[0])`), which the shift moves from.
+    T value(std::forward<Args>(args)...);
     asan_unpoison_all_();
     // Construct new element at end via move of last, then shift right.
     ::new (static_cast<void*>(slot_(size_))) T(static_cast<T&&>(data()[size_ - 1]));
@@ -379,8 +382,7 @@ class fixed_vector {
     for (size_type i = size_ - 2; i > index; --i) {
       data()[i] = static_cast<T&&>(data()[i - 1]);
     }
-    data()[index].~T();
-    ::new (static_cast<void*>(slot_(index))) T(std::forward<Args>(args)...);
+    data()[index] = static_cast<T&&>(value);
     asan_poison_tail_();
     return begin() + index;
   }
@@ -396,10 +398,11 @@ class fixed_vector {
     if (n == 0) {
       return begin() + index;
     }
-    // Simple implementation: insert one-by-one via emplace.
-    // `value` is a const T& and emplace makes copies, so reference stability is fine.
+    // Copy once up front: `value` may refer to an element of this vector, and
+    // each emplace below shifts it, so re-reading it would copy a neighbour.
+    const T copy(value);
     for (size_type i = 0; i < n; ++i) {
-      emplace(begin() + index + i, value);
+      emplace(begin() + index + i, copy);
     }
     return begin() + index;
   }

@@ -178,7 +178,7 @@ if(METL_BUILD_TESTS)
     containers/unordered_reclaim
     containers/static_unordered_map_emplace containers/lookup_table
     containers/recoverable_api containers/fixed_priority_queue
-    containers/operation_count
+    containers/operation_count containers/alias_insert
     # memory/
     memory/arena_allocator memory/static_allocator memory/monotonic_buffer
     memory/object_pool memory/allocator_overflow
@@ -192,7 +192,7 @@ if(METL_BUILD_TESTS)
     vocab/optional vocab/optional_constexpr vocab/expected vocab/expected_regression
     vocab/variant vocab/variant_regression vocab/span vocab/function_ref
     vocab/fixed_function vocab/fixed_function_const vocab/delegate
-    vocab/intrusive_ptr vocab/intrusive_ptr_contract vocab/scope_exit vocab/type_traits
+    vocab/intrusive_ptr vocab/intrusive_ptr_contract vocab/intrusive_ptr_alias vocab/scope_exit vocab/type_traits
     vocab/variant_selfassign vocab/versioned_handle
     # bits/
     bits/bit bits/bitfield bits/crc8 bits/crc16 bits/crc32 bits/hash

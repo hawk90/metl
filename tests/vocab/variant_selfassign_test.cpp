@@ -70,5 +70,30 @@ int main() {
     CHECK_EQ(metl::get<int>(v), 99);
   }
 
+  // (4) Switching alternatives from a subobject of the active alternative
+  // (docs/AUDIT.md, Section G). The old path emplace()d directly, which
+  // destroyed the `holder` before reading `holder::inner`. `poisoned` writes
+  // -1 into itself on destruction, so the stale read shows up as a wrong value
+  // even without a sanitizer.
+  {
+    struct poisoned {
+      int value;
+      explicit poisoned(int v) noexcept : value(v) {}
+      poisoned(const poisoned& o) noexcept : value(o.value) {}
+      poisoned(poisoned&& o) noexcept : value(o.value) {}
+      poisoned& operator=(const poisoned&) noexcept = default;
+      poisoned& operator=(poisoned&&) noexcept = default;
+      ~poisoned() { value = -1; }
+    };
+    struct holder {
+      poisoned inner;
+      int tag;
+    };
+    metl::variant<holder, poisoned> v{holder{poisoned{77}, 1}};
+    v = metl::get<holder>(v).inner;
+    CHECK_EQ(v.index(), 1u);
+    CHECK_EQ(metl::get<poisoned>(v).value, 77);
+  }
+
   return metl_test::exit_code();
 }

@@ -483,8 +483,11 @@ class flat_map {
       return false;
     }
 
+    // Build the entry before shifting: `value` may refer to a mapped value in
+    // this map (`m.try_emplace(k, m.nth(0).value)`), which the shift moves from.
+    value_type entry{std::forward<K>(key), std::forward<V>(value)};
     shift_right_from(index);
-    new (storage_[index].addr()) value_type{std::forward<K>(key), std::forward<V>(value)};
+    new (storage_[index].addr()) value_type(static_cast<value_type&&>(entry));
     ++size_;
     return true;
   }

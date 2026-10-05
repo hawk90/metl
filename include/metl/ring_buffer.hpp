@@ -22,6 +22,7 @@
 #include "metl/detail/ring_core.hpp"
 
 #include <cstddef>
+#include <type_traits>
 #include <utility>
 
 namespace metl {
@@ -66,7 +67,17 @@ class ring_buffer : public detail::ring_core<T, Capacity> {
   template <typename... Args>
   reference push_overwrite(Args&&... args) {
     if (full()) {
-      this->pop_front();
+      if constexpr (std::is_move_constructible_v<T>) {
+        // Build the value before evicting: `args` may refer to the element
+        // being evicted (`rb.push_overwrite(rb.front())`).
+        T value(std::forward<Args>(args)...);
+        this->pop_front();
+        return this->emplace_back(static_cast<T&&>(value));
+      } else {
+        // A non-movable T cannot be built aside; constructing it from the
+        // element it replaces is the caller's to avoid.
+        this->pop_front();
+      }
     }
 
     return this->emplace_back(std::forward<Args>(args)...);
