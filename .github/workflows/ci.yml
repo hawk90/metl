@@ -1678,6 +1678,21 @@ jobs:
           find include tests examples \( -name '*.hpp' -o -name '*.cpp' \) \
             | xargs clang-format --dry-run --Werror
 
+      # The pre-commit hook and the install above must be the same clang-format,
+      # or a contributor's local format differs from this job's. Renovate reads
+      # both from one source (renovate.json), but nothing else stops a hand edit
+      # -- or a datasource publishing first -- from moving only one of them.
+      - name: The pre-commit and CI clang-format pins agree
+        run: |
+          set -euo pipefail
+          ci="$(sed -n 's/.*pipx install clang-format==\([0-9][0-9.]*\).*/\1/p' .github/workflows/ci.yml | head -1)"
+          hook="$(awk '/mirrors-clang-format/{found=1} found && /rev:/{sub(/.*rev: *v?/, ""); print; exit}' .pre-commit-config.yaml)"
+          echo "ci: ${ci:-<none>}  pre-commit: ${hook:-<none>}"
+          if [ -z "${ci}" ] || [ -z "${hook}" ] || [ "${ci}" != "${hook}" ]; then
+            echo "::error::clang-format pins disagree: ci.yml has '${ci}', .pre-commit-config.yaml has '${hook}'. Move both together."
+            exit 1
+          fi
+
   # ---------------------------------------------------------------------------
   # Fuzz smoke — build the libFuzzer harnesses (clang, ASan+UBSan+fuzzer) and
   # run each for a short bounded time against its seed corpus. A crash, leak, or
