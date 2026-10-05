@@ -156,15 +156,31 @@ Before requesting review:
 Follow the [Conventional Commits](https://www.conventionalcommits.org/) format:
 
 ```
-<type>(<scope>): <subject>
+<type>[(<scope>)][!]: <subject>
 
 [optional body]
 
 [optional footer]
 ```
 
-Common types: `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`,
-`chore`. Examples:
+| Type | For |
+|---|---|
+| `feat` | a new type, function or option |
+| `fix` | a bug fix |
+| `perf` | faster or smaller, same behaviour |
+| `refactor` | restructuring with no behaviour change |
+| `docs` | documentation only |
+| `test` | tests, fuzz harnesses (`test(fuzz)`) |
+| `ci` | workflows, CI tooling, the gates |
+| `build` | CMake, packaging, toolchain files |
+| `chore` | everything else: dependency bumps (`chore(deps)`), releases (`chore(release)`) |
+| `revert` | reverting an earlier commit |
+| `style` | formatting only |
+
+The scope is optional and lowercase -- usually the header or area
+(`fix(spsc_queue)`, `ci(release)`). A `!` before the colon marks a breaking
+change, which after 1.0 means a new major version. The subject is imperative,
+at most 72 characters, with no trailing period:
 
 ```
 feat(fixed_vector): add insert_range overload
@@ -172,5 +188,8 @@ fix(spsc_queue): correct memory order on pop
 docs(readme): document CMake integration
 ```
 
-Keep the subject in the imperative mood and under 72 characters. Reference
-issues in the footer with `Closes #NNN` where appropriate.
+`tools/check_commit_message.py` holds the rule. `pre-commit install` runs it as
+a commit-msg hook, and CI runs it on every **pull-request title** (`pr-title`,
+a required check): pull requests are squash-merged with the title as the commit
+subject, so the title is what lands on main. Reference issues in the footer
+with `Closes #NNN` where appropriate.

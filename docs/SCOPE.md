@@ -327,6 +327,7 @@ claim about a **gate** going stale, and nothing was checking those.
 | [`check_docs.py`](../tools/check_docs.py) | D1–D7: the documentation claims a machine can settle | `--self-test` |
 | [`check_compile_fail.py`](../tools/check_compile_fail.py) | that the public `static_assert`s actually fire, and that the gap between how many there are and how many are pinned only shrinks | `--self-test` |
 | [`check_mutants.py`](../tools/check_mutants.py) | that the gates above notice a deliberately broken library | `--self-test` |
+| [`check_commit_message.py`](../tools/check_commit_message.py) | that a pull-request title -- the subject squash-merging puts on main -- follows Conventional Commits with the agreed types | `--self-test` |
 | [`check_ci_gate.py`](../tools/check_ci_gate.py) | G1–G5: that every gate above can actually stop a merge — each `ci.yml` job is inside the `ci-gate` fan-in, and each context in `.github/required-checks.txt` still reports on a pull request | `--self-test` |
 
 `check_ci_gate.py` is last for a reason: it is the gate on the gates. Every
