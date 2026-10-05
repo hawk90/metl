@@ -53,6 +53,8 @@ struct mmio_register {
   ///        corresponding bits of `value`; all other bits are preserved.
   /// @param mask Bits to update. @param value Source of the new bit values.
   static void modify(T mask, T value) noexcept {
+    static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
+                  "mmio bit operations need an unsigned integer T: on a bool, ~mask is always true");
     const T current = read();
     const T cleared = static_cast<T>(current & static_cast<T>(~mask));
     write(static_cast<T>(cleared | static_cast<T>(value & mask)));
@@ -62,7 +64,11 @@ struct mmio_register {
   static void set_bits(T bits) noexcept { write(static_cast<T>(read() | bits)); }
 
   /// @brief Clear the given bits. @param bits Bits to clear.
-  static void clear_bits(T bits) noexcept { write(static_cast<T>(read() & static_cast<T>(~bits))); }
+  static void clear_bits(T bits) noexcept {
+    static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
+                  "mmio bit operations need an unsigned integer T: on a bool, ~mask is always true");
+    write(static_cast<T>(read() & static_cast<T>(~bits)));
+  }
 };
 
 /// @brief Runtime-address variant of `mmio_register`.
@@ -100,6 +106,8 @@ class mmio_ptr {
   ///        bits of `value`; all other bits are preserved.
   /// @param mask Bits to update. @param value Source of the new bit values.
   void modify(T mask, T value) const noexcept {
+    static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
+                  "mmio bit operations need an unsigned integer T: on a bool, ~mask is always true");
     const T current = read();
     const T cleared = static_cast<T>(current & static_cast<T>(~mask));
     write(static_cast<T>(cleared | static_cast<T>(value & mask)));
@@ -109,7 +117,11 @@ class mmio_ptr {
   void set_bits(T bits) const noexcept { write(static_cast<T>(read() | bits)); }
 
   /// @brief Clear the given bits. @param bits Bits to clear.
-  void clear_bits(T bits) const noexcept { write(static_cast<T>(read() & static_cast<T>(~bits))); }
+  void clear_bits(T bits) const noexcept {
+    static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
+                  "mmio bit operations need an unsigned integer T: on a bool, ~mask is always true");
+    write(static_cast<T>(read() & static_cast<T>(~bits)));
+  }
 
   /// @brief The underlying volatile pointer. @return Volatile pointer to the register.
   METL_NODISCARD constexpr volatile T* get() const noexcept { return addr_; }

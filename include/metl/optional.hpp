@@ -47,7 +47,8 @@ struct is_metl_optional<optional<U>> : true_type {};
 /// @brief A fixed-storage nullable value wrapper (in-place, no heap).
 ///
 /// Stores an optional `T` inside the object itself using an internal union; it
-/// never allocates. Trivially copyable when `T` is. On C++20 it is a literal
+/// never allocates. Copyable when `T` is, but never *trivially* copyable (it has a
+/// user-provided copy constructor and destructor). On C++20 it is a literal
 /// type and usable in constant expressions.
 /// @tparam T The contained value type.
 /// @note Accessors like `value()`, `operator*`, and `operator->` ASSERT (abort

@@ -190,7 +190,8 @@ void replace_live(U* slot, Args&&... args) {
 /// @brief A fixed-storage value-or-error result type (in-place, no heap).
 ///
 /// Holds either a value `T` or an error `E` in an internal union; it never
-/// allocates. Trivially copyable when both `T` and `E` are.
+/// allocates. Copyable when both `T` and `E` are, but never *trivially* copyable
+/// (user-provided copy constructor and destructor).
 /// @tparam T The expected (success) value type.
 /// @tparam E The error type.
 /// @note `value()`, `operator*`, `operator->`, and `error()` ASSERT (abort by

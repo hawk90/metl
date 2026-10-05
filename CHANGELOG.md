@@ -58,6 +58,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Memory safety at `METL_HARDENING_NONE`** (docs/AUDIT.md G.5):
+  `fixed_vector::emplace(pos, ...)` on a full vector and `pop_back()` on an empty
+  one (also `fixed_stack::pop`) wrote out of bounds with asserts stripped; both
+  are now `METL_HARDEN`. `monotonic_buffer::allocate` hardens its alignment like
+  `arena_allocator`.
+- **Low-severity fixes** (G.4/G.5): `mpmc_queue::size_approx` no longer wraps to
+  ~`SIZE_MAX` under contention; `fixed_string` `<` compares as `unsigned char`;
+  `span(ptr, 0)` is no longer ambiguous; a value-returning callable works in a
+  `void` `fixed_function` / `function_ref`; `intrusive_ptr` `*`/`->` assert
+  non-null; `deadline_scheduler` survives a nested `run_due`;
+  `fixed_deque::emplace_front` is ordered for a throwing constructor;
+  `event_dispatcher` never issues id 0.
+- **Rejected at compile time now:** `bit.hpp` functions on a type wider than 64
+  bits (they truncated `unsigned __int128`), `bitfield<..., bool>` and the mmio bit
+  helpers on `bool` (could not clear a bit), `static_message_queue<T, 0>`.
 - **Divergences from `std` and from METL's own documentation** (docs/AUDIT.md G.3):
   - `optional<scalar> o; o = {};` now **resets** `o`, as `std::optional` does; it
     used to engage it with `T{}`. Silent behaviour change for scalar `T` only.

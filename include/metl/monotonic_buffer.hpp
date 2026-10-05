@@ -51,6 +51,12 @@ class monotonic_buffer {
   /// @param alignment Required alignment; must not exceed max alignment.
   /// @return Pointer to the block, or null if the buffer lacks space (no throw).
   METL_NODISCARD void* allocate(size_type bytes, size_type alignment = alignof(std::max_align_t)) noexcept {
+    // As arena_allocator: a non-power-of-two alignment makes align_up return a
+    // misaligned pointer, so this is a memory-safety floor (docs/AUDIT.md G.4).
+    // Named first: inside METL_HARDEN's `!(expr)` the conjunction is a
+    // readability-simplify-boolean-expr finding.
+    const bool power_of_two = alignment != 0 && (alignment & (alignment - 1)) == 0;
+    METL_HARDEN(power_of_two);
     if (bytes == 0) {
       return nullptr;
     }

@@ -253,10 +253,16 @@ class METL_ATTRIBUTE_TRIVIAL_ABI intrusive_ptr {
 
   /// @brief Dereferences the managed object.
   /// @pre The pointer must be non-null.
-  METL_NODISCARD T& operator*() const noexcept { return *ptr_; }
+  METL_NODISCARD T& operator*() const noexcept {
+    METL_ASSERT(ptr_ != nullptr);
+    return *ptr_;
+  }
   /// @brief Member access on the managed object.
   /// @pre The pointer must be non-null.
-  METL_NODISCARD pointer operator->() const noexcept { return ptr_; }
+  METL_NODISCARD pointer operator->() const noexcept {
+    METL_ASSERT(ptr_ != nullptr);
+    return ptr_;
+  }
 
   /// @brief Tests whether a non-null object is held.
   METL_NODISCARD constexpr explicit operator bool() const noexcept { return ptr_ != nullptr; }

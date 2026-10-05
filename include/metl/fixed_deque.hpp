@@ -68,8 +68,11 @@ class fixed_deque : public detail::ring_core<T, Capacity> {
       return false;
     }
 
-    this->head_ = this->retreat(this->head_);
-    new (this->storage_[this->head_].addr()) T(std::forward<Args>(args)...);
+    // Construct first, then commit head_: a throwing constructor used to leave
+    // head_ on an unconstructed slot that the destructor then destroyed (G.5).
+    const auto slot = this->retreat(this->head_);
+    new (this->storage_[slot].addr()) T(std::forward<Args>(args)...);
+    this->head_ = slot;
     ++this->size_;
     return true;
   }

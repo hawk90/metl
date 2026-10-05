@@ -35,8 +35,11 @@ class event_dispatcher;
 ///
 /// Holds up to `Capacity` listeners in an inline array — no heap allocation.
 /// Each listener is a non-owning `delegate`, so the bound targets must outlive
-/// their subscription. Subscribing returns a stable `listener_id` used to
-/// unsubscribe.
+/// their subscription. Subscribing returns a `listener_id` used to
+/// unsubscribe. Ids come from a `size_t` counter: unique across 2^32
+/// subscriptions on a 32-bit target, after which they repeat, so a stale id
+/// held across that many subscribe calls could unsubscribe a newer listener
+/// (docs/AUDIT.md G.5). Id 0 is never issued.
 /// @tparam Capacity Maximum number of simultaneous listeners.
 /// @note Not thread-safe: subscribe/unsubscribe/dispatch must not run
 ///       concurrently.
@@ -68,6 +71,9 @@ class event_dispatcher<R(Args...), Capacity> {
       if (!slots_[i].active) {
         slots_[i].listener = listener;
         slots_[i].id = listener_id{next_id_++};
+        if (next_id_ == 0) {
+          next_id_ = 1;  // wrapped: keep 0 unissued
+        }
         slots_[i].active = true;
         return slots_[i].id;
       }
