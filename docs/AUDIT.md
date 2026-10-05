@@ -515,3 +515,84 @@ The `size_approx` wrap itself needs 2^size_t operations and cannot be reached in
 a test. What the test pins is the ordinary path, so a future "simplification"
 that reintroduces a comparison has something to fail against; the wrap case is
 correct by construction now that the arithmetic is identical to `spsc_queue`'s.
+
+## Section G — Whole-tree review (2026-10-05)
+
+A read of all 66 headers, split three ways (vocabulary types, containers,
+sync/memory/control/bits). **Every finding below was reproduced** with a
+standalone program under `-fsanitize=address,undefined` before it was written
+down; the one exception is marked. None of them is caught by the existing
+suite, which was fully green when the review started.
+
+Findings are grouped by root cause, because that is how they are fixed.
+
+### G.1 — Reading an argument after destroying what it refers to
+
+One pattern, five places: the operation moves or destroys existing elements and
+*then* reads its argument, which may be one of those elements. `std::vector`
+and `std::variant` are required to handle this; METL's checked-by-default
+promise means it must as well. Each silently produced a wrong value — two were
+also use-after-free under ASan.
+
+| Sev | Where | Finding | Status |
+|---|---|---|---|
+| HIGH | `intrusive_ptr.hpp` copy/move `operator=`, `reset` | `reset()` ran before `other` was read. `p = p->next` (the list walk) destroyed the head, whose destructor released the second node, and left `p` null. | ✅ store, then release |
+| HIGH | `fixed_vector.hpp` `emplace`, `insert(pos, n, v)` | the shift moved from the element `args` referred to. `v.insert(v.begin(), v[0])` gave `moved-from 10 20 30`. | ✅ build the value before the shift |
+| HIGH | `flat_map.hpp` `try_insert_at` | same, for `try_emplace` / `emplace` / `insert_or_assign` with a mapped value taken from the map. `flat_set` is not affected: an equal key is rejected before the shift. | ✅ build the entry before the shift |
+| HIGH | `ring_buffer.hpp` `push_overwrite` | `push_overwrite(rb.front())` on a full ring evicted the front, then copied from it. | ✅ build the value before evicting (full path only) |
+| MED | `variant.hpp` converting `operator=` | E.2 fixed the same-alternative case. Switching alternatives still destroyed the active one first, so `v = get<pair<string,int>>(v).first` read freed memory. | ✅ build the new alternative first when it is movable |
+
+The `fixed_vector` and `variant` fixes cost one extra move on the non-aliasing
+path. `std` implementations pay the same move for the same reason; detecting
+the alias instead would need a pointer-range test that is itself the UB E.2
+removed from `object_pool`.
+
+### G.2 — Hashing object bytes instead of values
+
+| Sev | Where | Finding | Status |
+|---|---|---|---|
+| HIGH | `hash.hpp` `fnv1a_hash` + `fixed_string` | `fixed_string` passes the `has_unique_object_representations` gate, but `assign`/`clear` leave stale bytes after the terminator. Equal strings hash differently and `static_unordered_map::find` misses. | ⏳ open |
+| MED | `hash.hpp` transparent `fnv1a_hash` | hashes the bytes of whatever type is passed, so `find(5)` misses a `long` key `5L`. | ⏳ open |
+| MED | `hash.hpp` `fnv1a(const T*, len)` | documented as `len` elements, hashes `len` bytes. | ⏳ open |
+
+### G.3 — Divergence from `std` or from METL's own documentation
+
+| Sev | Where | Finding | Status |
+|---|---|---|---|
+| MED | `optional.hpp` `operator=(U&&)` | `o = {}` engages with `T{}`; `std::optional` resets. A silent behaviour difference on a common idiom. | ⏳ open |
+| MED | `fixed_function.hpp` generic `F&&` ctor | a null function pointer of a *different* signature is stored as engaged; calling it jumps to 0 with no assert. | ⏳ open |
+| MED | `static_unordered_set.hpp` `emplace` | documented to return the existing element on a duplicate; asserts instead, and at `METL_HARDENING=0` constructs over the live slot (leak, `size()` wrong). The map was fixed (Section D row 48); the set was not. | ⏳ open |
+| MED | `static_unordered_map/set` erase | `rehash_in_place` moves live elements behind an iterator, so erasing during iteration skips elements (62 of 64 visited). Undocumented — this is the open iterator-invalidation TODO item, with evidence. | ⏳ open |
+| MED | `fsm.hpp` `dispatch` | re-entrant `dispatch` from an action runs the outer entry hook after the inner transition: `exit A, exit B, enter C, enter B`, final state C. | ⏳ open |
+| MED | `format.hpp` `try_format_int` | accepts unsigned `T` and casts to `long long`: `UINT64_MAX` prints `-1`. | ⏳ open |
+| MED* | `expected.hpp` `emplace`, `emplace_error` (both specialisations) | destroy, then construct, without updating `has_value_`; a throwing constructor double-destroys. *Exceptions-enabled builds only. | ⏳ open |
+
+### G.4 — Low
+
+| Where | Finding | Status |
+|---|---|---|
+| `mpmc_queue.hpp` `size_approx` | loads tail before head, so concurrent pops make the difference wrap to ~`SIZE_MAX` (84 in 20M samples); `empty()` and `full()` then both mislead. Load head first and clamp to `Capacity`. | ⏳ open |
+| `bit.hpp` builtin path | `unsigned __int128` is integral under clang and is truncated to 64 bits (wrong results, `__builtin_ctz(0)`). | ⏳ open |
+| `monotonic_buffer.hpp` `allocate` | no power-of-two check on `alignment`; `arena_allocator` has one. | ⏳ open |
+| `intrusive_ptr.hpp` `operator*`, `operator->` | `@pre` non-null with no `METL_ASSERT`. | ⏳ open |
+| `fixed_function.hpp`, `function_ref.hpp` | `R = void` with a value-returning callable passes the constraint, then fails to compile in the invoker. | ⏳ open |
+| `span.hpp` | `span<int>(arr, 0)` is ambiguous between `(T*, size_t)` and `(T*, T*)`. | ⏳ open |
+| `fixed_string.hpp` `operator<` | compares signed `char`; `std::string` compares as `unsigned char`. | ⏳ open |
+| `optional`/`expected`/`variant` docs | claim "trivially copyable when T is"; none are. | ⏳ open |
+
+### Checked and found correct
+
+CRC check values (`"123456789"`, both table modes); `parse.hpp` exhaustively over
+16-bit ranges and at every 64-bit limit; `spsc_queue`, `spsc_byte_ring` and
+`mpmc_queue` under TSan; 20k randomised `arena_allocator`/`monotonic_buffer`
+runs including alignments to 2^62 near the end of the buffer; `object_pool`
+double/foreign free; hash-table tombstone churn at full capacity; `optional`,
+`expected`, `variant` reinit, swap and comparison paths.
+
+### Regression coverage
+
+`tests/containers/alias_insert_test.cpp`, `tests/vocab/intrusive_ptr_alias_test.cpp`
+and block (4) of `tests/vocab/variant_selfassign_test.cpp` cover G.1. Each was
+run against the unfixed headers first and failed (12 checks across the three).
+They detect the stale read with a type that poisons itself on move and
+destruction, not with a sanitizer, so they mean the same thing on QEMU.

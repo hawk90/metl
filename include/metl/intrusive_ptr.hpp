@@ -215,15 +215,13 @@ class METL_ATTRIBUTE_TRIVIAL_ABI intrusive_ptr {
 
   /// @brief Copy assignment; releases the current reference and shares `other`.
   intrusive_ptr& operator=(const intrusive_ptr& other) {
-    if (this == &other) {
-      return *this;
+    // Take the new reference before dropping the old one: the release can
+    // destroy the object that owns `other` (`p = p->next` on a list).
+    pointer incoming = other.ptr_;
+    if (incoming != nullptr) {
+      intrusive_ptr_add_ref(incoming);
     }
-
-    reset();
-    ptr_ = other.ptr_;
-    if (ptr_ != nullptr) {
-      intrusive_ptr_add_ref(ptr_);
-    }
+    release_and_store(incoming);
     return *this;
   }
 
@@ -233,9 +231,10 @@ class METL_ATTRIBUTE_TRIVIAL_ABI intrusive_ptr {
       return *this;
     }
 
-    reset();
-    ptr_ = other.ptr_;
+    // Read `other` before the release, for the same reason as copy assignment.
+    pointer incoming = other.ptr_;
     other.ptr_ = nullptr;
+    release_and_store(incoming);
     return *this;
   }
 
@@ -261,12 +260,7 @@ class METL_ATTRIBUTE_TRIVIAL_ABI intrusive_ptr {
   METL_NODISCARD constexpr bool has_value() const noexcept { return ptr_ != nullptr; }
 
   /// @brief Releases the held reference (decrementing the count) and nulls this.
-  void reset() noexcept {
-    if (ptr_ != nullptr) {
-      intrusive_ptr_release(ptr_);
-      ptr_ = nullptr;
-    }
-  }
+  void reset() noexcept { release_and_store(nullptr); }
 
   /// @brief Releases ownership without decrementing the reference count.
   /// @return The raw pointer; the caller now owns the strong reference and must
@@ -285,6 +279,17 @@ class METL_ATTRIBUTE_TRIVIAL_ABI intrusive_ptr {
   }
 
  private:
+  // Stores `incoming`, then releases the previous pointer. The order matters:
+  // the release may run a destructor that reaches back into `*this` or into
+  // the source of `incoming`, so `ptr_` must already hold its final value.
+  void release_and_store(pointer incoming) noexcept {
+    pointer old = ptr_;
+    ptr_ = incoming;
+    if (old != nullptr) {
+      intrusive_ptr_release(old);
+    }
+  }
+
   pointer ptr_;
 };
 

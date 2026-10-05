@@ -346,13 +346,24 @@ class variant {
             typename = std::enable_if_t<(detail::index_of_type<Decayed, Ts...>::value != variant_npos)>,
             typename = std::enable_if_t<(detail::count_of_type<Decayed, Ts...>::value == 1)>>
   variant& operator=(T&& value) noexcept(std::is_nothrow_constructible_v<Decayed, T&&> &&
-                                         std::is_nothrow_assignable_v<Decayed&, T&&>) {
+                                         std::is_nothrow_assignable_v<Decayed&, T&&> &&
+                                         (!std::is_move_constructible_v<Decayed> ||
+                                          std::is_nothrow_move_constructible_v<Decayed>)) {
     // When the active alternative already holds `Decayed`, assign in place.
     // Routing unconditionally through emplace() would reset() (destroy the
     // active alternative) *before* reading `value`; if `value` aliases that
     // alternative (e.g. `v = get<Decayed>(v)`), that is a use-after-destruction.
+    //
+    // Switching alternatives has the same hazard one level down: `value` can be
+    // a subobject of the active alternative (`v = get<pair<string, int>>(v).first`
+    // when `v` also holds a `string` alternative). Build the new value first,
+    // then emplace from it. A non-movable alternative has no such path and is
+    // constructed directly, as before.
     if (index_ == detail::index_of_type<Decayed, Ts...>::value) {
       *std::launder(static_cast<Decayed*>(raw_addr())) = std::forward<T>(value);
+    } else if constexpr (std::is_move_constructible_v<Decayed>) {
+      Decayed incoming(std::forward<T>(value));
+      emplace<Decayed>(static_cast<Decayed&&>(incoming));
     } else {
       emplace<Decayed>(std::forward<T>(value));
     }

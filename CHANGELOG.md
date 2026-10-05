@@ -26,6 +26,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Inserting or assigning a value that refers to an element of the same
+  container read it after it was moved or destroyed** (docs/AUDIT.md G.1).
+  Each case silently stored the wrong value:
+  - `intrusive_ptr`: `p = p->next` destroyed the next node too and left `p` null.
+  - `fixed_vector::insert`/`emplace`: `v.insert(v.begin(), v[0])`.
+  - `flat_map::try_emplace`/`emplace`/`insert_or_assign`: a mapped value taken
+    from the same map.
+  - `ring_buffer::push_overwrite(rb.front())` on a full ring (use-after-free).
+  - `variant`: switching alternatives from a subobject of the active one
+    (use-after-free). The E.2 fix had covered only the same-alternative case.
 - **`metl::visit` silently truncated a visitor's result** when the visitor
   returned a different type per alternative. The result type was deduced from
   alternative **zero** and every other alternative was converted to it, so
