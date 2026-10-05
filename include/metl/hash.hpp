@@ -248,7 +248,20 @@ struct fnv1a_hash {
 
   template <typename T>
   METL_NODISCARD std::size_t operator()(const T& value) const noexcept {
-    if constexpr (detail::is_char_range<T>::value) {
+    if constexpr (std::is_array_v<T> && std::is_same_v<std::remove_cv_t<std::remove_extent_t<T>>, char>) {
+      // A `char[N]` buffer: its characters up to the first NUL, never past N.
+      // Without this, a non-const array bound here as T and hashed all N bytes.
+      std::size_t len = 0;
+      while (len < std::extent_v<T> && value[len] != '\0') {
+        ++len;
+      }
+      return fnv1a(value, len);
+    } else if constexpr (std::is_same_v<T, char*>) {
+      // A mutable `char*` prefers this template over the `const char*`
+      // overload, and a pointer passes the unique-representation gate: it
+      // hashed the ADDRESS (docs/AUDIT.md G.2).
+      return (*this)(static_cast<const char*>(value));
+    } else if constexpr (detail::is_char_range<T>::value) {
       // Not the object representation: metl::fixed_string keeps stale bytes
       // past its terminator, so two equal strings can differ there (AUDIT G.2).
       return fnv1a(value.data(), value.size());

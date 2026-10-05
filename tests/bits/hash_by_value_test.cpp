@@ -73,6 +73,23 @@ int main() {
     CHECK(found != nullptr && *found == 7);
   }
 
+  // A mutable `char*` and a non-const `char[N]` hash the same characters as a
+  // `const char*`. The `char*` used to bind the template and hash the pointer's
+  // address; the array hashed all N bytes, including what follows the NUL.
+  {
+    char buffer[32] = "abc";
+    char* mutable_ptr = buffer;
+    CHECK_EQ(h(mutable_ptr), h("abc"));
+    CHECK_EQ(h(buffer), h("abc"));
+
+    char unterminated[3] = {'a', 'b', 'c'};
+    CHECK_EQ(h(unterminated), h("abc"));  // bounded by N, not by a NUL
+
+    metl::static_unordered_map<metl::fixed_string<7>, int, 8, metl::fnv1a_hash, std::equal_to<>> map;
+    map.emplace(metl::fixed_string<7>("abc"), 1);
+    CHECK(map.find(mutable_ptr) != nullptr);
+  }
+
   // Integers hash by value, whatever their width.
   {
     CHECK_EQ(h(5), h(5L));
