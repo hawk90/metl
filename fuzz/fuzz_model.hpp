@@ -124,7 +124,11 @@ class map_oracle {
     // value.
     for (const auto& entry : model_) {
       const Value* found = map_.find(entry.first);
-      require(found != nullptr);
+      // An explicit trap rather than require(): gcc's -Wnull-dereference cannot
+      // see through require() when it is not inlined (MinSizeRel), and warned.
+      if (found == nullptr) {
+        __builtin_trap();
+      }
       require(*found == entry.second);
     }
 
