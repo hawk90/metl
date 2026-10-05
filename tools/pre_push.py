@@ -59,7 +59,13 @@ def step(title, command, **kwargs):
     """Runs one command, printing only a status line unless it fails."""
     started = time.monotonic()
     print(f"  {title} ...", end="", flush=True)
-    result = subprocess.run(command, cwd=REPO, capture_output=True, text=True, **kwargs)
+    # This script runs from git's pre-push hook, where git exports GIT_DIR and
+    # friends. A checker that then runs git in a temporary directory (the
+    # self-test fixtures do) would be answered about the real repository, so
+    # every step gets an environment without them.
+    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    env.update(kwargs.pop("env", {}))
+    result = subprocess.run(command, cwd=REPO, capture_output=True, text=True, env=env, **kwargs)
     elapsed = time.monotonic() - started
     if result.returncode != 0:
         print(f" FAILED ({elapsed:.0f}s)")
