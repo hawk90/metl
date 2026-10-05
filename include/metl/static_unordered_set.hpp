@@ -6,8 +6,8 @@
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
 ///   | `find`, `contains`, `count` | wait-free, bounded by `bucket_count` probes |
-///   | `insert`, `emplace` | wait-free, bounded by `bucket_count` probes |
-///   | `erase` | wait-free, bounded by `bucket_count` probes **plus, occasionally, a full rebuild** |
+///   | `insert`, `emplace` (new key) | wait-free, `bucket_count` probes **plus, occasionally, a rebuild** |
+///   | `erase` | wait-free, bounded by `bucket_count` probes; moves nothing |
 ///   | `clear`, iteration, copy, destructor | wait-free, bounded by `bucket_count` |
 ///
 /// Open addressing with linear probing: the worst case is a probe run the length of
@@ -28,21 +28,30 @@
 /// slot does -- so a table that only ever accumulated them would answer "not
 /// present" by walking further and further, until every miss cost the full
 /// `bucket_count`. Still bounded; steadily worse. So once tombstones pass one
-/// eighth of the table, `rehash_in_place` rebuilds it without allocating, and
-/// misses go back to stopping early.
+/// eighth of the table, the next insertion of a new key runs `rehash_in_place`
+/// first, which rebuilds the table without allocating, and misses go back to
+/// stopping early.
 ///
-/// The price is on `erase`, and it is why that row is split above. Most erases are
-/// a probe run. The one that crosses the threshold also move-constructs every live
-/// element -- up to `bucket_count` of them, plus the probing to re-place each. That
-/// rebuild is bounded (it visits each slot once, and its inner carry loop
-/// terminates because every iteration turns one more slot permanently occupied),
-/// but it is a latency spike on an operation that is otherwise cheap, and a caller
-/// with a deadline on `erase` needs to know it exists.
+/// The price is on inserting a new key, and it is why that row is split above.
+/// Most inserts are a probe run. The one that finds the threshold crossed also
+/// move-constructs every live element -- up to `bucket_count` of them, plus the
+/// probing to re-place each. That rebuild is bounded (it visits each slot once,
+/// and its inner carry loop terminates because every iteration turns one more
+/// slot permanently occupied), but it is a latency spike on an operation that is
+/// otherwise cheap, and a caller with a deadline on insertion needs to know it
+/// exists.
+///
+/// @par Iterator invalidation
+/// As in `static_unordered_map`: **`erase` invalidates only the erased element**,
+/// so erasing while iterating visits every element; **inserting a new key may
+/// invalidate all iterators, pointers and references** (the rebuild runs there).
+/// Lookups invalidate nothing (docs/AUDIT.md G.3).
 ///
 /// `tests/containers/unordered_reclaim_test.cpp` holds the reclaim to that: it
-/// counts moves of a key type through an erase, which is zero unless a rebuild
-/// fired. Without it the reclaim could be deleted and nothing would notice -- the
-/// type stays correct, only slower, which no other test or fuzz harness can see.
+/// counts moves of a key type through an insert, which is one unless a rebuild
+/// fired -- and through an erase, which must always be zero. Without it the
+/// reclaim could be deleted and nothing would notice -- the type stays correct,
+/// only slower, which no other test or fuzz harness can see.
 ///
 /// Two bounds this header does not own: `Hash` and `KeyEqual` are called on the
 /// probe path, so an unbounded hash or comparison makes every operation above
@@ -400,7 +409,6 @@ class static_unordered_set {
     }
 
     destroy_at(index, slot_state::tombstone);
-    reclaim_if_needed();
     return true;
   }
 
@@ -427,7 +435,7 @@ class static_unordered_set {
       return false;
     }
 
-    construct_at(index, std::forward<K>(key));
+    (void)construct_at(index, std::forward<K>(key));
     return true;
   }
 
@@ -450,7 +458,7 @@ class static_unordered_set {
     const bool available = locate_insert_index(key, &index);
     METL_ASSERT(available);
     METL_ASSERT(states_[index] != slot_state::occupied);
-    construct_at(index, std::forward<K>(key));
+    index = construct_at(index, std::forward<K>(key));
     return *slot_value(index);
   }
 
@@ -463,7 +471,6 @@ class static_unordered_set {
     }
 
     destroy_at(index, slot_state::tombstone);
-    reclaim_if_needed();
     return true;
   }
 
@@ -552,8 +559,35 @@ class static_unordered_set {
     return false;
   }
 
+  /// Places a new element at `index` and returns the slot it ended up in; see
+  /// static_unordered_map::construct_at for why the reclaim runs here and not
+  /// on erase (docs/AUDIT.md G.3).
   template <typename K>
-  void construct_at(size_type index, K&& key) {
+  METL_NODISCARD size_type construct_at(size_type index, K&& key) {
+    METL_HARDEN(index < bucket_count);
+    // Tombstones past ~1/8 of the table: rebuild before placing the new key, so
+    // negative lookups keep stopping early at an empty slot.
+    if (tombstones_ > bucket_count / 8) {
+      value_type entry(std::forward<K>(key));
+      rehash_in_place();
+      // After a rebuild there are no tombstones and the load factor is at most
+      // 1/2, so an empty slot always exists. `index` is reset so that a failed
+      // locate leaves npos and trips the same guard as the ordinary path -- one
+      // shared expression string, not a new one in .rodata.
+      index = npos;
+      (void)locate_insert_index(entry, &index);
+      METL_HARDEN(index < bucket_count);
+      ::new (storage_[index].addr()) value_type(static_cast<value_type&&>(entry));
+      states_[index] = slot_state::occupied;
+      ++size_;
+      return index;
+    }
+    place_at(index, std::forward<K>(key));
+    return index;
+  }
+
+  template <typename K>
+  void place_at(size_type index, K&& key) {
     // Always-on hard guard mirroring static_unordered_map: locate_insert_index
     // leaves index == npos only on a full table, and this must never escalate
     // into a wild out-of-bounds construct_at even at METL_HARDENING_NONE or with
@@ -638,14 +672,6 @@ class static_unordered_set {
         ::new (carry.addr()) value_type(static_cast<value_type&&>(displaced.ref()));
         displaced.ptr()->~value_type();
       }
-    }
-  }
-
-  /// @brief Trigger an in-place rebuild once tombstones cross ~1/8 of the table.
-  /// Bounds the tombstone density so negative lookups always terminate at an empty slot.
-  void reclaim_if_needed() noexcept {
-    if (tombstones_ > bucket_count / 8) {
-      rehash_in_place();
     }
   }
 

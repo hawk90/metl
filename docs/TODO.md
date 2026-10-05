@@ -94,7 +94,7 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   drives one thread, so a harness there would exercise the uncontended path and
   claim coverage it did not earn. TSan in `ci.yml` is what covers those.
 - [x] **The tombstone reclaim is held to its claim.** `rehash_in_place` /
-  `reclaim_if_needed` (#18) could be deleted and nothing would notice: replacing
+  the reclaim trigger (#18) could be deleted and nothing would notice: replacing
   the trigger with `if (false)` in both headers left the whole suite green and
   every fuzz harness clean. Fixed two ways.
   **The documentation was wrong first.** #63's prose credited the reclaim with
@@ -506,7 +506,8 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   the same status as the two items below, which really are waiting for a caller.
 - [ ] **Deferred pending a caller:** `fixed_bitset`, compile-time
   `static_string_map` / perfect hash. See the freeze note above.
-- [ ] Iterator-invalidation contracts documented per container.
+- [x] Iterator-invalidation contracts documented per container (`docs/CHOOSING.md`,
+  2026-10-05) -- prompted by a real bug: erase-while-iterating skipped elements (AUDIT G.3).
 - [ ] Compile-time cost: continue trimming heavy std-header deps where safe (#11).
 
 ### 🌍 Environment breadth (deferred — integrate later)

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`static_unordered_map` / `static_unordered_set`: the tombstone rebuild runs
+  on inserting a new key, not on `erase`** (docs/AUDIT.md G.3). It used to run
+  inside `erase` and moved live elements behind an iterator, so the
+  erase-while-iterating loop that is safe on `std::unordered_map` skipped
+  elements. `erase` now never moves another element; inserting a new key may
+  invalidate all iterators, pointers and references -- the open-addressing rule
+  (`absl::flat_hash_map`, `boost::unordered_flat_map`). **Silent change:** a
+  pointer from `find` held across an insert of a new key could not dangle
+  before and now can. The occasional rebuild latency moves from `erase` to
+  insertion; the progress-guarantee tables say so.
+- **Iterator-invalidation rules for every container** are documented in
+  `docs/CHOOSING.md`.
+
 ### Changed (breaking: hash values)
 
 - **`metl::fnv1a_hash` hashes by value** (docs/AUDIT.md G.2). It is transparent,

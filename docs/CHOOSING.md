@@ -92,6 +92,25 @@ section changing with it.
 > MMU, that is a silent overwrite of `.bss`. Put the big ones in static storage,
 > or as a member of something that already lives there.
 
+## What an operation invalidates
+
+No METL container ever reallocates -- storage is inline and fixed -- so
+"invalidated" here only ever means *the element moved* or *was destroyed*. That
+is narrower than `std`, but not empty, and the cases differ by container:
+
+| Container | Never invalidates | Invalidates |
+|---|---|---|
+| `fixed_vector`, `fixed_string` | `push_back` / `emplace_back` / `append`: everything except `end()` | `insert` / `emplace` / `erase` at `pos`: iterators, pointers and references **at and after `pos`** (those elements shift). `pop_back`: the last element and `end()`. `clear` / `assign`: all. |
+| `flat_map`, `flat_set` | lookups; assigning to an existing key's value | inserting a new key or `erase`: **at and after** its position (the array shifts). `clear`: all. |
+| `static_unordered_map`, `static_unordered_set` | lookups; assigning to an existing key; **`erase`** (only the erased element) | inserting a **new** key: **all iterators, pointers and references** -- the tombstone rebuild runs there. This is the open-addressing rule (`absl::flat_hash_map`, `boost::unordered_flat_map`); node-based `std::unordered_map` keeps references across a rehash, these tables cannot. `clear`: all. |
+| `ring_buffer`, `fixed_deque` | pointers and references to an element, until that element is popped (storage never moves) | **iterators are positions** (an index from the front): after `pop_front` / `push_front` the same iterator names a different element, so treat every iterator as invalidated. `push_back` invalidates only `end()`. `push_overwrite` on a full ring is a `pop_front` plus a `push_back`. |
+| `fixed_queue`, `fixed_stack`, `fixed_priority_queue` | -- | no iterators. A `front()` / `top()` reference survives pushes on `fixed_queue` and `fixed_stack` until its element is popped; on `fixed_priority_queue` any `push` or `pop` invalidates it (the heap reorders). |
+
+The erase-while-iterating loop that is safe on `std::unordered_map`
+(`auto k = it->key; ++it; m.erase(k);`) is safe here. The equivalent on
+`fixed_vector` and `flat_map` is index-based (or `metl::erase_if` for
+`fixed_vector`).
+
 ## I need to move data between an ISR and the main loop
 
 | You want | Use | Requires |
