@@ -99,7 +99,7 @@ that is what everything else in this document and in CI is for.
 
 - **Every GitHub Action is pinned to a commit SHA**, not a tag. A tag can be
   moved; a SHA cannot.
-- **Dependabot** proposes action updates weekly, grouped into one PR.
+- **Renovate** proposes action updates weekly, grouped into one PR.
 - **CodeQL** runs on every push and PR, and weekly so a newly published query
   finds the code without waiting for a commit.
 - **OpenSSF Scorecard** runs weekly against this repository. Its results go to
