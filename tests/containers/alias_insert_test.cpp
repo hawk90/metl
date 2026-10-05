@@ -121,5 +121,25 @@ int main() {
     CHECK_EQ(rb.back().value, 1);
   }
 
+  // A non-movable T cannot take the build-aside path; push_overwrite must
+  // still compile and evict (the fix above first broke this).
+  {
+    struct pinned {
+      int value;
+      explicit pinned(int v) noexcept : value(v) {}
+      pinned(const pinned&) = delete;
+      pinned(pinned&&) = delete;
+      pinned& operator=(const pinned&) = delete;
+      pinned& operator=(pinned&&) = delete;
+      ~pinned() = default;
+    };
+    metl::ring_buffer<pinned, 2> rb;
+    rb.emplace_back(1);
+    rb.emplace_back(2);
+    rb.push_overwrite(3);
+    CHECK_EQ(rb.front().value, 2);
+    CHECK_EQ(rb.back().value, 3);
+  }
+
   return metl_test::exit_code();
 }
