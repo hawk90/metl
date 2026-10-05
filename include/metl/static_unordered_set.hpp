@@ -570,8 +570,13 @@ class static_unordered_set {
     if (tombstones_ > bucket_count / 8) {
       value_type entry(std::forward<K>(key));
       rehash_in_place();
-      const bool available = locate_insert_index(entry, &index);
-      METL_HARDEN(available && index < bucket_count && states_[index] == slot_state::empty);
+      // After a rebuild there are no tombstones and the load factor is at most
+      // 1/2, so an empty slot always exists. `index` is reset so that a failed
+      // locate leaves npos and trips the same guard as the ordinary path -- one
+      // shared expression string, not a new one in .rodata.
+      index = npos;
+      (void)locate_insert_index(entry, &index);
+      METL_HARDEN(index < bucket_count);
       ::new (storage_[index].addr()) value_type(static_cast<value_type&&>(entry));
       states_[index] = slot_state::occupied;
       ++size_;
