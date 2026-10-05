@@ -158,18 +158,16 @@ struct is_metl_expected_with_value<expected<T, G>, T> : true_type {};
 // (docs/AUDIT.md G.3).
 template <typename U, typename... Args>
 void replace_live(U* slot, Args&&... args) {
-  if constexpr (std::is_nothrow_constructible_v<U, Args&&...>) {
+  if constexpr (std::is_nothrow_constructible_v<U, Args&&...> || !std::is_move_constructible_v<U>) {
+    // Nothrow: nothing to roll back. Non-movable: nothing CAN be set aside for a
+    // rollback -- std::expected::emplace rejects such a U outright; METL keeps
+    // accepting it, without the guarantee.
     slot->~U();
     ::new (static_cast<void*>(slot)) U(std::forward<Args>(args)...);
   } else if constexpr (std::is_nothrow_move_constructible_v<U>) {
     U incoming(std::forward<Args>(args)...);
     slot->~U();
     ::new (static_cast<void*>(slot)) U(static_cast<U&&>(incoming));
-  } else if constexpr (!std::is_move_constructible_v<U>) {
-    // Nothing can be set aside for a rollback. std::expected::emplace rejects
-    // such a U outright; METL keeps accepting it, without the guarantee.
-    slot->~U();
-    ::new (static_cast<void*>(slot)) U(std::forward<Args>(args)...);
   } else {
 #if METL_NO_EXCEPTIONS
     slot->~U();
