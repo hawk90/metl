@@ -1742,15 +1742,37 @@ jobs:
             echo "::error::no fuzz binaries were built (expected build-fuzz/fuzz/metl_fuzz_*)"
             exit 1
           fi
-          for bin in "${bins[@]}"; do
+          # One harness per core, not one after another: the 14 harnesses ran
+          # serially for 330 s, the longest job in ci.yml and so the tail of
+          # every run, on a 4-core runner using one core. Each harness keeps
+          # the same 25 s budget and the same limits; only the wall clock
+          # changes. Each writes its own log; every log is printed in a group
+          # afterwards, and any harness's failure fails the step.
+          mkdir -p fuzz-logs
+          run_one() {
+            bin="$1"
             t="$(basename "$bin")"; t="${t#metl_}"   # metl_fuzz_crc -> fuzz_crc
-            echo "::group::${t}"
             mkdir -p "fuzz/corpus/${t}"
-            "$bin" \
-              -max_total_time=25 -runs=2000000 -timeout=10 -rss_limit_mb=2048 \
-              "fuzz/corpus/${t}"
+            if "$bin" -max_total_time=25 -runs=2000000 -timeout=10 -rss_limit_mb=2048 \
+                 "fuzz/corpus/${t}" > "fuzz-logs/${t}.log" 2>&1; then
+              echo "ok      ${t}"
+            else
+              echo "FAILED  ${t}"
+              return 1
+            fi
+          }
+          export -f run_one
+          status=0
+          printf '%s\n' "${bins[@]}" | xargs -P "$(nproc)" -I{} bash -c 'run_one "$1"' _ {} || status=$?
+          for log in fuzz-logs/*.log; do
+            echo "::group::$(basename "$log" .log)"
+            cat "$log"
             echo "::endgroup::"
           done
+          if [ "${status}" -ne 0 ]; then
+            echo "::error::at least one fuzz harness failed -- see the FAILED line above and its log group"
+            exit 1
+          fi
 
       - name: Upload crash artifacts on failure
         if: failure()
