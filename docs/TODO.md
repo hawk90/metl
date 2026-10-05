@@ -12,7 +12,7 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   (PREDICT/ASSUME/cacheline), `METL_DASSERT`, `CONST_INIT`, `TRIVIAL_ABI`,
   ASan tail-poisoning for `fixed_vector`
 - [x] constexpr honesty: `optional` genuinely constexpr on C++20 (via `detail/construct.hpp`)
-- [x] Per-symbol Doxygen docs across every public header (51 at the time; 60 today)
+- [x] Per-symbol Doxygen docs across every public header (51 at the time; every header since)
   + non-standard-contract warnings
 - [x] Examples (9, CI-compiled) + `docs/COOKBOOK.md`
 - [x] Environment coverage: host (Linux/macOS/Windows × gcc/clang/MSVC × Debug/Release/MinSizeRel),
@@ -239,7 +239,7 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   and `METL_ASSERT` is stripped at low hardening levels, so the returned reference
   was out of bounds. Now guarded by the never-stripped `METL_HARDEN`, the same way
   `static_unordered_map::construct_at` already guarded its own npos path.
-- [ ] **`try_value()` on `expected`/`optional`** (`docs/AUDIT.md` item 11) —
+- [x] **`try_value()` on `expected`/`optional`** (`docs/AUDIT.md` item 11) —
   **re-adjudicated under §9 R5 and closed as not needed.** R5's line is whether a
   pre-check is available and non-racy; `has_value()` is exactly that on a
   single-threaded vocabulary type, and `value_or()` already covers the total
@@ -410,7 +410,7 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
   catch that). The claim in `replay_main.cpp` was corrected to say so rather than
   left overstated.
 - [ ] README badges (add a docs/Pages badge; CI + license already present).
-- [x] **Release automation** (2026-08-20) — `tools/amalgamate.py` flattens the 60
+- [x] **Release automation** (2026-08-20) — `tools/amalgamate.py` flattens the
   public headers into one file; `.github/workflows/release.yml` turns a `vX.Y.Z`
   tag into a GitHub Release with that file attached and the matching CHANGELOG
   section as the body. The tag triggers the release but is not trusted: the
@@ -510,16 +510,7 @@ See `docs/AUDIT.md` for findings and `CHANGELOG.md` for what landed.
 - [ ] Compile-time cost: continue trimming heavy std-header deps where safe (#11).
 
 ### 🌍 Environment breadth (deferred — integrate later)
-- [ ] Zephyr covers many arches at once (once #15 is green). ESP32 Xtensa via #17.
+- [x] Zephyr and ESP-IDF (Xtensa) — both blocking since 2026-08-21; see #15 / #17 above.
 - [ ] ARM Compiler 6 (partially proxied by arm-cross-clang) — document.
 - [ ] IAR EWARM — proprietary, no free public CI; documented-only (no GNU-isms +
   `-Wpedantic` maximize compatibility).
-
----
-
-### Cross-repo (not metl) — separate backlog
-- [ ] traceglass: Biome format+lint + CI; grouping/baseline/diff features (see its ROADMAP).
-- [ ] Add `.editorconfig` + clippy gate + rust-toolchain pin to qpci/firmwire/traceglass.
-- [ ] Bump GitHub Actions to Node-24 majors in qpci/firmwire/traceglass.
-- [ ] firmwire: confirm CI green after the libudev fix; wire more modules.
-- [ ] qpci: CXL implementation (see `qpci/docs/CXL.md`) — ext-cap/DVSEC walker first.

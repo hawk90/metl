@@ -61,7 +61,7 @@ import subprocess
 import sys
 
 DOCS = ["README.md", "docs/COOKBOOK.md", "docs/CHOOSING.md", "docs/SCOPE.md",
-        "docs/ROADMAP.md", "docs/TODO.md", "docs/AUDIT.md"]
+        "docs/TODO.md", "docs/AUDIT.md"]
 
 # D1: `metl::` names the docs use on purpose that are not, and must not be,
 # symbols. Each carries its reason, so a reader sees a decision.
