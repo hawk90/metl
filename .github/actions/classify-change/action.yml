@@ -4,10 +4,9 @@ description: >
   code=true for anything else and for every non-PR event. One definition for
   every workflow that skips work on documentation-only pull requests.
 
-# Needs a checkout with fetch-depth: 2. On a pull_request event HEAD is the
-# merge commit GitHub builds, so HEAD^1 is the base branch tip and
-# `HEAD^1..HEAD` is exactly what the pull request changes -- no full-history
-# fetch (fetch-depth: 0 would also pull the fuzz-corpus branches).
+# Needs a checkout with fetch-depth: 2: tools/classify_change.py diffs the
+# pull request's merge commit against its first parent, the base branch tip.
+# (fetch-depth: 0 would also pull the fuzz-corpus branches.)
 
 inputs:
   path:
@@ -29,24 +28,6 @@ runs:
       env:
         EVENT: ${{ github.event_name }}
         CHECKOUT: ${{ inputs.path }}
-      run: |
-        set -euo pipefail
-        cd "${CHECKOUT}"
-        if [ "${EVENT}" != "pull_request" ]; then
-          echo "code=true" >> "$GITHUB_OUTPUT"
-          echo "not a pull request: running everything"
-          exit 0
-        fi
-        changed="$(git diff --name-only HEAD^1 HEAD)"
-        printf 'changed files:\n%s\n' "${changed}"
-        # Code unless EVERY path is Markdown or LICENSE. An empty diff counts
-        # as code, so a classification failure can only ever run more. A
-        # here-string, not a pipe: under pipefail, `grep -q` exiting early can
-        # SIGPIPE the writer and turn "found code" into a failed pipeline,
-        # which the `!` would then read as documentation-only.
-        if [ -n "${changed}" ] && ! grep -qvE '(\.md|^LICENSE)$' <<< "${changed}"; then
-          echo "code=false" >> "$GITHUB_OUTPUT"
-          echo "documentation-only change: the heavy steps will be skipped"
-        else
-          echo "code=true" >> "$GITHUB_OUTPUT"
-        fi
+      # The rule, and why a rename counts as code, live in the tool: it has a
+      # --self-test that the pre-push hook runs.
+      run: python3 "${CHECKOUT}/tools/classify_change.py" --event "${EVENT}" --repo "${CHECKOUT}"

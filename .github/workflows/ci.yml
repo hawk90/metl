@@ -63,6 +63,18 @@ jobs:
         id: classify
         uses: ./.github/actions/classify-change
 
+      # pr-title checks a pull request's title, which squash-merging makes the
+      # commit subject -- but the merge dialog (and `gh pr merge --subject`)
+      # lets the merger edit that subject. So a push to main checks the subject
+      # that actually landed; a bad one turns main red, and the release gate
+      # then refuses to tag it. GitHub's " (#NNN)" suffix is not counted.
+      - name: Commit subject on main follows Conventional Commits
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          subject="$(git log -1 --format=%s)"
+          tools/check_commit_message.py --title "$(sed -E 's/ \(#[0-9]+\)$//' <<< "${subject}")"
+
       - name: Documentation gate (documentation-only changes)
         # The same check api-contract runs, which is skipped on this path.
         if: steps.classify.outputs.code == 'false'
