@@ -2076,41 +2076,37 @@ jobs:
   # module's zephyr/CMakeLists.txt include hook, compiles as C++17 with no
   # exceptions/RTTI, and links against Zephyr's C++ runtime on a Cortex-M target.
   #
-  # Approach: run inside the official Zephyr CI Docker image (SDK + west + qemu
-  # preinstalled), init a THROWAWAY upstream-Zephyr workspace pinned to the LTS
-  # release, then point Zephyr at this checkout via EXTRA_ZEPHYR_MODULES.
+  # Approach: no container. zephyrproject-rtos/action-zephyr-setup builds a
+  # throwaway workspace from .github/zephyr/west.yml (upstream Zephyr pinned to
+  # the LTS release, plus only the CMSIS modules), installs west and Zephyr's
+  # Python requirements, and fetches the Zephyr SDK with only the
+  # arm-zephyr-eabi toolchain plus the SDK host tools (which carry QEMU). metl
+  # is then pointed at via EXTRA_ZEPHYR_MODULES.
   #   1. `west build` for qemu_cortex_m3 — the hard structural gate (compile +
   #      link; very high confidence, correct-by-construction).
   #   2. `twister` build+RUN on qemu_cortex_m3 — launches QEMU and asserts the
   #      sample's "metl on Zephyr: OK" sentinel via the console harness.
   #
-  # ITERATION NOTES (flagged because this can't be run locally on macOS):
-  #   * Container tag `v0.29.4` pins the Zephyr CI image; bump if the SDK/west
-  #     combo it ships can't build the pinned Zephyr (v4.4.2 LTS). `:latest` is
-  #     the fallback if the pinned tag is unavailable.
-  #   * ZEPHYR_SDK_INSTALL_DIR is provided by the CI image; `west build` should
-  #     auto-detect the toolchain. If not, set ZEPHYR_TOOLCHAIN_VARIANT=zephyr.
-  #   * If the twister run proves flaky (QEMU exit/semihosting quirks), the
-  #     `west build` step above is the guaranteed structural proof; the run can
-  #     be narrowed to native_sim or dropped while iterating.
+  # Why no container: the job used to run in ghcr.io/zephyrproject-rtos/ci, and
+  # pulling that multi-GB image took 235 s of a ~5 min job on every run, while
+  # the build and the QEMU run took 25 s. The action caches the SDK (keyed on
+  # its version and toolchain list) and pip downloads instead.
+  #
+  # NOTES:
+  #   * The SDK version comes from the pinned Zephyr's SDK_VERSION file
+  #     (`sdk-version: auto`), so a Zephyr bump moves the SDK with it.
   #   * libc choice lives in the sample prj.conf (CONFIG_REQUIRES_FULL_LIBCPP=y,
   #     the low-risk default). See that file to try minimal libc.
   zephyr:
     name: zephyr / qemu_cortex_m3
-    # The host only runs the container below, which carries the SDK, west and
-    # QEMU; moved off ubuntu-22.04, the next image GitHub retires.
     runs-on: ubuntu-26.04
     needs: preflight
-    container: ghcr.io/zephyrproject-rtos/ci:v0.29.4
     # metl IS a working Zephyr module (zephyr/module.yml + sample + docs). Both
     # halves are blocking as of 2026-08-21: `west build` proves the module and
     # sample compile for qemu_cortex_m3, and the twister step proves the sample
     # runs on the emulated target and prints its sentinel.
-    # Zephyr workspace init + build is slow; give it plenty of headroom.
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
-      # The CI image ships the SDK here and exports this variable; restate it so
-      # CMake's Zephyr toolchain lookup is unambiguous.
       ZEPHYR_TOOLCHAIN_VARIANT: zephyr
 
     steps:
@@ -2119,51 +2115,27 @@ jobs:
         with:
           path: metl
 
-      - name: Locate the Zephyr SDK
-        # The image registers the SDK's CMake package under the image user's HOME,
-        # but GitHub Actions overrides HOME to /github/home inside the container,
-        # so find_package(Zephyr-sdk) misses it. Point ZEPHYR_SDK_INSTALL_DIR at
-        # the SDK directory explicitly instead of relying on the package registry.
-        run: |
-          set -euo pipefail
-          sdk="$(ls -d /opt/toolchains/zephyr-sdk-* 2>/dev/null | sort -V | tail -1 || true)"
-          if [ -z "$sdk" ]; then
-            sdk="$(find /opt /root /usr/local -maxdepth 4 -type d -name 'zephyr-sdk-*' 2>/dev/null | sort -V | tail -1 || true)"
-          fi
-          if [ -z "$sdk" ]; then
-            echo "::warning::Zephyr SDK not found in image; find_package(Zephyr-sdk) may still fail"
-          else
-            echo "Found Zephyr SDK: $sdk"
-            echo "ZEPHYR_SDK_INSTALL_DIR=$sdk" >> "$GITHUB_ENV"
-          fi
-
-      # west update is the dominant cost of this job. Cache the pinned Zephyr
-      # workspace and its modules; the key is tied to the pinned release, so a
-      # Zephyr upgrade gets a clean workspace automatically.
-      - name: Cache Zephyr west workspace
-        id: zephyr-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      # The runner's system Python is externally managed (PEP 668), so the
+      # action's `pip3 install` needs a setup-python interpreter.
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
         with:
-          path: |
-            zephyrproject/.west
-            zephyrproject/zephyr
-            zephyrproject/modules
-            zephyrproject/bootloader
-          key: zephyr-west-v4.4.2-${{ runner.os }}-${{ runner.arch }}
+          python-version: '3.12'
 
-      - name: Initialize a throwaway upstream Zephyr workspace
-        if: steps.zephyr-cache.outputs.cache-hit != 'true'
+      # `west init -l` takes a manifest directory inside the workspace, so the
+      # manifest is staged as zephyrproject/manifest/west.yml.
+      - name: Stage the west manifest
         run: |
-          set -euo pipefail
-          # Pin upstream Zephyr to the v4.4.2 LTS. qemu_cortex_m3 + native_sim
-          # both exist there. Shallow-clone modules to keep the checkout fast.
-          west init -m https://github.com/zephyrproject-rtos/zephyr --mr v4.4.2 zephyrproject
-          cd zephyrproject
-          west update --narrow -o=--depth=1
+          mkdir -p zephyrproject/manifest
+          cp metl/.github/zephyr/west.yml zephyrproject/manifest/west.yml
 
-      - name: Export Zephyr CMake package
-        working-directory: zephyrproject
-        run: west zephyr-export
+      - name: Set up Zephyr workspace and SDK
+        uses: zephyrproject-rtos/action-zephyr-setup@be8136a8bba01580485d98b7ad2d32477c36a49a  # v1.0.15
+        with:
+          base-path: zephyrproject
+          app-path: manifest
+          toolchains: arm-zephyr-eabi
+          ccache-cache-key: metl-zephyr
 
       - name: Build the sample for qemu_cortex_m3 (structural gate)
         working-directory: zephyrproject
