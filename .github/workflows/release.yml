@@ -33,7 +33,7 @@ jobs:
     permissions:
       # Required to create the release and upload assets.
       contents: write
-      # Required to read the tagged commit's `ci-gate` result.
+      # Required to read the tagged commit's `ci-gate` and CodeQL results.
       checks: read
       # Required to record the provenance attestation.
       attestations: write
@@ -54,46 +54,16 @@ jobs:
       # the full CI -- GCC and Clang -Werror, sanitizers, ARM size/stack/RAM
       # budgets, QEMU on four Cortex-M cores, Zephyr, ESP-IDF -- and that runs
       # on main, not on tags. So a tag releases only a commit that is on main
-      # and whose main CI (`ci-gate`, the fan-in of every ci.yml job) passed.
+      # and whose main CI (`ci-gate`, the fan-in of every ci.yml job) and CodeQL
+      # analysis (`analyze / c-cpp`) passed; tools/release_gate.py has the rules.
       # Tagging a branch commit, or a main commit whose CI failed, now stops
       # here instead of publishing it. If main's CI is still running, wait.
-      - name: The tagged commit is on main and passed main's CI
+      - name: The tagged commit is on main and passed main's CI and CodeQL
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git fetch --no-tags --quiet origin main
-          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
-            echo "::error::${GITHUB_REF_NAME} points at ${GITHUB_SHA}, which is not on main." \
-                 "Release only from main: merge first, then tag the merge commit."
-            exit 1
-          fi
-          for minute in $(seq 1 60); do
-            runs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?check_name=ci-gate" \
-                      --jq '[.check_runs[] | select(.app.slug == "github-actions")]')"
-            if jq -e 'any(.[]; .conclusion == "success")' <<< "${runs}" > /dev/null; then
-              echo "main's ci-gate passed for ${GITHUB_SHA}"
-              exit 0
-            fi
-            if jq -e 'length > 0 and all(.[]; .status == "completed")' <<< "${runs}" > /dev/null; then
-              echo "::error::main's ci-gate did not pass for ${GITHUB_SHA}: $(jq -c 'map(.conclusion)' <<< "${runs}")." \
-                   "Fix main, then tag the commit that passes."
-              exit 1
-            fi
-            # A merge to main starts CI within a minute or two. Ten minutes with
-            # no ci-gate at all means CI never ran on this commit (an old
-            # commit, or one pushed before ci-gate existed) -- say that rather
-            # than wait the full hour and report a timeout.
-            if [ "${minute}" -ge 10 ] && jq -e 'length == 0' <<< "${runs}" > /dev/null; then
-              echo "::error::main's CI never reported ci-gate for ${GITHUB_SHA}." \
-                   "Tag a commit whose main CI ran and passed."
-              exit 1
-            fi
-            echo "waiting for main's ci-gate on ${GITHUB_SHA} (minute ${minute}/60)"
-            sleep 60
-          done
-          echo "::error::main's ci-gate did not finish within 60 minutes. Re-run this job once it has."
-          exit 1
+        run: >-
+          tools/release_gate.py --repo "${GITHUB_REPOSITORY}"
+          --sha "${GITHUB_SHA}" --ref "${GITHUB_REF_NAME}"
 
       - name: Install build deps
         uses: ./.github/actions/apt-install

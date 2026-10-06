@@ -30,7 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `portability-avoid-pragma-once` (new in clang-tidy 19) is disabled because
   `#pragma once` is a design decision here.
 - **Releases are gated on main's CI.** A `v*` tag now publishes only a commit
-  that is on `main` and whose full `ci-gate` passed there; the release job
+  that is on `main` and whose full `ci-gate` and CodeQL analysis passed there
+  (`tools/release_gate.py`); the release job
   waits for a CI run still in progress, and refuses a branch commit or a
   failed one instead of shipping it after a single host build.
 - **Conventional Commits are checked.** `tools/check_commit_message.py`
