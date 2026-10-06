@@ -40,6 +40,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   adds a commit-msg hook.
 - Documentation-only pull requests also skip the CodeQL analysis and PR
   fuzzing (both still report, as required checks must).
+- **Faster CI on the same checks.** The compile-failure cases and the
+  `fuzz-smoke` harnesses run in parallel (one per core) instead of one after
+  another: `check_compile_fail.py` 11.8 s -> 1.8 s, `fuzz-smoke` 330 s ->
+  106 s, with each harness's 25 s budget unchanged. `fuzz-smoke` was the
+  longest job, so it set the length of every CI run.
+- Every push to `main` now gets its own CI run: a merge no longer cancels the
+  still-queued run of the merge before it, so each commit on `main` has a full
+  result.
+- Issue forms (bug report, feature request) and a pull-request template; blank
+  issues are off and security reports are routed to private advisories. The
+  README has a logo header and links the API documentation.
 - `pre-commit install` now also installs a pre-push hook, `tools/pre_push.py`,
   that runs every CI check a workstation can run (checker self-tests, source
   gates, Release `-Werror` builds with each compiler found, ASan+UBSan) before
