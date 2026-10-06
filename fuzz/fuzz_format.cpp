@@ -97,30 +97,30 @@ void check_unsigned(scratch& buffer, std::uint64_t value) {
   if (text.empty()) {
     // Property 2: refusal leaves the buffer exactly as it was.
     if (!buffer.untouched()) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     return;
   }
 
   // Property 1/3: wrote inside the span, and only as far as it claimed.
   if (text.size() > buffer.size() || text.data() != buffer.span().data()) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   if (!buffer.clean_after(text.size())) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 
   // Property 3: round trips.
   const auto read = metl::try_parse_uint<std::uint64_t>(metl::span<const char>(text.data(), text.size()));
   if (!read || read->value != value || !read->tail.empty()) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 
   // Property 4: the asserting form agrees, now that fitting is proven.
   char mirror[24];
   const metl::span<char> again = metl::format_uint(metl::span<char>(mirror, sizeof mirror), value);
   if (again.size() != text.size() || std::memcmp(again.data(), text.data(), text.size()) != 0) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 }
 
@@ -130,26 +130,26 @@ void check_signed(scratch& buffer, std::int64_t value) {
 
   if (text.empty()) {
     if (!buffer.untouched()) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     return;
   }
   if (text.size() > buffer.size() || text.data() != buffer.span().data()) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   if (!buffer.clean_after(text.size())) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 
   const auto read = metl::try_parse_int<std::int64_t>(metl::span<const char>(text.data(), text.size()));
   if (!read || read->value != value || !read->tail.empty()) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 
   char mirror[24];
   const metl::span<char> again = metl::format_int(metl::span<char>(mirror, sizeof mirror), value);
   if (again.size() != text.size() || std::memcmp(again.data(), text.data(), text.size()) != 0) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 }
 
@@ -159,25 +159,25 @@ void check_hex(scratch& buffer, std::uint64_t value, std::size_t digits, metl::h
 
   if (text.empty()) {
     if (!buffer.untouched()) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     return;
   }
   if (text.size() > buffer.size() || text.data() != buffer.span().data()) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   if (!buffer.clean_after(text.size())) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 
   // Property 5: a fixed width is honoured exactly, or refused. Never truncated.
   if (digits != 0 && text.size() != digits) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 
   const auto read = metl::try_parse_hex<std::uint64_t>(metl::span<const char>(text.data(), text.size()));
   if (!read || read->value != value || !read->tail.empty()) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 }
 

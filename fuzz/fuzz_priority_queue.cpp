@@ -36,7 +36,7 @@ void check_heap_property(const queue_type& queue) noexcept {
   const metl::span<const std::uint32_t> slots = queue.as_span();
   for (std::size_t i = 1; i < slots.size(); ++i) {
     if (slots[(i - 1) / 2] < slots[i]) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
   }
 }
@@ -51,17 +51,17 @@ void check_top_is_max(const queue_type& queue) noexcept {
   const std::uint32_t top = queue.top();
   for (std::size_t i = 0; i < slots.size(); ++i) {
     if (slots[i] > top) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
   }
 }
 
 void check(const queue_type& queue, std::size_t expected_size) noexcept {
   if (queue.size() != expected_size || queue.as_span().size() != expected_size) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   if (queue.empty() != (expected_size == 0) || queue.full() != (expected_size == kCapacity)) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   check_heap_property(queue);
   check_top_is_max(queue);
@@ -100,7 +100,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         const std::size_t removed =
             queue.erase_if([threshold](const std::uint32_t& v) noexcept { return v < threshold; });
         if (removed > live) {
-          __builtin_trap();  // removed more than were ever there
+          METL_FUZZ_TRAP();  // removed more than were ever there
         }
         live -= removed;
         break;
@@ -119,7 +119,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
   while (!queue.empty()) {
     const std::uint32_t current = queue.top();
     if (current > previous) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     previous = current;
     queue.pop();
@@ -127,7 +127,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     check(queue, live);
   }
   if (live != 0) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 
   return 0;

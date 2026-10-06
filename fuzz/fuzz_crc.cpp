@@ -40,7 +40,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
 
     // Overload agreement (span vs raw pointer/size).
     if (metl::crc32(data, size, seed) != full) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
 
     // Streaming: fold prefix, resume over the remainder.
@@ -49,7 +49,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
       const std::uint32_t rest =
           metl::crc32(byte_span(data + k, size - k), metl::crc32_params{part, 0x00000000u});
       if (rest != full) {
-        __builtin_trap();
+        METL_FUZZ_TRAP();
       }
     }
   }
@@ -59,14 +59,14 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     const metl::crc16_params seed{0xFFFFu, 0x0000u};
     const std::uint16_t full = metl::crc16(whole, seed);
     if (metl::crc16(data, size, seed) != full) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     for (std::size_t k = 0; k <= size; k += (size / 4) + 1) {
       const std::uint16_t part = metl::crc16(byte_span(data, k), seed);
       const std::uint16_t rest =
           metl::crc16(byte_span(data + k, size - k), metl::crc16_params{part, 0x0000u});
       if (rest != full) {
-        __builtin_trap();
+        METL_FUZZ_TRAP();
       }
     }
   }
@@ -76,13 +76,13 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     const metl::crc8_params seed{0x00u, 0x00u};
     const std::uint8_t full = metl::crc8(whole, seed);
     if (metl::crc8(data, size, seed) != full) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     for (std::size_t k = 0; k <= size; k += (size / 4) + 1) {
       const std::uint8_t part = metl::crc8(byte_span(data, k), seed);
       const std::uint8_t rest = metl::crc8(byte_span(data + k, size - k), metl::crc8_params{part, 0x00u});
       if (rest != full) {
-        __builtin_trap();
+        METL_FUZZ_TRAP();
       }
     }
   }

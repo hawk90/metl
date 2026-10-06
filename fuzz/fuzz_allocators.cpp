@@ -50,7 +50,7 @@ void drive_arena(metl_fuzz::byte_reader& in) {
         if (p != nullptr) {
           std::memset(p, 0xA5, bytes);
           if (arena->used() <= before || arena->used() > arena->capacity()) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
         }
         break;
@@ -79,13 +79,13 @@ void drive_arena(metl_fuzz::byte_reader& in) {
         arena->reset();
         marks.clear();
         if (!arena->empty()) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         break;
       }
       default: {
         if (arena->used() > arena->capacity()) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         break;
       }
@@ -122,7 +122,7 @@ void drive_static(metl_fuzz::byte_reader& in) {
       }
       default: {
         if (alloc->used_bytes() > alloc->capacity_bytes()) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         break;
       }

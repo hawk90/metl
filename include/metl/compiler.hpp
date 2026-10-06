@@ -32,7 +32,12 @@
 #define METL_COMPILER_GCC_VERSION_PATCH 0
 #endif
 
-#if defined(__cplusplus)
+// MSVC leaves __cplusplus at 199711L unless the user passes /Zc:__cplusplus;
+// _MSVC_LANG always carries the real standard. Without this, cxx_standard read
+// C++98 on every MSVC build.
+#if defined(_MSVC_LANG)
+#define METL_CXX_STANDARD _MSVC_LANG
+#elif defined(__cplusplus)
 #define METL_CXX_STANDARD __cplusplus
 #else
 #define METL_CXX_STANDARD 0L
@@ -48,6 +53,21 @@
 #define METL_HAS_CPP_ATTRIBUTE(x) __has_cpp_attribute(x)
 #else
 #define METL_HAS_CPP_ATTRIBUTE(x) 0
+#endif
+
+// __has_cpp_attribute is a preprocessor operator: the standard allows it only in
+// #if / #elif. GCC and Clang also accept it in an ordinary expression; MSVC does
+// not, and rejected every header through compiler.hpp. So the checks the
+// constexpr flags below report are made here, in #if.
+#if METL_HAS_CPP_ATTRIBUTE(nodiscard) >= 201603L
+#define METL_DETAIL_HAS_NODISCARD 1
+#else
+#define METL_DETAIL_HAS_NODISCARD 0
+#endif
+#if METL_HAS_CPP_ATTRIBUTE(fallthrough) >= 201603L
+#define METL_DETAIL_HAS_FALLTHROUGH 1
+#else
+#define METL_DETAIL_HAS_FALLTHROUGH 0
 #endif
 
 #if defined(__has_attribute)
@@ -171,9 +191,9 @@ inline constexpr bool is_gcc = METL_COMPILER_GCC != 0;
 /// True when the active compiler is MSVC.
 inline constexpr bool is_msvc = METL_COMPILER_MSVC != 0;
 /// True when the `[[nodiscard]]` attribute is available.
-inline constexpr bool has_nodiscard = METL_HAS_CPP_ATTRIBUTE(nodiscard) >= 201603L;
+inline constexpr bool has_nodiscard = METL_DETAIL_HAS_NODISCARD != 0;
 /// True when the `[[fallthrough]]` attribute is available.
-inline constexpr bool has_fallthrough = METL_HAS_CPP_ATTRIBUTE(fallthrough) >= 201603L;
+inline constexpr bool has_fallthrough = METL_DETAIL_HAS_FALLTHROUGH != 0;
 
 }  // namespace metl
 

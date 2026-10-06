@@ -6,8 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# PR branches share one group per ref so a newer push cancels the stale run.
+# main gets one group PER COMMIT: GitHub keeps at most one *queued* run per
+# group, so with a shared group a main push that was still waiting for runners
+# was cancelled by the next merge and that commit never got a full CI result.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
@@ -33,11 +37,6 @@ defaults:
     shell: bash
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Preflight fast-gate — every other job `needs:` this, so a compile/test break
-  # fails in ~3 min instead of spinning up the full cross-compile/sanitizer fleet
-  # (fail-fast + cheaper CI). Intentionally a single fast Debug build+test.
-  # ---------------------------------------------------------------------------
   # ---------------------------------------------------------------------------
   # What changed. A pull request that touches only Markdown (and LICENSE) runs
   # the documentation gate here and skips every build: #105 was docs-only and
@@ -69,6 +68,12 @@ jobs:
         if: steps.classify.outputs.code == 'false'
         run: tools/check_docs.py
 
+  # ---------------------------------------------------------------------------
+  # Preflight fast-gate — every other job `needs:` this, so a compile/test break
+  # fails in well under a minute instead of spinning up the full
+  # cross-compile/sanitizer fleet (fail-fast + cheaper CI). Intentionally a
+  # single fast Debug build+test.
+  # ---------------------------------------------------------------------------
   preflight:
     name: preflight
     needs: changes
@@ -82,7 +87,9 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
-          key: ${{ github.job }}-${{ runner.os }}
+          # Shared with header-checks: same compiler, build type and flags, so the
+          # objects are interchangeable.
+          key: clang-Debug-werror-${{ runner.os }}
           max-size: 300M
 
       - name: Install build deps
@@ -108,7 +115,9 @@ jobs:
     name: host-test / ${{ matrix.os }} / ${{ matrix.compiler.cc || 'msvc' }} / ${{ matrix.build_type }}
     runs-on: ${{ matrix.os }}
     needs: preflight
-    timeout-minutes: 15
+    timeout-minutes: ${{ matrix.os == 'windows-2025' && 30 || 15 }}
+    # Advisory while the MSVC row earns a track record; everything else is gating.
+    continue-on-error: ${{ matrix.os == 'windows-2025' }}
     strategy:
       fail-fast: false
       matrix:
@@ -118,7 +127,7 @@ jobs:
         # retired 2026-11-02 (actions/runner-images#13518). 26 rather than 15:
         # GitHub keeps the two newest macOS images, so 15 is next to go.
         # windows-2025 is what windows-latest points to today.
-        os: [ubuntu-26.04, macos-26, windows-2025]
+        os: [ubuntu-26.04, macos-26]
         build_type: [Debug, Release, MinSizeRel]
         compiler:
           - { cc: gcc, cxx: g++ }
@@ -127,11 +136,15 @@ jobs:
           # macOS: only system clang
           - os: macos-26
             compiler: { cc: gcc, cxx: g++ }
-          # Windows: MSVC only — skip both gcc and clang matrix entries
+        include:
+          # Windows / MSVC: one Release row. `compiler` is left unset so CMake
+          # picks the Visual Studio generator (the POSIX configure step is
+          # skipped on Windows) and the job name falls back to `msvc`.
+          # Until this row has a green history it is advisory (see
+          # continue-on-error below): the row reports, but cannot turn ci-gate
+          # red. Flip that once it is reliably green.
           - os: windows-2025
-            compiler: { cc: gcc, cxx: g++ }
-          - os: windows-2025
-            compiler: { cc: clang, cxx: clang++ }
+            build_type: Release
 
     steps:
       - name: Checkout
@@ -191,11 +204,9 @@ jobs:
   # actually exercised in an optimized build. Complements the Debug-only
   # sanitizer/arm jobs, which never see the NDEBUG warning surface.
   # ---------------------------------------------------------------------------
-  # clang only: GCC's extra Release/-Werror diagnostics here are known-noisy
-  # (-Wclobbered on the setjmp assert test, -Wterminate/-Waddress/
-  # -Wnull-dereference false positives), and GCC is already fully -Werror-gated
-  # in Debug (sanitizers, arm-cross, examples). A dedicated gcc-Release-Werror
-  # hardening pass is tracked separately.
+  # gcc and clang. (gcc was initially left out because its extra Release/-Werror
+  # diagnostics -- -Wclobbered on the setjmp assert test, -Wterminate/-Waddress/
+  # -Wnull-dereference false positives -- were noisy; it is gated here now.)
   release-werror:
     name: release-werror / ${{ matrix.compiler.cc }}
     runs-on: ubuntu-26.04
@@ -1186,7 +1197,9 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
-          key: ${{ github.job }}-${{ runner.os }}
+          # Shared with preflight: same compiler, build type and flags, so the
+          # objects are interchangeable.
+          key: clang-Debug-werror-${{ runner.os }}
           max-size: 300M
 
       - name: Install build deps
@@ -1584,11 +1597,6 @@ jobs:
             exit 1
           fi
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
-        with:
-          name: metl-single-header
-          path: metl-single.hpp
 
   # ---------------------------------------------------------------------------
   # Conan package
@@ -1618,7 +1626,7 @@ jobs:
           cache-key: build-essential
 
       - name: Install Conan
-        run: pipx install conan
+        run: pipx install conan==2.33.0
 
       - name: Package and consume
         run: |
@@ -1947,7 +1955,8 @@ jobs:
   # Docs — generate Doxygen API docs; fail on malformed doc comments.
   # (Undocumented symbols are tolerated: WARN_IF_UNDOCUMENTED=NO in the
   # Doxyfile. Any real Doxygen warning fails the build via WARN_AS_ERROR.)
-  # This job is independent and does not gate the build/test/format jobs.
+  # Runs in parallel with the build/test/format jobs and, like every job here,
+  # is fanned into ci-gate.
   # ---------------------------------------------------------------------------
   docs:
     name: docs
@@ -2260,7 +2269,7 @@ jobs:
   # reports, and still cannot stop anything. tools/check_ci_gate.py fails the
   # build on exactly that, which is why the list is safe to maintain by hand.
   #
-  # Requiring the 64 individual check names instead does not work: they are
+  # Requiring the ~60 individual check names instead does not work: they are
   # derived from matrices, so editing a matrix row deletes a required context
   # and leaves every PR pending forever on a name nobody typed.
   #
@@ -2350,9 +2359,18 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-docs:
     name: deploy-docs
-    needs: [docs, host-test, sanitizers]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # ci-gate fans in every job, so this waits for all of main's CI, and the
+    # explicit result check matters: ci-gate runs with `if: always()`, so
+    # `needs` alone would not stop a deploy after a red gate.
+    needs: [docs, ci-gate]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.ci-gate.result == 'success'
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    # Main pushes each get their own CI concurrency group, so two can overlap;
+    # Pages deployments themselves stay strictly sequential.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write

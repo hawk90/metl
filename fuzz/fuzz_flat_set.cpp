@@ -29,12 +29,12 @@ using set_type = metl::flat_set<std::uint16_t, kCapacity>;
 
 void check_invariants(const set_type& set) {
   if (set.size() > set.capacity()) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   // Strictly ascending: sorted AND unique, both of which the type promises.
   for (std::size_t i = 1; i < set.size(); ++i) {
     if (!(set.nth(i - 1) < set.nth(i))) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
   }
   // Every stored key must be findable. A binary search that disagrees with the
@@ -42,7 +42,7 @@ void check_invariants(const set_type& set) {
   // ordering check.
   for (std::size_t i = 0; i < set.size(); ++i) {
     if (!set.contains(set.nth(i))) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
   }
 }
@@ -68,13 +68,13 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         const bool inserted = set.try_emplace(std::uint16_t{key});
         if (inserted) {
           if (present_before) {
-            __builtin_trap();  // inserted a key that was already there
+            METL_FUZZ_TRAP();  // inserted a key that was already there
           }
           if (set.size() != size_before + 1 || !set.contains(key)) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
         } else if (set.size() != size_before) {
-          __builtin_trap();  // a refused insert must leave the set unchanged
+          METL_FUZZ_TRAP();  // a refused insert must leave the set unchanged
         }
         break;
       }
@@ -83,32 +83,32 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         const std::size_t size_before = set.size();
         const bool erased = set.erase(key);
         if (erased != present_before) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         if (set.size() != size_before - (erased ? 1u : 0u)) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         if (set.contains(key)) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         break;
       }
       case 2: {  // find / contains must agree
         if ((set.find(key) != nullptr) != set.contains(key)) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         break;
       }
       case 3: {  // lower_bound is where the key is, or where it would go
         const auto* lb = set.lower_bound(key);
         if (lb < set.begin() || lb > set.end()) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         if (lb != set.end() && *lb < key) {
-          __builtin_trap();  // lower_bound must not point before the key
+          METL_FUZZ_TRAP();  // lower_bound must not point before the key
         }
         if (lb != set.begin() && !(*(lb - 1) < key)) {
-          __builtin_trap();  // ...and everything before it must be strictly less
+          METL_FUZZ_TRAP();  // ...and everything before it must be strictly less
         }
         break;
       }
@@ -116,12 +116,12 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         std::size_t index = 0;
         for (const auto& value : set) {
           if (value != set.nth(index)) {
-            __builtin_trap();
+            METL_FUZZ_TRAP();
           }
           ++index;
         }
         if (index != set.size()) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         break;
       }
@@ -134,7 +134,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
                   // often never grows big enough for a shift to have far to go
         set.clear();
         if (!set.empty() || set.size() != 0) {
-          __builtin_trap();
+          METL_FUZZ_TRAP();
         }
         break;
       }

@@ -55,6 +55,7 @@ Usage:
 """
 
 import argparse
+import os
 import pathlib
 import re
 import subprocess
@@ -180,10 +181,18 @@ def scannable_files(root):
     checkout are skipped without naming them. It fails in the self-test, which
     builds its fixture outside any repository, so a plain walk is the fallback --
     correct there because that tree contains only what the fixture put in it.
+
+    The GIT_* variables are dropped from git's environment. Inside a git hook
+    (tools/pre_push.py runs from the pre-push hook) git exports GIT_DIR, and
+    with an absolute GIT_DIR -- every worktree gets one -- `git ls-files` in
+    the fixture directory silently lists the real repository instead of
+    failing, so the fixture is never scanned and the self-test reports D5 as
+    not firing. Discovery from `cwd` is the only behaviour wanted here.
     """
+    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
     try:
         listed = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True,
-                                text=True, check=True).stdout.split()
+                                text=True, check=True, env=env).stdout.split()
         paths = [pathlib.Path(name) for name in listed]
     except (subprocess.CalledProcessError, FileNotFoundError, OSError):
         paths = [p.relative_to(root) for p in pathlib.Path(root).rglob("*") if p.is_file()]
@@ -469,6 +478,27 @@ def self_test():
         (root / "README.md").write_text("`metl::fixed_vector` is fine.\n"
                                         "runs 5 tests per core\n")
         (root / "examples" / "orphan.cpp").unlink()
+        # The fixture must stay hermetic inside a git hook, where GIT_DIR points
+        # at the real repository: scanning has to follow `cwd`, not GIT_DIR, or
+        # the restated budget above is never read (the failure seen from a
+        # worktree's pre-push hook, 2026-10-06).
+        gitdir = subprocess.run(["git", "rev-parse", "--absolute-git-dir"],
+                                cwd=pathlib.Path(__file__).resolve().parent,
+                                capture_output=True, text=True)
+        if gitdir.returncode == 0:
+            saved = os.environ.get("GIT_DIR")
+            os.environ["GIT_DIR"] = gitdir.stdout.strip()
+            try:
+                hooked = [message for rule, message in check(root) if rule == "D5"]
+            finally:
+                if saved is None:
+                    del os.environ["GIT_DIR"]
+                else:
+                    os.environ["GIT_DIR"] = saved
+            if len(hooked) != 1:
+                failures.append(f"D5 fired {len(hooked)} times with GIT_DIR set, expected "
+                                f"exactly 1: the scan followed GIT_DIR instead of the fixture")
+
         # The -mcpu line stays. A clean tree that still contains it is the proof
         # D5 is narrow enough to live with.
         (root / "restated.yml").write_text("# flags: -mcpu=cortex-m3 -mthumb\n")

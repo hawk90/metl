@@ -48,10 +48,10 @@ namespace {
 /// The tail must be a suffix of the input, always.
 void check_tail(metl::span<const char> text, metl::span<const char> tail) {
   if (tail.size() > text.size()) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   if (tail.data() + tail.size() != text.data() + text.size()) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 }
 
@@ -66,13 +66,13 @@ void check_unsigned_width(metl::span<const char> text) {
     // Widening agreement: a value a narrow type accepts must survive widening
     // unchanged, and must have consumed exactly the same characters.
     if (!wide) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     if (static_cast<std::uint64_t>(narrow->value) != wide->value) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     if (narrow->tail.size() != wide->tail.size()) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     return;
   }
@@ -83,10 +83,10 @@ void check_unsigned_width(metl::span<const char> text) {
     // hold.
     if (wide) {
       if (wide->value <= static_cast<std::uint64_t>(std::numeric_limits<Narrow>::max())) {
-        __builtin_trap();
+        METL_FUZZ_TRAP();
       }
     } else if (wide.error() != metl::parse_error::out_of_range) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     return;
   }
@@ -94,10 +94,10 @@ void check_unsigned_width(metl::span<const char> text) {
   // `empty` and `not_a_number` are properties of the text alone, so every width
   // must agree on them.
   if (wide) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   if (wide.error() != narrow.error()) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 }
 
@@ -109,13 +109,13 @@ void check_signed_width(metl::span<const char> text) {
   if (narrow) {
     check_tail(text, narrow->tail);
     if (!wide) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     if (static_cast<std::int64_t>(narrow->value) != wide->value) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     if (narrow->tail.size() != wide->tail.size()) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     return;
   }
@@ -126,19 +126,19 @@ void check_signed_width(metl::span<const char> text) {
       const auto low = static_cast<std::int64_t>(std::numeric_limits<Narrow>::min());
       const auto high = static_cast<std::int64_t>(std::numeric_limits<Narrow>::max());
       if (value >= low && value <= high) {
-        __builtin_trap();  // it fit after all -- the narrow bound is wrong
+        METL_FUZZ_TRAP();  // it fit after all -- the narrow bound is wrong
       }
     } else if (wide.error() != metl::parse_error::out_of_range) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     return;
   }
 
   if (wide) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
   if (wide.error() != narrow.error()) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 }
 
@@ -151,22 +151,22 @@ void check_hex_width(metl::span<const char> text) {
     check_tail(text, narrow->tail);
     if (!wide || static_cast<std::uint64_t>(narrow->value) != wide->value ||
         narrow->tail.size() != wide->tail.size()) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     return;
   }
   if (narrow.error() == metl::parse_error::out_of_range) {
     if (wide) {
       if (wide->value <= static_cast<std::uint64_t>(std::numeric_limits<Narrow>::max())) {
-        __builtin_trap();
+        METL_FUZZ_TRAP();
       }
     } else if (wide.error() != metl::parse_error::out_of_range) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
     return;
   }
   if (wide || wide.error() != narrow.error()) {
-    __builtin_trap();
+    METL_FUZZ_TRAP();
   }
 }
 
@@ -180,7 +180,7 @@ void check_round_trip(metl_fuzz::byte_reader& reader) {
     const metl::span<char> text = metl::format_uint(out, value);
     const auto read = metl::try_parse_uint<std::uint64_t>(metl::span<const char>(text.data(), text.size()));
     if (!read || read->value != value || !read->tail.empty()) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
   }
 
@@ -189,7 +189,7 @@ void check_round_trip(metl_fuzz::byte_reader& reader) {
     const metl::span<char> text = metl::format_int(out, value);
     const auto read = metl::try_parse_int<std::int64_t>(metl::span<const char>(text.data(), text.size()));
     if (!read || read->value != value || !read->tail.empty()) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
   }
 
@@ -199,7 +199,7 @@ void check_round_trip(metl_fuzz::byte_reader& reader) {
     const metl::span<char> text = metl::format_hex(out, value, 0, letters);
     const auto read = metl::try_parse_hex<std::uint64_t>(metl::span<const char>(text.data(), text.size()));
     if (!read || read->value != value || !read->tail.empty()) {
-      __builtin_trap();
+      METL_FUZZ_TRAP();
     }
   }
 }
@@ -243,7 +243,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
       }
       check_tail(rest, next->tail);
       if (next->tail.size() >= rest.size()) {
-        __builtin_trap();  // consumed nothing while reporting success
+        METL_FUZZ_TRAP();  // consumed nothing while reporting success
       }
       rest = next->tail;
     }
