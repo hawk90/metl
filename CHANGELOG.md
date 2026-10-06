@@ -39,7 +39,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pull-request title (`pr-title`, a required check) and `pre-commit install`
   adds a commit-msg hook.
 - Documentation-only pull requests also skip the CodeQL analysis and PR
-  fuzzing (both still report, as required checks must).
+  fuzzing (both still report, as required checks must). The classification
+  (`tools/classify_change.py`, with a self-test) diffs with `--no-renames`:
+  renaming a header to `.md` used to read as documentation-only and skip every
+  check.
+- A push to `main` checks the commit subject that landed, since the
+  squash-merge dialog can edit it after `pr-title` passed; a non-conforming
+  subject turns `main` red, and the release gate will not tag it.
 - **Faster CI on the same checks.** The compile-failure cases and the
   `fuzz-smoke` harnesses run in parallel (one per core) instead of one after
   another: `check_compile_fail.py` 11.8 s -> 1.8 s, `fuzz-smoke` 330 s ->
