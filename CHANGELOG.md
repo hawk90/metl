@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - CI moved to Ubuntu 26.04 runners (GCC 15, clang-tidy 21), Zephyr 4.4.2 LTS
-  (CI image v0.29.4) and ESP-IDF 6.0.3. The instruction-count budgets and the
+  and ESP-IDF 6.0.3. The instruction-count budgets and the
   clang-tidy ratchet were re-measured on the new toolchains;
   `portability-avoid-pragma-once` (new in clang-tidy 19) is disabled because
   `#pragma once` is a design decision here.
@@ -45,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   another: `check_compile_fail.py` 11.8 s -> 1.8 s, `fuzz-smoke` 330 s ->
   106 s, with each harness's 25 s budget unchanged. `fuzz-smoke` was the
   longest job, so it set the length of every CI run.
+- The Zephyr job no longer pulls the multi-gigabyte Zephyr CI container
+  (235 s of its 4.5 min); `action-zephyr-setup` installs only the ARM
+  toolchain and QEMU, with the same `west build` and twister-on-QEMU gates:
+  4m26s -> about 2 min.
 - Every push to `main` now gets its own CI run: a merge no longer cancels the
   still-queued run of the merge before it, so each commit on `main` has a full
   result.
