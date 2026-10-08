@@ -38,6 +38,7 @@
 #include "metl/lock.hpp"
 
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -66,6 +67,9 @@ namespace metl {
 /// @tparam Bits Width of the hardware counter, 1 to 63. The counter must wrap
 ///         from `2^Bits - 1` to `0`; a counter that reloads at any other value
 ///         (SysTick with a short reload) is not free-running and does not fit.
+///         `read()` must return an unsigned type at least `Bits` wide; a
+///         narrower one is a compile error, since its own wrap would read as a
+///         jump of nearly a whole period.
 /// @tparam Lock Lock policy shared by every caller; defaults to `irq_lock`, the
 ///         correct lock between an ISR and the main loop on a single core. On
 ///         multi-core targets, `irq_lock` does not exclude the other core.
@@ -104,13 +108,26 @@ class tick_extender {
   ///         note).
   /// @pre `read()` returns at most `mask`. A larger value means `Bits` does not
   ///      match the counter, and asserts.
+  ///
+  /// @note noexcept exactly when `read()` is. A read that throws leaves the
+  ///       total untouched and the lock released.
   template <typename Read>
-  METL_NODISCARD tick_type now(Read&& read) noexcept {
-    using raw_type = std::remove_cv_t<decltype(std::forward<Read>(read)())>;
+  METL_NODISCARD tick_type now(Read&& read) noexcept(noexcept(std::declval<Read>()())) {
+    // Reference stripped as well as cv: a register accessor commonly returns
+    // `volatile std::uint32_t&`, and that is an unsigned reading.
+    using raw_type = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<Read>(read)())>>;
     static_assert(
         std::is_integral_v<raw_type> && std::is_unsigned_v<raw_type> && !std::is_same_v<raw_type, bool>,
         "tick_extender read() must return an unsigned integer: a hardware counter is "
         "unsigned, and a signed result would sign-extend past the counter's width");
+    // The other mismatch is silent at run time, so it is refused here. A reading
+    // narrower than Bits wraps at its own width, and each of those wraps would be
+    // taken as a step of nearly 2^Bits -- the clock leaps ahead with no assert,
+    // because every value it sees is within `mask`.
+    static_assert(
+        !std::is_unsigned_v<raw_type> || static_cast<int>(Bits) <= std::numeric_limits<raw_type>::digits,
+        "tick_extender Bits is wider than the type read() returns: that reading wraps "
+        "before 2^Bits, and every wrap would read as a jump of nearly a whole period");
 
     scoped_lock<Lock> guard;
     const auto raw = static_cast<tick_type>(std::forward<Read>(read)());

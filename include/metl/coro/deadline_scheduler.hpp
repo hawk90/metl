@@ -17,12 +17,10 @@
 // compare signed differences (`(int32_t)(a - b) < 0`). That comparison is NOT a
 // strict weak ordering over the full range -- it loses transitivity once the
 // spread exceeds half a period -- and a heap requires one, so the queue would
-// silently order wrongly rather than fail. Widen the counter before scheduling
-// instead, with `metl::tick_extender` (metl/tick_extender.hpp): it turns a 16- to
-// 32-bit hardware counter into a 64-bit tick that does not wrap, and keeps the
-// counter read and the update in one critical section so an ISR cannot slip
-// between them. Deliberately not hidden inside this header, because the
-// extender has to be shared with every context that reads the counter.
+// silently order wrongly rather than fail. Widen the counter first with
+// `metl::tick_extender` (metl/tick_extender.hpp) and schedule on its 64-bit
+// tick. Deliberately not done inside this header: the extender has to be shared
+// with every context that reads the counter, the overflow ISR included.
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"

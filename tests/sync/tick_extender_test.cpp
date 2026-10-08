@@ -109,6 +109,12 @@ std::uint64_t error_after_preempted_read() {
 // Assert capture, for the raw > mask precondition.
 // ---------------------------------------------------------------------------
 
+// A register accessor that returns a reference, as MMIO helpers often do.
+volatile std::uint32_t g_fake_counter = 0;
+volatile std::uint32_t& counter_register() noexcept {
+  return g_fake_counter;
+}
+
 std::jmp_buf g_jump;
 bool g_asserted = false;
 
@@ -196,6 +202,24 @@ int main() {
     CHECK_EQ(ext.now(read), std::uint64_t{0xFFFFEF});
     systick_val = 0xFFFFF0;  // reloaded and counted 0x20 further
     CHECK_EQ(ext.now(read), std::uint64_t{0xFFFFEF} + 0x20);
+  }
+
+  // --- a read that returns a volatile reference is an unsigned reading --------
+  {
+    metl::tick_extender<32, null_lock> ext;
+    g_fake_counter = 0xFFFFFFF0u;
+    CHECK_EQ(ext.now(&counter_register), std::uint64_t{0xFFFFFFF0u});
+    g_fake_counter = 0x10u;
+    CHECK_EQ(ext.now(&counter_register), (std::uint64_t{1} << 32) + 0x10u);
+  }
+
+  // --- noexcept follows the read ---------------------------------------------
+  {
+    metl::tick_extender<16, null_lock> ext;
+    auto nothrow_read = []() noexcept { return std::uint16_t{0}; };
+    auto may_throw_read = [] { return std::uint16_t{0}; };
+    static_assert(noexcept(ext.now(nothrow_read)), "a noexcept read keeps now() noexcept");
+    static_assert(!noexcept(ext.now(may_throw_read)), "a read that may throw is not hidden behind noexcept");
   }
 
   // --- the race --------------------------------------------------------------

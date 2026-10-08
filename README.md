@@ -208,11 +208,9 @@ Concurrency
   so a plain 32-bit CAS is ABA-safe with no double-width CAS and no pointer-bit
   stuffing. Requires a hardware CAS (ARMv7-M and up); on Cortex-M0 the
   `static_assert` fires rather than degrading silently.
-- [`tick_extender`](include/metl/tick_extender.hpp) — widens a wrapping 16- to
-  32-bit hardware counter into a monotonic 64-bit tick. It takes the function
-  that *reads* the counter and calls it under the lock, so an ISR cannot land
-  between the read and the update and push the clock a period ahead. Feeds
-  `coro::deadline_scheduler`, which refuses a wrapping tick.
+- [`tick_extender`](include/metl/tick_extender.hpp) — widens a wrapping hardware
+  counter into a monotonic 64-bit tick, safely across an ISR and the main loop:
+  the tick `coro::deadline_scheduler` needs.
 - [`static_message_queue`](include/metl/static_message_queue.hpp).
 - [`atomic_ref`](include/metl/atomic_ref.hpp).
 
