@@ -490,21 +490,13 @@ for (;;) {
 }
 ```
 
-- **Pass the read, not the value.** `now()` calls `read_timer` inside the lock.
-  If the counter were read first and the value passed in, an ISR could update
-  the clock in between, and the stale value would push it a whole period ahead
-  for good. The API has no overload that takes a raw value, so that mistake
-  cannot be written.
-- **Call it more often than once per period.** Consecutive calls must be less
-  than one period apart: a whole period with no call leaves the counter where it
-  was, and no counter-only scheme can see that. The overflow interrupt alone is
-  therefore not quite enough -- its latency varies -- so call from the main loop
-  as well, or from a compare interrupt at half the period.
-- **`Bits` is the counter's width, and the read must be at least that wide.**
-  `tick_extender<32>` fed a `std::uint16_t` would see every 16-bit wrap as a jump
-  of nearly 2^32; it is a compile error instead.
-- **A down-counter** (SysTick) is read as `mask - value`. A counter that reloads
-  at anything but `2^Bits - 1` is not free-running and does not fit.
+- **Pass the read, not the value.** `now()` calls it inside the lock; that is
+  what keeps an ISR from updating the clock between the read and the update.
+- **Call it more often than once per period.** The overflow interrupt alone is
+  not quite enough, so call from the main loop too, or from a compare interrupt
+  at half the period. The header says why.
+- **A down-counter** (SysTick) is read as `mask - value`, and fits only when it
+  wraps at the top: SysTick with `LOAD = 2^24 - 1`, not a short OS-tick reload.
 
 ## A zero-copy driver region (UART/SPI/DMA)
 

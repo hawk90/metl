@@ -15,11 +15,10 @@
 // returns non-zero if any of it is wrong.
 //
 // NOTE ON THE CLOCK: `Tick` is compared with plain `<`, so it must not wrap.
-// A rolling hardware counter has to be widened where the overflow is observed
-// (accumulate into a software tick in the overflow ISR) before it is handed to
-// the scheduler. Comparing signed differences instead is NOT a strict weak
-// ordering across a full period, and a heap needs one -- it would misorder
-// silently rather than fail.
+// On hardware, widen the timer with metl::tick_extender (see its header) and
+// schedule on its 64-bit tick. Comparing signed differences instead is NOT a
+// strict weak ordering across a full period, and a heap needs one -- it would
+// misorder silently rather than fail.
 
 #include <cstddef>
 #include <cstdint>

@@ -10,21 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`tick_extender<Bits, Lock>`** (`<metl/tick_extender.hpp>`): widens a
-  wrapping hardware counter (1 to 63 bits) into a monotonic 64-bit tick.
-  `coro::deadline_scheduler` refuses a wrapping tick and used to leave the
-  widening to the caller; this is it. `now(read)` takes the function that reads
-  the counter and calls it inside the lock (`irq_lock` by default), because the
-  race is the hard part: a counter value read before an ISR's update and applied
-  after it is a whole period stale, and the clock stays a period ahead. There is
-  no overload taking a raw value. Shown on an emulated Cortex-M3 with a real
-  SysTick wrap: one period gained with `null_lock`, none with `irq_lock`.
-  Calls must stay less than one period apart, which is stated rather than
-  checked -- no counter-only scheme can see a missed period. What can be checked
-  is: a `read()` narrower than `Bits` (a `std::uint16_t` fed to
-  `tick_extender<32>`, which would take every 16-bit wrap as a leap of nearly
-  2^32) is a compile error, as is a signed one. A read returning a `volatile`
-  reference, as register accessors do, is accepted, and `now()` is `noexcept`
-  exactly when the read is.
+  wrapping hardware counter (1 to 63 bits) into a monotonic 64-bit tick -- the
+  tick `coro::deadline_scheduler` needs, which it used to leave the caller to
+  build. `now(read)` takes the function that reads the counter and calls it
+  inside the lock (`irq_lock` by default), so an ISR cannot update the clock
+  between the read and the update; there is no overload taking a raw value.
+  Calls must be less than one period apart. A `read()` that is signed or
+  narrower than `Bits` is a compile error.
 
 ### Fixed
 

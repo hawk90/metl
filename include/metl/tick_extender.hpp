@@ -67,6 +67,9 @@ namespace metl {
 /// @tparam Bits Width of the hardware counter, 1 to 63. The counter must wrap
 ///         from `2^Bits - 1` to `0`; a counter that reloads at any other value
 ///         (SysTick with a short reload) is not free-running and does not fit.
+///         `read()` must return an unsigned type at least `Bits` wide; a
+///         narrower one is a compile error, since its own wrap would read as a
+///         jump of nearly a whole period.
 /// @tparam Lock Lock policy shared by every caller; defaults to `irq_lock`, the
 ///         correct lock between an ISR and the main loop on a single core. On
 ///         multi-core targets, `irq_lock` does not exclude the other core.
