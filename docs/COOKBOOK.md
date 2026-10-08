@@ -450,8 +450,8 @@ Three things worth knowing before you wire this to a timer:
   for a rolling hardware counter — comparing signed differences, `(int32_t)(a - b)
   < 0` — is *not* a strict weak ordering once the spread exceeds half a period,
   and a heap requires one, so the queue would misorder silently rather than fail.
-  Widen the counter where the overflow is observed (accumulate into a software
-  tick in the overflow ISR) and pass that.
+  Widen the counter first with `metl::tick_extender` and pass its 64-bit tick
+  (next section).
 - **`run_due` is bounded by `max_dispatches`** (default 1024). A task that
   re-arms at a deadline already `<= now` is asking to run again inside the same
   call, which is legitimate for a catch-up timer but must not be unbounded.
@@ -466,6 +466,41 @@ For the queue on its own — a work queue, a priority event list — use
 `std::priority_queue`; pass `std::greater<T>` for the min-heap that deadlines
 want. `top()` is const-only on purpose: handing out a mutable reference would let
 a caller change the key the heap is ordered by and silently break the invariant.
+
+## A tick that does not wrap
+
+A 16-bit timer at 1 MHz wraps every 65 ms; a 32-bit cycle counter at 100 MHz
+every 43 s. `tick_extender` widens it into a 64-bit tick that does not wrap
+in any lifetime that matters:
+
+```cpp
+#include <metl/tick_extender.hpp>
+
+metl::tick_extender<16> ticks;   // irq_lock by default
+metl::coro::deadline_scheduler<8, std::uint64_t> tasks;   // a 64-bit Tick to match
+std::uint16_t read_timer() { return static_cast<std::uint16_t>(TIM3->CNT); }
+
+extern "C" void TIM3_IRQHandler() {   // overflow interrupt
+    clear_update_flag();
+    (void)ticks.now(&read_timer);
+}
+
+for (;;) {
+    tasks.run_due(ticks.now(&read_timer));
+}
+```
+
+- **Pass the read, not the value.** `now()` calls `read_timer` inside the lock.
+  If the counter were read first and the value passed in, an ISR could update
+  the clock in between, and the stale value would push it a whole period ahead
+  for good. The API has no overload that takes a raw value, so that mistake
+  cannot be written.
+- **Call it at least once per period.** A whole period with no call leaves the
+  counter where it was, and no counter-only scheme can see that. The overflow
+  interrupt alone is not quite enough -- its latency varies -- so call from the
+  main loop as well, or from a compare interrupt at half the period.
+- **A down-counter** (SysTick) is read as `mask - value`. A counter that reloads
+  at anything but `2^Bits - 1` is not free-running and does not fit.
 
 ## A zero-copy driver region (UART/SPI/DMA)
 
