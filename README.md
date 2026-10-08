@@ -636,7 +636,7 @@ METL is licensed under the [Apache License, Version 2.0](LICENSE).
 
 ## Status
 
-**1.0.0** — stable. METL follows [Semantic Versioning](https://semver.org/): the
+**1.1.0** — stable. METL follows [Semantic Versioning](https://semver.org/): the
 public API changes incompatibly only in a new major version. "Public" means every
 header under `include/metl/` except `detail/`, everything in namespace `metl`
 except `metl::detail`, and the documented `METL_*` configuration macros. Not
