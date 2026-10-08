@@ -107,13 +107,13 @@ class tick_extender {
   template <typename Read>
   METL_NODISCARD tick_type now(Read&& read) noexcept {
     using raw_type = std::remove_cv_t<decltype(std::forward<Read>(read)())>;
-    static_assert(std::is_integral<raw_type>::value && std::is_unsigned<raw_type>::value &&
-                      !std::is_same<raw_type, bool>::value,
-                  "tick_extender read() must return an unsigned integer: a hardware counter is "
-                  "unsigned, and a signed result would sign-extend past the counter's width");
+    static_assert(
+        std::is_integral_v<raw_type> && std::is_unsigned_v<raw_type> && !std::is_same_v<raw_type, bool>,
+        "tick_extender read() must return an unsigned integer: a hardware counter is "
+        "unsigned, and a signed result would sign-extend past the counter's width");
 
     scoped_lock<Lock> guard;
-    const tick_type raw = static_cast<tick_type>(std::forward<Read>(read)());
+    const auto raw = static_cast<tick_type>(std::forward<Read>(read)());
     METL_ASSERT(raw <= mask);
     // Unsigned subtraction wraps modulo 2^64; masking takes it modulo 2^Bits,
     // which is the forward distance the counter moved, wrap included.
