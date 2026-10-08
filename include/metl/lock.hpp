@@ -132,7 +132,7 @@ struct irq_lock {
   /// Saved `PRIMASK` on Cortex-M; unused elsewhere.
   using state_type = std::uint32_t;
 
-#if defined(METL_DETAIL_IRQ_LOCK_UNAVAILABLE)
+#ifdef METL_DETAIL_IRQ_LOCK_UNAVAILABLE
   // Templates only so that the static_assert fires where irq_lock is USED, not
   // in every translation unit that includes this header.
   template <typename Unused = void>
