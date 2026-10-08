@@ -60,12 +60,19 @@ constexpr std::uint64_t kPeriod = std::uint64_t{1} << 16;
 std::uint16_t g_counter = 0;
 std::uint64_t g_isr_seen = 0;
 
+// One extender per lock policy, shared by the "ISR" and the main loop as the
+// real thing would be. Static rather than a local whose address is published,
+// so nothing points at a dead stack frame afterwards. Each is used by exactly
+// one scenario, so each starts at the epoch.
 template <typename Lock>
-metl::tick_extender<16, Lock>* g_clock = nullptr;
+metl::tick_extender<16, Lock>& shared_clock() {
+  static metl::tick_extender<16, Lock> instance;
+  return instance;
+}
 
 template <typename Lock>
 void isr() {
-  g_isr_seen = g_clock<Lock>->now([] { return g_counter; });
+  g_isr_seen = shared_clock<Lock>().now([] { return g_counter; });
 }
 
 // Returns how far the main loop's next reading is from the truth. Zero means
@@ -73,8 +80,7 @@ void isr() {
 // there.
 template <typename Lock>
 std::uint64_t error_after_preempted_read() {
-  metl::tick_extender<16, Lock> ext;
-  g_clock<Lock> = &ext;
+  metl::tick_extender<16, Lock>& ext = shared_clock<Lock>();
   g_isr = &isr<Lock>;
   g_mask_depth = 0;
   g_pending = false;
