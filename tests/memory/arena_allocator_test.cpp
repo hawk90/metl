@@ -11,6 +11,11 @@ struct tracker {
 
   tracker(int a, int b) : lhs(a), rhs(b) { ++constructions; }
   tracker(const tracker& other) : lhs(other.lhs), rhs(other.rhs) { ++constructions; }
+  tracker& operator=(const tracker& other) {
+    lhs = other.lhs;
+    rhs = other.rhs;
+    return *this;  // no object created or destroyed: counters untouched
+  }
   ~tracker() { ++destructions; }
 
   int lhs;

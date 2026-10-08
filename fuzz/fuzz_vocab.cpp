@@ -148,9 +148,10 @@ void drive_expected(metl_fuzz::byte_reader& in) {
         }
         break;
       default:
-        if (!r.has_value() && r.error().value != value) {
-          // Reading the error is legitimate here; the comparison is incidental.
-          // What matters is that reading it at all does not disturb the state.
+        // Reading the error is legitimate here; the comparison is incidental.
+        // What matters is that reading it at all does not disturb the state.
+        if (!r.has_value()) {
+          static_cast<void>(r.error().value != value);
         }
         break;
     }

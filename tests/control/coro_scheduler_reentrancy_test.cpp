@@ -108,7 +108,9 @@ int main() {
   // ---- Case 4: a task attaches a new task mid-round; new task not polled
   //             this round, but survives to the next ----
   {
-    sched_t sched;
+    // Static like `late` and `at` below: they hold its address, so the
+    // scheduler must not outlive them the other way round.
+    static sched_t sched;
     static task late{};  // attached during a's poll.
     late = task{};
     late.sched = &sched;
