@@ -19,7 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no overload taking a raw value. Shown on an emulated Cortex-M3 with a real
   SysTick wrap: one period gained with `null_lock`, none with `irq_lock`.
   Calls must stay less than one period apart, which is stated rather than
-  checked -- no counter-only scheme can see a missed period.
+  checked -- no counter-only scheme can see a missed period. What can be checked
+  is: a `read()` narrower than `Bits` (a `std::uint16_t` fed to
+  `tick_extender<32>`, which would take every 16-bit wrap as a leap of nearly
+  2^32) is a compile error, as is a signed one. A read returning a `volatile`
+  reference, as register accessors do, is accepted, and `now()` is `noexcept`
+  exactly when the read is.
 
 ### Fixed
 
