@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-09
+
+**Highlights.** `tick_extender`, the non-wrapping tick that
+`coro::deadline_scheduler` needs; two concurrency defects that a
+documentation audit surfaced (a third thread's `size_approx()`, and an
+`irq_lock` that could not mask on one class of compiler); and that audit's
+result -- every comment and document checked against the code it describes.
+
+### Upgrading from 1.0.0
+
+Nothing that compiled and behaved correctly changes. Two things become
+visible where they were silently wrong:
+
+- On a Cortex-M target built by a compiler without GNU inline assembly (IAR,
+  for example), **using** `irq_lock` is now a compile error instead of a lock
+  that masked nothing, and `has_irq_masking` is false there. Supply a lock
+  policy built on that compiler's intrinsics.
+- `size_approx()` (and `empty()` / `full()` derived from it) on the SPSC
+  queues, read from a thread that is neither producer nor consumer, now stays
+  within `[0, Capacity]`; it could previously read nearly `SIZE_MAX`.
+
 ### Added
 
 - **`tick_extender<Bits, Lock>`** (`<metl/tick_extender.hpp>`): widens a
