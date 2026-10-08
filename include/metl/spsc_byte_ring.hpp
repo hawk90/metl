@@ -19,6 +19,7 @@
 // it that is not here.
 
 #include "metl/config.hpp"
+#include "metl/detail/index_distance.hpp"
 #include "metl/optimization.hpp"
 #include "metl/span.hpp"
 
@@ -46,7 +47,8 @@ namespace metl {
 /// `writable_size()` on the producer and `readable_size()` on the consumer may
 /// under-report if the other side has just moved its index, but they can never
 /// over-report. Acting on them is therefore safe without further synchronisation.
-/// `size_approx()` reads both indices and is a hint only.
+/// `size_approx()` reads both indices and is a hint only, clamped to
+/// `[0, Capacity]` (see `detail::clamped_index_distance`).
 ///
 /// **The wrap is visible, on purpose.** `writable_span()` and `readable_span()`
 /// return the FIRST CONTIGUOUS RUN, which stops at the physical end of the buffer.
@@ -220,7 +222,9 @@ class spsc_byte_ring {
 
   /// @brief Approximate readable byte count; a hint only under concurrent access.
   METL_NODISCARD size_type size_approx() const noexcept {
-    return tail_.load(std::memory_order_relaxed) - head_.load(std::memory_order_relaxed);
+    const size_type head = head_.load(std::memory_order_relaxed);
+    const size_type tail = tail_.load(std::memory_order_relaxed);
+    return detail::clamped_index_distance(head, tail, Capacity);
   }
 
   /// @brief Approximate emptiness; a hint only under concurrent access. The

@@ -85,7 +85,10 @@ class event_dispatcher<R(Args...), Capacity> {
   /// @brief Removes a previously registered listener.
   /// @param id Handle returned by subscribe.
   /// @return true if a matching active listener was found and removed.
-  METL_NODISCARD bool unsubscribe(listener_id id) noexcept {
+  /// @note Plain name and discardable, like `erase` and `cancel`: the boolean
+  ///       answers "was it there", it does not report a failure (SCOPE.md
+  ///       section 9, R4).
+  bool unsubscribe(listener_id id) noexcept {
     if (id.value == 0) {
       return false;  // never issued; would otherwise match a free slot
     }

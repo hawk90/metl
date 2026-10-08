@@ -16,12 +16,15 @@
 /// lock-free rather than wait-free and is therefore multi-core only.
 ///
 /// `size_approx`, `empty`, and `full` read two counters that another thread may be moving,
-/// so they are hints -- true at some instant during the call, not afterwards.
+/// so they are hints. From the producer or the consumer they are accurate for that
+/// side's own index; from any other thread the two loads are not a snapshot, and
+/// `size_approx` is clamped to `[0, Capacity]` rather than trusted.
 ///
 /// The destructor assumes no concurrent access: it destroys the
 /// remaining elements, which is a single-threaded operation by nature.
 
 #include "metl/config.hpp"
+#include "metl/detail/index_distance.hpp"
 #include "metl/optimization.hpp"
 #include "metl/type_traits.hpp"
 
@@ -156,11 +159,12 @@ class spsc_queue {
   }
 
   /// @brief Approximate number of queued elements.
-  /// @return Element count; only a hint under concurrent access (relaxed loads).
+  /// @return Element count in `[0, Capacity]`; only a hint under concurrent
+  ///         access (relaxed loads). See `detail::clamped_index_distance`.
   METL_NODISCARD std::size_t size_approx() const noexcept {
-    const std::size_t tail = tail_.load(std::memory_order_relaxed);
     const std::size_t head = head_.load(std::memory_order_relaxed);
-    return tail - head;
+    const std::size_t tail = tail_.load(std::memory_order_relaxed);
+    return detail::clamped_index_distance(head, tail, Capacity);
   }
 
   /// @brief Approximate emptiness check; only a hint under concurrent access.
@@ -169,11 +173,7 @@ class spsc_queue {
   }
 
   /// @brief Approximate fullness check; only a hint under concurrent access.
-  METL_NODISCARD bool full() const noexcept {
-    const std::size_t tail = tail_.load(std::memory_order_relaxed);
-    const std::size_t head = head_.load(std::memory_order_relaxed);
-    return (tail - head) == Capacity;
-  }
+  METL_NODISCARD bool full() const noexcept { return size_approx() == Capacity; }
 
   /// @brief Fixed number of slots in the ring buffer.
   METL_NODISCARD static constexpr std::size_t capacity() noexcept { return Capacity; }

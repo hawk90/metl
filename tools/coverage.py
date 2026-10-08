@@ -32,7 +32,7 @@ for identical code. So a local run will not match CI, and the CI number is the
 one the floor is set against. Do not chase a local figure.
 
 Usage:
-    tools/coverage.py [--min-lines 85] [--min-branches 70]
+    tools/coverage.py [--min-lines 90] [--min-branches 72]
 """
 
 import argparse
@@ -62,8 +62,8 @@ def pct(total, missed):
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--min-lines", type=float, default=85)
-    parser.add_argument("--min-branches", type=float, default=70)
+    parser.add_argument("--min-lines", type=float, default=90)
+    parser.add_argument("--min-branches", type=float, default=72)
     args = parser.parse_args()
     sys.stdout.reconfigure(line_buffering=True)
 

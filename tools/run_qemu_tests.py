@@ -58,6 +58,7 @@ DENIED = {
     "sync/atomic_handle_threaded_test.cpp": "needs <thread>",
     "sync/mpmc_queue_threaded_test.cpp": "needs <thread>",
     "sync/spsc_byte_ring_threaded_test.cpp": "needs <thread>",
+    "sync/size_hint_observer_threaded_test.cpp": "needs <thread>",
     "core/harden_floor_none_test.cpp": "forked death test (unistd.h / sys/wait.h)",
     "sync/spsc_byte_ring_overcommit_test.cpp":
         "forked death test (unistd.h / sys/wait.h); its positive half is index "
