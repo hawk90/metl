@@ -23,6 +23,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The Conan recipe declared the wrong license.** `conanfile.py` said
   `MIT`; METL is Apache-2.0 (`LICENSE`, and the ESP-IDF manifest already said
   so), and the Conan package metadata now matches.
+- **`size_approx()` read by a third thread could report nearly `SIZE_MAX`.**
+  `spsc_queue` and `spsc_byte_ring` subtracted two counters loaded while the
+  producer and consumer were moving them; a pop between the two loads wrapped
+  the result, so a queue of four "held" 1.8e19 elements and `empty()` /
+  `full()` were both wrong. All three queues now share
+  `detail::clamped_index_distance`, which keeps the hint in `[0, Capacity]`
+  whatever order the loads land in. From the producer or the consumer the
+  values were and are accurate.
+- **`irq_lock` claimed to mask interrupts where it could not.** On a Cortex-M
+  target built by a compiler without GNU inline assembly (IAR, for example),
+  `METL_HAS_IRQ_MASKING` was 1 while `irq_lock` compiled to a compiler
+  barrier -- a lock that masks nothing. There, `has_irq_masking` is now false
+  and using `irq_lock` is a compile error naming the fix; including the header
+  is unaffected.
+- `event_dispatcher::unsubscribe` is no longer `[[nodiscard]]`: its boolean
+  answers "was it registered", like `erase` and `cancel`, which is why the API
+  contract already listed it as a question.
+- `try_parse_int` computes its overflow bounds at compile time, as its comment
+  said it did; two of the four were runtime divisions an unoptimised ARMv6-M
+  build would have kept.
 - **METL compiles with MSVC.** `compiler.hpp` -- included by every header --
   used `__has_cpp_attribute` in an ordinary expression, which only GCC and
   Clang accept (the standard allows it only in `#if`), so every header failed

@@ -49,15 +49,37 @@ namespace metl {
 /// silent is not worth the convenience; a multi-core user can build one from
 /// `metl::atomic_handle` or `std::atomic_flag` with the trade-off in view.
 
+// Whether the compiler takes GNU extended inline assembly, which is how the
+// PRIMASK sequence below is written. Overridable only so a test can model a
+// compiler without it; not a configuration option.
+#ifndef METL_DETAIL_HAS_GNU_ASM
+#if defined(__GNUC__) || defined(__clang__)
+#define METL_DETAIL_HAS_GNU_ASM 1
+#else
+#define METL_DETAIL_HAS_GNU_ASM 0
+#endif
+#endif
+
 /// @brief 1 when `irq_lock` really masks interrupts on this target, 0 when it
-///        degrades to a compiler barrier.
+///        does not.
 ///
-/// Real on ARM Cortex-M (the M profile). Hosted targets have no interrupts for a
-/// program to mask, so `irq_lock` compiles but provides **no mutual exclusion**
-/// there — it exists so the same code builds and can be unit-tested. Assert on
-/// `metl::has_irq_masking` when a deployment depends on it being real.
+/// Real on ARM Cortex-M (the M profile) with GCC or Clang. Hosted targets have
+/// no interrupts for a program to mask, so `irq_lock` compiles there but
+/// provides **no mutual exclusion** -- it exists so the same code builds and can
+/// be unit-tested. Assert on `metl::has_irq_masking` when a deployment depends
+/// on it being real.
+///
+/// A Cortex-M target built by a compiler without GNU inline assembly (IAR, for
+/// example) is the one case where a no-op lock would be a silent bug on real
+/// hardware, so there `irq_lock` is not a no-op: using it is a compile error,
+/// and this is 0. Including the header stays fine.
 #if defined(__ARM_ARCH_PROFILE) && (__ARM_ARCH_PROFILE == 'M')
+#if METL_DETAIL_HAS_GNU_ASM
 #define METL_HAS_IRQ_MASKING 1
+#else
+#define METL_HAS_IRQ_MASKING 0
+#define METL_DETAIL_IRQ_LOCK_UNAVAILABLE 1
+#endif
 #else
 #define METL_HAS_IRQ_MASKING 0
 #endif
@@ -110,8 +132,25 @@ struct irq_lock {
   /// Saved `PRIMASK` on Cortex-M; unused elsewhere.
   using state_type = std::uint32_t;
 
+#ifdef METL_DETAIL_IRQ_LOCK_UNAVAILABLE
+  // Templates only so that the static_assert fires where irq_lock is USED, not
+  // in every translation unit that includes this header.
+  template <typename Unused = void>
   METL_NODISCARD static state_type lock() noexcept {
-#if METL_HAS_IRQ_MASKING && (defined(__GNUC__) || defined(__clang__))
+    static_assert(sizeof(Unused*) == 0,
+                  "metl::irq_lock has no PRIMASK sequence for this compiler on a Cortex-M target: "
+                  "it would compile to a lock that masks nothing. Supply a lock policy built on "
+                  "your compiler's intrinsics (state_type, lock(), unlock(state_type))");
+    return 0;
+  }
+  template <typename Unused = void>
+  static void unlock(state_type) noexcept {
+    static_assert(sizeof(Unused*) == 0,
+                  "metl::irq_lock has no PRIMASK sequence for this compiler on a Cortex-M target");
+  }
+#else
+  METL_NODISCARD static state_type lock() noexcept {
+#if METL_HAS_IRQ_MASKING
     state_type previous = 0;
     __asm__ __volatile__("mrs %0, primask" : "=r"(previous)::"memory");
     __asm__ __volatile__("cpsid i" ::: "memory");
@@ -125,7 +164,7 @@ struct irq_lock {
   }
 
   static void unlock(state_type previous) noexcept {
-#if METL_HAS_IRQ_MASKING && (defined(__GNUC__) || defined(__clang__))
+#if METL_HAS_IRQ_MASKING
     // Restore, never blanket-enable: `previous` is 1 when the caller already had
     // interrupts disabled, and this must leave them that way.
     __asm__ __volatile__("msr primask, %0" ::"r"(previous) : "memory");
@@ -134,6 +173,7 @@ struct irq_lock {
     std::atomic_signal_fence(std::memory_order_seq_cst);
 #endif
   }
+#endif
 };
 
 /// @brief RAII critical section over a lock policy.

@@ -3,6 +3,7 @@
 #include "metl/attributes.hpp"
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/index_distance.hpp"
 #include "metl/optimization.hpp"
 #include "metl/type_traits.hpp"
 
@@ -187,24 +188,16 @@ class mpmc_queue {
   }
 
   /// Approximate number of queued elements; only a hint under concurrent access.
-  /// @note Plain unsigned subtraction, deliberately, and NOT `tail > head ? ... : 0`.
-  ///       Both counters are monotonic and wrap; their difference is meaningful
-  ///       across the wrap and the comparison is not. The guarded version
-  ///       reported 0 for a non-empty queue once the counters wrapped, which made
-  ///       `full()` answer *false* on a full queue -- optimistic, which is the
-  ///       wrong direction for a hint. `spsc_queue::size_approx` always did the
-  ///       plain subtraction; this now matches it.
-  ///       Head is loaded BEFORE tail: loaded the other way,
-  ///       pops landing between the two loads made `tail - head` wrap to about
-  ///       `SIZE_MAX`, so `empty()` and `full()` were both false-ish at once. A
-  ///       dequeue never overtakes the enqueue it consumes, so a later tail is
-  ///       never behind an earlier head; pushes between the loads can still
-  ///       overshoot, hence the clamp.
+  /// @note Modular subtraction, NOT `tail > head ? ... : 0`: both counters wrap,
+  ///       and their difference is meaningful across the wrap where the
+  ///       comparison is not (a guarded form reads 0 for a non-empty queue once the
+  ///       counters wrap, so `full()` would answer false on a full queue). The result is clamped to `[0,
+  ///       Capacity]` because two relaxed loads are not a snapshot -- see `detail::clamped_index_distance`,
+  ///       shared with the SPSC rings.
   METL_NODISCARD size_type size_approx() const noexcept {
     const size_type head = dequeue_pos_.load(std::memory_order_relaxed);
     const size_type tail = enqueue_pos_.load(std::memory_order_relaxed);
-    const size_type count = tail - head;
-    return count < Capacity ? count : Capacity;
+    return detail::clamped_index_distance(head, tail, Capacity);
   }
 
   /// Approximate emptiness check; only a hint under concurrent access.

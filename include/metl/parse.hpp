@@ -309,10 +309,12 @@ METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_int(span<con
   using accumulator_t = detail::parse_accumulator_t<T>;
   constexpr auto positive_limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
   constexpr accumulator_t negative_limit = detail::negative_limit_of<T>();
-  const accumulator_t limit_head =
-      negative ? negative_limit / accumulator_t{10} : positive_limit / accumulator_t{10};
-  const accumulator_t limit_tail =
-      negative ? negative_limit % accumulator_t{10} : positive_limit % accumulator_t{10};
+  constexpr accumulator_t positive_head = positive_limit / accumulator_t{10};
+  constexpr accumulator_t positive_tail = positive_limit % accumulator_t{10};
+  constexpr accumulator_t negative_head = negative_limit / accumulator_t{10};
+  constexpr accumulator_t negative_tail = negative_limit % accumulator_t{10};
+  const accumulator_t limit_head = negative ? negative_head : positive_head;
+  const accumulator_t limit_tail = negative ? negative_tail : positive_tail;
 
   const auto run = detail::fold_decimal(digits, limit_head, limit_tail);
   if (run.consumed == 0) {
