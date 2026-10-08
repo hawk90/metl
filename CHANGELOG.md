@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Conan recipe declared the wrong license.** `conanfile.py` said
+  `MIT`; METL is Apache-2.0 (`LICENSE`, and the ESP-IDF manifest already said
+  so), and the Conan package metadata now matches.
 - **METL compiles with MSVC.** `compiler.hpp` -- included by every header --
   used `__has_cpp_attribute` in an ordinary expression, which only GCC and
   Clang accept (the standard allows it only in `#if`), so every header failed

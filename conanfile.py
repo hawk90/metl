@@ -6,8 +6,8 @@ get right is the *contract*: C++17 is a hard requirement (the library is built
 out of `if constexpr`, fold expressions and inline variables, so a C++14
 consumer fails deep inside a header rather than at configure time), and the
 consumer needs the same `metl::metl` target it would get from
-`find_package(metl)`, so switching between vcpkg, Conan and a plain install does
-not change the CMake a project writes.
+`find_package(metl)`, so switching between Conan and a plain install does not
+change the CMake a project writes.
 
 Local check:
     conan create . --build=missing
@@ -26,7 +26,7 @@ required_conan_version = ">=2.0"
 class MetlConan(ConanFile):
     name = "metl"
     description = "Modern Embedded Template Library: header-only C++17 containers and vocabulary types with no heap, no exceptions and no RTTI"
-    license = "MIT"
+    license = "Apache-2.0"
     url = "https://github.com/hawk90/metl"
     homepage = "https://github.com/hawk90/metl"
     topics = ("embedded", "header-only", "no-exceptions", "no-heap", "cpp17", "deterministic")
@@ -79,5 +79,6 @@ class MetlConan(ConanFile):
         self.cpp_info.set_property("cmake_file_name", "metl")
         self.cpp_info.set_property("cmake_target_name", "metl::metl")
 
-        # The library uses `if constexpr` and inline variables unguarded.
+        # Semantic Versioning from 1.0.0: a request for 1.x is satisfied by any
+        # later 1.y, never by a new major.
         self.cpp_info.set_property("cmake_config_version_compat", "SameMajorVersion")
