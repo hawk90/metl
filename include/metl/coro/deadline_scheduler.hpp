@@ -18,9 +18,11 @@
 // strict weak ordering over the full range -- it loses transitivity once the
 // spread exceeds half a period -- and a heap requires one, so the queue would
 // silently order wrongly rather than fail. Widen the counter before scheduling
-// instead: accumulate into a 32- or 64-bit software tick in the overflow ISR and
-// pass that. Deliberately not hidden inside this header, because the widening has
-// to happen where the overflow is observed.
+// instead, with `metl::tick_extender` (metl/tick_extender.hpp): it turns a 16- to
+// 32-bit hardware counter into a 64-bit tick that does not wrap, and keeps the
+// counter read and the update in one critical section so an ISR cannot slip
+// between them. Deliberately not hidden inside this header, because the
+// extender has to be shared with every context that reads the counter.
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"

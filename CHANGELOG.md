@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`tick_extender<Bits, Lock>`** (`<metl/tick_extender.hpp>`): widens a
+  wrapping hardware counter (1 to 63 bits) into a monotonic 64-bit tick.
+  `coro::deadline_scheduler` refuses a wrapping tick and used to leave the
+  widening to the caller; this is it. `now(read)` takes the function that reads
+  the counter and calls it inside the lock (`irq_lock` by default), because the
+  race is the hard part: a counter value read before an ISR's update and applied
+  after it is a whole period stale, and the clock stays a period ahead. There is
+  no overload taking a raw value. Shown on an emulated Cortex-M3 with a real
+  SysTick wrap: one period gained with `null_lock`, none with `irq_lock`.
+  Calls must stay less than one period apart, which is stated rather than
+  checked -- no counter-only scheme can see a missed period.
+
 ### Fixed
 
 - **METL compiles with MSVC.** `compiler.hpp` -- included by every header --
