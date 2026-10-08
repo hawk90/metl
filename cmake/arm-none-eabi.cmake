@@ -73,7 +73,8 @@ set(CMAKE_SIZE         arm-none-eabi-size)
 # Compile flags
 # ---------------------------------------------------------------------------
 # Freestanding embedded code: no hosted libc assumptions, no exceptions,
-# no RTTI, no unwind tables, gc-sections for dead-code elimination.
+# no RTTI, no unwind tables, and per-function/per-data sections so that a
+# link with --gc-sections (not set here) can drop dead code.
 set(_metl_arm_common
   "${_metl_arm_cpu_flags} ${_metl_arm_float_flags} \
 -ffreestanding \

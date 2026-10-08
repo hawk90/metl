@@ -6,15 +6,24 @@
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
 ///   | `load`, `store` (lock-free `T`) | wait-free, bounded |
-///   | `fetch_add`, `fetch_sub`, `exchange`, `compare_exchange_*` | **lock-free**, not wait-free |
+///   | `compare_exchange_weak` (lock-free `T`) | wait-free, bounded -- one attempt |
+///   | `exchange`, `compare_exchange_strong` | **lock-free**, not wait-free |
+///   | `fetch_add`, `fetch_sub`, `fetch_and`, `fetch_or`, `fetch_xor` | **lock-free**, not wait-free |
 ///   | any operation on a non-lock-free `T` | **no METL guarantee** -- see below |
 ///
-/// The read-modify-write operations are lock-free rather than wait-free because
-/// ARMv7-M and other load-linked/store-conditional machines implement them as an
-/// `LDREX`/`STREX` retry loop, and the retry count is not bounded: a thread can
-/// lose the reservation arbitrarily many times. Under docs/SCOPE.md section 1 that
-/// restricts them to multi-core use -- never between an ISR and the main loop on a
-/// single core, where the ISR that preempts the retry makes it spin forever.
+/// On ARMv7-M and other load-linked/store-conditional machines a single
+/// `compare_exchange_weak` is one `LDREX`/`STREX` attempt with no loop: it is
+/// allowed to fail spuriously, so it never retries. The other read-modify-write
+/// operations must not fail spuriously, so they lower to an `LDREX`/`STREX` retry
+/// loop, and the retry count is not bounded: a thread can lose the reservation
+/// arbitrarily many times. Under docs/SCOPE.md section 1 that restricts them to
+/// multi-core use -- never between an ISR and the main loop on a single core.
+/// There, the preempting ISR's operation runs to completion (barring a
+/// higher-priority interrupt), and it is the main loop's retry that fails,
+/// because exception entry and return clear the exclusive monitor. Each
+/// interrupt that lands inside the window costs the main loop another attempt,
+/// so its progress is bounded only by the interrupt rate, not by anything this
+/// header controls. Mask interrupts there instead.
 ///
 /// When `std::atomic<T>::is_always_lock_free` is false, the standard library
 /// implements the operation with an address-keyed lock pool that METL does not own
@@ -63,10 +72,9 @@ inline std::atomic<T>* atomic_ref_cast(T* ptr) noexcept {
 ///          no 64-bit atomic instruction, so `std::atomic<T>` lowers to
 ///          `__atomic_load_8` / `__atomic_store_8`, and bare-metal toolchains
 ///          ship no libatomic to satisfy them — the failure is an undefined
-///          reference at link time, not a compile error. This was found by
-///          running the test suite on an emulated Cortex-M3
-///          (`qemu-conformance`). Check `is_always_lock_free` when the target
-///          may be an MCU, or keep `T` to 4 bytes or fewer there.
+///          reference at link time, not a compile error. Check
+///          `is_always_lock_free` when the target may be an MCU, or keep `T`
+///          to 4 bytes or fewer there.
 template <typename T>
 class atomic_ref {
   static_assert(std::is_trivially_copyable_v<T>, "atomic_ref requires a trivially copyable type");

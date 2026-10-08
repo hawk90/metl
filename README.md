@@ -250,6 +250,17 @@ Embedded
 Worked example: [`examples/mmio_peripheral.cpp`](examples/mmio_peripheral.cpp)
 (a fake memory-mapped UART).
 
+Configuration
+
+- [`config.hpp`](include/metl/config.hpp) — the `METL_*` macros a build may
+  set: `METL_HARDENING` (which precondition checks stay compiled in) and
+  `METL_CRC_TABLE` (nibble-table or bit-at-a-time CRC), plus the check macros
+  it defines — `METL_ASSERT` / `METL_DASSERT`, which the hardening level
+  controls, and `METL_HARDEN`, which is always on. Set them identically in
+  every translation unit.
+- [`assert.hpp`](include/metl/assert.hpp) — `set_assert_handler`, to log or
+  record a failed check before the unconditional `abort()`.
+
 ## Documentation
 
 - **[Scope](docs/SCOPE.md)** — what belongs in METL and what does not, stated as
@@ -466,10 +477,17 @@ To consume METL from your own IDF project without vendoring it, point
 | MSVC              | 19.20 (VS 2019) |
 | arm-none-eabi-gcc | 10              |
 
+**These minimums are the C++17 floors METL is written against, and no CI job
+builds with them.** CI uses the compilers that ship on its pinned runner images
+(`ubuntu-26.04`, `macos-26`, `windows-2025`; see
+[`ci.yml`](.github/workflows/ci.yml)), which are newer than every floor here. A
+regression that only an older compiler would catch is not gated — report it if
+you hit one.
+
 **Language standard: C++17 is the baseline and is what these minimums are for.**
 Building as C++20 is also verified in CI (`config-matrix / cxx20`) and is
 supported, but not required — deliberately. Requiring it would raise the GCC
-floor and drop IAR EWARM and the older vendor SDKs listed below, and there is
+floor and drop IAR EWARM (listed below) and older vendor SDKs, and there is
 currently no METL feature that needs it: the one place C++20 buys something,
 `optional`'s constant evaluation, already works through a dual-mode path keyed on
 the standard library's feature-test macro rather than on the language version.
@@ -477,9 +495,10 @@ the standard library's feature-test macro rather than on the language version.
 Tested targets:
 
 - Cortex-M0, Cortex-M3, Cortex-M4, Cortex-M7
-- Cortex-A class
 - RISC-V (32-bit and 64-bit)
-- x86-64 host (Linux, macOS, Windows)
+- x86-64 host (Linux, Windows) and AArch64 host (macOS)
+
+Cortex-A is not exercised by any CI job.
 
 ## Platform support matrix
 
@@ -491,15 +510,15 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 
 | Area | Platform / config | What CI does | Job |
 | --- | --- | --- | --- |
-| Host | Linux / macOS / Windows × gcc / clang / MSVC × Debug / Release / MinSizeRel | build + `ctest` | `host-test` |
+| Host | Linux × gcc / clang and macOS × clang, each × Debug / Release / MinSizeRel; Windows × MSVC × Release | build + `ctest` | `host-test` |
 | Host hardening | Release **+ `-Werror`** (clang **and gcc**) | build + `ctest` (NDEBUG warning gate) | `release-werror` |
 | Host LTO | Release + IPO/LTO | build + `ctest` | `lto` |
 | Sanitizers | Linux / clang — ASan+UBSan, TSan (Debug, `-Werror`) | build + `ctest` (incl. threaded tests) | `sanitizers` |
 | ARM Cortex-M (gcc) | Cortex-M0/M3/M4/M7, freestanding | cross-compile + code size | `arm-cross` |
 | **ARM Cortex-M (run)** | **Cortex-M3 / M4 / M7 under qemu-system-arm** (mps2-an385 / an386 / an500) | **cross-compile + RUN the test suite** — 91 tests per core | `qemu-conformance` |
 | ARM Cortex-M0 (run) | an **ARMv6-M build** executed on the AN385's ARMv7-M core — QEMU has no M0 board | runs 87 tests, and asserts that the three CAS-requiring types — `mpmc_queue`, `atomic_handle`, `intrusive_ptr`, across four test files — *fail to compile*. Proves the M0 **build** runs, **not** that an M0 **core** runs it: core-level differences (unaligned access, absent VTOR) are out of scope, which is why the interrupt tests skip themselves there | `qemu-conformance` |
-| ARM Cortex-M (clang) | cortex-m4, `arm-none-eabi` target | second frontend, `-fsyntax-only` | `arm-cross-clang` |
-| RISC-V | rv64 (linux-gnu g++) | freestanding `-fsyntax-only` | `riscv-cross` |
+| ARM Cortex-M (clang) | cortex-m4, `arm-none-eabi` target | second frontend, `-fsyntax-only` | `cross-syntax` (`arm-cross-clang / cortex-m4`) |
+| RISC-V | rv64 (linux-gnu g++) | freestanding `-fsyntax-only` | `cross-syntax` (`riscv-cross / rv64`) |
 | Xtensa (ESP32) | ESP-IDF component, `esp32` target | `idf.py build` (Docker) | `esp-idf` |
 | RISC-V (ESP32-C3) | ESP-IDF component, `esp32c3` target | `idf.py build` (Docker) | `esp-idf` |
 | Big-endian | powerpc64 (BE) | build headers + build & **run** endian test under qemu-user | `big-endian` |
@@ -510,15 +529,18 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | Lock-free capability | Cortex-M0/M3/M4/M7 | the trait must match the target **and** the opposite expectation must not compile | `handle-atomics` |
 | Non-default configs | `METL_CRC_TABLE=0`, **`-std=c++20`** | build + `ctest` for each (`#if` arms nothing else compiles) | `config-matrix` |
 | Coverage | host, Clang source-based | `include/metl` line + branch coverage against a floor | `coverage` |
-| Benchmarks | host | build + run each suite (`--quick`); asserts **nothing** about the numbers — see code size below | `bench-smoke` |
-| Code size | Cortex-M0/M3/M4/M7, `-Os` | `.text` of the **linked** probe against a per-target budget that can only go down | `invariants` |
+| Benchmarks | host | build + run each suite (`--quick`); instructions executed per benchmark, counted under cachegrind, against a budget (`tools/check_instructions.py`); wall-clock numbers are informational only | `bench-smoke` |
+| Code size and RAM | Cortex-M0/M3/M4/M7, `-Os` | `.text`, `.rodata`, `.bss`+`.data` and deepest stack frame of the **linked** probe against per-target budgets (`tools/check_size.py`, `tools/check_stack.py`) | `invariants` |
 | Header hygiene | per-header self-containment + umbrella completeness | `-fsyntax-only` per header + `ctest` | `header-checks` |
 | API contract | every public header | every `try_*` is `[[nodiscard]]` and `try_` is reserved for recoverable forms; a self-test canary must still fail; a single-pass iterator must **not** compile | `api-contract` |
 | Install / consume | `find_package(metl)` downstream | install + build + **run** a consumer | `install-check` |
 | Conan package | `conan create` + `test_package/` | build + **run** a consumer against the *packaged* headers; a pre-C++17 profile must be refused | `conan` |
 | Single-header | generated amalgamation of every public header | redirect every `metl/*.hpp` at it and **run the whole test suite through it** | `amalgamation` |
-| Static analysis | clang-tidy, deduplicated | distinct-finding count against a ratchet that can only go down | `clang-tidy` |
-| Security scan | CodeQL `security-and-quality` | analyse a build that **instantiates the templates**, weekly + per PR | `codeql` |
+| Static analysis | clang-tidy, deduplicated | distinct-finding count against a ratchet that only goes down, except on a clang-tidy version bump, which is recorded with its reason in `ci.yml` | `clang-tidy` |
+| Consumer warnings | clang and gcc × C++17 / C++20 | every host test, fuzz and example TU under a strict consumer warning set, as errors | `consumer-warnings` |
+| Fuzzing | libFuzzer + ASan/UBSan, every `fuzz/` harness | bounded run of each harness; fails on crash, leak or timeout | `fuzz-smoke` |
+| Mutation testing | host | deliberately broken library builds; every mutant must be caught by some gate (`tools/check_mutants.py`) | `mutants` |
+| Security scan | CodeQL `security-and-quality` | analyse a build that **instantiates the templates**, weekly + per PR | `analyze / c-cpp` ([`codeql.yml`](.github/workflows/codeql.yml)) |
 | Examples | every `examples/*.cpp`, `-Wall -Wextra -Werror` | build + **run** (self-checking) | `examples` |
 
 Cross-cutting frontends covered by the above: **GCC**, **Clang**, and **MSVC** on
@@ -535,20 +557,20 @@ checked against a **real SysTick interrupt**: the test observes that the handler
 does not run while the lock is held, after first confirming it does run when the
 lock is not held.
 
-Two portability limits were found that way, and both are now compile-time errors
-with an explanatory message rather than link failures:
+Two portability limits were found that way:
 
 - `intrusive_ref_counter<..., refcount_kind::atomic>` needs a lock-free
-  read-modify-write, which **ARMv6-M (Cortex-M0/M0+) does not have**. Use
+  read-modify-write, which **ARMv6-M (Cortex-M0/M0+) does not have**. This is a
+  compile-time error with an explanatory message. Use
   `refcount_kind::non_atomic` there, guarding ISR-shared access with
   `metl::guarded<T, metl::irq_lock>`.
 - `atomic_ref<T>` with an 8-byte `T` lowers to 64-bit atomic calls that no
-  bare-metal toolchain provides. Keep `T` to 4 bytes or fewer on an MCU.
+  bare-metal toolchain provides. This one is still a **link** failure (an
+  undefined `__atomic_*_8`), not a compile error — see the header. Keep `T` to
+  4 bytes or fewer on an MCU.
 
-> **Every job in `ci.yml` is blocking.** `esp-idf` and the Zephyr twister run
-> step were the last two that were not; both were promoted on 2026-08-21 after
-> 12 consecutive clean main runs each. A job that is green every time and still
-> cannot fail the pipeline reads as covered while proving nothing.
+> **Every job in `ci.yml` is blocking.** A job that is green every time and
+> still cannot fail the pipeline reads as covered while proving nothing.
 
 ### Documented-only (not CI-verified)
 
@@ -584,10 +606,13 @@ metl/
 ├── cmake/
 ├── include/
 │   └── metl/
+├── conanfile.py        # Conan recipe (test_package/ is its consumer test)
 ├── tests/
 │   └── embedded/       # freestanding probes + the QEMU runner shim
 ├── bench/              # micro-benchmarks (dependency-free harness)
-├── tools/              # invariant symbol audit, QEMU test runner
+├── fuzz/               # libFuzzer harnesses + seed corpus
+├── tools/              # CI gate scripts (check_*.py), QEMU runner, amalgamation
+├── test_package/
 ├── examples/
 ├── samples/
 │   ├── zephyr/         # Zephyr sample app (metl_hello)
@@ -596,6 +621,7 @@ metl/
 ├── components/
 │   └── metl/           # ESP-IDF component shim (idf_component_register + manifest)
 ├── docs/
+├── .clusterfuzzlite/   # ClusterFuzzLite build for continuous fuzzing
 └── .github/
 ```
 

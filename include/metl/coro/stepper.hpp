@@ -5,12 +5,13 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `poll`, `reset`, state queries | wait-free, bounded |
-///   | the step body itself | **bounded by the body you write** |
+///   | state queries | wait-free, bounded |
+///   | `poll`, `reset` | wait-free, bounded, plus the `step()` / `on_reset()` they call |
+///   | the step body itself, and `on_reset()` | **bounded by the body you write** |
 ///
-/// `poll` is one virtual call to `step()` plus a state
-/// update. Everything else is the work you put in the step body, which this header
-/// cannot bound.
+/// `poll` is one virtual call to `step()` plus a state update; `reset` is a flag
+/// clear plus one virtual call to `on_reset()`. Everything else is the work you
+/// put in `step()` and `on_reset()`, which this header cannot bound.
 
 // Explicit-state stackless task. Unlike `protothread`, no macro magic: the
 // derived class implements `step()` as an explicit state machine and returns

@@ -5,10 +5,9 @@
 ///        input to the conditional `noexcept` of the containers' lookups.
 ///
 /// The containers' lookups (`find`, `contains`, `lower_bound`, `erase`, ...) call
-/// user code: the comparator, the hasher, the key equality. They used to be
-/// `noexcept` unconditionally, so one that threw terminated the program.
-/// They are now `noexcept` exactly when that code cannot
-/// throw.
+/// user code: the comparator, the hasher, the key equality. They are `noexcept`
+/// exactly when that code cannot throw; an unconditional `noexcept` would turn
+/// a throwing comparator into a call to `std::terminate`.
 ///
 /// The answer cannot simply be `noexcept(comp(a, b))`: `std::less`,
 /// `std::greater` and `std::equal_to` do not declare their call operators

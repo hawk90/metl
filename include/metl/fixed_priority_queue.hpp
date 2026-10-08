@@ -128,9 +128,9 @@ class fixed_priority_queue {
   ///       is already an exact, non-racy pre-check (SCOPE.md section 9, R5).
   /// @note `noexcept` only when nothing `pop` calls can throw: the sift moves
   ///       elements by move-construction AND move-assignment (`swap_slots`) and
-  ///       calls the comparator. The condition used to name move-assignment
-  ///       only, so a throwing move constructor or comparator terminated the
-  ///       program instead of reaching the clear-and-rethrow below.
+  ///       calls the comparator. All three are in the condition, so a throwing
+  ///       move constructor or comparator reaches the clear-and-rethrow below
+  ///       instead of terminating the program.
   void pop() noexcept(std::is_nothrow_move_assignable_v<T> && std::is_nothrow_move_constructible_v<T> &&
                       comparator_cannot_throw) {
     // Never stripped: the index arithmetic below underflows on an empty queue and

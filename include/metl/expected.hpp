@@ -5,7 +5,7 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | construct, assign, `emplace`, `reset`, observers | wait-free, bounded |
+///   | construct, assign, `emplace`, `emplace_error`, `swap`, observers | wait-free, bounded |
 ///   | `and_then`, `or_else`, `transform`, `transform_error` | bounded by the callable you pass |
 ///
 /// `expected` holds one `T` or one `E` inline and switches between them by

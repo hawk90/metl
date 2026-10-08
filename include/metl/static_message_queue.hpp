@@ -75,7 +75,7 @@ class static_message_queue {
   // Element-inserting constructors delegate to the empty constructor first.
   // Once it returns the object is fully constructed, so if copying or moving
   // an element throws part-way, the destructor runs and destroys exactly the
-  // elements already inserted -- they used to leak.
+  // elements already inserted instead of leaking them.
   static_message_queue(const static_message_queue& other) : static_message_queue() {
     for (size_type i = 0; i < other.size_; ++i) {
       const size_type index = other.physical_index(i);
@@ -206,10 +206,9 @@ class static_message_queue {
   /// @brief Remove the front element without returning it.
   /// @pre The queue must not be empty.
   void pop() noexcept {
-    // Hard, not METL_ASSERT: an empty pop at METL_HARDENING_NONE destroyed a
-    // dead slot and wrapped size_ to SIZE_MAX -- the next push leaked, and a
-    // destructor then looped ~2^64 times (fixed_vector's
-    // pop_back has the same guard).
+    // Hard, not METL_ASSERT: unchecked, an empty pop destroys a dead slot and
+    // wraps size_ to SIZE_MAX -- the next push leaks, and the destructor then
+    // loops ~2^64 times (fixed_vector's pop_back has the same guard).
     METL_HARDEN(size_ > 0);
     pop_front();
   }

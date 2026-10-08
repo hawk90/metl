@@ -210,8 +210,9 @@ jobs:
   # Under NDEBUG, asserts (and their operands) compile out, so a variable used
   # only by an assert becomes -Wunused. The tests use CHECK/CHECK_EQ (which run
   # in Release too) precisely so this job stays green AND the assertions are
-  # actually exercised in an optimized build. Complements the Debug-only
-  # sanitizer/arm jobs, which never see the NDEBUG warning surface.
+  # actually exercised in an optimized build. Complements the Debug
+  # `sanitizers` job, the other host -Werror gate, which never sees the NDEBUG
+  # warning surface.
   # ---------------------------------------------------------------------------
   # gcc and clang. (gcc was initially left out because its extra Release/-Werror
   # diagnostics -- -Wclobbered on the setjmp assert test, -Wterminate/-Waddress/
@@ -297,8 +298,8 @@ jobs:
           CC: clang
           CXX: clang++
         # No -Werror here: this job validates that the library builds & tests
-        # pass under LTO/IPO, not warning hygiene (that's the sanitizer/arm jobs,
-        # which run in Debug where asserts — and their operands — are live).
+        # pass under LTO/IPO, not warning hygiene (that's `sanitizers`, in Debug
+        # where asserts — and their operands — are live, and `release-werror`).
         run: |
           cmake -B build -S . \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
@@ -418,8 +419,8 @@ jobs:
         run: arm-none-eabi-size build-arm/libmetl_embedded_smoke.a
 
       # Explicit MinSizeRel (-Os, NDEBUG) build so per-build binary size is
-      # visible in the log. Informational only — no hard threshold yet; this is
-      # the number to watch for size regressions over time.
+      # visible in the log. This print is log-only; the size figure that is
+      # gated lives in the `invariants` job (tools/check_size.py).
       - name: Configure (MinSizeRel, -Os)
         run: |
           cmake -B build-arm-minsizerel -S . \
@@ -458,7 +459,7 @@ jobs:
   # per-target differences (compiler binary, target/arch flags, apt packages)
   # are expressed as matrix `include:` entries. Each entry's `name` is set as
   # the job `name`, which GitHub uses verbatim as the status-check name, so the
-  # required checks "riscv-cross / rv64" and "arm-cross-clang / cortex-m4" are
+  # check names "riscv-cross / rv64" and "arm-cross-clang / cortex-m4" are
   # preserved exactly despite the underlying job key changing.
   #
   # Targets:
@@ -601,7 +602,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # Invariant gate — proves I1 (no heap), I2 (no exceptions / no RTTI) by
   # auditing the SYMBOL TABLE of a fully linked bare-metal image. See
-  # docs/SCOPE.md section 7 for the design rationale; the short version:
+  # docs/SCOPE.md section 8 for the design rationale; the short version:
   #
   #   * Symbol audit, not linker poisoning: the "make operator new reference an
   #     undefined symbol" trick depends on --gc-sections behaviour and differs
@@ -1055,8 +1056,8 @@ jobs:
   #                                     nothing. The claim it makes turns out to
   #                                     be true -- it just had never been checked.
   #
-  # Adding a configuration here is one matrix line, which is the point of the job
-  # existing for a single entry today.
+  # Adding a configuration here is one matrix line, which is the point of the
+  # job being a matrix.
   # ---------------------------------------------------------------------------
   config-matrix:
     name: config-matrix / ${{ matrix.name }}
@@ -1498,10 +1499,14 @@ jobs:
   # ---------------------------------------------------------------------------
   # clang-tidy (blocking deduplicated ratchet)
   #
-  # 142 is the distinct-finding count this exact job reported on this runner
-  # (run 32393655273: 142 distinct, 521 raw). It replaces 148 (run 32274968429)
-  # after `-modernize-concat-nested-namespaces` was disabled with its reason in
-  # `.clang-tidy`. The budget can only go down; a new diagnostic fails this job.
+  # The budget is 155. It was 142 (run 32393655273: 142 distinct, 521 raw),
+  # itself down from 148 (run 32274968429) after
+  # `-modernize-concat-nested-namespaces` was disabled with its reason in
+  # `.clang-tidy`. #131 raised it to 155 when the runner image moved
+  # clang-tidy 18 -> 21: the new `portability-avoid-pragma-once` was disabled
+  # with its reason, and 155 covers the findings the newer checks added. A
+  # toolchain bump is the one recorded reason to raise it; otherwise it only
+  # goes down, and a new diagnostic fails this job.
   #
   # Note that the budget was NOT lowered in the same commit that caused the drop.
   # The commit that disabled the check left the ceiling at 148 deliberately, the
@@ -1698,11 +1703,13 @@ jobs:
   # stay green: the harnesses only perform contract-VALID operations (see
   # fuzz/README-style header comments), so any finding is a genuine metl defect.
   # Cost scales with the harness count, which the loop below derives rather than
-  # lists: 14 x ~25s + a clang build is ~6 min against a 15-minute timeout. That
-  # comment said "5 harnesses, well under 6 min" nine harnesses ago -- the same
-  # class of stale derived figure the compile-fail census now refuses to state.
-  # When the sum approaches the timeout, cut -max_total_time; do not raise the
-  # timeout, or a hang stops being distinguishable from a slow run.
+  # lists. The harnesses run in parallel (xargs -P nproc), so the run phase is
+  # about ceil(harnesses / nproc) x ~25 s, plus a clang build, against a
+  # 15-minute timeout. This comment once stated a fixed harness count and total
+  # and went stale -- the same class of stale derived figure the compile-fail
+  # census now refuses to state. When that approaches the timeout, cut
+  # -max_total_time; do not raise the timeout, or a hang stops being
+  # distinguishable from a slow run.
   # ---------------------------------------------------------------------------
   fuzz-smoke:
     name: fuzz-smoke
@@ -1885,8 +1892,9 @@ jobs:
         run: tools/check_instructions.py --self-test
 
       # ENFORCING. The budgets in tools/check_instructions.py came from this
-      # job's own --report output earlier in this PR (run 32612187131) and never
-      # from a local figure -- the development machine has a different libc and
+      # job's own --report output (first run 32612187131 on #81; re-measured on
+      # #131, run 37311956880, when GCC moved 13 -> 15) and never from a local
+      # figure -- the development machine has a different libc and
       # a different compiler, and local numbers have disagreed with CI
       # repeatedly. Same two-step as check_size.py and check_stack.py.
       #

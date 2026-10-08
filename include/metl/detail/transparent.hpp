@@ -17,8 +17,8 @@ namespace detail {
 ///        nested `is_transparent` type, opting into heterogeneous lookup.
 ///
 /// This is the single canonical detector shared by @c static_unordered_map,
-/// @c static_unordered_set, @c flat_map, and @c flat_set (each of which used to
-/// carry its own renamed copy of this SFINAE idiom).
+/// @c static_unordered_set, @c flat_map, and @c flat_set, so none of them carries
+/// its own copy of this SFINAE idiom.
 template <typename T, typename = void>
 struct has_is_transparent : false_type {};
 

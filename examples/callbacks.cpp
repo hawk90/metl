@@ -183,7 +183,8 @@ int main() {
   {
     // Owns the callable in N bytes of inline storage, so it can be a member and
     // outlive the expression that created it. The size is yours to pick; a
-    // capture that does not fit is a compile error rather than a heap allocation.
+    // capture that does not fit asserts (try_assign returns false) rather than
+    // falling back to a heap allocation.
     int calls = 0;
     metl::fixed_function<int(int), 32> op = [&calls](int value) {
       ++calls;

@@ -69,10 +69,10 @@ namespace metl {
 ///          generation tagging; use a wider `GenT` when handles are held for
 ///          unbounded periods.
 ///
-/// @note Not thread-safe. Concurrent use needs external synchronisation; a
-///       lock-free variant built on an atomic handle is capability-gated (it
-///       needs a single-word CAS, which Cortex-M0 lacks) and is therefore
-///       tracked separately — see docs/SCOPE.md.
+/// @note Not thread-safe. Concurrent use needs external synchronisation. No
+///       lock-free variant is planned; `metl::atomic_handle` (atomic_handle.hpp)
+///       is the capability-gated building block for one (it needs a single-word
+///       CAS, which Cortex-M0 lacks).
 ///
 /// @see object_pool for the pointer-addressed equivalent.
 template <typename T, std::size_t Capacity, typename GenT = std::uint16_t>

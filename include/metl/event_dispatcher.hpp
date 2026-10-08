@@ -5,11 +5,13 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `subscribe`, `unsubscribe`, `clear` | wait-free, bounded by `Capacity` |
+///   | `subscribe`, `unsubscribe`, `clear`, `size`, `empty` | wait-free, bounded by `Capacity` |
 ///   | `dispatch` | bounded by `Capacity` **plus every listener's own cost** |
 ///
-/// The listener table is a flat array of `Capacity` slots scanned linearly, so
-/// subscribing costs the same whether one listener or all of them are registered.
+/// The listener table is a flat array of `Capacity` slots scanned linearly.
+/// `subscribe` stops at the first free slot and `unsubscribe` at the matching id,
+/// so neither is constant, but neither visits more than `Capacity` slots; `size`
+/// and `empty` count the live slots and always visit all `Capacity`.
 ///
 /// `dispatch` is the operation to think about: it walks the whole table and calls
 /// each live listener, so its worst case is the sum of what the listeners do. This

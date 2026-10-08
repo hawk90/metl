@@ -8,19 +8,19 @@
 ///   | `find`, `contains`, `find_iterator` | wait-free, bounded by `bucket_count` probes |
 ///   | `emplace`, `try_emplace` (new key) | wait-free, `bucket_count` probes **plus, at times, a rebuild** |
 ///   | `erase` | wait-free, bounded by `bucket_count` probes; moves nothing |
-///   | `clear`, iteration, copy, destructor | wait-free, bounded by `bucket_count` |
+///   | `clear`, iteration, destructor | wait-free, bounded by `bucket_count` |
+///   | copy, move (construct and assign) | wait-free, one insert of <= `bucket_count` probes per element |
 ///
 /// Open addressing with linear probing: the worst case is a probe run the length of
-/// the table, and `bucket_count` is a power of two fixed at compile time.
+/// the table, and `bucket_count` is a power of two fixed at compile time. Copy and
+/// move scan the source's `bucket_count` slots and re-insert each element into a
+/// table with no tombstones, so they never trigger a rebuild.
 ///
 /// That bound is the loop, not a consequence of good behaviour: the probe loop
 /// counts to `bucket_count` and stops. It holds no matter how the table has been
-/// used, and nothing below is needed to make it true. (An earlier version of this
-/// paragraph said the reclaim below is what keeps the worst case from "drifting
-/// upward". That was wrong, and worth correcting rather than quietly deleting: it
-/// credited a real mechanism with preventing a hazard this implementation never
-/// had, which makes the guarantee look contingent on an optimisation when it is
-/// not.)
+/// used, and nothing below is needed to make it true. In particular the reclaim
+/// below does not keep the worst case from growing -- it never could grow -- so
+/// the guarantee is not contingent on that optimisation.
 ///
 /// What the reclaim actually protects is the TYPICAL cost under churn. Erasure
 /// leaves a tombstone, because clearing the slot would break the probe chain
@@ -34,7 +34,7 @@
 ///
 /// The price is on inserting a new key, and it is why that row is split above.
 /// Most inserts are a probe run. The one that finds the threshold crossed also
-/// move-constructs every live element -- up to `bucket_count` of them, plus the
+/// move-constructs every live element -- up to `Capacity` of them, plus the
 /// probing to re-place each. That rebuild is bounded (it visits each slot once,
 /// and its inner carry loop terminates because every iteration turns one more
 /// slot permanently occupied), but it is a latency spike on an operation that is
@@ -45,9 +45,7 @@
 /// The rebuild relocates every element in place, which cannot be undone half
 /// way. It therefore runs only when the element's move cannot throw; for any
 /// other type the tombstones are simply never reclaimed -- lookups stay bounded
-/// by `bucket_count` probes, only misses get slower under churn. (Before
-/// 2026-10-05 the rebuild ran regardless, inside a `noexcept` function, and a
-/// throwing move terminated the program.) A hasher that
+/// by `bucket_count` probes, only misses get slower under churn. A hasher that
 /// throws during the rebuild empties the table and propagates.
 ///
 /// @par Iterator invalidation
@@ -72,9 +70,11 @@
 /// byte alongside its slot. `static_unordered_set<uint32_t, 256>` is **2584
 /// bytes** against the 1024 bytes of keys it stores. There is also a cliff --
 /// capacity 128 gets 256 buckets and capacity **129 gets 512** -- so **pick a
-/// capacity at or just under a power of two**. `docs/CHOOSING.md` has the table
-/// and the comparison with `flat_set`; `tests/core/ram_footprint_test.cpp`
-/// asserts these numbers so the prose cannot drift away from the layout.
+/// capacity at or just under a power of two**. `docs/CHOOSING.md` tabulates the
+/// same layout for `static_unordered_map` against `flat_map`; the set has no row
+/// there, but the multiplier and the cliff come from the same `bucket_count`.
+/// `tests/core/ram_footprint_test.cpp` asserts these numbers so the prose cannot
+/// drift away from the layout.
 ///
 /// The elements live inline, so as a local this is a 2584-byte stack frame, and
 /// METL cannot tell you whether that fit: the recoverable API answers "is the
@@ -252,7 +252,7 @@ class static_unordered_set {
   // Element-inserting constructors delegate to an empty constructor first.
   // Once it returns the object is fully constructed, so if copying or moving
   // an element throws part-way, the destructor runs and destroys exactly the
-  // elements already inserted -- they used to leak.
+  // elements already inserted; nothing leaks.
   static_unordered_set(const static_unordered_set& other)
       : static_unordered_set(empty_with{}, other.hasher_, other.key_equal_) {
     for (const auto& item : other) {
@@ -517,8 +517,8 @@ class static_unordered_set {
   // rebuild only runs for nothrow-movable elements), the hasher may. When it
   // does, `carry` holds a live element and every slot marked occupied (placed)
   // or tombstone (not yet placed) holds one too; destroy exactly those and empty
-  // the table, as a throwing insert elsewhere in the library does. It used to
-  // terminate the program.
+  // the table, as a throwing insert elsewhere in the library does, and let the
+  // exception propagate.
   size_type bucket_during_rebuild(storage_for<value_type>& carry) noexcept(hash_cannot_throw) {
     if constexpr (hash_cannot_throw) {
       return bucket_index(carry.ref());
@@ -543,8 +543,10 @@ class static_unordered_set {
 #endif
     }
   }
-  // The rebuild moves every element inside rehash_in_place, which is noexcept:
-  // a throw half way would leave the table unrecoverable. The hasher is not part
+  // The rebuild moves every element in place, and a move that threw half way
+  // would leave the table unrecoverable, so it runs only for nothrow-movable
+  // elements. rehash_in_place is noexcept(hash_cannot_throw): a throwing hasher
+  // empties the table and propagates (bucket_during_rebuild). The hasher is not part
   // of the condition -- requiring `noexcept` on it would silently switch the
   // reclaim off for every ordinary hasher that merely omits the keyword.
   static constexpr bool rebuild_cannot_throw = std::is_nothrow_move_constructible_v<value_type>;

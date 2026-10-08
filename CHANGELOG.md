@@ -61,7 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI moved to Ubuntu 26.04 runners (GCC 15, clang-tidy 21), Zephyr 4.4.2 LTS
   and ESP-IDF 6.0.3. The instruction-count budgets and the
   clang-tidy ratchet were re-measured on the new toolchains;
-  `portability-avoid-pragma-once` (new in clang-tidy 19) is disabled because
+  `portability-avoid-pragma-once` (new in clang-tidy 21) is disabled because
   `#pragma once` is a design decision here.
 - **Releases are gated on main's CI.** A `v*` tag now publishes only a commit
   that is on `main` and whose full `ci-gate` and CodeQL analysis passed there

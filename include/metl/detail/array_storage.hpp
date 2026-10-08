@@ -5,11 +5,11 @@
 ///        shared by `fixed_vector`, `flat_map` and `flat_set`.
 ///
 /// Those three containers hand out `data()` and let callers index it, iterate it
-/// and wrap it in a `span`. Until 2026-10-05 they stored `storage_for<T>[N]` --
-/// N separate byte buffers -- and placement-new'd one complete `T` into each, so
-/// `data() + i` for `i > 0` was pointer arithmetic from one object into another:
-/// undefined behaviour by the letter of the standard, although the layout is
-/// byte-for-byte that of `T[N]` and no compiler miscompiles it.
+/// and wrap it in a `span`, so `data() + i` must be arithmetic within ONE array
+/// object. `N` separate byte buffers (`storage_for<T>[N]`), each holding one
+/// complete `T`, do not give that: `data() + i` for `i > 0` would step from one
+/// object into another, undefined behaviour by the letter of the standard even
+/// though the layout is byte-for-byte that of `T[N]`.
 ///
 /// Here the storage is a single `unsigned char` buffer and `data()` is a pointer
 /// to element 0 of the `T[N]` array object that buffer provides:

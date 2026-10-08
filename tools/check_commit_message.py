@@ -27,6 +27,9 @@ WHERE IT RUNS.
   * CI checks the pull-request TITLE (.github/workflows/pr-title.yml). The
     repository squash-merges with the PR title as the commit subject, so the
     title is what lands on main.
+  * On a push to main, the `changes` job in ci.yml checks the commit subject
+    that actually landed (minus GitHub's " (#NNN)" suffix), because the merge
+    dialog lets the merger edit the squash subject.
   * `pre-commit install` adds a commit-msg hook that checks each local commit,
     so a branch's own history follows the rule before it is pushed. Git's own
     `Merge ...`, `Revert "..."` and `fixup!`/`squash!`/`amend!` subjects pass

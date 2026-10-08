@@ -1,15 +1,16 @@
 #pragma once
 
 /// @file
-/// @brief Algorithm-independent adapters shared by the CRC-8/16/32 headers.
+/// @brief Shared CRC machinery for the CRC-8/16/32 headers: nibble tables,
+///        per-byte update steps and the span / C-string fold adapters.
 ///
-/// The three public CRC widths (crc8/crc16/crc32) differ only in their per-byte
-/// update step (polynomial, shift direction, register width). Everything else —
-/// folding a byte span, folding a NUL-terminated string, and the NUL scan
-/// itself — is identical. Those adapters live here, parameterized on the
-/// register type and the per-width update step, so the width headers stop
-/// duplicating them. Behavior is byte-for-byte identical to the hand-rolled
-/// loops the width headers previously carried.
+/// The three public CRC widths (crc8/crc16/crc32) differ only in polynomial,
+/// shift direction and register width. This file holds everything they share,
+/// parameterized on those: the compile-time nibble lookup table
+/// (`crc_nibble_table`), the reflected and forward per-byte update steps built
+/// on it, the NUL scan, and the adapters that fold a byte span or a
+/// NUL-terminated string through an update step. A width header supplies only
+/// its parameters.
 
 #include "metl/config.hpp"
 #include "metl/span.hpp"

@@ -45,14 +45,14 @@
 // METL_CRC_TABLE — how the CRC-8/16/32 helpers trade flash for speed.
 //
 //   0  bit-at-a-time: eight shift-and-conditional-xor steps per byte, zero
-//      table. What this library shipped before.
+//      table.
 //   1  nibble table (default): two lookups per byte from a 16-entry table, so
 //      16 bytes of flash for CRC-8, 32 for CRC-16, 64 for CRC-32 — and only for
 //      the widths a program actually uses.
 //
-// The default changed to 1 because the bit-at-a-time version measured ~8 ns per
-// byte, which is a poor trade for the tens of bytes the table costs. Set
-// -DMETL_CRC_TABLE=0 to restore the previous behaviour on a genuinely
+// The default is 1 because the bit-at-a-time loop measures ~8 ns per byte,
+// which is a poor trade for the tens of bytes the table costs. Set
+// -DMETL_CRC_TABLE=0 to select the table-free loop on a genuinely
 // flash-starved target; the results are byte-for-byte identical either way, and
 // a test pins that.
 //

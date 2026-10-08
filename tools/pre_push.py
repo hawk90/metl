@@ -16,7 +16,8 @@ WHAT RUNS, cheapest first, stopping at the first failure:
   3. Release + -Werror builds and ctest, once per compiler found:
        the default `c++` and the newest `g++-NN` on PATH. GCC and Clang
        disagree about warnings, and CI builds with both.
-  4. an ASan + UBSan Debug build and ctest, as the host-test job does.
+  4. an ASan + UBSan Debug build and ctest, as the `sanitizers / asan-ubsan`
+     job does.
 
 WHAT DOES NOT, and why: the ARM size/stack/RAM budgets and the instruction
 counts are measured on CI's toolchains and a local number is a different

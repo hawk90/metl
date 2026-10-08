@@ -51,10 +51,9 @@ class arena_allocator {
   /// @brief Construct an empty arena with all storage available.
   constexpr arena_allocator() noexcept : offset_(0), storage_{} {}
 
-  /// @brief Destroys every object still in the arena (`reset()`), newest first.
-  /// @note Before 2026-10-05 the arena had no destructor: objects created by
-  ///       `try_emplace` were never destroyed unless the caller reset it, and an
-  ///       owning `T` leaked.
+  /// @brief Destroys every object still in the arena (`reset()`), newest first,
+  ///        so an owning `T` created by `try_emplace` does not leak when the
+  ///        caller never resets.
   ~arena_allocator() { reset(); }
 
   // Not copyable or movable. The destroy records point into this object's own
@@ -78,7 +77,7 @@ class arena_allocator {
   /// `allocate` is interleaved with `try_emplace`.
   ///
   /// @param bytes Number of bytes to allocate; a request of 0 returns null.
-  /// @param alignment Required alignment; must not exceed max alignment.
+  /// @param alignment Required alignment: a power of two (checked by `METL_HARDEN`).
   /// @return Pointer to the block, or null if the arena lacks space (no throw).
   METL_NODISCARD void* allocate(size_type bytes, size_type alignment = alignof(std::max_align_t)) noexcept {
     return allocate_impl(bytes, alignment, nullptr);
@@ -130,6 +129,10 @@ class arena_allocator {
   ///
   /// @param target A savepoint previously returned by `mark`.
   /// @pre @c target must refer to a position at or below the current top.
+  /// @pre @c target has not been invalidated: no `rewind` or `reset` since the
+  ///      `mark` call has taken the arena below @c target. After such a rollback
+  ///      the offset may not be a record boundary any more, and the walk can
+  ///      overshoot it, destroying an object that straddles it.
   void rewind(mark_type target) noexcept {
     METL_ASSERT(target.offset <= offset_);
     while (offset_ > target.offset) {
