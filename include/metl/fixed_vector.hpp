@@ -87,7 +87,7 @@ class fixed_vector {
   // Element-inserting constructors delegate to the empty constructor first.
   // Once it returns the object is fully constructed, so if copying or moving
   // an element throws part-way, the destructor runs and destroys exactly the
-  // elements already inserted -- they used to leak.
+  // elements already inserted; nothing leaks.
   /// Copy-constructs by copying each element of `other`.
   fixed_vector(const fixed_vector& other) : fixed_vector() {
     for (const auto& value : other) {
@@ -683,9 +683,9 @@ class fixed_vector {
 
   // Elements live in one aligned byte buffer reached as a single T[Capacity]
   // array object, so data() + i is in-array arithmetic (the
-  // reasoning is in detail/array_storage.hpp). std::launder is not
-  // constant-evaluable, so the constexpr labels here are effective only outside
-  // constant evaluation.
+  // reasoning is in detail/array_storage.hpp). array_storage::data() goes
+  // through a reinterpret_cast, which is never constant-evaluable, so the
+  // constexpr labels here are effective only outside constant evaluation.
   detail::array_storage<T, (Capacity == 0 ? 1 : Capacity)> storage_;
   size_type size_;
 };

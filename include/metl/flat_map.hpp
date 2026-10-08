@@ -5,19 +5,22 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | lookups (`find`, `contains`, `*_bound`, `equal_range`) | wait-free, `log2(Capacity) + 2` comparisons |
+///   | `find`, `contains` | wait-free, `floor(log2(Capacity)) + 2` comparisons |
+///   | `lower_bound`, `upper_bound` | wait-free, `floor(log2(Capacity)) + 1` comparisons |
+///   | `equal_range` | wait-free, `2 * floor(log2(Capacity)) + 2` comparisons |
 ///   | `try_emplace`, `emplace`, `insert_or_assign`, `erase` | wait-free, bounded by `Capacity` moves |
 ///   | `clear`, iteration, copy, destructor | wait-free, bounded by `size()` |
 ///
 /// Storage is one sorted array, so lookup is a binary search and modification
 /// shifts the tail to keep it sorted. Both bounds are compile-time known.
 ///
-/// The `+ 2` is not slack. `lower_bound` over n elements performs
+/// The `+ 2` on `find` is not slack. `lower_bound` over n elements performs
 /// `floor(log2(n)) + 1` comparisons, and `find` performs one more to decide
-/// whether the position it landed on actually holds the key. This table said
-/// plain `log2(Capacity)` until it was measured; `tests/containers/
-/// operation_count_test.cpp` now counts the comparisons and holds them here, so
-/// the figure cannot drift from the code again.
+/// whether the position it landed on actually holds the key. `equal_range` is a
+/// `lower_bound` followed by an `upper_bound` searched from that position, so it
+/// pays the binary search twice. `tests/containers/operation_count_test.cpp`
+/// counts `find`'s comparisons and holds them to the first row; the other rows
+/// are measured the same way but not gated.
 ///
 /// Two things this header does not bound, and cannot: `Compare` must itself be
 /// bounded -- a comparator that loops on the key makes every operation above
@@ -81,7 +84,7 @@ class flat_map {
   // Element-inserting constructors delegate to the empty constructor first.
   // Once it returns the object is fully constructed, so if copying or moving
   // an element throws part-way, the destructor runs and destroys exactly the
-  // elements already inserted -- they used to leak.
+  // elements already inserted; nothing leaks.
   flat_map(const flat_map& other) : flat_map(other.comp_) {
     for (const auto& item : other) {
       emplace(item.key, item.value);
@@ -519,9 +522,9 @@ class flat_map {
   // Inserts `entry` at `index`, shifting [index, size_) right by one, the way
   // std::vector::insert does: move-construct the new last slot, then
   // move-ASSIGN the rest backwards. Every slot in [0, size_) stays a live
-  // object throughout, so a throwing move can no longer leave a destroyed slot
-  // inside the range for the destructor to destroy a second time (the old
-  // construct-then-destroy loop did). A throw part-way
+  // object throughout, so a throwing move cannot leave a destroyed slot inside
+  // the range for the destructor to destroy a second time (a
+  // construct-then-destroy loop would). A throw part-way
   // would still leave the order broken, so -- as std::flat_map does -- the
   // container is cleared to restore its invariant before rethrowing.
   void insert_shifting(size_type index, value_type&& entry) {
@@ -558,8 +561,8 @@ class flat_map {
   // element that cannot be move-assigned. A throw while constructing slot `i`
   // leaves [0, i) live, slot i dead and (i, size_] holding relocated elements;
   // the handler destroys exactly those and empties the container, the same
-  // outcome as the assignable path (this path used to destroy slot i a
-  // second time).
+  // outcome as the assignable path. Slot i is skipped: it is already dead, and
+  // destroying it again would be a double destroy.
   void shift_right_from(size_type index) {
     size_type i = size_;
 #if !METL_NO_EXCEPTIONS
@@ -586,8 +589,8 @@ class flat_map {
   // Closes the gap at `index` by move-constructing each later element one slot
   // down. If such a move can throw, a throw at slot i leaves [0, i) live, slot i
   // dead and (i, size_) live; the handler destroys exactly those and empties the
-  // container -- the same outcome as a throwing insert. It
-  // used to run inside an unconditional noexcept, so the throw terminated.
+  // container -- the same outcome as a throwing insert. The noexcept is
+  // conditional so that throw propagates instead of terminating.
   void erase_at(size_type index) noexcept(relocate_cannot_throw) {
     data()[index].~value_type();
     if constexpr (relocate_cannot_throw) {
@@ -624,8 +627,9 @@ class flat_map {
   // Entries live in one aligned byte buffer reached as a single
   // value_type[Capacity] array object, so data() + i is in-array arithmetic
   // (the reasoning is in detail/array_storage.hpp).
-  // std::launder is not constant-evaluable, so the constexpr labels here are
-  // effective only outside constant evaluation.
+  // array_storage::data() goes through a reinterpret_cast, which is never
+  // constant-evaluable, so the constexpr labels here are effective only outside
+  // constant evaluation.
   detail::array_storage<value_type, (Capacity == 0 ? 1 : Capacity)> storage_;
   size_type size_;
 };

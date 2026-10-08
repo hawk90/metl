@@ -60,6 +60,9 @@ container, indexing out of range — triggers `METL_ASSERT`, whose default handl
 is `[[noreturn]]` and calls `std::abort()`. This is *contractually correct*
 fail-fast behavior, not a vulnerability: it turns a programming error into an
 immediate, well-defined abort rather than silent corruption.
+Building with `METL_HARDENING=METL_HARDENING_NONE` compiles `METL_ASSERT` out,
+and a violated precondition is then undefined behaviour; only the `METL_HARDEN`
+guards against out-of-bounds writes stay on (see `include/metl/config.hpp`).
 
 Accordingly:
 
@@ -102,9 +105,12 @@ that is what everything else in this document and in CI is for.
 - **Every GitHub Action is pinned to a commit SHA**, not a tag. A tag can be
   moved; a SHA cannot.
 - **Renovate** proposes updates weekly: action SHAs, and the clang-format,
-  Zephyr and ESP-IDF pins. Non-major updates merge automatically once CI is
-  green; major ones wait for approval on the dependency dashboard; security
-  alerts arrive whenever they are published.
+  Conan, Zephyr and ESP-IDF pins. A new version waits until it has been
+  published for a few days before it is proposed. Non-major updates merge
+  automatically once CI is green, except Zephyr and ESP-IDF minors, which —
+  like every major — wait for approval on the dependency dashboard. Security
+  alerts arrive whenever they are published. `renovate.json` is the source of
+  truth.
 - **CodeQL** runs on every push and PR, and weekly so a newly published query
   finds the code without waiting for a commit.
 - **OpenSSF Scorecard** runs weekly against this repository. Its results go to

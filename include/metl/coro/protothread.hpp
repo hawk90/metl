@@ -8,11 +8,13 @@
 ///   | resuming at a yield point, `reset`, `is_done` | wait-free, bounded |
 ///   | the protothread body itself | **bounded by the body you write** |
 ///
-/// A resume is a `switch` on the saved line number -- a jump table, not a scan --
-/// so re-entering a protothread costs the same no matter how many yield points it
-/// has. What runs after the jump is your code, and this header cannot bound it. A
-/// protothread that loops without yielding blocks its scheduler for as long as the
-/// loop runs; the yield macros exist so that it does not have to.
+/// A resume is a `switch` on the saved line number. The `__LINE__` case labels
+/// are sparse, so compilers typically emit a compare tree rather than a jump
+/// table: re-entering costs O(log n) comparisons in the number of yield points,
+/// bounded by that count and independent of how often the thread has run. What
+/// runs after the jump is your code, and this header cannot bound it. A
+/// protothread that loops without yielding blocks its scheduler for as long as
+/// the loop runs; the yield macros exist so that it does not have to.
 
 // Stackless cooperative thread, modeled after Adam Dunkels' Protothreads
 // (https://dunkels.com/adam/pt/). Uses Duff's-device style yield via a

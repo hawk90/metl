@@ -33,8 +33,8 @@
 #endif
 
 // MSVC leaves __cplusplus at 199711L unless the user passes /Zc:__cplusplus;
-// _MSVC_LANG always carries the real standard. Without this, cxx_standard read
-// C++98 on every MSVC build.
+// _MSVC_LANG always carries the real standard. Without this, cxx_standard would
+// read C++98 on every MSVC build.
 #if defined(_MSVC_LANG)
 #define METL_CXX_STANDARD _MSVC_LANG
 #elif defined(__cplusplus)
@@ -82,7 +82,7 @@
 
 // (Builtin availability is spelled METL_HAS_BUILTIN, defined above alongside
 // METL_HAS_CPP_ATTRIBUTE / METL_HAS_ATTRIBUTE; there is no separate
-// METL_HAVE_BUILTIN — it was a byte-for-byte duplicate.)
+// METL_HAVE_BUILTIN, which would be a byte-for-byte duplicate.)
 
 // METL_HAVE_FEATURE(x) — is clang language/sanitizer feature `x` enabled?
 // Defined to 0 on compilers without __has_feature (e.g. gcc, msvc).
@@ -182,7 +182,9 @@ inline constexpr compiler_id active_compiler =
     compiler_id::unknown;
 #endif
 
-/// The active `__cplusplus` standard value (e.g. 201703L for C++17).
+/// The active language standard value (e.g. 201703L for C++17): `__cplusplus`,
+/// or `_MSVC_LANG` on MSVC, whose `__cplusplus` reads 199711L unless
+/// `/Zc:__cplusplus` is passed.
 inline constexpr long cxx_standard = METL_CXX_STANDARD;
 /// True when the active compiler is Clang.
 inline constexpr bool is_clang = METL_COMPILER_CLANG != 0;

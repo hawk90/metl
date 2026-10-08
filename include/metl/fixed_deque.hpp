@@ -68,8 +68,8 @@ class fixed_deque : public detail::ring_core<T, Capacity> {
       return false;
     }
 
-    // Construct first, then commit head_: a throwing constructor used to leave
-    // head_ on an unconstructed slot that the destructor then destroyed.
+    // Construct first, then commit head_: if the constructor throws, head_ must
+    // not already point at an unconstructed slot the destructor would destroy.
     const auto slot = this->retreat(this->head_);
     new (this->storage_[slot].addr()) T(std::forward<Args>(args)...);
     this->head_ = slot;

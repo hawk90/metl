@@ -17,9 +17,9 @@ one and it is out of scope, however embedded it sounds.
 | I1 | **No heap.** No `malloc`/`free`/`operator new`/`sbrk` reachable from any public API. | `invariants` CI job (symbol audit) |
 | I2 | **No exceptions, no RTTI.** No `throw`, no `dynamic_cast`, no `typeid`. | `invariants` CI job + `-fno-exceptions -fno-rtti` builds |
 | I3 | **Deterministic.** Every public operation has a bounded worst-case execution time — no unbounded loops on data, no unbounded retry, no allocation-shaped latency cliffs. | Review, plus `api-contract` CI job (`check_progress_guarantee.py`) for the *stated* guarantee |
-| — | *(not an invariant, but the same discipline)* **Claims about hardware behaviour are verified by executing on the hardware.** `qemu-conformance` runs the test suite on an emulated Cortex-M3; `irq_lock` is checked against a real SysTick interrupt rather than by reading its own register back. | `qemu-conformance` CI job |
+| — | *(not an invariant, but the same discipline)* **Claims about hardware behaviour are verified by executing on the hardware.** `qemu-conformance` runs the test suite on emulated Cortex-M3, M4 and M7 cores, plus an ARMv6-M build; `irq_lock` is checked against a real SysTick interrupt rather than by reading its own register back. | `qemu-conformance` CI job |
 | I4 | **Header-only, C++17.** No separately compiled TU required; no C++20+ features in public headers. | `host-test`, `cross-syntax` |
-| I5 | **Self-contained headers.** Every public header compiles standalone; every public header is reachable from the umbrella (or is explicitly opt-in — see §4). | `header-checks` CI job |
+| I5 | **Self-contained headers.** Every public header compiles standalone; every public header is reachable from the umbrella (or is explicitly opt-in — see §3, Tier 2). | `header-checks` CI job |
 
 Four of the five are machine-checked. I3 is the one that needs a human to decide
 *what* the bound is, which is why it gets its own vocabulary below.
@@ -84,7 +84,9 @@ powerpc64` job does. The barrier is lower than it looks.
 Works on every target in the CI matrix today: Cortex-M0/M3/M4/M7, RV32/RV64,
 PPC64 BE, x86-64, AArch64 (host). No capability requirements beyond C++17.
 
-Everything in `metl/` reachable from `metl/metl.hpp` is Tier 0. New Tier 0 code
+Everything in `metl/` reachable from `metl/metl.hpp` and not capability-gated is
+Tier 0 — the umbrella also includes the Tier 1 types below (`atomic_handle`,
+`mpmc_queue`), which refuse to compile where the capability is missing. New Tier 0 code
 needs no new CI job — the existing matrix already covers it.
 
 ### Tier 1 — Capability-gated
@@ -184,7 +186,7 @@ and the compile-time string map remain deferred on exactly that basis.
 | `cpu_relax()` / `wait_for_event()` / `send_event()` | **Landed.** Split deliberately: on Cortex-M `yield` is effectively a no-op, so the real idle idiom is `WFE`/`SEV`. One name for two semantics would be a lie. Emission verified per target. |
 | `METL_PREFETCH` / `compiler_barrier()` | **Landed.** Branch hints (`METL_PREDICT_TRUE/FALSE`) and `METL_ASSUME` already existed in `optimization.hpp`; only the prefetch hint and the compiler-only barrier were missing. |
 | cache-line isolation | **Already present.** `optimization.hpp` has `METL_CACHELINE_SIZE`/`METL_CACHELINE_ALIGNED` with its own `constexpr` size (`std::hardware_*_interference_size` carries a libstdc++ ABI warning), and `spsc_queue` already puts `head_`, `tail_` and the ring on separate lines. No `cacheline_padded<T>` wrapper was needed. |
-| `versioned_handle` + `handle_pool` | **Landed.** See §6. `handle_pool` is O(1) where `object_pool` scans, and a stale handle resolves to `nullptr` instead of a recycled slot. |
+| `versioned_handle` + `handle_pool` | **Landed.** See §7. `handle_pool` is O(1) where `object_pool` scans, and a stale handle resolves to `nullptr` instead of a recycled slot. |
 | lock policy (`irq_lock` / `null_lock`) + `guarded<T, Lock>` | **Landed**, but *not* retrofitted onto existing types — see below. `spin_lock` deliberately omitted. |
 | `intrusive_list<T, Hook>` / `intrusive_forward_list` | **Not planned**, and for a sharper reason than "no caller yet". §7 below is an argument that METL replaced raw-pointer linkage with handles *specifically* to remove a failure class: a `handle_pool` slot re-validates a generation on every access, so a stale reference resolves to `nullptr` instead of to recycled memory. An intrusive list puts that class straight back — the node must outlive its removal, a hook may belong to exactly one list at a time, and neither is checkable. The usual justification is "allocation-free linkage", which is what a fixed-capacity pool already is. So this is not waiting for a caller; a caller would not change the argument. **Reopen only with a case that a handle-based structure genuinely cannot serve**, and even then it belongs in Tier 2 `metl::exp::` rather than the umbrella, so the lifetime contract is opt-in. |
 | `tagged_ptr<T, Bits>` | **Not planned.** Alignment-derived tagging is portable and harmless, but it no longer has a job here: the free-list ABA problem that motivated it is solved better by `versioned_handle` (§7), and "a small tag beside a pointer" is already covered by `variant` and `bitfield`. Adding a public type with no user inside the library buys an API-stability commitment and nothing else. Reopen if a concrete caller appears. |
@@ -299,7 +301,7 @@ What falls out:
 - Generation mismatch catches use-after-free, which hands `intrusive_ptr` a weak reference for free.
 - Half the size → better false-sharing and cache-footprint behaviour.
 
-So `atomic_handle` lands in **Tier 0** and does the job `atomic_tagged_ptr`
+So `atomic_handle` lands in **Tier 1** and does the job `atomic_tagged_ptr`
 was proposed for, better. Splitting a tier is what you do when the translation
 fails; this is what it looks like when it succeeds.
 
@@ -311,9 +313,9 @@ Every machine-checked claim in this repository is one of these. The table is
 enforced: `tools/check_docs.py` rule **D6** fails the build if a
 `tools/check_*.py` is missing from it, or if it names one that does not exist.
 
-That rule exists because of a specific failure. The planning notes said "`.bss`,
-`.data` and the stack are not measured anywhere in this repository" for three
-PRs *after* they were — #77 pinned `sizeof`, #79/#80 gated stack depth, #83
+That rule exists because of a specific failure. A written claim that "`.bss`,
+`.data` and the stack are not measured anywhere in this repository" survived for
+three PRs *after* they were — #77 pinned `sizeof`, #79/#80 gated stack depth, #83
 gated `.bss`. Rule D5 was written because a **number** went stale; this was a
 claim about a **gate** going stale, and nothing was checking those.
 
@@ -333,18 +335,20 @@ claim about a **gate** going stale, and nothing was checking those.
 
 `check_ci_gate.py` is last for a reason: it is the gate on the gates. Every
 other row in this table was **advisory at the merge boundary** until 2026-08-25,
-because `main` carried no `required_status_checks` at all. One context is
-required now — `ci-gate` — and the only way that stops meaning "everything
-passed" is a job left out of its `needs:`, which is what G1 refuses. The two
+because `main` carried no `required_status_checks` at all. The required
+contexts are listed in `.github/required-checks.txt`, and `ci-gate` is the only
+one of them from `ci.yml`. The only way `ci-gate` stops meaning "every `ci.yml`
+job passed" is a job left out of its `needs:`, which is what G1 refuses. The two
 sharp edges are written down in the checker: a matrix-derived name cannot be
 required (editing the matrix would leave the branch pending forever), and a
 *skipped* required check counts as **passing**, which is why G3 insists on
 `if: always()` and G5 refuses to require anything that skips on a pull request.
 
-Not in the table because they are not scripts: the `sizeof` ratchet
+Not in the table because they are not `tools/check_*.py` gates: the `sizeof` ratchet
 (`tests/core/ram_footprint_test.cpp`), the comparison-count bound
 (`tests/containers/operation_count_test.cpp`), the coverage floor
-(`tools/coverage.py`), the clang-tidy finding ratchet, and the
+(`tools/coverage.py`), the clang-tidy finding ratchet
+(`tools/clang_tidy_report.py`), and the
 consumer-warning matrix in `ci.yml`.
 
 ### How the invariant gate works
@@ -381,13 +385,17 @@ must do the same.
 **The gate proves what the probe links, and nothing more.** The probe exercises
 a hand-picked set of allocation-prone containers rather than every public type
 (`embedded_smoke.cpp` instantiates everything, but is deliberately not linked
-here — see the note above about `__cxa_atexit`). So coverage does not grow by
+here — its namespace-scope objects register destructors through `__cxa_atexit`,
+which newlib can route to `_malloc_r`; see the comment at the top of
+`tests/embedded/invariant_probe.cpp`). So coverage does not grow by
 itself: adding a container to the probe is one function, and it is on the PR
 checklist in §4 for that reason. A gate whose coverage silently lags the library
 degrades into decoration.
 
 **A canary is mandatory.** `tests/embedded/invariant_canary.cpp` deliberately
-links `operator new`, and its ctest entry is `WILL_FAIL TRUE`. A gate that
+links `operator new`, and the `invariants` job's "Canary must FAIL the audit"
+step fails the build if the audit passes it; `check_invariants.py --self-test`
+covers the categories the canary cannot reach. A gate that
 cannot fail is not a gate; if the canary starts passing, the audit logic is
 dead.
 
@@ -433,6 +441,12 @@ forms:
 |---|---|
 | `X(...)` | Treats it as a precondition violation: asserts and aborts. |
 | `try_X(...)` | Reports it by return value and leaves the container **unchanged**. |
+
+**Two known exceptions**, both older than this rule: `coro::scheduler` offers only
+`try_attach*`, with no asserting form; and `event_dispatcher::subscribe` reports
+"full" through an empty `optional` under a plain name. Adding the missing
+asserting forms is additive; renaming `subscribe` is not, so both land together in
+2.0.0 ([#155](https://github.com/hawk90/metl/issues/155)).
 
 "Unchanged" is the load-bearing half. A `try_` form that half-applies and then
 returns `false` is *worse* than one that asserts, because the caller's recovery

@@ -23,7 +23,7 @@
 // To keep this example deterministic and dependency-free we drive the producer
 // and consumer by hand in a single thread; the comments mark which half would
 // run in the ISR and which in the main loop. See examples/sensor_pipeline.cpp
-// for the same pattern exercised across two real std::threads (TSAN-checked).
+// for the same pattern exercised across two real std::threads.
 
 #include <cstdint>
 #include <cstdio>
@@ -44,7 +44,7 @@ using sample_queue = metl::spsc_queue<adc_sample, kCapacity>;
 // blocks. Returns false if the sample was dropped.
 bool isr_produce(sample_queue& q, adc_sample s, unsigned& overruns) {
   if (!q.try_push(s)) {
-    ++overruns;  // consumer fell behind; keep the newest by dropping this one
+    ++overruns;  // consumer fell behind; drop this (newest) sample, keep the queued ones
     return false;
   }
   return true;
@@ -91,7 +91,7 @@ int main() {
     std::fprintf(stderr, "spsc_isr: consumed=%u != produced=%u\n", consumed, produced);
     return 1;
   }
-  // The consumer drains every round, so with a 7-slot queue and 5-sample bursts
+  // The consumer drains every round, so with an 8-slot queue and 5-sample bursts
   // nothing should ever be dropped here.
   if (overruns != 0) {
     std::fprintf(stderr, "spsc_isr: unexpected overruns=%u\n", overruns);

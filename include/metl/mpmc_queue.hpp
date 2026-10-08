@@ -30,7 +30,12 @@ namespace metl {
 /// lock-free retry loop is the wrong tool, use
 /// `guarded<static_message_queue<T, N>, irq_lock>` instead — masking interrupts
 /// is the correct lock between an ISR and the main loop, and a lock-free retry
-/// loop is not (an ISR that preempts a producer mid-retry spins forever).
+/// loop is not. On one core the ISR's operation completes, but the main loop's
+/// compare-exchange retry fails every time an interrupt lands inside it (exception
+/// entry and return clear the exclusive monitor), so its progress is bounded only
+/// by the interrupt rate. And an ISR `try_pop` that preempts a producer between
+/// claiming a slot and publishing it finds that slot unpublished and returns
+/// false: the queue appears empty to the ISR until the main loop resumes.
 ///
 /// Progress guarantees:
 ///
@@ -106,11 +111,11 @@ class mpmc_queue {
 
   /// @note Not thread-safe: destroys whatever is left and assumes no concurrent
   ///       access, exactly like `spsc_queue`'s destructor.
-  /// @note Destroys in place rather than draining through `try_pop`. The drain
-  ///       version needed a `T discarded;` to pop into, which silently made
+  /// @note Destroys in place rather than draining through `try_pop`. Draining
+  ///       would need a `T discarded;` to pop into, which would silently make
   ///       `mpmc_queue<T>` require a DEFAULT-CONSTRUCTIBLE T -- a requirement
   ///       none of the static_asserts above state, that `spsc_queue` does not
-  ///       have, and that surfaced only as an error inside the destructor.
+  ///       have, and that would surface only as an error inside the destructor.
   ~mpmc_queue() {
     // Single-threaded at destruction: every ticket between the two counters was
     // claimed and constructed before its slot was published, so this range is
@@ -137,9 +142,9 @@ class mpmc_queue {
     } else {
       // A constructor that can throw runs BEFORE a ticket is claimed: a claimed
       // slot that is never published would stall every later consumer. The
-      // move into the slot cannot throw (static_assert above). Until 2026-10-05
-      // this function was noexcept and such a constructor terminated the
-      // program.
+      // move into the slot cannot throw (static_assert above). This overload is
+      // therefore not noexcept: the constructor's exception propagates with no
+      // ticket claimed and the queue unchanged.
       T value(std::forward<Args>(args)...);
       return try_claim_and_construct(static_cast<T&&>(value));
     }

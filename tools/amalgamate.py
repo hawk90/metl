@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Flatten METL's 60 public headers into one self-contained header.
+"""Flatten METL's public headers into one self-contained header.
 
 Why
 ---
@@ -17,8 +17,8 @@ every external `#include <...>` to a single deduplicated block at the top.
 
 Those edges are not quite a DAG, and the exception is deliberate rather than an
 accident: `compiler.hpp` re-exports `attributes.hpp` from its *last* line, while
-`attributes.hpp` includes `compiler.hpp` from its *first*, so the 43 headers
-that include `compiler.hpp` get the attribute macros for free. `#pragma once`
+`attributes.hpp` includes `compiler.hpp` from its *first*, so every header
+that includes `compiler.hpp` gets the attribute macros for free. `#pragma once`
 makes that safe for the compiler; for us it is a cycle.
 
 The distinction that resolves it is positional, so the tool derives it rather

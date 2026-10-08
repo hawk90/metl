@@ -10,9 +10,9 @@
 ///   | `can_dispatch` | wait-free, bounded by `TransitionCount` comparisons |
 ///
 /// The transition table is scanned linearly, so a dispatch costs at most
-/// `TransitionCount` comparisons plus one scan of the entry/exit hook table. Both
-/// counts are template parameters -- fixed when the machine is declared, not a
-/// function of how many events have been handled.
+/// `TransitionCount` comparisons plus one scan each of the exit-hook and
+/// entry-hook tables. All three counts are template parameters -- fixed when the
+/// machine is declared, not a function of how many events have been handled.
 ///
 /// What this header cannot bound is the handlers: a transition action, an entry
 /// hook, or an exit hook runs inside `dispatch`, and a handler that blocks blocks
@@ -112,11 +112,10 @@ class fsm {
   ///       has moved on. `a -> b` whose action dispatches `b -> c` runs
   ///       `exit a, enter c`.
   /// @note Not `noexcept`: a transition action that throws propagates out of
-  ///       `dispatch` (it used to terminate the program). An entry or exit hook
-  ///       that throws still terminates: hooks are invoked from a `noexcept`
-  ///       helper. After a throwing action the new state is already
-  ///       committed and has not been entered, so a later dispatch out of it
-  ///       skips its exit hook.
+  ///       `dispatch`. An entry or exit hook that throws still terminates:
+  ///       hooks are invoked from a `noexcept` helper. After a throwing action
+  ///       the new state is already committed and has not been entered, so a
+  ///       later dispatch out of it skips its exit hook.
   /// @pre Not called from an exit hook. The state being left is still current
   ///      there, so a dispatch would exit it twice; an entry hook may dispatch.
   METL_NODISCARD bool dispatch(Event event) {

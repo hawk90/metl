@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Instruction-count ratchet for the micro-benchmarks.
 
-WHY THIS EXISTS. `.github/workflows/ci.yml` says of `bench-smoke`:
+WHY THIS EXISTS. `.github/workflows/ci.yml` used to say of `bench-smoke`:
 
     Deliberately asserts nothing. A wall-clock threshold on a shared runner
     either fires spuriously or never fires.
 
-That is correct, and it is an argument about TIME. It had quietly been taken to
+That was correct, and it is an argument about TIME. It had quietly been taken to
 cover performance as a whole, and so six `perf(...)` commits shipped with no
 gate on any of them -- including #18, whose entire subject line is "reclaim
 tombstones in place to BOUND LOOKUP LATENCY". The bound it exists to establish
@@ -63,8 +63,8 @@ import sys
 # Instructions executed, per benchmark, with the process baseline subtracted.
 # Keyed "<binary>::<benchmark name>".
 #
-# EMPTY ON PURPOSE, exactly as check_size.py's and check_stack.py's were. The
-# numbers are measured by the CI job with --report and written down in a
+# This table started empty on purpose, as check_size.py's and check_stack.py's
+# did. The numbers are measured by the CI job with --report and written down in a
 # follow-up commit. A local figure from a different libc and a different
 # compiler is not the same measurement.
 #
@@ -112,8 +112,8 @@ BUDGET_ITERATIONS = 5000
 TOLERANCE_FRACTION = 0.05
 
 # A benchmark whose whole run costs less than this is not measuring its subject.
-# At the default --fixed 5000 it works out to two instructions per iteration:
-# a loop counter and a branch.
+# At the default --fixed 5000 it works out to four instructions per iteration:
+# barely more than a loop counter and a branch.
 #
 # This is not a tuning knob, it is a check. The first run of this gate found
 # `ring_buffer<64> push + pop` at 10,326 instructions -- 2.06 per iteration --

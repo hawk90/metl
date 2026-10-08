@@ -252,13 +252,12 @@ class guarded {
   ///          the very thing this class refuses to provide a `get()` for.
   ///          Return a copy, or do the work inside the callable.
   ///
-  ///          This is a documented hazard rather than a compile error, and the
-  ///          reason is worth recording: a `static_assert` rejecting a returned
-  ///          `T&` was written, and it rejected correct code. For
-  ///          `guarded<int>`, a callable returning `int&` to an unrelated global
-  ///          is indistinguishable *by type* from one returning the guarded
-  ///          `int&`. A check that fails valid code is worse than a warning that
-  ///          names the hazard, so the check was removed and this note kept.
+  ///          This is a documented hazard rather than a compile error because
+  ///          a `static_assert` rejecting a returned `T&` would reject correct
+  ///          code. For `guarded<int>`, a callable returning `int&` to an
+  ///          unrelated global is indistinguishable *by type* from one returning
+  ///          the guarded `int&`. A check that fails valid code is worse than a
+  ///          warning that names the hazard.
   template <typename Fn>
   decltype(auto) with(Fn&& fn) {
     scoped_lock<Lock> guard;

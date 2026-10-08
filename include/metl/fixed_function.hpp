@@ -555,8 +555,8 @@ class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<
   METL_NODISCARD bool try_assign(F&& function) {
     // Every public way of storing a callable comes through here. The wrapper's
     // own move, move-assignment and swap are noexcept and relocate the callable
-    // through a type-erased move; a callable whose move can throw used to compile
-    // and terminate there. The wrapper cannot make its
+    // through a type-erased move; a callable whose move throws there would
+    // terminate the program. The wrapper cannot make its
     // noexcept depend on what it holds, so the callable is refused instead.
     // Lambdas whose captures move without throwing -- nearly all -- are fine.
     static_assert(std::is_nothrow_move_constructible_v<std::decay_t<F>>,
@@ -597,7 +597,9 @@ class fixed_function<R(Args...) noexcept, Capacity>
   using base::reset;
   using base::swap;
 
+  /// @brief Constructs an empty fixed_function.
   constexpr fixed_function() noexcept = default;
+  /// @brief Constructs an empty fixed_function.
   constexpr fixed_function(std::nullptr_t) noexcept : base(nullptr) {}
 
   /// @brief Constructs from a noexcept function pointer.
@@ -661,8 +663,8 @@ class fixed_function<R(Args...) noexcept, Capacity>
   METL_NODISCARD bool try_assign(F&& function) {
     // Every public way of storing a callable comes through here. The wrapper's
     // own move, move-assignment and swap are noexcept and relocate the callable
-    // through a type-erased move; a callable whose move can throw used to compile
-    // and terminate there. The wrapper cannot make its
+    // through a type-erased move; a callable whose move throws there would
+    // terminate the program. The wrapper cannot make its
     // noexcept depend on what it holds, so the callable is refused instead.
     // Lambdas whose captures move without throwing -- nearly all -- are fine.
     static_assert(std::is_nothrow_move_constructible_v<std::decay_t<F>>,
@@ -748,7 +750,9 @@ class fixed_any_invocable<R(Args...), Capacity>
   using base::reset;
   using base::swap;
 
+  /// @brief Constructs an empty fixed_any_invocable.
   constexpr fixed_any_invocable() noexcept = default;
+  /// @brief Constructs an empty fixed_any_invocable.
   constexpr fixed_any_invocable(std::nullptr_t) noexcept : base(nullptr) {}
 
   /// @brief Constructs from a function pointer.
@@ -812,8 +816,8 @@ class fixed_any_invocable<R(Args...), Capacity>
   METL_NODISCARD bool try_assign(F&& function) {
     // Every public way of storing a callable comes through here. The wrapper's
     // own move, move-assignment and swap are noexcept and relocate the callable
-    // through a type-erased move; a callable whose move can throw used to compile
-    // and terminate there. The wrapper cannot make its
+    // through a type-erased move; a callable whose move throws there would
+    // terminate the program. The wrapper cannot make its
     // noexcept depend on what it holds, so the callable is refused instead.
     // Lambdas whose captures move without throwing -- nearly all -- are fine.
     static_assert(std::is_nothrow_move_constructible_v<std::decay_t<F>>,
@@ -854,7 +858,9 @@ class fixed_any_invocable<R(Args...) noexcept, Capacity>
   using base::reset;
   using base::swap;
 
+  /// @brief Constructs an empty fixed_any_invocable.
   constexpr fixed_any_invocable() noexcept = default;
+  /// @brief Constructs an empty fixed_any_invocable.
   constexpr fixed_any_invocable(std::nullptr_t) noexcept : base(nullptr) {}
 
   /// @brief Constructs from a noexcept function pointer.
@@ -918,8 +924,8 @@ class fixed_any_invocable<R(Args...) noexcept, Capacity>
   METL_NODISCARD bool try_assign(F&& function) {
     // Every public way of storing a callable comes through here. The wrapper's
     // own move, move-assignment and swap are noexcept and relocate the callable
-    // through a type-erased move; a callable whose move can throw used to compile
-    // and terminate there. The wrapper cannot make its
+    // through a type-erased move; a callable whose move throws there would
+    // terminate the program. The wrapper cannot make its
     // noexcept depend on what it holds, so the callable is refused instead.
     // Lambdas whose captures move without throwing -- nearly all -- are fine.
     static_assert(std::is_nothrow_move_constructible_v<std::decay_t<F>>,

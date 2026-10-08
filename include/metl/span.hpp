@@ -123,7 +123,7 @@ class span {
   /// @pre `last >= first`, and for a fixed extent the length equals Extent.
   /// @note A template on `Last`, like std::span's iterator-pair form, so that
   ///       `span(ptr, 0)` picks the count constructor: a literal 0 is a null
-  ///       pointer constant and was ambiguous between the two.
+  ///       pointer constant and would be ambiguous between the two.
   template <typename Last, typename = std::enable_if_t<std::is_same_v<Last, pointer>>>
   constexpr span(pointer first, Last last) noexcept : storage_(first, static_cast<size_type>(last - first)) {
     METL_ASSERT(last >= first);

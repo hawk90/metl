@@ -250,8 +250,8 @@ class spsc_byte_ring {
  private:
   /// Contiguous free bytes from the write index: the size `writable_span()` gives
   /// out, and therefore the exact bound `commit_write` must enforce. Factored out
-  /// so the two can never drift apart -- they did once, and the guard was the
-  /// looser of the two.
+  /// so the two can never drift apart: a guard looser than the span would let
+  /// `commit_write` publish bytes that were never written.
   size_type writable_run() const noexcept {
     const size_type tail = tail_.load(std::memory_order_relaxed);
     const size_type head = head_.load(std::memory_order_acquire);

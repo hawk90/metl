@@ -166,7 +166,7 @@ class ring_core {
   // Element-inserting constructors delegate to the empty constructor first.
   // Once it returns the object is fully constructed, so if copying or moving
   // an element throws part-way, the destructor runs and destroys exactly the
-  // elements already inserted -- they used to leak.
+  // elements already inserted; nothing leaks.
   ring_core(const ring_core& other) : ring_core() {
     for (size_type i = 0; i < other.size_; ++i) {
       (void)emplace_back(other.at(i));
@@ -259,9 +259,8 @@ class ring_core {
 
   // --- iteration -------------------------------------------------------------
   // In LOGICAL order: begin() is the front (oldest), so a range-for walks the
-  // ring the same way front()/pop_front() do. Neither container had any way to
-  // iterate before this, which made the ordinary embedded job -- drain a
-  // telemetry buffer, walk a deque -- impossible without an index loop.
+  // ring the same way front()/pop_front() do, so the ordinary embedded job --
+  // drain a telemetry buffer, walk a deque -- needs no index loop.
   using iterator = ring_iterator<ring_core, reference, T*>;
   using const_iterator = ring_iterator<const ring_core, const_reference, const T*>;
   using reverse_iterator = std::reverse_iterator<iterator>;

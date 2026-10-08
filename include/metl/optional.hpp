@@ -49,7 +49,11 @@ struct is_metl_optional<optional<U>> : true_type {};
 /// Stores an optional `T` inside the object itself using an internal union; it
 /// never allocates. Copyable when `T` is, but never *trivially* copyable (it has a
 /// user-provided copy constructor and destructor). On C++20 it is a literal
-/// type and usable in constant expressions.
+/// type, and these are usable in constant expressions: the empty, value and
+/// `in_place` constructors, `reset`, the destructor, `has_value` / `operator
+/// bool`, the const overloads of `operator*`, `operator->` and `value()`, and
+/// the comparisons. Copy, move, assignment, `emplace`, `value_or` and the
+/// non-const observers are not.
 /// @tparam T The contained value type.
 /// @note Accessors like `value()`, `operator*`, and `operator->` ASSERT (abort
 /// by default) rather than throwing when the optional is empty. Use `value_or`

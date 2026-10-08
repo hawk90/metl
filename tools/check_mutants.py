@@ -2,9 +2,10 @@
 """Break the library on purpose and require the gates to notice.
 
 WHY. Coverage says a line RAN. It does not say a test would notice if the line
-were wrong, and this repository has a live example: `flat_set::nth(i)` returning
-element `i+1` survives all 90 ctest targets. The line is covered. Nothing checks
-what it returns.
+were wrong, and this repository had a live example: `flat_set::nth(i)` returning
+element `i+1` survived every ctest target. The line was covered. Nothing checked
+what it returned, until the fuzz harness's oracle was made runnable under ctest
+(replay_fuzz_flat_set) -- see the map below.
 
 The repository already argues this everywhere else. Every checker under tools/
 carries a `--self-test` because "a gate that cannot fail is not a gate"; the
@@ -34,9 +35,7 @@ RULES.
 
   * Every mutant must be KILLED. A survivor is a missing test, not a tolerable
     outcome, so there is no allowlist to grow.
-  * Every mutant names the gate expected to kill it. If a DIFFERENT gate kills
-    it that is reported too -- it means the map above has changed and the entry
-    should be re-read, not silently updated.
+  * Every mutant names the gate expected to kill it.
   * The tree is restored whatever happens, and the restoration is verified by
     content rather than assumed. A mutation tool that leaves a mutant behind is
     worse than no tool.

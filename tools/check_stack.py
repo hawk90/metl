@@ -45,11 +45,11 @@ import sys
 # Budgets in bytes for the LARGEST single frame in the stack probe, per CPU,
 # measured by the `invariants` CI job itself.
 #
-# These start empty on purpose, exactly as check_size.py's did. There is no ARM
+# These started empty on purpose, exactly as check_size.py's did. There is no ARM
 # toolchain on the development machine, and local figures have disagreed with CI
 # repeatedly -- a clang-tidy count with 3.7x slack, a delta with the wrong sign,
 # a header that read clean locally and reported two findings on CI. The job
-# prints the measured maxima with --report, and the numbers are set from THAT
+# prints the measured maxima with --report, and the numbers were set from THAT
 # output in a follow-up commit.
 #
 # A budget goes DOWN freely. It goes UP only when the probe was deliberately

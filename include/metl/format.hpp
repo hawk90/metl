@@ -41,7 +41,7 @@
 // Composes with `fixed_string` through the API it already has:
 //
 //     char scratch[24];
-//     line.try_append(metl::format_uint(scratch, reading));
+//     line.append(metl::format_uint(scratch, reading));  // or check try_append's bool
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
@@ -55,8 +55,8 @@ namespace metl {
 
 /// @brief Letter case for the hex digits `a`-`f`.
 enum class hex_case : unsigned char {
-  lower,  ///< `0x1f3a`
-  upper,  ///< `0x1F3A`
+  lower,  ///< `1f3a`
+  upper,  ///< `1F3A`
 };
 
 namespace detail {
@@ -115,9 +115,9 @@ constexpr unsigned long long magnitude_of(long long value) noexcept {
   return value < 0 ? (0ULL - unsigned_value) : unsigned_value;
 }
 
-// `is_plain_integer_v` used to be defined here. It moved to
-// metl/detail/plain_integer.hpp when metl/parse.hpp needed the same rule, so the
-// two headers cannot drift into disagreeing about what an integer is.
+// `is_plain_integer_v` lives in metl/detail/plain_integer.hpp, shared with
+// metl/parse.hpp, so the two headers cannot drift into disagreeing about what an
+// integer is.
 
 }  // namespace detail
 

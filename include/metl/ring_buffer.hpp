@@ -64,6 +64,10 @@ class ring_buffer : public detail::ring_core<T, Capacity> {
   /// Constructs an element at the back, evicting the oldest element if full.
   /// @return Reference to the newly constructed element. Never asserts on a full
   /// buffer (contrast emplace_back).
+  /// @pre If `T` is not move-constructible and the buffer is full, `args` must not
+  ///      refer to `front()` or into it: the oldest element is destroyed before the
+  ///      new one is constructed. A move-constructible `T` is built first, so it
+  ///      has no such restriction.
   template <typename... Args>
   reference push_overwrite(Args&&... args) {
     if (full()) {

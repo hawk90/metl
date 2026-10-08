@@ -16,8 +16,10 @@
 /// length, and the only thing that ends that scan is the caller's NUL terminator.
 /// METL cannot bound it -- a longer string costs more even when only `Capacity`
 /// characters will be kept, and a buffer with no NUL in it reads past the end. That
-/// is a precondition on the caller, not a bound this header provides. Pass a
-/// `metl::span<const char>` or an explicit length when the input length matters.
+/// is a precondition on the caller, not a bound this header provides. When the
+/// input length matters, default-construct and `append` / `try_append` a
+/// `metl::span<const char>`: that is the one entry point that takes an explicit
+/// length (no constructor or `assign` overload does).
 ///
 /// Single-threaded: this type does not synchronise.
 

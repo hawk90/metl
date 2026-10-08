@@ -443,8 +443,9 @@ class variant {
   }
 
   // Internal raw storage access (for free function helpers).
-  // storage_ptr() returns a laundered pointer to the active alternative storage;
-  // callers must know the type (used by get_if which already checks index).
+  // storage_ptr() returns the raw, NOT laundered, address of the alternative
+  // storage; callers must know the type and launder it themselves (get_if does,
+  // after checking the index).
   void* storage_ptr() noexcept { return raw_addr(); }
   const void* storage_ptr() const noexcept { return raw_addr(); }
 
@@ -486,12 +487,15 @@ class variant {
     return *std::launder(static_cast<T*>(raw_addr()));
   }
 
-  // Cross-alternative assignment: build a backup of the current state first.
-  // If the new construction is nothrow, we destroy current then construct directly.
-  // Otherwise, attempt to move-construct via a temporary variant first so a
-  // construction-time panic leaves the destination untouched.
-  // In this no-exception environment, METL_PANIC aborts; valueless_by_exception()
-  // remains a valid (but unreachable in normal flow) observable state.
+  // Assignment from another variant, in two cases:
+  // - Same alternative: destroy the current value and copy-construct (or, for
+  //   the rvalue overload, move-construct) the new one in place. The variant is
+  //   valueless across that construction, so a throw leaves it valueless rather
+  //   than holding a destroyed member under a stale index.
+  // - Different alternative: copy- (or move-) construct a backup variant from
+  //   `other` first, so a throw there leaves *this untouched; then reset() and
+  //   move the backup's value in. A throw from that final move leaves *this
+  //   valueless (valueless_by_exception()).
   void assign_from(const variant& other) {
     if (index_ == other.index_) {
       // Same alternative: destroy + copy-construct in place. Mark the variant

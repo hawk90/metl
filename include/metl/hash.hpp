@@ -138,13 +138,14 @@ METL_NODISCARD constexpr std::size_t fnv1a(const unsigned char* data, std::size_
 /// @param data Pointer to the first element; its object representation is hashed.
 /// @param len Number of `T` elements to hash, i.e. `len * sizeof(T)` bytes.
 /// @return The FNV-1a hash of the underlying bytes.
-/// @note Not constexpr-evaluable for non-byte `T` (uses reinterpret_cast), but constexpr-qualified so
-///       it composes in constant contexts when `T` is a byte type. Heap-free.
+/// @note Never constant-evaluable, whatever `T` is: it reinterpret_casts to bytes. For a hash in a
+///       constant expression, call the `fnv1a(const unsigned char*, std::size_t)` overload, which is.
+///       Heap-free.
 template <typename T>
 METL_NODISCARD constexpr std::size_t fnv1a(const T* data, std::size_t len) noexcept {
   std::size_t hash = detail::active_fnv::offset;
   const unsigned char* bytes = reinterpret_cast<const unsigned char*>(data);
-  // `len` counts elements: hashing `len` bytes ignored all
+  // `len` counts elements: hashing only `len` bytes would ignore all
   // but the first `len` bytes of a wider buffer.
   const std::size_t byte_count = len * sizeof(T);
   for (std::size_t i = 0; i < byte_count; ++i) {
@@ -225,8 +226,8 @@ struct identity_hash {
   }
 };
 
-/// @brief Transparent FNV-1a hash for use with `metl::flat_set` / `metl::flat_map` and the static
-///        unordered containers.
+/// @brief Transparent FNV-1a hash for use with `metl::static_unordered_map` and
+///        `metl::static_unordered_set` (the flat containers compare, they never hash).
 ///
 /// Being transparent means `find(k)` may hash a `k` of a different type from the stored key, so equal
 /// values must hash equally across types. The argument is therefore hashed by VALUE where that
@@ -236,12 +237,16 @@ struct identity_hash {
 ///   `metl::fixed_string` of any capacity, `metl::span<const char>` and `std::string_view`; the
 ///   `const char*` overload hashes the same bytes, so all of them interoperate.
 /// - an integral or enum: its value widened to 64 bits, so `5`, `5L` and `std::uint8_t{5}` agree.
+/// - a mutable `char*`: as `const char*`, the characters up to its NUL.
 /// - anything else: its object representation, gated on `std::has_unique_object_representations`.
+///   Any other pointer passes that gate and is hashed by ADDRESS, which agrees with pointer
+///   equality but not with equality of what it points to.
 ///
 /// @warning The object-representation fallback static_asserts on
 ///          `std::has_unique_object_representations<T>`: the type must have a unique object
-///          representation (no padding, no pointers/references, no ambiguous bit patterns such as
-///          floating point) or it will not compile. Provide a specialized hash for other types.
+///          representation (no padding, no ambiguous bit patterns such as floating point) or it will
+///          not compile. Provide a specialized hash for other types, and for any type -- a pointer,
+///          or a struct holding one -- whose equality looks past its own bytes.
 /// @note A signed and an unsigned argument hash equally only when they hold the same value: `-1`
 ///       and `0xFFFFFFFFu` do not, although `std::equal_to<>` compares them equal after conversion.
 struct fnv1a_hash {
@@ -251,7 +256,7 @@ struct fnv1a_hash {
   METL_NODISCARD std::size_t operator()(const T& value) const noexcept {
     if constexpr (std::is_array_v<T> && std::is_same_v<std::remove_cv_t<std::remove_extent_t<T>>, char>) {
       // A `char[N]` buffer: its characters up to the first NUL, never past N.
-      // Without this, a non-const array bound here as T and hashed all N bytes.
+      // Without this, a non-const array binds here as T and would hash all N bytes.
       std::size_t len = 0;
       while (len < std::extent_v<T> && value[len] != '\0') {
         ++len;
@@ -259,8 +264,8 @@ struct fnv1a_hash {
       return fnv1a(value, len);
     } else if constexpr (std::is_same_v<T, char*>) {
       // A mutable `char*` prefers this template over the `const char*`
-      // overload, and a pointer passes the unique-representation gate: it
-      // hashed the ADDRESS.
+      // overload, and a pointer passes the unique-representation gate, so
+      // without this branch the string would be hashed by its ADDRESS.
       return (*this)(static_cast<const char*>(value));
     } else if constexpr (detail::is_char_range<T>::value) {
       // Not the object representation: metl::fixed_string keeps stale bytes
@@ -276,11 +281,12 @@ struct fnv1a_hash {
       return hash;
     } else {
       // Hashing the raw object representation is only sound when every distinct
-      // value has a unique byte pattern. For types with padding bytes,
-      // pointers/references, floating point (-0.0 vs +0.0), etc. two equal
-      // objects can hash differently, breaking the hash/equality invariant. Gate
-      // the raw-bytes overload on has_unique_object_representations; specialize
-      // fnv1a_hash for other types.
+      // value has a unique byte pattern. For types with padding bytes or
+      // floating point (-0.0 vs +0.0), two equal objects can hash differently,
+      // breaking the hash/equality invariant. Gate the raw-bytes overload on
+      // has_unique_object_representations; specialize fnv1a_hash for other
+      // types. A pointer passes the gate and hashes by address, which is sound
+      // exactly when equality compares addresses.
       static_assert(std::has_unique_object_representations_v<T>,
                     "fnv1a_hash default overload hashes the raw object representation, which is only "
                     "sound for types with a unique object representation (no padding / no ambiguous "

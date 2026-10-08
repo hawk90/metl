@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Audit a linked image's symbol table for METL invariant violations.
 
-Proves three of the five invariants in docs/SCOPE.md at once:
+Proves two of the five invariants in docs/SCOPE.md -- I1 and both halves of I2:
 
   I1  no heap        -- malloc/free/sbrk/operator new must not be in the image
   I2a no exceptions  -- __cxa_throw / _Unwind_* / personality routines
@@ -14,7 +14,7 @@ symbol table is linker-agnostic, yields a readable error, and covers every path
 linked into the image -- not just the paths a test happened to execute.
 
 The image is never executed, so no emulator and no semihosting are involved.
-See docs/SCOPE.md section 7 for why --specs=rdimon.specs must not be used.
+See docs/SCOPE.md section 8 for why --specs=rdimon.specs must not be used.
 
 Usage:
     check_invariants.py IMAGE [IMAGE...] [--nm arm-none-eabi-nm]
@@ -47,7 +47,7 @@ CATEGORIES: dict[str, list[tuple[str, str]]] = {
         (r"^__libc_(m|c|re)alloc$|^__libc_free$", "glibc heap"),
         # _sbrk under nosys.specs is only pulled in when something references
         # it -- libnosys is an archive. Its presence is a true positive and
-        # must never be allowlisted (docs/SCOPE.md section 7).
+        # must never be allowlisted (docs/SCOPE.md section 8).
         (r"^_?sbrk$|^_?brk$", "heap break -- something requested heap growth"),
         # operator new/delete, all mangled spellings incl. sized/aligned/nothrow
         (r"^_Zn[wa][jmy]", "operator new"),
@@ -336,7 +336,7 @@ def main() -> int:
     if forbidden_allows:
         print(
             f"error: refusing to allowlist {', '.join(sorted(forbidden_allows))} — "
-            "its presence is always a real heap reference (docs/SCOPE.md §7). "
+            "its presence is always a real heap reference (docs/SCOPE.md §8). "
             "Find what pulled it in instead.",
             file=sys.stderr,
         )

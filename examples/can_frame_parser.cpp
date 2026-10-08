@@ -112,10 +112,7 @@ metl::expected<can_frame, parse_error> parse_frame(metl::span<const std::byte> b
   const std::size_t crc_offset = kHeaderSize + f.dlc;
   const std::uint16_t wire_crc = load_u16_le(buf.data() + crc_offset);
 
-  // metl::crc16 currently consumes a uint8_t span; create one transiently
-  // from our byte view. The two types are layout-compatible.
-  metl::span<const std::uint8_t> covered(reinterpret_cast<const std::uint8_t*>(buf.data()), crc_offset);
-  const std::uint16_t computed = metl::crc16(covered);
+  const std::uint16_t computed = metl::crc16(buf.data(), crc_offset);
   if (wire_crc != computed) {
     return metl::unexpected<parse_error>(parse_error::bad_crc);
   }
@@ -141,8 +138,7 @@ std::size_t encode_frame(const can_frame& f, std::byte* out, std::size_t cap) no
   }
 
   const std::size_t crc_offset = kHeaderSize + f.dlc;
-  metl::span<const std::uint8_t> covered(reinterpret_cast<const std::uint8_t*>(out), crc_offset);
-  const std::uint16_t crc = metl::crc16(covered);
+  const std::uint16_t crc = metl::crc16(out, crc_offset);
   store_u16_le(out + crc_offset, crc);
 
   return total;

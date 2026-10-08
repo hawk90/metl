@@ -127,10 +127,10 @@ constexpr unsigned hex_digit_value(char character) noexcept {
 /// never narrower than `unsigned`.
 ///
 /// This is a code-size decision, measured rather than assumed. Folding every
-/// width in `unsigned long long` cost a Cortex-M0 image **1504 bytes** where a
-/// Cortex-M3 paid 812 -- ARMv6-M has no divide instruction and no 64-bit
-/// arithmetic, so a `uint16_t` field was being parsed with 64-bit helper calls
-/// it never needed. Accumulating in `T`'s width keeps a 16-bit field 32-bit and
+/// width in `unsigned long long` measures **1504 bytes** in a Cortex-M0 image
+/// against 812 on a Cortex-M3 -- ARMv6-M has no divide instruction and no 64-bit
+/// arithmetic, so a `uint16_t` field would be parsed with 64-bit helper calls
+/// it never needs. Accumulating in `T`'s width keeps a 16-bit field 32-bit and
 /// leaves the 64-bit path for the callers that actually asked for 64 bits.
 template <typename T>
 using parse_accumulator_t =
@@ -150,9 +150,10 @@ struct digit_run {
 /// The limit arrives **pre-divided**, as @p limit_head (`limit / 10`) and
 /// @p limit_tail (`limit % 10`), for the same measured reason as
 /// `parse_accumulator_t`: every caller's limit is a compile-time constant, but
-/// dividing it inside this function left the division in the image on a target
-/// with no divider. Callers compute both as `constexpr` locals, so the divide
-/// happens in the compiler.
+/// dividing it inside this function leaves the division in the image on a target
+/// with no divider. Callers compute both from `constexpr` locals (`try_parse_int`
+/// precomputes the positive and negative pair and selects one at run time), so
+/// the divide happens in the compiler.
 ///
 /// The test is `value > limit_head || (value == limit_head && digit >
 /// limit_tail)` rather than the tempting `value * 10 + digit > limit`, which

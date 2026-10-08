@@ -5,9 +5,13 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | copy, assign, `reset`, `detach`, `swap` (`refcount_kind::non_atomic`) | wait-free, bounded |
-///   | the same, with `refcount_kind::atomic` | **lock-free**, not wait-free |
+///   | move construction, `detach`, `swap` (either counter kind) | wait-free, bounded |
+///   | copy, assignment, `reset` (`refcount_kind::non_atomic`) | wait-free, bounded |
+///   | copy, assignment, `reset` (`refcount_kind::atomic`) | **lock-free**, not wait-free |
 ///   | releasing the last reference | **plus the pointee's destructor** |
+///
+/// Move construction, `detach` and `swap` only move the pointer and never touch
+/// the count, so they are wait-free whichever counter is in use.
 ///
 /// The default non-atomic counter is a plain increment or decrement, so it is
 /// wait-free. The atomic counter is a `fetch_add`/`fetch_sub`, which on ARMv7-M and
@@ -197,8 +201,8 @@ class METL_ATTRIBUTE_TRIVIAL_ABI intrusive_ptr {
   /// @brief Move constructor; transfers ownership and nulls the source.
   intrusive_ptr(intrusive_ptr&& other) noexcept : ptr_(other.ptr_) { other.ptr_ = nullptr; }
 
-  // Converting copy constructor: intrusive_ptr<U> -> intrusive_ptr<T>
-  // when U* is convertible to T*.
+  /// @brief Converting copy constructor from `intrusive_ptr<U>` when `U*` converts to `T*`;
+  ///        shares ownership by incrementing the count.
   template <typename U, typename = std::enable_if_t<std::is_convertible_v<U*, T*> && !std::is_same_v<U, T>>>
   intrusive_ptr(const intrusive_ptr<U>& other) : ptr_(other.get()) {
     if (ptr_ != nullptr) {
@@ -206,7 +210,8 @@ class METL_ATTRIBUTE_TRIVIAL_ABI intrusive_ptr {
     }
   }
 
-  // Converting move constructor.
+  /// @brief Converting move constructor from `intrusive_ptr<U>`; transfers ownership
+  ///        without touching the count and nulls the source.
   template <typename U, typename = std::enable_if_t<std::is_convertible_v<U*, T*> && !std::is_same_v<U, T>>>
   intrusive_ptr(intrusive_ptr<U>&& other) noexcept : ptr_(other.detach()) {}
 

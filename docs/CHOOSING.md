@@ -9,10 +9,12 @@ If you want working code rather than a comparison, go to the
 [Cookbook](COOKBOOK.md) — it is the same material as recipes, with a compiled,
 CI-run example behind each one.
 
-**The one rule that applies everywhere:** any operation that can run out of
-capacity comes in two forms. `X(...)` treats "full" as a programming error and
+**The one rule that applies almost everywhere:** an operation that can run out
+of capacity comes in two forms. `X(...)` treats "full" as a programming error and
 asserts; `try_X(...)` reports it by return value and leaves the container exactly
-as it was. Every `try_X` is `[[nodiscard]]`. Full statement:
+as it was. Every `try_X` is `[[nodiscard]]`. Two have only the reporting form:
+`coro::scheduler` has only `try_attach*`, and `event_dispatcher::subscribe`
+returns an empty `optional` when full. Full statement:
 [SCOPE.md §9](SCOPE.md#9-the-recoverable-api-contract).
 
 ---
@@ -38,7 +40,7 @@ need one, see the driver section below.
 | You want | Use | Trade-off |
 |---|---|---|
 | Small table, sorted iteration, or `<` is all you have | [`flat_map`](../include/metl/flat_map.hpp) / [`flat_set`](../include/metl/flat_set.hpp) | O(log n) lookup, **O(n) insert** (shifts). Iterates in key order. |
-| Bigger table, hashing available, order does not matter | [`static_unordered_map`](../include/metl/static_unordered_map.hpp) / [`static_unordered_set`](../include/metl/static_unordered_set.hpp) | O(1) lookup, **unspecified iteration order**, tombstones on erase, reclaimed by an occasional in-place rebuild on a new-key insert (which invalidates all iterators) |
+| Bigger table, hashing available, order does not matter | [`static_unordered_map`](../include/metl/static_unordered_map.hpp) / [`static_unordered_set`](../include/metl/static_unordered_set.hpp) | O(1) lookup, **unspecified iteration order**, tombstones on erase, reclaimed by an occasional in-place rebuild on a new-key insert (which invalidates all iterators) — only for nothrow-movable elements; otherwise never reclaimed |
 | A handful of entries fixed at compile time | [`lookup_table<K, V, N>`](../include/metl/lookup_table.hpp) | Immutable, linear scan — usually `constexpr`, and smaller than either map |
 
 > **`flat_map::operator[]` and `at()` take a POSITION, not a key** — the opposite
@@ -48,7 +50,8 @@ need one, see the driver section below.
 ### …and on an MCU, the deciding factor is usually RAM
 
 The table above compares time. On a part with 32 KB of SRAM the question is
-almost always bytes, and **the two are not close**. Measured `sizeof`, for
+almost always bytes, and **the two are not close**. Measured `sizeof` on a 64-bit
+host (32-bit targets differ by their smaller `size_type`), for
 `<uint32_t, uint64_t>` — the caller's data is `capacity × 12` bytes:
 
 | capacity | your data | `flat_map` | `static_unordered_map` |
@@ -66,7 +69,7 @@ twice the capacity you asked for, and every bucket carries a state byte next to
 its slot. This is not waste — open addressing with linear probing needs the load
 factor below one half, and a power-of-two count is what lets probing mask
 instead of divide, which matters on a core with no divider. But it is a
-multiplier, and until now it was written down nowhere a caller would look.
+multiplier.
 
 **Asking for one more element can double the table.** `bit_ceil` means capacity
 128 gets 256 buckets and capacity **129 gets 512** — 4352 more bytes for one
@@ -79,10 +82,10 @@ half your RAM inside a gap between two capacities that look interchangeable.
 table is small enough that O(n) insert is acceptable, it is also the one that
 fits.
 
-These numbers are asserted, not just written: see
-[`tests/core/ram_footprint_test.cpp`](../tests/core/ram_footprint_test.cpp),
-which fails the build if the layout or the bucket policy changes without this
-section changing with it.
+The exact bytes are not asserted (they depend on the ABI), but the shape is:
+[`tests/core/ram_footprint_test.cpp`](../tests/core/ram_footprint_test.cpp)
+fails the build if the bucket policy changes or a container outgrows its
+payload-plus-bookkeeping bound.
 
 > **Nothing measures your stack.** Every container here holds its elements
 > inline, so a local `static_unordered_map<uint32_t, uint64_t, 256>` is an
@@ -103,7 +106,7 @@ is narrower than `std`, but not empty, and the cases differ by container:
 | `fixed_vector`, `fixed_string` | `push_back` / `emplace_back` / `append`: everything except `end()` | `insert` / `emplace` / `erase` at `pos`: iterators, pointers and references **at and after `pos`** (those elements shift). `pop_back`: the last element and `end()`. `clear` / `assign`: all. |
 | `flat_map`, `flat_set` | lookups; assigning to an existing key's value | inserting a new key or `erase`: **at and after** its position (the array shifts). `clear`: all. With exceptions on, a throw during the shift or `erase` clears the container: all. |
 | `static_unordered_map`, `static_unordered_set` | lookups; assigning to an existing key; **`erase`** (only the erased element) | inserting a **new** key: **all iterators, pointers and references** -- the tombstone rebuild runs there. This is the open-addressing rule (`absl::flat_hash_map`, `boost::unordered_flat_map`); node-based `std::unordered_map` keeps references across a rehash, these tables cannot. `clear`: all. With exceptions on, a hasher that throws during the rebuild empties the table: all. |
-| `ring_buffer`, `fixed_deque` | pointers and references to an element, until that element is popped (storage never moves) | **iterators are positions** (an index from the front): after `pop_front` / `push_front` the same iterator names a different element, so treat every iterator as invalidated. `push_back` invalidates only `end()`. `push_overwrite` on a full ring is a `pop_front` plus a `push_back`. |
+| `ring_buffer`, `fixed_deque` | pointers and references to an element, until that element is popped (storage never moves) | **iterators are positions** (an index from the front): after `pop_front` / `push_front` the same iterator names a different element, so treat every iterator as invalidated. Appending at the back (`push_back` on `fixed_deque`, `emplace_back` / `try_push_back` on `ring_buffer`) invalidates only `end()`. `push_overwrite` on a full ring is a `pop_front` plus an append. |
 | `fixed_queue`, `fixed_stack`, `fixed_priority_queue` | -- | no iterators. A `front()` / `top()` reference survives pushes on `fixed_queue` and `fixed_stack` until its element is popped; on `fixed_priority_queue` any `push` or `pop` invalidates it (the heap reorders). |
 
 The erase-while-iterating loop that is safe on `std::unordered_map`
@@ -117,11 +120,16 @@ The erase-while-iterating loop that is safe on `std::unordered_map`
 |---|---|---|
 | Whole objects, one producer, one consumer | [`spsc_queue<T, N>`](../include/metl/spsc_queue.hpp) | Nothing beyond C++17 atomics — the default |
 | **Bytes**, with a pointer a peripheral can fill | [`spsc_byte_ring<N>`](../include/metl/spsc_byte_ring.hpp) | Same; see the driver section |
-| Many producers or many consumers | [`mpmc_queue<T, N>`](../include/metl/mpmc_queue.hpp) | A hardware CAS (ARMv7-M and up). **Prefer `spsc_queue` when the roles are fixed** — the header has measured contention numbers |
 | A compound operation to be atomic (`if (!full) push`) | [`guarded<T, Lock>`](../include/metl/lock.hpp) with `irq_lock` | Single core: this is the correct ISR↔main lock. There is deliberately **no spin_lock** |
-| Many producers on a target with **no CAS** (Cortex-M0) | [`static_message_queue<T, N>`](../include/metl/static_message_queue.hpp) wrapped in `guarded<..., irq_lock>` | This is the real fallback `mpmc_queue` names, not a promise — the type exists |
-| One shared word (a flag, a counter) | [`atomic_ref<T>`](../include/metl/atomic_ref.hpp) | — |
-| One shared *handle* into a pool | [`atomic_handle`](../include/metl/atomic_handle.hpp) | A hardware CAS; `static_assert` fires on Cortex-M0 rather than degrading silently |
+| Many producers or many consumers | [`static_message_queue<T, N>`](../include/metl/static_message_queue.hpp) wrapped in `guarded<..., irq_lock>` | Masking interrupts; works on Cortex-M0 too |
+| One shared word (a flag) | [`atomic_ref<T>`](../include/metl/atomic_ref.hpp) | `load` / `store` only. Its read-modify-write operations (`fetch_add`, CAS) are lock-free retry loops: **not** for ISR↔main on one core |
+
+**Lock-free is multi-core only.** [`mpmc_queue<T, N>`](../include/metl/mpmc_queue.hpp),
+[`atomic_handle`](../include/metl/atomic_handle.hpp) and the read-modify-write half
+of `atomic_ref` are retry loops: an ISR that preempts one on a single core can spin
+forever. Use them between cores (they need a hardware CAS, ARMv7-M and up); between
+an ISR and the main loop, use the rows above. The rule is
+[SCOPE.md §1](SCOPE.md#1-the-five-invariants).
 
 A per-operation lock inside a container would not make `if (!q.full()) q.push(x)`
 atomic — both calls would lock separately and the gap is still a race. That is why
@@ -157,8 +165,9 @@ runs that difference and prints it; the design argument is
 | You want | Use | Owns the callable? |
 |---|---|---|
 | A **parameter** that takes any callable | [`function_ref<Sig>`](../include/metl/function_ref.hpp) | No — 2 words. Binds **lvalues only**, so a temporary cannot dangle |
-| A stored callback to a method on an object you own | [`delegate<Sig>`](../include/metl/delegate.hpp) | No — 2 words. The method is a template parameter, so there is no indirection |
-| A callable that must outlive the expression that made it | [`fixed_function<Sig, N>`](../include/metl/fixed_function.hpp) | **Yes** — N bytes inline; a capture that does not fit, or whose move can throw, is a compile error, never a heap allocation |
+| A stored callback to a method on an object you own | [`delegate<Sig>`](../include/metl/delegate.hpp) | No — 2 words. The method is a template parameter, so a call is one indirect jump to a thunk that calls it directly |
+| A callable that must outlive the expression that made it | [`fixed_function<Sig, N>`](../include/metl/fixed_function.hpp) | **Yes** — N bytes inline, never a heap allocation. A capture that does not fit asserts (`try_assign` returns false); one whose move can throw is a compile error. The callable must be copyable |
+| The same, for a move-only callable | [`fixed_any_invocable<Sig, N>`](../include/metl/fixed_function.hpp) | **Yes** — like `fixed_function`, but the wrapper is move-only and so is what it holds |
 | A fixed list of listeners notified together | [`event_dispatcher<Sig, N>`](../include/metl/event_dispatcher.hpp) | No — holds delegates |
 | Cleanup that must run on every exit path | [`scope_exit`](../include/metl/scope_exit.hpp) | Yes; the callable must be `noexcept` |
 
@@ -169,7 +178,7 @@ Worked example: [`examples/callbacks.cpp`](../examples/callbacks.cpp).
 | You want | Use |
 |---|---|
 | A value, or nothing | [`optional<T>`](../include/metl/optional.hpp) |
-| A value, or an error explaining why not | [`expected<T, E>`](../include/metl/expected.hpp) (`E` may be `void`) |
+| A value, or an error explaining why not | [`expected<T, E>`](../include/metl/expected.hpp) (`T` may be `void`) |
 | One of several alternatives | [`variant<Ts...>`](../include/metl/variant.hpp) |
 | A view of someone else's contiguous data | [`span<T>`](../include/metl/span.hpp) |
 

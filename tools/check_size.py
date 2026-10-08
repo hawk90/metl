@@ -2,7 +2,9 @@
 """Code-size ratchet for the linked invariant probe.
 
 Why size and not speed. `bench-smoke` builds the benchmarks, runs them and
-prints the numbers -- and asserts nothing, so it is a job that can only pass.
+prints the numbers -- and at the time this was written it asserted nothing, so
+it was a job that could only pass (it now also gates instruction counts, via
+tools/check_instructions.py; the wall-clock half still asserts nothing).
 The obvious fix was rejected early ("a threshold on a shared runner
 either fires spuriously or never fires"), and that rejection is right: wall-clock
 on a shared GitHub runner is noise.
@@ -68,8 +70,8 @@ import sys
 # clang-tidy figure that was 3.7x slack, a delta with the wrong sign, and a
 # header that reported clean locally and two findings on CI).
 #
-# So these start as None. The job prints the measured sizes with --report, and
-# the numbers are set from that output in a follow-up commit -- the same
+# So these started as None. The job prints the measured sizes with --report, and
+# the numbers were set from that output in a follow-up commit -- the same
 # two-step the clang-tidy ratchet used, for the same reason.
 #
 # A budget goes DOWN freely. It goes UP only when the probe was deliberately

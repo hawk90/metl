@@ -180,7 +180,7 @@ if(METL_BUILD_TESTS)
   # metl_<name>_test. Kept an explicit list (not a glob) to match the Bazel-style
   # rules — srcs are enumerated, reviewable, and reproducible. The shared
   # tests/metl_check.hpp helper is put on every test's include path via INCLUDES.
-  # (The threaded test needs Threads::Threads and is wired separately below.)
+  # (The threaded tests need Threads::Threads and are wired separately below.)
   set(_metl_tests
     # containers/
     containers/fixed_vector containers/fixed_vector_asan containers/fixed_string
@@ -239,9 +239,10 @@ if(METL_BUILD_TESTS)
     METL_EXPECTED_VERSION_PATCH=${PROJECT_VERSION_PATCH})
 
   # -------------------------------------------------------------------------
-  # Multi-threaded concurrency test (needs a threading runtime). Built and run
-  # in every configuration, including the TSAN sanitizer job where it actually
-  # validates spsc_queue / atomic_ref memory ordering.
+  # Multi-threaded concurrency tests (need a threading runtime): spsc_queue,
+  # atomic_handle, spsc_byte_ring, mpmc_queue and size_hint_observer. Built and
+  # run in every configuration, including the TSAN sanitizer job where they
+  # actually validate those types' memory ordering.
   # -------------------------------------------------------------------------
   metl_cc_test(
     NAME metl_spsc_queue_threaded_test
@@ -431,8 +432,9 @@ endif()
 # Benchmarks (host only, opt-in)
 # ---------------------------------------------------------------------------
 # Off by default: they are slow, they are noisy on shared machines, and they are
-# not a correctness signal. The `bench-smoke` CI job turns them on and runs them
-# with --quick purely so they cannot rot.
+# not a correctness signal. The `bench-smoke` CI job turns them on, runs them
+# with --quick so they cannot rot, and enforces per-benchmark instruction-count
+# budgets under cachegrind (tools/check_instructions.py).
 if(METL_BUILD_BENCHMARKS)
   if(CMAKE_CROSSCOMPILING)
     message(WARNING "METL_BUILD_BENCHMARKS is ON but this is a cross build; benchmarks are host-only and are skipped.")

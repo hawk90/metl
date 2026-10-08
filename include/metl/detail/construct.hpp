@@ -18,9 +18,8 @@
 // placement-new:
 //
 //   * C++20: forwards to std::construct_at / std::destroy_at (constant-eval OK).
-//   * C++17: falls back to placement-new / explicit destructor call (identical
-//            to the previous hand-rolled code; still not constant-evaluable, so
-//            behavior is unchanged).
+//   * C++17: falls back to placement-new / explicit destructor call (not
+//            constant-evaluable, so the constexpr labels have no effect there).
 //
 // METL_CONSTEXPR20 expands to `constexpr` only when the C++20 constexpr path is
 // active (constexpr destructors + constexpr construct_at), and to nothing on

@@ -15,10 +15,12 @@ ctest --test-dir build -R metl_example --output-on-failure
 ```
 
 > **What CI checks about this page, precisely.** `tools/check_docs.py` runs in
-> the `api-contract` job and settles three things: every `metl::` name used here
+> the `api-contract` job (and on documentation-only changes, where that job is
+> skipped). Of its checks, three concern this page: every `metl::` name used here
 > exists in a public header, every link into the repo resolves, and every
 > example this page points at is registered in `examples/CMakeLists.txt` — which
-> is what makes "CI-run" true rather than aspirational.
+> is what makes "CI-run" true rather than aspirational. The script's docstring
+> lists the rest.
 >
 > It does **not** compile the snippets, and that is deliberate. They are
 > excerpts: they interleave definitions with statements and call things the
@@ -280,7 +282,7 @@ arena.reset();        // unwinds everything
 
 *Full example: [`examples/spsc_isr.cpp`](../examples/spsc_isr.cpp) (single-thread,
 deterministic); [`examples/sensor_pipeline.cpp`](../examples/sensor_pipeline.cpp)
-(two real threads, TSAN-checked)*
+(two real threads)*
 
 `spsc_queue` is wait-free with **exactly one** producer and **exactly one**
 consumer. The canonical use is ISR (producer) to main loop (consumer):
