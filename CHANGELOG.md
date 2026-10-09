@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-10
+
+**Highlights.** A correctness release. An audit of every header against its
+documented contract, each finding reproduced by a failing test before it was
+fixed: removal and insertion that a callback into the same container could
+corrupt, checks that `METL_HARDENING_NONE` stripped although misuse then
+corrupted memory, an `mpmc_queue` that clang compiled into a hang after 2^31
+operations on a 32-bit target, and an `intrusive_ptr` whose ABI differed
+between GCC and Clang. The headers now build clean under MSVC `/W4 /WX` and
+`-Wpedantic -Wdeprecated`.
+
 ### Upgrading from 1.1.0
+
+Most of what changes below was silently wrong before and is now a compile
+error or a different (correct) result. Check these against your code:
 
 - `intrusive_ptr` is no longer `[[clang::trivial_abi]]` by default. Clang
   passed it in a register and GCC in memory, so a program mixing GCC- and
@@ -26,10 +40,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `optional`. It used to compile, and stored the source's `has_value()` as the
   value: an empty `optional<int>` gave an engaged `optional<bool>` holding
   `false`. Test `has_value()` explicitly.
-
 - `delegate::bind` for a const member function no longer accepts a
   temporary: it compiled on GCC and called through a destroyed object. Bind a
   named object.
+- `coro::deadline_scheduler` runs tasks with equal deadlines in the order they
+  were scheduled, where it used to follow heap position. Each scheduled entry
+  is 8 bytes larger.
+- An unrecognised `METL_HARDENING` value (such as `DEBUG`) is an `#error`; it
+  used to select NONE. Two `METL_SCOPE_EXIT`s on one source line no longer
+  compile.
+
 ### Fixed
 
 - Comparing two `variant`s whose active alternative is not the first warned
