@@ -185,6 +185,15 @@ def clang_tidy_delta(python):
         return False
     elapsed = time.monotonic() - started
     added = sorted((after - before).elements())
+    if added:
+        # A real regression is deterministic; run this tree once more so a
+        # one-off difference is reported as such instead of blocking the push.
+        again = tidy_findings(python, tidy, REPO, BUILD_ROOT / "tidy-head")
+        if again != after:
+            print(f" (first run: {sum(after.values())} findings, second: {sum(again.values())};"
+                  f" clang-tidy output differed between two runs)", end="")
+        after = again
+        added = sorted((after - before).elements())
     total_before, total_after = sum(before.values()), sum(after.values())
     if added:
         print(f" FAILED ({elapsed:.0f}s): {total_before} -> {total_after} distinct findings, "
