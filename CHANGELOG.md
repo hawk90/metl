@@ -1,4 +1,4 @@
-# Changelog
+#Changelog
 
 All notable changes to METL are documented in this file.
 
@@ -7,8 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrading from 1.1.0
+
+- **Using** `irq_lock` (including as the default lock of `guarded` and
+  `tick_extender`) is now a compile error on any target that has interrupts
+  but no masking sequence in METL: ESP32 (Xtensa or RISC-V), Cortex-A/R, AVR,
+  bare-metal RISC-V. It used to compile there to a lock that masked nothing.
+  Pass a lock policy for the target; on a multi-core part such as the ESP32,
+  that is the RTOS critical section. Builds under a hosted OS (Linux, macOS,
+  Windows) are unchanged.
+
 ### Fixed
 
+- `irq_lock` no longer compiles to a no-op on targets with real interrupts
+  (see Upgrading above). Cortex-M with GCC or Clang is unchanged.
 - Containers, `optional`, `variant`, the pools, the allocators and
   `fixed_function` construct elements with `::new`. An element type that
   deletes its own `operator new` (the usual way to forbid heap allocation)
@@ -334,7 +346,8 @@ asserts) first:
 - **`metl::visit` silently truncated a visitor's result** when the visitor
   returned a different type per alternative. The result type was deduced from
   alternative **zero** and every other alternative was converted to it, so
-  `metl::visit([](auto x) { return x; }, v)` on a
+  `metl::visit([](auto x) {
+  return x; }, v)` on a
   `variant<std::int32_t, std::int64_t>` holding `5'000'000'000` returned
   `705032704` — no warning at default flags, no assert. `std::visit` rejects the
   same code at compile time (*"`std::visit` requires the visitor to have a
@@ -796,14 +809,16 @@ would cost a deprecation cycle; today they cost a recompile.
   where the compiler has no prefetch builtin.
 
 - **`metl::atomic_handle` — lock-free atomic cell for a `versioned_handle`
-  (Tier 1).** This is the payoff of packing `{index, generation}` into one word:
+  (Tier 1).** This is the payoff of packing `{
+  index, generation}` into one word:
   a lock-free free-list needs its head to carry a counter so a compare-exchange
   cannot be fooled by a slot freed and re-allocated in the interim (ABA), and the
   usual answers are a double-width CAS (64-bit only, `cmpxchg16b`/`CASP`) or
   stuffing a counter into a pointer's spare bits (breaks under AArch64 PAC/MTE,
   x86-64 LA57/LAM). A handle needs neither — the counter is already in the word,
   and the word is 32 bits, so a **plain single-word CAS is ABA-safe on a 32-bit
-  MCU**. Provides `load`/`store`/`exchange`/`compare_exchange_{weak,strong}` with
+  MCU**. Provides `load`/`store`/`exchange`/`compare_exchange_{
+  weak, strong}` with
   explicit memory orders; each operation is wait-free and bounded, while a
   caller's retry loop is lock-free (which is why it must not be used for
   ISR↔main-loop synchronisation on a single core — mask interrupts there).
@@ -821,7 +836,8 @@ would cost a deprecation cycle; today they cost a recompile.
   build rather than changing METL's progress guarantees silently.
 
 - **`metl::versioned_handle` + `metl::handle_pool` — generation-tagged slot
-  handles.** A `versioned_handle` is `{index, generation}` packed into one
+  handles.** A `versioned_handle` is `{
+  index, generation}` packed into one
   unsigned integer (32 bits by default: 16-bit index + 16-bit generation),
   trivially copyable, with every operation wait-free and bounded.
   `handle_pool<T, Capacity>` is the pool that issues and validates them, and it
@@ -902,7 +918,8 @@ would cost a deprecation cycle; today they cost a recompile.
   (exception-safety of the destructor record), `object_pool_foreign_ptr`
   (unrelated-pointer membership test), `harden_floor_none` (a forked death test
   proving `METL_HARDEN` still aborts at `METL_HARDENING_NONE`), and
-  `hardening_{none,fast,debug}` (each pins a level and checks which of
+  `hardening_{
+  none, fast, debug}` (each pins a level and checks which of
   `METL_ASSERT`/`METL_DASSERT`/`METL_HARDEN` fire).
 - **Fuzzing harnesses (libFuzzer, ASan+UBSan) + a blocking CI fuzz-smoke job.**
   Five `LLVMFuzzerTestOneInput` harnesses under `fuzz/`
