@@ -60,28 +60,47 @@ namespace metl {
 #endif
 #endif
 
+// Whether this is a program running under a desktop or server OS, where user
+// code has no interrupts of its own to mask. Overridable only so a test can
+// model a bare-metal target from a hosted build; not a configuration option.
+#ifndef METL_DETAIL_HOSTED_OS
+#if defined(__unix__) || defined(__APPLE__) || defined(_WIN32) || defined(__EMSCRIPTEN__)
+#define METL_DETAIL_HOSTED_OS 1
+#else
+#define METL_DETAIL_HOSTED_OS 0
+#endif
+#endif
+
 /// @brief 1 when `irq_lock` really masks interrupts on this target, 0 when it
 ///        does not.
 ///
-/// Real on ARM Cortex-M (the M profile) with GCC or Clang. Hosted targets have
-/// no interrupts for a program to mask, so `irq_lock` compiles there but
-/// provides **no mutual exclusion** -- it exists so the same code builds and can
-/// be unit-tested. Assert on `metl::has_irq_masking` when a deployment depends
-/// on it being real.
+/// Real on ARM Cortex-M (the M profile) with GCC or Clang.
 ///
-/// A Cortex-M target built by a compiler without GNU inline assembly (IAR, for
-/// example) is the one case where a no-op lock would be a silent bug on real
-/// hardware, so there `irq_lock` is not a no-op: using it is a compile error,
-/// and this is 0. Including the header stays fine.
+/// A program under a hosted OS (Linux, macOS, Windows) has no interrupts of its
+/// own to mask, so there `irq_lock` compiles to a compiler barrier and provides
+/// **no mutual exclusion** -- it exists so the same code builds and can be
+/// unit-tested.
+///
+/// Every other target has real interrupts and no masking sequence here: ESP32
+/// (Xtensa or RISC-V), Cortex-A/R, AVR, bare-metal RISC-V, and a Cortex-M built
+/// by a compiler without GNU inline assembly (IAR, for example). A lock that
+/// masks nothing would be a silent race there, so **using** `irq_lock` is a
+/// compile error and this is 0; including the header stays fine. Pass a lock
+/// policy for the target instead. On a multi-core part such as the ESP32 that
+/// means the RTOS critical section (`portENTER_CRITICAL` on ESP-IDF): masking
+/// the local core's interrupts would not stop the other core.
 #if defined(__ARM_ARCH_PROFILE) && (__ARM_ARCH_PROFILE == 'M')
 #if METL_DETAIL_HAS_GNU_ASM
 #define METL_HAS_IRQ_MASKING 1
 #else
 #define METL_HAS_IRQ_MASKING 0
-#define METL_DETAIL_IRQ_LOCK_UNAVAILABLE 1
+#define METL_DETAIL_IRQ_LOCK_UNAVAILABLE 1  // Cortex-M, no GNU inline assembly
 #endif
+#elif METL_DETAIL_HOSTED_OS
+#define METL_HAS_IRQ_MASKING 0
 #else
 #define METL_HAS_IRQ_MASKING 0
+#define METL_DETAIL_IRQ_LOCK_UNAVAILABLE 2  // real interrupts, no sequence here
 #endif
 
 /// @copydoc METL_HAS_IRQ_MASKING
@@ -123,9 +142,9 @@ struct null_lock {
 /// covers `guarded<>` holding the mask across a whole body, and an inner release
 /// not unmasking while an outer lock is held.
 ///
-/// @warning On targets without interrupt masking (anything that is not an ARM
-///          Cortex-M) this is a **compiler barrier only** and provides no mutual
-///          exclusion. Check `metl::has_irq_masking`.
+/// @warning Under a hosted OS this is a **compiler barrier only** and provides
+///          no mutual exclusion; on any other target without a masking
+///          sequence, using it does not compile. See `METL_HAS_IRQ_MASKING`.
 /// @warning Masks *all* maskable interrupts, including the highest-priority
 ///          ones, so it adds directly to worst-case interrupt latency.
 struct irq_lock {
@@ -137,16 +156,23 @@ struct irq_lock {
   // in every translation unit that includes this header.
   template <typename Unused = void>
   METL_NODISCARD static state_type lock() noexcept {
+#if METL_DETAIL_IRQ_LOCK_UNAVAILABLE == 1
     static_assert(sizeof(Unused*) == 0,
                   "metl::irq_lock has no PRIMASK sequence for this compiler on a Cortex-M target: "
                   "it would compile to a lock that masks nothing. Supply a lock policy built on "
                   "your compiler's intrinsics (state_type, lock(), unlock(state_type))");
+#else
+    static_assert(sizeof(Unused*) == 0,
+                  "metl::irq_lock cannot mask interrupts on this target: it would compile to a "
+                  "lock that masks nothing. Supply a lock policy for the target (state_type, "
+                  "lock(), unlock(state_type)) -- on a multi-core part such as the ESP32, the "
+                  "RTOS critical section");
+#endif
     return 0;
   }
   template <typename Unused = void>
   static void unlock(state_type) noexcept {
-    static_assert(sizeof(Unused*) == 0,
-                  "metl::irq_lock has no PRIMASK sequence for this compiler on a Cortex-M target");
+    static_assert(sizeof(Unused*) == 0, "metl::irq_lock cannot mask interrupts on this target");
   }
 #else
   METL_NODISCARD static state_type lock() noexcept {
