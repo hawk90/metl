@@ -231,6 +231,18 @@ if(METL_BUILD_TESTS)
       INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/tests
       LABELS "metl"
     )
+    # A test that longjmps out of an assert handler leaves through noexcept
+    # frames. On MSVC x64 longjmp unwinds like an exception, and under /EHsc
+    # which destructors that unwind runs in a noexcept frame depends on the
+    # optimizer -- a #215 change to inlined code hung one such test. Without
+    # /EH, longjmp runs no destructors, as on every other compiler.
+    if(MSVC)
+      file(READ tests/${_t}_test.cpp _src)
+      if(_src MATCHES "<csetjmp>|hardening_common\\.h")
+        target_compile_options(metl_${_name}_test PRIVATE /EHs-c-)
+        target_compile_definitions(metl_${_name}_test PRIVATE _HAS_EXCEPTIONS=0)
+      endif()
+    endif()
   endforeach()
   # tests/core/version_test.cpp compares metl::version with these.
   target_compile_definitions(metl_version_test PRIVATE

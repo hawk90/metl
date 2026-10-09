@@ -53,8 +53,10 @@ void capture(const char* /*expr*/, const char* /*file*/, int /*line*/) noexcept 
   std::longjmp(g_jump, 1);
 }
 
-// Runs `misuse` and reports whether a guard stopped it. Only trivially
-// destructible locals live inside `misuse`, so the longjmp skips nothing.
+// Runs `misuse` and reports whether a guard stopped it. The longjmp skips the
+// destructors of whatever `misuse` had live (a fixed_function it was building,
+// say): those objects are abandoned, not destroyed, which is harmless here.
+// CMakeLists.txt builds this file without /EH on MSVC so that holds there too.
 template <typename F>
 bool guarded_against(F misuse) {
   g_fired = false;
