@@ -137,14 +137,20 @@ def find_clang_tidy():
     return None
 
 
-def tidy_findings(python, tidy, source_dir, build_dir):
-    """The distinct-finding lines of clang_tidy_report.py over `source_dir`."""
-    configure = ["cmake", "-B", str(build_dir), "-S", str(source_dir),
-                 "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON", "-DMETL_BUILD_DOCS=OFF", "-DMETL_INSTALL=OFF"]
-    subprocess.run(configure, cwd=source_dir, capture_output=True, check=True)
+def tidy_findings(python, tidy, source_dir, build_dir, env):
+    """The distinct-finding lines of clang_tidy_report.py over `source_dir`.
+
+    Both trees are configured with the same compiler and environment in the
+    same run. The flags in compile_commands.json decide which #if branches
+    clang-tidy sees, so a base measured under one PATH (a shell) and a head
+    under another (git's hook) once differed by 136 findings."""
+    configure = ["cmake", "-B", str(build_dir), "-S", str(source_dir), "--fresh",
+                 "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON", "-DMETL_BUILD_DOCS=OFF", "-DMETL_INSTALL=OFF",
+                 f"-DCMAKE_CXX_COMPILER={shutil.which('c++') or 'c++'}"]
+    subprocess.run(configure, cwd=source_dir, capture_output=True, check=True, env=env)
     report = subprocess.run([python, str(source_dir / "tools" / "clang_tidy_report.py"),
                              "-p", str(build_dir), "--clang-tidy", tidy],
-                            cwd=source_dir, capture_output=True, text=True, check=True).stdout
+                            cwd=source_dir, capture_output=True, text=True, check=True, env=env).stdout
     lines = report.split("Distinct findings:", 1)[-1].splitlines()
     # Line numbers move with any edit above a finding, so they are dropped --
     # but the result is a COUNT per message, not a set: two findings with the
@@ -166,20 +172,19 @@ def clang_tidy_delta(python):
     started = time.monotonic()
     print(f"  clang-tidy over {base[:9]} and this tree ...", end="", flush=True)
     env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
-    base_tree = BUILD_ROOT / f"tidy-base-{base[:12]}"
-    cache = BUILD_ROOT / f"tidy-base-{base[:12]}.txt"
+    base_tree = BUILD_ROOT / "tidy-base"
     try:
-        if cache.is_file():
-            before = collections.Counter(cache.read_text(encoding="utf-8").splitlines())
-        else:
-            if not base_tree.is_dir():
-                subprocess.run(["git", "worktree", "add", "--detach", str(base_tree), base], cwd=REPO,
-                               capture_output=True, check=True, env=env)
-            before = tidy_findings(python, tidy, base_tree, base_tree / "build-tidy")
-            cache.write_text("\n".join(sorted(before.elements())), encoding="utf-8")
+        if base_tree.exists():
             subprocess.run(["git", "worktree", "remove", "--force", str(base_tree)], cwd=REPO,
                            capture_output=True, env=env)
-        after = tidy_findings(python, tidy, REPO, BUILD_ROOT / "tidy-head")
+        subprocess.run(["git", "worktree", "add", "--detach", str(base_tree), base], cwd=REPO,
+                       capture_output=True, check=True, env=env)
+        try:
+            before = tidy_findings(python, tidy, base_tree, base_tree / "build-tidy", env)
+        finally:
+            subprocess.run(["git", "worktree", "remove", "--force", str(base_tree)], cwd=REPO,
+                           capture_output=True, env=env)
+        after = tidy_findings(python, tidy, REPO, BUILD_ROOT / "tidy-head", env)
     except subprocess.CalledProcessError as error:
         print(f" FAILED to run\n      | {error}")
         return False
@@ -188,7 +193,7 @@ def clang_tidy_delta(python):
     if added:
         # A real regression is deterministic; run this tree once more so a
         # one-off difference is reported as such instead of blocking the push.
-        again = tidy_findings(python, tidy, REPO, BUILD_ROOT / "tidy-head")
+        again = tidy_findings(python, tidy, REPO, BUILD_ROOT / "tidy-head", env)
         if again != after:
             print(f" (first run: {sum(after.values())} findings, second: {sum(again.values())};"
                   f" clang-tidy output differed between two runs)", end="")
