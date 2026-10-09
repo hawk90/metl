@@ -21,6 +21,11 @@
 //   exactly one of value or error -- after EVERY operation, including the ones
 //   that switch between them.
 //
+// Counting is not enough on its own. A move assignment that silently does
+// nothing keeps exactly one live member -- the OLD one -- and the counts
+// balance. So the expected and variant drivers also keep a model of what each
+// object should hold, and compare value and state after every operation.
+//
 // Only contract-valid operations. `value()` and `get<>()` assert when the wrong
 // state is active, so every unchecked accessor is guarded by the corresponding
 // query first -- which is what the library tells callers to do.
@@ -125,28 +130,77 @@ void drive_optional(metl_fuzz::byte_reader& in) {
   }
 }
 
+/// What a `metl::expected<payload, other_payload>` should hold, kept alongside
+/// it. The counts above prove exactly one member is alive; this proves it is
+/// the RIGHT member with the RIGHT value. A move assignment that silently did
+/// nothing passed the counts -- the old member stays alive, one of each, the
+/// books balance -- and only a value comparison notices.
+struct expected_model {
+  bool has_value;
+  std::uint32_t value;
+  std::uint64_t error;
+};
+
+using vocab_result = metl::expected<payload, other_payload>;
+
+bool matches(const vocab_result& actual, const expected_model& model) {
+  if (actual.has_value() != model.has_value) {
+    return false;
+  }
+  return model.has_value ? actual->value == model.value && actual.value().value == model.value
+                         : actual.error().value == model.error;
+}
+
 void drive_expected(metl_fuzz::byte_reader& in) {
-  using result = metl::expected<payload, other_payload>;
-  result r{payload{0}};
+  vocab_result r{payload{0}};
+  vocab_result s{metl::unexpected<other_payload>(other_payload{0})};
+  expected_model mr{true, 0, 0};
+  expected_model ms{false, 0, 0};
 
   while (!in.empty()) {
     const std::uint32_t value = in.integer<std::uint32_t>();
-    switch (in.byte() % 5u) {
-      case 0:
-        r = result{payload{value}};
+    switch (in.byte() % 10u) {
+      case 0:  // move-assign from a temporary
+        r = vocab_result{payload{value}};
+        mr = {true, value, 0};
         break;
       case 1:  // value -> error and back: reinitialisation between DIFFERENT
                // types, the path with the most to get wrong
-        r = result{metl::unexpected<other_payload>(other_payload{value})};
+        r = vocab_result{metl::unexpected<other_payload>(other_payload{value})};
+        mr = {false, 0, value};
         break;
       case 2:
         r.emplace(value);
+        mr = {true, value, 0};
         break;
       case 3:
-        if (r.has_value() && r->value != r.value().value) {
-          METL_FUZZ_TRAP();
-        }
+        r.emplace_error(std::uint64_t{value});
+        mr = {false, 0, value};
         break;
+      case 4:
+        s.emplace(value);
+        ms = {true, value, 0};
+        break;
+      case 5:
+        s = metl::unexpected<other_payload>(other_payload{value});
+        ms = {false, 0, value};
+        break;
+      case 6:  // copy-assign between two named objects, every state pairing
+        r = s;
+        mr = ms;
+        break;
+      case 7:  // move-assign from a named object. payload's move copies, so the
+               // source keeps its value and the model of it does not change.
+        r = static_cast<vocab_result&&>(s);
+        mr = ms;
+        break;
+      case 8: {
+        r.swap(s);
+        const expected_model held = mr;
+        mr = ms;
+        ms = held;
+        break;
+      }
       default:
         // Reading the error is legitimate here; the comparison is incidental.
         // What matters is that reading it at all does not disturb the state.
@@ -156,54 +210,99 @@ void drive_expected(metl_fuzz::byte_reader& in) {
         break;
     }
 
-    // Exactly one of the two alternatives is alive. A reinit that destroyed
-    // neither, or both, lands here.
-    if (r.has_value()) {
-      if (g_live != 1 || g_live_other != 0) {
-        METL_FUZZ_TRAP();
-      }
-    } else if (g_live != 0 || g_live_other != 1) {
+    if (!matches(r, mr) || !matches(s, ms)) {
+      METL_FUZZ_TRAP();
+    }
+
+    // Exactly one of the two alternatives is alive in each. A reinit that
+    // destroyed neither, or both, lands here.
+    const int values = (r.has_value() ? 1 : 0) + (s.has_value() ? 1 : 0);
+    if (g_live != values || g_live_other != 2 - values) {
       METL_FUZZ_TRAP();
     }
   }
 }
 
+/// What a `metl::variant<payload, other_payload>` should hold.
+struct variant_model {
+  std::size_t index;
+  std::uint64_t value;
+};
+
+using vocab_variant = metl::variant<payload, other_payload>;
+
+/// Reads the active alternative through visit, so the oracle also covers
+/// dispatch on every value category, not only `get_if`.
+struct read_value {
+  std::uint64_t operator()(const payload& p) const noexcept { return p.value; }
+  std::uint64_t operator()(const other_payload& p) const noexcept { return p.value; }
+};
+
+bool matches(const vocab_variant& actual, const variant_model& model) {
+  if (actual.valueless_by_exception() || actual.index() != model.index) {
+    return false;
+  }
+  if (const payload* p = metl::get_if<payload>(&actual)) {
+    if (model.index != 0 || p->value != model.value || metl::get<payload>(actual).value != model.value) {
+      return false;
+    }
+  } else if (const other_payload* q = metl::get_if<other_payload>(&actual)) {
+    if (model.index != 1 || q->value != model.value ||
+        metl::get<other_payload>(actual).value != model.value) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+  return metl::visit(read_value{}, actual) == model.value;
+}
+
 void drive_variant(metl_fuzz::byte_reader& in) {
-  using var = metl::variant<payload, other_payload>;
-  var v{payload{0}};
+  vocab_variant v{payload{0}};
+  vocab_variant w{other_payload{0}};
+  variant_model mv{0, 0};
+  variant_model mw{1, 0};
 
   while (!in.empty()) {
     const std::uint32_t value = in.integer<std::uint32_t>();
-    switch (in.byte() % 6u) {
+    switch (in.byte() % 10u) {
       case 0:
-        v = var{payload{value}};
+        v = vocab_variant{payload{value}};
+        mv = {0, value};
         break;
       case 1:
-        v = var{other_payload{value}};
+        v = vocab_variant{other_payload{value}};
+        mv = {1, value};
         break;
       case 2:
         v.template emplace<payload>(value);
+        mv = {0, value};
         break;
       case 3:
         v.template emplace<other_payload>(value);
+        mv = {1, value};
         break;
-      case 4: {
-        // get_if is the total accessor; get<> asserts on the wrong alternative,
-        // so it is only reached once get_if has proven which one is active.
-        if (const payload* p = metl::get_if<payload>(&v)) {
-          if (p->value != metl::get<payload>(v).value) {
-            METL_FUZZ_TRAP();
-          }
-          if (v.index() != 0) {
-            METL_FUZZ_TRAP();
-          }
-        } else if (const other_payload* q = metl::get_if<other_payload>(&v)) {
-          if (q->value != metl::get<other_payload>(v).value || v.index() != 1) {
-            METL_FUZZ_TRAP();
-          }
+      case 4:
+        w.template emplace<payload>(value);
+        mw = {0, value};
+        break;
+      case 5:
+        w = other_payload{value};
+        mw = {1, value};
+        break;
+      case 6:  // copy-assign between named objects, same and different index
+        v = w;
+        mv = mw;
+        break;
+      case 7:  // move-assign; payload's move copies, so w keeps its value
+        v = static_cast<vocab_variant&&>(w);
+        mv = mw;
+        break;
+      case 8:  // rvalue visit of a copy: reaches the rvalue overload
+        if (metl::visit(read_value{}, vocab_variant{v}) != mv.value) {
+          METL_FUZZ_TRAP();
         }
         break;
-      }
       default: {
         // Self-assignment: the case where "destroy the old, construct the new"
         // destroys the thing it is about to read. Writing it as `v = v` is the
@@ -222,12 +321,14 @@ void drive_variant(metl_fuzz::byte_reader& in) {
       }
     }
 
-    if (v.valueless_by_exception()) {
-      METL_FUZZ_TRAP();  // unreachable without exceptions; if it happens, say so
+    // valueless_by_exception() is unreachable without a throwing alternative;
+    // matches() rejects it, so if it happens it is reported.
+    if (!matches(v, mv) || !matches(w, mw)) {
+      METL_FUZZ_TRAP();
     }
-    // Exactly one alternative alive, and it is the one `index()` claims.
-    const bool first = v.index() == 0;
-    if (g_live != (first ? 1 : 0) || g_live_other != (first ? 0 : 1)) {
+    // Exactly one alternative alive in each, and it is the one `index()` claims.
+    const int firsts = (v.index() == 0 ? 1 : 0) + (w.index() == 0 ? 1 : 0);
+    if (g_live != firsts || g_live_other != 2 - firsts) {
       METL_FUZZ_TRAP();
     }
   }

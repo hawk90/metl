@@ -417,6 +417,208 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
       METL_HARDEN(index < bucket_count);""",
         "new": """      // hardening levels; without this, slot_value(npos) would be a wild read.""",
     },
+    # ---- metl::expected (#202) ------------------------------------------------
+    {
+        "name": "expected_move_assign_self_check_inverted",
+        "file": "include/metl/expected.hpp",
+        "why": "move assignment returns early for every OTHER object, so it is "
+               "a no-op. Live-object counts stay balanced; only the value is "
+               "wrong, and only the fuzz harness's value oracle reads it.",
+        "kills": "ctest:replay_fuzz_vocab",
+        "old": """                                                 std::is_nothrow_move_constructible_v<E>) {
+    if (this == &other) {""",
+        "new": """                                                 std::is_nothrow_move_constructible_v<E>) {
+    if (this != &other) {""",
+    },
+    {
+        "name": "expected_move_ctor_branches_swapped",
+        "file": "include/metl/expected.hpp",
+        "why": "the move constructor builds the error from a value and the "
+               "value from an error. Copy elision means a prvalue never reaches "
+               "it, so only a test that moves a NAMED expected instantiates it.",
+        "kills": "ctest:expected_test",
+        "old": """    if (has_value_) {
+      construct_value(static_cast<T&&>(other.value_unchecked()));
+    } else {
+      construct_error(static_cast<E&&>(other.error_unchecked()));
+    }""",
+        "new": """    if (!has_value_) {
+      construct_value(static_cast<T&&>(other.value_unchecked()));
+    } else {
+      construct_error(static_cast<E&&>(other.error_unchecked()));
+    }""",
+    },
+    {
+        "name": "expected_void_copy_assign_self_check_inverted",
+        "file": "include/metl/expected.hpp",
+        "why": "expected<void, E> copy assignment becomes a no-op for every "
+               "other object; the state and the error are never copied.",
+        "kills": "ctest:expected_test",
+        "old": """  expected& operator=(const expected& other) {
+    if (this == &other) {
+      return *this;
+    }
+
+    if (other.has_value_) {
+      if (!has_value_) {""",
+        "new": """  expected& operator=(const expected& other) {
+    if (this != &other) {
+      return *this;
+    }
+
+    if (other.has_value_) {
+      if (!has_value_) {""",
+    },
+    {
+        "name": "expected_swap_value_error_leaks_error",
+        "file": "include/metl/expected.hpp",
+        "why": "the value<->error swap (E nothrow-movable) never destroys the "
+               "old error. Both sides read right afterwards; one E is leaked, "
+               "which only a lifetime count sees.",
+        "kills": "ctest:expected_test",
+        "old": """      E tmp(static_cast<E&&>(*e.error_ptr()));
+      e.error_ptr()->~E();""",
+        "new": """      E tmp(static_cast<E&&>(*e.error_ptr()));""",
+    },
+    {
+        "name": "expected_swap_value_error_leaks_error_throwing_move",
+        "file": "include/metl/expected.hpp",
+        "why": "the same leak on the other branch, taken when only T is "
+               "nothrow-movable: the old error is overwritten, not destroyed.",
+        "kills": "ctest:expected_test",
+        "old": """      e.error_ptr()->~E();
+      ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(tmp));""",
+        "new": """      ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(tmp));""",
+    },
+    {
+        "name": "expected_error_copy_assign_dropped",
+        "file": "include/metl/expected.hpp",
+        "why": "assigning an error to an expected that already holds one keeps "
+               "the OLD error. The state is right, so has_value() checks pass.",
+        "kills": "ctest:expected_test",
+        "old": """      *error_ptr() = std::forward<G>(error);
+      return;""",
+        "new": """      return;""",
+    },
+    {
+        "name": "expected_error_error_swap_dropped",
+        "file": "include/metl/expected.hpp",
+        "why": "swapping two expecteds that both hold errors does nothing.",
+        "kills": "ctest:expected_test",
+        "old": """      swap(*value_ptr(), *other.value_ptr());
+    } else if (!has_value_ && !other.has_value_) {
+      using std::swap;
+      swap(*error_ptr(), *other.error_ptr());
+    } else if (has_value_ && !other.has_value_) {""",
+        "new": """      swap(*value_ptr(), *other.value_ptr());
+    } else if (!has_value_ && !other.has_value_) {
+    } else if (has_value_ && !other.has_value_) {""",
+    },
+    {
+        "name": "expected_emplace_move_throw_no_restore",
+        "file": "include/metl/expected.hpp",
+        "why": "when the move that commits a new value throws, the backed-up "
+               "error is not put back: a destroyed E under has_value() == false.",
+        "kills": "ctest:expected_regression",
+        "old": """        construct_error(static_cast<E&&>(backup));
+        throw;""",
+        "new": """        throw;""",
+    },
+    {
+        "name": "expected_emplace_pinned_throw_no_restore",
+        "file": "include/metl/expected.hpp",
+        "why": "the same for a non-movable T whose constructor throws: the "
+               "previous error is destroyed and never restored.",
+        "kills": "ctest:expected_regression",
+        "old": """        construct_error(static_cast<E&&>(backup));  // restore the previous state""",
+        "new": """        // restore the previous state""",
+    },
+    # ---- metl::variant (#202) -------------------------------------------------
+    {
+        "name": "variant_visit_rvalue_same_index",
+        "file": "include/metl/variant.hpp",
+        "why": "rvalue visit recurses on the SAME index, so any alternative "
+               "but the first never terminates. Every test visited index 0.",
+        "kills": "ctest:variant_test",
+        "old": """    return visit_impl<Result, Index + 1>(std::forward<Visitor>(visitor),
+                                         static_cast<variant<Ts...>&&>(value));""",
+        "new": """    return visit_impl<Result, Index>(std::forward<Visitor>(visitor),
+                                     static_cast<variant<Ts...>&&>(value));""",
+    },
+    {
+        "name": "variant_visit_const_rvalue_same_index",
+        "file": "include/metl/variant.hpp",
+        "why": "the same on the const-rvalue overload.",
+        "kills": "ctest:variant_test",
+        "old": """    return visit_impl<Result, Index + 1>(std::forward<Visitor>(visitor),
+                                         static_cast<const variant<Ts...>&&>(value));""",
+        "new": """    return visit_impl<Result, Index>(std::forward<Visitor>(visitor),
+                                     static_cast<const variant<Ts...>&&>(value));""",
+    },
+    {
+        "name": "variant_compare_same_index",
+        "file": "include/metl/variant.hpp",
+        "why": "comparison recurses on the SAME index, so comparing two "
+               "variants that both hold alternative 1 or later never returns.",
+        "kills": "ctest:variant_test",
+        "old": "    return compare_alternative<Op, I + 1>(lhs, rhs);",
+        "new": "    return compare_alternative<Op, I>(lhs, rhs);",
+    },
+    {
+        "name": "variant_valueless_equal_flipped",
+        "file": "include/metl/variant.hpp",
+        "why": "two valueless variants compare unequal.",
+        "kills": "ctest:variant_regression",
+        "old": """  if (lhs.valueless_by_exception()) {
+    return true;
+  }
+  return detail::compare_alternative<detail::cmp_eq, 0>(lhs, rhs);""",
+        "new": """  if (lhs.valueless_by_exception()) {
+    return false;
+  }
+  return detail::compare_alternative<detail::cmp_eq, 0>(lhs, rhs);""",
+    },
+    {
+        "name": "variant_valueless_not_equal_flipped",
+        "file": "include/metl/variant.hpp",
+        "why": "two valueless variants compare not-equal.",
+        "kills": "ctest:variant_regression",
+        "old": """  if (lhs.valueless_by_exception()) {
+    return false;
+  }
+  return detail::compare_alternative<detail::cmp_ne, 0>(lhs, rhs);""",
+        "new": """  if (lhs.valueless_by_exception()) {
+    return true;
+  }
+  return detail::compare_alternative<detail::cmp_ne, 0>(lhs, rhs);""",
+    },
+    {
+        "name": "variant_copy_assign_from_valueless_keeps_old",
+        "file": "include/metl/variant.hpp",
+        "why": "copy-assigning a valueless variant leaves the target holding "
+               "its old alternative instead of becoming valueless.",
+        "kills": "ctest:variant_regression",
+        "old": """      reset();
+      return *this;
+    }
+    assign_from(other);""",
+        "new": """      return *this;
+    }
+    assign_from(other);""",
+    },
+    {
+        "name": "variant_move_assign_from_valueless_keeps_old",
+        "file": "include/metl/variant.hpp",
+        "why": "the same for move assignment.",
+        "kills": "ctest:variant_regression",
+        "old": """      reset();
+      return *this;
+    }
+    assign_from(static_cast<variant&&>(other));""",
+        "new": """      return *this;
+    }
+    assign_from(static_cast<variant&&>(other));""",
+    },
 ]
 
 

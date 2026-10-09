@@ -1,3 +1,8 @@
+#include "metl_check.hpp"
+
+#include <type_traits>
+#include <utility>
+
 #include <metl/expected.hpp>
 
 namespace {
@@ -28,6 +33,171 @@ struct tracker {
 
 int tracker::constructions = 0;
 int tracker::destructions = 0;
+
+// ---- Lifetime-counted value and error types --------------------------------
+// Two DISTINCT counters, so a path that builds the wrong member, or skips a
+// destructor, moves one count and not the other. `tracker` above counts both
+// sides of an expected<tracker, tracker> together, which balances by accident.
+template <int Tag>
+struct counted {
+  static int live;
+  int value;
+
+  explicit counted(int input) noexcept : value(input) { ++live; }
+  counted(const counted& other) noexcept : value(other.value) { ++live; }
+  counted(counted&& other) noexcept : value(other.value) { ++live; }
+  counted& operator=(const counted& other) noexcept {
+    value = other.value;
+    return *this;
+  }
+  counted& operator=(counted&& other) noexcept {
+    value = other.value;
+    return *this;
+  }
+  ~counted() { --live; }
+};
+
+template <int Tag>
+int counted<Tag>::live = 0;
+
+using live_value = counted<0>;
+using live_error = counted<1>;
+
+// An error whose move constructor is not noexcept (it never actually throws).
+// expected::swap picks its value<->error branch on which member is nothrow-
+// movable, so this is what reaches the second branch.
+struct live_error_throwing_move {
+  static int live;
+  int value;
+
+  explicit live_error_throwing_move(int input) noexcept : value(input) { ++live; }
+  live_error_throwing_move(const live_error_throwing_move& other) noexcept : value(other.value) { ++live; }
+  live_error_throwing_move(live_error_throwing_move&& other) noexcept(false) : value(other.value) { ++live; }
+  live_error_throwing_move& operator=(const live_error_throwing_move&) = default;
+  live_error_throwing_move& operator=(live_error_throwing_move&&) = default;
+  ~live_error_throwing_move() { --live; }
+};
+
+int live_error_throwing_move::live = 0;
+
+// The move constructor is reached only by moving a NAMED expected: a prvalue
+// initialiser is elided straight into the target, so `expected e = make()` and
+// every `expected{...}` temporary never call it.
+void move_constructor_moves_the_active_member() {
+  using result = metl::expected<live_value, live_error>;
+  {
+    result source(metl::in_place, 7);
+    result moved(std::move(source));
+    CHECK(moved.has_value());
+    CHECK_EQ(moved->value, 7);
+    CHECK_EQ(live_value::live, 2);
+    CHECK_EQ(live_error::live, 0);
+  }
+  {
+    result source(metl::unexpect, 9);
+    result moved(std::move(source));
+    CHECK(!moved.has_value());
+    CHECK_EQ(moved.error().value, 9);
+    CHECK_EQ(live_value::live, 0);
+    CHECK_EQ(live_error::live, 2);
+  }
+  CHECK_EQ(live_value::live, 0);
+  CHECK_EQ(live_error::live, 0);
+}
+
+void void_copy_assignment_copies_the_state() {
+  using result = metl::expected<void, live_error>;
+  {
+    result target;
+    const result failure(metl::unexpect, 4);
+    target = failure;  // value -> error
+    CHECK(!target.has_value());
+    CHECK_EQ(target.error().value, 4);
+
+    const result other_failure(metl::unexpect, 5);
+    target = other_failure;  // error -> error
+    CHECK(!target.has_value());
+    CHECK_EQ(target.error().value, 5);
+
+    const result success;
+    target = success;  // error -> value
+    CHECK(target.has_value());
+    CHECK_EQ(live_error::live, 2);  // the two named failures
+  }
+  CHECK_EQ(live_error::live, 0);
+}
+
+void error_state_copy_assignment_replaces_the_error() {
+  using result = metl::expected<live_value, live_error>;
+  {
+    result target(metl::unexpect, 1);
+    const result source(metl::unexpect, 2);
+    target = source;
+    CHECK(!target.has_value());
+    CHECK_EQ(target.error().value, 2);
+    CHECK_EQ(live_error::live, 2);
+    CHECK_EQ(live_value::live, 0);
+  }
+  CHECK_EQ(live_error::live, 0);
+}
+
+void error_error_swap_exchanges_the_errors() {
+  using result = metl::expected<live_value, live_error>;
+  {
+    result a(metl::unexpect, 1);
+    result b(metl::unexpect, 2);
+    a.swap(b);
+    CHECK(!a.has_value());
+    CHECK(!b.has_value());
+    CHECK_EQ(a.error().value, 2);
+    CHECK_EQ(b.error().value, 1);
+    CHECK_EQ(live_error::live, 2);
+  }
+  CHECK_EQ(live_error::live, 0);
+}
+
+// The value<->error swap moves one member aside, destroys it, and builds the
+// other in its place. Skipping a destructor there leaves both expecteds
+// reading correctly -- only the count shows the leaked member.
+template <typename Error>
+void value_error_swap_destroys_what_it_moves(int& error_live) {
+  using result = metl::expected<live_value, Error>;
+  {
+    result a(metl::in_place, 1);
+    result b(metl::unexpect, 2);
+    CHECK_EQ(live_value::live, 1);
+    CHECK_EQ(error_live, 1);
+
+    a.swap(b);  // a: value -> error, b: error -> value
+    CHECK(!a.has_value());
+    CHECK_EQ(a.error().value, 2);
+    CHECK(b.has_value());
+    CHECK_EQ(b->value, 1);
+    CHECK_EQ(live_value::live, 1);
+    CHECK_EQ(error_live, 1);
+
+    b.swap(a);  // the mirror call: swap_value_error with the operands reversed
+    CHECK(a.has_value());
+    CHECK_EQ(a->value, 1);
+    CHECK(!b.has_value());
+    CHECK_EQ(b.error().value, 2);
+    CHECK_EQ(live_value::live, 1);
+    CHECK_EQ(error_live, 1);
+  }
+  CHECK_EQ(live_value::live, 0);
+  CHECK_EQ(error_live, 0);
+}
+
+void run_lifetime_checks() {
+  move_constructor_moves_the_active_member();
+  void_copy_assignment_copies_the_state();
+  error_state_copy_assignment_replaces_the_error();
+  error_error_swap_exchanges_the_errors();
+  static_assert(std::is_nothrow_move_constructible_v<live_error>);
+  value_error_swap_destroys_what_it_moves<live_error>(live_error::live);
+  static_assert(!std::is_nothrow_move_constructible_v<live_error_throwing_move>);
+  value_error_swap_destroys_what_it_moves<live_error_throwing_move>(live_error_throwing_move::live);
+}
 
 }  // namespace
 
@@ -451,5 +621,6 @@ int main() {
     }
   }
 
-  return 0;
+  run_lifetime_checks();
+  return metl_test::exit_code();
 }

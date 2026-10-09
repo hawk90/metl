@@ -3,6 +3,8 @@
 //       member paired with a stale discriminant if the T constructor throws;
 //       it must roll back to the original (error) state.
 //   (2) cross-state swap (value <-> error) must roll back on a throwing move.
+//   (4) emplace from the error state must restore the error when building
+//       or moving the new value throws.
 
 #include "metl_check.hpp"
 
@@ -48,6 +50,66 @@ struct val {
 
 int val::live = 0;
 bool val::arm = false;
+
+// A counted error, so a restore that never happened shows as a missing E.
+struct err {
+  static int live;
+  int x;
+
+  explicit err(int v) noexcept : x(v) { ++live; }
+  err(const err& o) noexcept : x(o.x) { ++live; }
+  err(err&& o) noexcept : x(o.x) { ++live; }
+  err& operator=(const err&) = default;
+  err& operator=(err&&) = default;
+  ~err() { --live; }
+};
+
+int err::live = 0;
+
+// Constructs without throwing; its MOVE can be armed to throw. emplace from the
+// error state builds the new value aside first and only then moves it into
+// place, so this is the type that makes that final move -- and the restore of
+// the old error behind it -- run.
+struct move_bomb {
+  static bool arm;
+  int x;
+
+  explicit move_bomb(int v) noexcept : x(v) {}
+  move_bomb(const move_bomb&) = delete;
+  move_bomb(move_bomb&& o) noexcept(false) : x(o.x) {
+    if (arm) {
+      arm = false;
+      throw 7;
+    }
+  }
+  move_bomb& operator=(const move_bomb&) = delete;
+  move_bomb& operator=(move_bomb&&) = default;
+  ~move_bomb() = default;
+};
+
+bool move_bomb::arm = false;
+
+// Cannot be moved, so it cannot be built aside: emplace from the error state
+// backs the error up, destroys it, and constructs in place -- and on a throw
+// has to put the error back.
+struct pinned_bomb {
+  static bool arm;
+  int x;
+
+  explicit pinned_bomb(int v) noexcept(false) : x(v) {
+    if (arm) {
+      arm = false;
+      throw 7;
+    }
+  }
+  pinned_bomb(const pinned_bomb&) = delete;
+  pinned_bomb(pinned_bomb&&) = delete;
+  pinned_bomb& operator=(const pinned_bomb&) = delete;
+  pinned_bomb& operator=(pinned_bomb&&) = delete;
+  ~pinned_bomb() = default;
+};
+
+bool pinned_bomb::arm = false;
 
 }  // namespace
 
@@ -202,6 +264,54 @@ int main() {
     e.emplace(2);
     e.emplace(3);
     CHECK_EQ(e->x, 3);
+  }
+
+  // ---- (4) emplace from the error state puts the error back on a throw ----
+  // Both paths destroy the old error before the step that can throw, holding a
+  // backup; the catch handler is the only thing that makes the state whole.
+  {
+    err::live = 0;
+    {
+      metl::expected<move_bomb, err> e(metl::unexpect, 3);
+      move_bomb::arm = true;  // building the value succeeds; moving it in throws
+      bool threw = false;
+      try {
+        e.emplace(5);
+      } catch (int) {
+        threw = true;
+      }
+      CHECK(threw);
+      CHECK(!e.has_value());
+      CHECK_EQ(err::live, 1);
+      CHECK_EQ(e.error().x, 3);
+
+      e.emplace(6);  // unarmed: the same path completes
+      CHECK(e.has_value());
+      CHECK_EQ(e->x, 6);
+      CHECK_EQ(err::live, 0);
+    }
+    CHECK_EQ(err::live, 0);
+
+    {
+      metl::expected<pinned_bomb, err> e(metl::unexpect, 4);
+      pinned_bomb::arm = true;  // the in-place construction throws
+      bool threw = false;
+      try {
+        e.emplace(5);
+      } catch (int) {
+        threw = true;
+      }
+      CHECK(threw);
+      CHECK(!e.has_value());
+      CHECK_EQ(err::live, 1);
+      CHECK_EQ(e.error().x, 4);
+
+      e.emplace(6);
+      CHECK(e.has_value());
+      CHECK_EQ(e->x, 6);
+      CHECK_EQ(err::live, 0);
+    }
+    CHECK_EQ(err::live, 0);
   }
 
   return metl_test::exit_code();

@@ -8,8 +8,13 @@
 //       is destroyed and reconstructed instead; if that construction throws,
 //       the variant must be valueless, never a destroyed member paired with a
 //       stale discriminant (double-destroy UB).
+//   (3) a valueless variant compares equal to another valueless one and
+//       before any engaged one, and assigning from it makes the target
+//       valueless.
 
 #include "metl_check.hpp"
+
+#include <utility>
 
 #include <metl/in_place.hpp>
 #include <metl/variant.hpp>
@@ -67,6 +72,49 @@ struct throwing_unassignable {
 
 int throwing_unassignable::live = 0;
 bool throwing_unassignable::arm = false;
+
+// ---- (3) support: a comparable alternative that can be made to throw --------
+// Unassignable, so a same-index assignment destroys and reconstructs, and a
+// throw in the reconstruct is how a variant<int, brittle> becomes valueless.
+struct brittle {
+  static int live;
+  static bool arm;
+  int value;
+
+  explicit brittle(int v) : value(v) { ++live; }
+  brittle(const brittle& o) : value(o.value) {
+    if (arm) {
+      arm = false;
+      throw 44;
+    }
+    ++live;
+  }
+  brittle& operator=(const brittle&) = delete;
+  ~brittle() { --live; }
+
+  friend bool operator==(const brittle& a, const brittle& b) { return a.value == b.value; }
+  friend bool operator!=(const brittle& a, const brittle& b) { return a.value != b.value; }
+  friend bool operator<(const brittle& a, const brittle& b) { return a.value < b.value; }
+  friend bool operator>(const brittle& a, const brittle& b) { return a.value > b.value; }
+  friend bool operator<=(const brittle& a, const brittle& b) { return a.value <= b.value; }
+  friend bool operator>=(const brittle& a, const brittle& b) { return a.value >= b.value; }
+};
+
+int brittle::live = 0;
+bool brittle::arm = false;
+
+using breakable = metl::variant<int, brittle>;
+
+// Leaves `target` valueless by failing a same-index reconstruct.
+void make_valueless(breakable& target) {
+  target.emplace<brittle>(1);
+  const breakable source(metl::in_place_index<1>, 2);
+  brittle::arm = true;
+  try {
+    target = source;
+  } catch (int) {
+  }
+}
 
 }  // namespace
 
@@ -130,6 +178,57 @@ int main() {
     CHECK_EQ(throwing_unassignable::live, 1);
   }
   CHECK_EQ(throwing_unassignable::live, 0);
+
+  // ---- (3) a valueless variant: comparing it, and assigning from it ----
+  {
+    brittle::live = 0;
+    breakable a;
+    breakable b;
+    make_valueless(a);
+    make_valueless(b);
+    CHECK(a.valueless_by_exception());
+    CHECK(b.valueless_by_exception());
+    CHECK_EQ(brittle::live, 0);
+
+    // Two valueless variants are equal, and neither orders before the other.
+    CHECK(a == b);
+    CHECK(!(a != b));
+    CHECK(!(a < b));
+    CHECK(!(a > b));
+    CHECK(a <= b);
+    CHECK(a >= b);
+
+    // A valueless variant orders before any engaged one.
+    const breakable engaged(metl::in_place_index<0>, 5);
+    CHECK(!(a == engaged));
+    CHECK(a != engaged);
+    CHECK(a < engaged);
+    CHECK(!(engaged < a));
+    CHECK(engaged > a);
+    CHECK(!(a > engaged));
+    CHECK(a <= engaged);
+    CHECK(!(engaged <= a));
+    CHECK(engaged >= a);
+    CHECK(!(a >= engaged));
+
+    // Assigning FROM a valueless variant makes the target valueless and
+    // destroys what it held.
+    breakable copy_target(metl::in_place_index<1>, 7);
+    CHECK_EQ(brittle::live, 1);
+    copy_target = a;
+    CHECK(copy_target.valueless_by_exception());
+    CHECK_EQ(brittle::live, 0);
+
+    breakable move_target(metl::in_place_index<1>, 8);
+    CHECK_EQ(brittle::live, 1);
+    move_target = std::move(b);
+    CHECK(move_target.valueless_by_exception());
+    CHECK_EQ(brittle::live, 0);
+
+    const breakable copied(a);
+    CHECK(copied.valueless_by_exception());
+  }
+  CHECK_EQ(brittle::live, 0);
 
   return metl_test::exit_code();
 }
