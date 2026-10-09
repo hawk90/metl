@@ -70,6 +70,7 @@ DENIED = {
     "sync/spsc_queue_threaded_test.cpp": "needs <thread>; no OS scheduler on bare metal",
     "sync/atomic_handle_threaded_test.cpp": "needs <thread>",
     "sync/mpmc_queue_threaded_test.cpp": "needs <thread>",
+    "sync/mpmc_queue_stall_threaded_test.cpp": "needs <thread>",
     "sync/spsc_byte_ring_threaded_test.cpp": "needs <thread>",
     "sync/size_hint_observer_threaded_test.cpp": "needs <thread>",
     "containers/fixed_vector_asan_test.cpp": "forked death test; also assumes ASan",

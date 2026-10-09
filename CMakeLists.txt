@@ -195,6 +195,7 @@ if(METL_BUILD_TESTS)
     containers/operation_count containers/alias_insert containers/unordered_erase_iteration
     containers/throwing_element containers/array_storage containers/self_range containers/sequence_reentrancy
     containers/recoverable_unchanged
+    containers/contract_edges
     # memory/
     memory/arena_allocator memory/static_allocator memory/monotonic_buffer
     memory/object_pool memory/allocator_overflow
@@ -257,7 +258,7 @@ if(METL_BUILD_TESTS)
 
   # -------------------------------------------------------------------------
   # Multi-threaded concurrency tests (need a threading runtime): spsc_queue,
-  # atomic_handle, spsc_byte_ring, mpmc_queue and size_hint_observer. Built and
+  # atomic_handle, spsc_byte_ring, mpmc_queue (two) and size_hint_observer. Built and
   # run in every configuration, including the TSAN sanitizer job where they
   # actually validate those types' memory ordering.
   # -------------------------------------------------------------------------
@@ -288,6 +289,14 @@ if(METL_BUILD_TESTS)
   metl_cc_test(
     NAME metl_mpmc_queue_threaded_test
     SRCS tests/sync/mpmc_queue_threaded_test.cpp
+    DEPS metl::metl_test_options Threads::Threads
+    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/tests
+    LABELS "metl"
+  )
+
+  metl_cc_test(
+    NAME metl_mpmc_queue_stall_threaded_test
+    SRCS tests/sync/mpmc_queue_stall_threaded_test.cpp
     DEPS metl::metl_test_options Threads::Threads
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/tests
     LABELS "metl"
