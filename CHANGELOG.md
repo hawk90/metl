@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `mpmc_queue` compared its free-running tickets by converting each to
+  `ptrdiff_t` and subtracting, which overflows once the counters straddle
+  half the range -- after 2^31 operations on a 32-bit target. That is
+  undefined behaviour, and clang at `-O1` and above compiled it into a
+  `try_push` that never returned. The distance is now taken in unsigned
+  arithmetic.
 - `irq_lock` no longer compiles to a no-op on targets with real interrupts
   (see Upgrading above). Cortex-M with GCC or Clang is unchanged.
 - Containers, `optional`, `variant`, the pools, the allocators and

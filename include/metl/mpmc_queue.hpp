@@ -169,8 +169,7 @@ class mpmc_queue {
     for (;;) {
       target = &cells_[pos & mask];
       const size_type sequence = target->sequence.load(std::memory_order_acquire);
-      const std::ptrdiff_t difference =
-          static_cast<std::ptrdiff_t>(sequence) - static_cast<std::ptrdiff_t>(pos + 1);
+      const int difference = detail::compare_tickets(sequence, pos + 1);
 
       if (difference == 0) {
         if (dequeue_pos_.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
@@ -225,10 +224,9 @@ class mpmc_queue {
     for (;;) {
       target = &cells_[pos & mask];
       const size_type sequence = target->sequence.load(std::memory_order_acquire);
-      // Signed difference: sequence and pos both wrap, and only their *distance*
-      // is meaningful. Comparing them directly would break at the wrap point.
-      const std::ptrdiff_t difference =
-          static_cast<std::ptrdiff_t>(sequence) - static_cast<std::ptrdiff_t>(pos);
+      // sequence and pos both wrap and only their distance is meaningful; see
+      // detail::compare_tickets for why that is not a signed subtraction.
+      const int difference = detail::compare_tickets(sequence, pos);
 
       if (difference == 0) {
         // The slot is waiting for exactly this ticket; claim the ticket.
