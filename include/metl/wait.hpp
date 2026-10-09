@@ -15,7 +15,7 @@
 // other target without the instructions. (GCC has spelled ARMv6KZ both
 // __ARM_ARCH_6KZ__ and __ARM_ARCH_6ZK__.) The arm-hints CI job assembles this
 // header per architecture and checks where the hints appear.
-#if defined(__aarch64__)
+#ifdef __aarch64__
 #define METL_DETAIL_ARM_HINTS 1
 #elif defined(__arm__) && defined(__ARM_ARCH) &&                                 \
     (__ARM_ARCH >= 7 || defined(__ARM_ARCH_6K__) || defined(__ARM_ARCH_6KZ__) || \
