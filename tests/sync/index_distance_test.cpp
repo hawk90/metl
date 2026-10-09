@@ -25,6 +25,18 @@ static_assert(clamped_index_distance(14, 13, 4) == 0, "tail read behind head: dr
 static_assert(clamped_index_distance(3, kMax, 4) == 0, "behind across the wrap");
 static_assert(clamped_index_distance(10, 20, 4) == 4, "tail read past capacity: clamped");
 
+// compare_tickets, mpmc_queue's slot test. The cases that matter are where the
+// two tickets straddle half the range: a signed subtraction overflows there.
+constexpr std::size_t kHalf = kMax / 2;  // PTRDIFF_MAX on every supported target
+static_assert(metl::detail::compare_tickets(5, 5) == 0, "equal");
+static_assert(metl::detail::compare_tickets(6, 5) > 0, "ahead");
+static_assert(metl::detail::compare_tickets(4, 5) < 0, "behind");
+static_assert(metl::detail::compare_tickets(kHalf, kHalf + 1) < 0, "behind across PTRDIFF_MAX");
+static_assert(metl::detail::compare_tickets(kHalf + 1, kHalf) > 0, "ahead across PTRDIFF_MAX");
+static_assert(metl::detail::compare_tickets(kHalf + 4, kHalf + 4) == 0, "equal past PTRDIFF_MAX");
+static_assert(metl::detail::compare_tickets(kMax, 0) < 0, "behind across the wrap");
+static_assert(metl::detail::compare_tickets(0, kMax) > 0, "ahead across the wrap");
+
 }  // namespace
 
 int main() {
@@ -38,5 +50,12 @@ int main() {
   head = 10;
   tail = 20;
   CHECK_EQ(clamped_index_distance(head, tail, 4), std::size_t{4});
+
+  volatile std::size_t sequence = kHalf;
+  volatile std::size_t pos = kHalf + 1;
+  CHECK(metl::detail::compare_tickets(sequence, pos) < 0);
+  sequence = kHalf + 1;
+  pos = kHalf;
+  CHECK(metl::detail::compare_tickets(sequence, pos) > 0);
   return metl_test::exit_code();
 }
