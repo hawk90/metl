@@ -805,6 +805,8 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--build-dir", default="build")
     parser.add_argument("--only", help="substring of a mutant name")
+    parser.add_argument("--files", help="comma-separated paths: run only the mutants of these "
+                                        "files (an empty list selects none)")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
@@ -813,6 +815,12 @@ def main():
         return self_test()
 
     selected = [m for m in MUTANTS if not args.only or args.only in m["name"]]
+    if args.files is not None:
+        wanted = {path for path in args.files.split(",") if path}
+        selected = [m for m in selected if m["file"] in wanted]
+        if not selected:
+            print(f"no mutant targets {sorted(wanted) or 'any changed file'}; nothing to run")
+            return 0
 
     if args.list:
         for mutant in selected:

@@ -18,8 +18,9 @@ WHAT RUNS, cheapest first, stopping at the first failure:
        disagree about warnings, and CI builds with both.
   4. an ASan + UBSan Debug build and ctest, as the `sanitizers / asan-ubsan`
      job does.
-  5. the mutation gate (tools/check_mutants.py), which also catches a mutant
-     whose anchor text a change has moved.
+  5. the mutation gate (tools/check_mutants.py) for the mutants of the headers
+     this branch changes, which also catches a mutant whose anchor text a
+     change has moved. CI runs every mutant; the full set takes ~15 minutes.
   6. every test built and run through the amalgamation
      (tools/check_amalgamation.py), as the `amalgamation` job does.
   7. clang-tidy, as a DELTA: the same local binary over the merge-base with
@@ -333,9 +334,19 @@ def main():
                                                    "-DCMAKE_CXX_FLAGS=-fno-exceptions -fno-rtti"]):
         return 1
 
-    print("5. mutation gate")
-    if not step("check_mutants.py", [python, "tools/check_mutants.py", "--build-dir",
-                                     str(BUILD_ROOT / "sanitizers")]):
+    print("5. mutation gate (mutants of the headers this branch changes)")
+    # The whole set takes ~15 minutes; CI runs all of it. Locally, a mutant can
+    # only start surviving -- or stop applying, which is the anchor drift this
+    # step exists to catch before CI -- if its header changed, so those are run.
+    # A change to the gate itself runs everything.
+    base = subprocess.run(["git", "merge-base", "HEAD", "origin/main"], cwd=REPO,
+                          capture_output=True, text=True).stdout.strip()
+    changed = subprocess.run(["git", "diff", "--name-only", base or "HEAD"], cwd=REPO,
+                             capture_output=True, text=True).stdout.split()
+    mutant_command = [python, "tools/check_mutants.py", "--build-dir", str(BUILD_ROOT / "sanitizers")]
+    if "tools/check_mutants.py" not in changed:
+        mutant_command += ["--files", ",".join(changed)]
+    if not step("check_mutants.py", mutant_command):
         return 1
 
     print("6. amalgamation")
