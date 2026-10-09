@@ -290,7 +290,69 @@ class fixed_string {
   /// Returns true if the strings differ in length or any character.
   friend bool operator!=(const fixed_string& lhs, const fixed_string& rhs) noexcept { return !(lhs == rhs); }
 
+  /// @name Comparison with a null-terminated string
+  /// Compares in place, reading `text` no further than its terminator. Without
+  /// these a literal converted through the constructor, which asserts when the
+  /// literal is longer than Capacity: `s == "too long"` aborted instead of
+  /// returning false.
+  /// @pre `text` is not null.
+  /// @{
+  friend bool operator==(const fixed_string& lhs, const char* text) noexcept {
+    return lhs.compare_c(text) == 0;
+  }
+  friend bool operator==(const char* text, const fixed_string& rhs) noexcept {
+    return rhs.compare_c(text) == 0;
+  }
+  friend bool operator!=(const fixed_string& lhs, const char* text) noexcept {
+    return lhs.compare_c(text) != 0;
+  }
+  friend bool operator!=(const char* text, const fixed_string& rhs) noexcept {
+    return rhs.compare_c(text) != 0;
+  }
+  friend bool operator<(const fixed_string& lhs, const char* text) noexcept {
+    return lhs.compare_c(text) < 0;
+  }
+  friend bool operator<(const char* text, const fixed_string& rhs) noexcept {
+    return rhs.compare_c(text) > 0;
+  }
+  friend bool operator>(const fixed_string& lhs, const char* text) noexcept {
+    return lhs.compare_c(text) > 0;
+  }
+  friend bool operator>(const char* text, const fixed_string& rhs) noexcept {
+    return rhs.compare_c(text) < 0;
+  }
+  friend bool operator<=(const fixed_string& lhs, const char* text) noexcept {
+    return lhs.compare_c(text) <= 0;
+  }
+  friend bool operator<=(const char* text, const fixed_string& rhs) noexcept {
+    return rhs.compare_c(text) >= 0;
+  }
+  friend bool operator>=(const fixed_string& lhs, const char* text) noexcept {
+    return lhs.compare_c(text) >= 0;
+  }
+  friend bool operator>=(const char* text, const fixed_string& rhs) noexcept {
+    return rhs.compare_c(text) <= 0;
+  }
+  /// @}
+
  private:
+  // <0, 0 or >0 as *this orders before, equal to or after `text`, comparing as
+  // unsigned char like the fixed_string operators. Stops at text's terminator.
+  int compare_c(const char* text) const noexcept {
+    METL_HARDEN(text != nullptr);
+    for (size_type i = 0; i < size_; ++i) {
+      if (text[i] == '\0') {
+        return 1;  // text is a proper prefix of *this
+      }
+      const auto mine = static_cast<unsigned char>(storage_[i]);
+      const auto theirs = static_cast<unsigned char>(text[i]);
+      if (mine != theirs) {
+        return mine < theirs ? -1 : 1;
+      }
+    }
+    return text[size_] == '\0' ? 0 : -1;  // *this is a proper prefix of text
+  }
+
   static size_type string_length(const char* text) noexcept {
     size_type length = 0;
     while (text[length] != '\0') {
