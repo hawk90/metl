@@ -152,8 +152,12 @@ jobs:
           # skipped on Windows) and the job name falls back to `msvc`.
           # Gating like every other row since 2026-10-06, after two
           # consecutive green main runs (b95902adb, 0f2f64401).
+          # Debug as well: Release defines NDEBUG, so it is the only MSVC
+          # build in which the debug-only checks are compiled at all.
           - os: windows-2025
             build_type: Release
+          - os: windows-2025
+            build_type: Debug
 
     steps:
       - name: Checkout
@@ -188,7 +192,11 @@ jobs:
       - name: Configure (Windows / MSVC)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        # MSVC is the one compiler no release-werror leg covers, so its
+        # warnings are errors here, and the examples build with it too.
+        run: >-
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DMETL_WARNINGS_AS_ERRORS=ON -DMETL_BUILD_EXAMPLES=ON
 
       - name: Build
         run: cmake --build build -j --config ${{ matrix.build_type }}
