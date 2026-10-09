@@ -17,6 +17,10 @@
 #include <metl/detail/construct.hpp>
 #include <metl/optional.hpp>
 
+// After the METL headers on purpose: included first, it would define the
+// feature-test macro for construct.hpp and hide exactly the bug below.
+#include <version>
+
 // Gate on the macro the LIBRARY gates on, not on __cplusplus.
 //
 // The two are not the same condition, and assuming they were is what broke this
@@ -27,6 +31,17 @@
 // METL_CONSTEXPR20 is empty, optional's destructor is not constexpr, optional is
 // therefore not a literal type -- and static_asserts written against __cplusplus
 // demand constexpr from a type the library never claimed was constexpr.
+//
+// The opposite mistake is caught here too: when the library DOES advertise
+// the feature, the path must be on. It once was off under libstdc++ because
+// construct.hpp tested the macro before including the header that defines it,
+// and this test then skipped itself in every GCC and Linux-clang C++20 build.
+#if defined(__cpp_lib_constexpr_dynamic_alloc) && __cpp_lib_constexpr_dynamic_alloc >= 201907L && \
+    defined(__cpp_constexpr) && __cpp_constexpr >= 201907L
+static_assert(METL_DETAIL_CONSTEXPR_LIFETIME == 1,
+              "the standard library provides constexpr construct_at, but METL's C++20 constexpr path is off");
+#endif
+
 #if METL_DETAIL_CONSTEXPR_LIFETIME
 
 // A value constructed and observed entirely within constant evaluation.

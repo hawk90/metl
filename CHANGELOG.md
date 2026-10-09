@@ -32,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `try_format_uint` / `try_format_int` / `try_format_hex` (and the asserting
   forms) narrowed `__int128` to 64 bits silently -- 2^64 printed as `"0"`.
   A wider-than-64-bit integer is now a compile error there.
+- Under libstdc++ (GCC, and clang on Linux) the C++20 constexpr path of
+  `optional`, `expected` and `variant` was off unless `<memory>` had been
+  included first: `detail/construct.hpp` tested the library's feature macro
+  before including the header that defines it. Which declarations a TU saw
+  therefore depended on include order.
 - `irq_lock` no longer compiles to a no-op on targets with real interrupts
   (see Upgrading above). Cortex-M with GCC or Clang is unchanged.
 - Containers, `optional`, `variant`, the pools, the allocators and
