@@ -218,6 +218,17 @@ def check(root):
                                    f"pull requests, and a skipped required check "
                                    f"passes -- requiring it requires nothing"))
 
+    # G6: a pipe whose first stage fails must fail the step. A run step gets
+    # `bash -eo pipefail` only through an explicit `shell: bash`; GitHub's
+    # implicit default is `bash -e`, under which `gh api ... | sort` that
+    # fails yields an empty list and the step carries on with it.
+    for path in sorted((root / WORKFLOW_DIR).glob("*.yml")):
+        if not re.search(r"^defaults:\n  run:\n    shell: bash\s*$", path.read_text(), re.M):
+            problems.append(("G6", f"{WORKFLOW_DIR}/{path.name} does not set "
+                                   f"`defaults: run: shell: bash`, so its run "
+                                   f"steps lack pipefail and a failing first "
+                                   f"stage of a pipe goes unnoticed"))
+
     return problems
 
 
@@ -233,6 +244,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   preflight:
@@ -266,6 +281,10 @@ on:
   pull_request:
     branches: [main]
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   analyze:
     name: analyze / c-cpp
@@ -276,6 +295,10 @@ name: ClusterFuzzLite PR
 on:
   pull_request:
     branches: [main]
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   fuzzing:
@@ -347,6 +370,7 @@ jobs:
     with tempfile.TemporaryDirectory() as stack:
         root = tree(stack, required="ci-gate\nscorecard\n", extra={
             "scorecard.yml": "name: Scorecard\non:\n  push:\n    branches: [main]\n"
+                             "\ndefaults:\n  run:\n    shell: bash\n"
                              "\njobs:\n  analysis:\n    name: scorecard\n"})
         if "G4" not in fired(root):
             failures.append("G4 did not fire on a context that cannot report on a PR")
@@ -369,6 +393,12 @@ jobs:
             failures.append("G5 did not fire on a required context that is "
                             "skipped on every pull request")
 
+    # G6: a workflow without the bash default, so its pipes lack pipefail.
+    with tempfile.TemporaryDirectory() as stack:
+        root = tree(stack, extra={"other.yml": cflite.replace("defaults:\n  run:\n    shell: bash\n", "")})
+        if "G6" not in fired(root):
+            failures.append("G6 did not fire on a workflow without `shell: bash`")
+
     # And the gate job simply deleted -- the whole file is about that not
     # passing quietly.
     with tempfile.TemporaryDirectory() as stack:
@@ -380,7 +410,7 @@ jobs:
         for failure in failures:
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
-    print("self-test passed: G1-G5 each bite, a job id containing the gate's "
+    print("self-test passed: G1-G6 each bite, a job id containing the gate's "
           "name is not mistaken for it, and a clean tree is not flagged")
     return 0
 

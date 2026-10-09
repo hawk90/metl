@@ -32,6 +32,11 @@ concurrency:
 permissions:
   contents: read
 
+# bash -eo pipefail for every run step (tools/check_ci_gate.py G6).
+defaults:
+  run:
+    shell: bash
+
 jobs:
   batch-fuzzing:
     name: cflite-batch
@@ -111,6 +116,10 @@ jobs:
             "repos/${{ github.repository }}/contents/fuzz?ref=${{ github.sha }}" \
             --jq '.[] | select(.name | startswith("fuzz_") and endswith(".cpp")) | .name | sub("\\.cpp$"; "")' \
             | sort)"
+          if [[ -z "${expected}" ]]; then
+            echo "::error::No fuzz_*.cpp found under fuzz/ -- the check below would compare nothing."
+            exit 1
+          fi
           actual="$(gh api \
             "repos/${{ github.repository }}/git/trees/clusterfuzzlite?recursive=1" \
             --jq '[.tree[] | select(.type == "blob") | .path | select(startswith("corpus/"))
