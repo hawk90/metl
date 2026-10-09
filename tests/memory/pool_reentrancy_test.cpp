@@ -242,10 +242,13 @@ struct throws_once {
 void a_throwing_constructor_releases_the_claim() {
   metl::object_pool<throws_once, 2> pool;
   throws_once::arm = true;
+  bool threw = false;
   try {
     (void)pool.try_emplace();
   } catch (int) {
+    threw = true;
   }
+  CHECK(threw);  // otherwise the claim below was never put to the test
   CHECK_EQ(pool.size(), 0u);
   CHECK(pool.try_emplace() != nullptr);
   CHECK(pool.try_emplace() != nullptr);  // both slots are still usable
@@ -253,10 +256,13 @@ void a_throwing_constructor_releases_the_claim() {
 
   metl::handle_pool<throws_once, 2> handles;
   throws_once::arm = true;
+  threw = false;
   try {
     (void)handles.try_emplace();
   } catch (int) {
+    threw = true;
   }
+  CHECK(threw);
   CHECK_EQ(handles.size(), 0u);
   CHECK(handles.try_emplace().valid());
   CHECK(handles.try_emplace().valid());

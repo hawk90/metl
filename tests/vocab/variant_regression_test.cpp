@@ -90,7 +90,6 @@ int main() {
   }
 
   // ---- (2) same-index assignment exception safety ----
-#if defined(__cpp_exceptions)
   {
     throwing::live = 0;
     metl::variant<throwing> dst(metl::in_place_index<0>, 1);
@@ -131,7 +130,6 @@ int main() {
     CHECK_EQ(throwing_unassignable::live, 1);
   }
   CHECK_EQ(throwing_unassignable::live, 0);
-#endif
 
   return metl_test::exit_code();
 }

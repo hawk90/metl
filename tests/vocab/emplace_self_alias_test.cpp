@@ -31,7 +31,9 @@ struct poisoned {
     o.value = -2;
     return *this;
   }
-  ~poisoned() { value = -1; }
+  // Volatile: a plain store to a dying object is a dead store GCC removes at
+  // -O2, and a use-after-destroy would then read the old value and pass.
+  ~poisoned() { *static_cast<volatile int*>(&value) = -1; }
 };
 
 // A value whose subobject is the emplace argument.
@@ -62,7 +64,9 @@ struct throwing_move {
   throwing_move(throwing_move&& o) noexcept(false) : value(o.value) { o.value = -2; }
   throwing_move& operator=(const throwing_move&) = default;
   throwing_move& operator=(throwing_move&&) = default;
-  ~throwing_move() { value = -1; }
+  // Volatile: a plain store to a dying object is a dead store GCC removes at
+  // -O2, and a use-after-destroy would then read the old value and pass.
+  ~throwing_move() { *static_cast<volatile int*>(&value) = -1; }
 };
 
 using poison_or_node = metl::variant<poisoned, node>;

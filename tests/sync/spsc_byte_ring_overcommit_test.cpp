@@ -12,25 +12,19 @@
 // METL_ASSERT is compiled out, so if the guard were a METL_ASSERT rather than a
 // METL_HARDEN this test would fail. The security floor is part of the claim.
 //
-// The abort cannot be observed in-process (a failed guard is provably
-// [[noreturn]]), so the overflow runs in a forked child that must be killed by
-// the signal -- the same technique as tests/core/harden_floor_none_test.cpp.
+// The handler longjmps out before the abort, as tests/core/harden_floor_none_test.cpp
+// does, so the negative half runs everywhere. It used to fork, and on a host
+// without fork() it checked nothing and still passed.
 
+#undef METL_HARDENING  // this test pins its own level, whatever the build passes
 #define METL_HARDENING 0
 #include "metl_check.hpp"
 
+#include <csetjmp>
 #include <cstddef>
 
+#include <metl/assert.hpp>
 #include <metl/spsc_byte_ring.hpp>
-
-#if defined(__unix__) || defined(__APPLE__)
-#include <unistd.h>
-
-#include <sys/wait.h>
-#define METL_BYTE_RING_HAVE_FORK 1
-#else
-#define METL_BYTE_RING_HAVE_FORK 0
-#endif
 
 namespace {
 
@@ -46,12 +40,22 @@ void rotate_to(metl::spsc_byte_ring<8>& ring, std::size_t offset) {
   }
 }
 
+std::jmp_buf g_jump;
+bool g_fired = false;
+
+void capture(const char* /*expr*/, const char* /*file*/, int /*line*/) noexcept {
+  g_fired = true;
+  std::longjmp(g_jump, 1);
+}
+
+metl::spsc_byte_ring<8> g_ring;  // outside main: setjmp leaves a modified local indeterminate
+
 }  // namespace
 
 int main() {
   // First, establish that the seam state this test depends on is real: with both
   // indices at 6 the ring is empty (8 free) but only 2 of those are contiguous.
-  // If this ever stops holding, the child below would be testing nothing.
+  // If this ever stops holding, the guarded call below would test nothing.
   {
     metl::spsc_byte_ring<8> ring;
     rotate_to(ring, 6);
@@ -63,25 +67,16 @@ int main() {
     ring.consume(2);
   }
 
-#if METL_BYTE_RING_HAVE_FORK
-  const pid_t pid = fork();
-  if (pid == 0) {
-    metl::spsc_byte_ring<8> ring;
-    rotate_to(ring, 6);
+  rotate_to(g_ring, 6);
+  metl::set_assert_handler(&capture);
+  g_fired = false;
+  if (setjmp(g_jump) == 0) {
     // 8 bytes free, 2 contiguous. Committing 8 is what the old, looser guard
     // allowed. Only METL_HARDEN stands between this and six bytes of stale
     // storage being published as received data.
-    ring.commit_write(8);
-    _exit(0);  // reached only if the guard did NOT fire
+    g_ring.commit_write(8);
   }
-
-  int status = 0;
-  (void)waitpid(pid, &status, 0);
-  CHECK(WIFSIGNALED(status));
-  CHECK(!(WIFEXITED(status) && WEXITSTATUS(status) == 0));
-#else
-  // No fork here; the positive half above still ran.
-#endif
+  CHECK(g_fired);
 
   return metl_test::exit_code();
 }

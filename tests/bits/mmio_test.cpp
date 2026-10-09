@@ -1,4 +1,5 @@
-#include <cassert>
+#include "metl_check.hpp"
+
 #include <cstdint>
 
 #include <metl/mmio.hpp>
@@ -18,8 +19,8 @@ void test_ptr_read_write() {
   metl::mmio_ptr<std::uint32_t> r(&fake_reg);
 
   r.write(0xdeadbeefu);
-  assert(fake_reg == 0xdeadbeefu);
-  assert(r.read() == 0xdeadbeefu);
+  CHECK_EQ(fake_reg, 0xdeadbeefu);
+  CHECK_EQ(r.read(), 0xdeadbeefu);
 }
 
 void test_ptr_modify_preserves_other_bits() {
@@ -28,11 +29,11 @@ void test_ptr_modify_preserves_other_bits() {
 
   // Replace only the low byte: mask = 0x000000ff, value = 0x00000055.
   r.modify(0x000000ffu, 0x00000055u);
-  assert(r.read() == 0xaaaaaa55u);
+  CHECK_EQ(r.read(), 0xaaaaaa55u);
 
   // Bits in value outside the mask must be ignored.
   r.modify(0x0000ff00u, 0xffffffffu);
-  assert(r.read() == 0xaaaaff55u);
+  CHECK_EQ(r.read(), 0xaaaaff55u);
 }
 
 void test_ptr_set_clear_bits() {
@@ -40,22 +41,22 @@ void test_ptr_set_clear_bits() {
   metl::mmio_ptr<std::uint32_t> r(&fake_reg);
 
   r.set_bits(0x0000000fu);
-  assert(r.read() == 0x0000000fu);
+  CHECK_EQ(r.read(), 0x0000000fu);
 
   r.set_bits(0xf0000000u);
-  assert(r.read() == 0xf000000fu);
+  CHECK_EQ(r.read(), 0xf000000fu);
 
   r.clear_bits(0x00000003u);
-  assert(r.read() == 0xf000000cu);
+  CHECK_EQ(r.read(), 0xf000000cu);
 }
 
 void test_ptr_address_ctor() {
   fake_reg = 0x12345678u;
   metl::mmio_ptr<std::uint32_t> r(reinterpret_cast<std::uintptr_t>(&fake_reg));
-  assert(r.read() == 0x12345678u);
+  CHECK_EQ(r.read(), 0x12345678u);
 
   r.write(0x87654321u);
-  assert(fake_reg == 0x87654321u);
+  CHECK_EQ(fake_reg, 0x87654321u);
 }
 
 void test_ptr_u8_u16() {
@@ -64,11 +65,11 @@ void test_ptr_u8_u16() {
 
   metl::mmio_ptr<std::uint8_t> p8(&r8);
   p8.write(0x5au);
-  assert(p8.read() == 0x5au);
+  CHECK_EQ(p8.read(), 0x5au);
 
   metl::mmio_ptr<std::uint16_t> p16(&r16);
   p16.write(0xabcdu);
-  assert(p16.read() == 0xabcdu);
+  CHECK_EQ(p16.read(), 0xabcdu);
 }
 
 // Exercise the compile-time-address mmio_register variant. We point it
@@ -90,7 +91,7 @@ void test_register_fixed_address() {
   r.set_bits(0x000000ffu);
   r.clear_bits(0x0000000fu);
   r.modify(0x0000ff00u, 0x0000a500u);
-  assert(r.read() == 0x0000a5f0u);
+  CHECK_EQ(r.read(), 0x0000a5f0u);
 }
 
 }  // namespace
@@ -102,5 +103,5 @@ int main() {
   test_ptr_address_ctor();
   test_ptr_u8_u16();
   test_register_fixed_address();
-  return 0;
+  return metl_test::exit_code();
 }

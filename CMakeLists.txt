@@ -141,6 +141,8 @@ if(METL_BUILD_TESTS)
     if(METL_ENABLE_ASAN)
       target_compile_options(metl_test_options INTERFACE -fsanitize=address -fno-omit-frame-pointer)
       target_link_options(metl_test_options INTERFACE -fsanitize=address)
+      # Tells fixed_vector_asan_test that skipping is a failure in this build.
+      target_compile_definitions(metl_test_options INTERFACE METL_TEST_ASAN_BUILD=1)
     endif()
     if(METL_ENABLE_UBSAN)
       target_compile_options(metl_test_options INTERFACE -fsanitize=undefined -fno-omit-frame-pointer)
