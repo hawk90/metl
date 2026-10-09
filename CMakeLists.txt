@@ -202,13 +202,13 @@ if(METL_BUILD_TESTS)
     # sync/
     sync/spsc_queue sync/static_message_queue sync/atomic_ref sync/atomic_handle sync/wait
     sync/spsc_queue_cached_index sync/lock sync/mpmc_queue sync/irq_masking
-    sync/spsc_byte_ring sync/spsc_byte_ring_overcommit sync/audit_regressions
+    sync/spsc_byte_ring sync/spsc_byte_ring_overcommit sync/audit_regressions sync/guarded_regressions
     sync/tick_extender sync/tick_extender_irq sync/index_distance
     # vocab/
     vocab/optional vocab/optional_constexpr vocab/expected vocab/expected_regression
     vocab/variant vocab/variant_regression vocab/span vocab/function_ref
     vocab/fixed_function vocab/fixed_function_const vocab/fixed_function_null vocab/callable_reentrancy vocab/delegate
-    vocab/intrusive_ptr vocab/intrusive_ptr_contract vocab/intrusive_ptr_alias vocab/scope_exit vocab/type_traits
+    vocab/intrusive_ptr vocab/intrusive_ptr_atomic vocab/intrusive_ptr_contract vocab/intrusive_ptr_alias vocab/scope_exit vocab/type_traits
     vocab/variant_selfassign vocab/emplace_self_alias vocab/vocab_assignment vocab/versioned_handle
     # bits/
     bits/bit bits/bitfield bits/crc8 bits/crc16 bits/crc32 bits/hash
