@@ -90,8 +90,8 @@ int main() {
 
   if (setjmp(g_panic_jmp) == 0) {
     METL_PANIC("boom");
-    // Unreachable: panic is [[noreturn]].
-    return 4;
+    // Nothing after it: panic is [[noreturn]], and MSVC rejects the
+    // unreachable statement a fall-through guard here would be (C4702).
   }
 
   if (!panic_capture::called || panic_capture::message == nullptr || panic_capture::message[0] != 'b' ||
