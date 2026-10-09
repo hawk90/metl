@@ -67,6 +67,12 @@ class optional {
   // ---- Constructors ---------------------------------------------------------
 
   /// @brief Constructs an empty optional.
+  // See the converting constructor below.
+  template <typename U>
+  static constexpr bool bool_from_optional_v =
+      std::is_same_v<std::remove_cv_t<T>, bool> &&
+      detail::is_metl_optional<std::remove_cv_t<std::remove_reference_t<U>>>::value;
+
   constexpr optional() noexcept : storage_{}, has_value_(false) {}
 
   /// @brief Constructs an empty optional from the nullopt tag.
@@ -76,10 +82,16 @@ class optional {
   /// @param v The value used to direct-initialize the contained `T`.
   // Converting forwarding constructor. SFINAE prevents hijacking copy/move and
   // in_place_t overloads (e.g. `optional<optional<T>>` should not bind here).
+  //
+  // Not for `optional<bool>` from another optional (LWG 3836): `bool` is
+  // constructible from `optional<U>` through its explicit operator bool, so the
+  // source's has_value() would become the stored value -- an empty
+  // optional<int> producing an engaged optional<bool> holding false.
   template <typename U = T,
-            typename = std::enable_if_t<
-                !std::is_same_v<std::decay_t<U>, optional> && !std::is_same_v<std::decay_t<U>, in_place_t> &&
-                !std::is_same_v<std::decay_t<U>, nullopt_t> && std::is_constructible_v<T, U>>>
+            typename = std::enable_if_t<!std::is_same_v<std::decay_t<U>, optional> &&
+                                        !std::is_same_v<std::decay_t<U>, in_place_t> &&
+                                        !std::is_same_v<std::decay_t<U>, nullopt_t> &&
+                                        !bool_from_optional_v<U> && std::is_constructible_v<T, U>>>
   constexpr optional(U&& v) : storage_{}, has_value_(false) {
     construct(std::forward<U>(v));
   }
@@ -160,7 +172,8 @@ class optional {
   template <typename U = T,
             typename = std::enable_if_t<!std::is_same_v<std::decay_t<U>, optional> &&
                                         !(std::is_scalar_v<T> && std::is_same_v<T, std::decay_t<U>>) &&
-                                        std::is_constructible_v<T, U> && std::is_assignable_v<T&, U>>>
+                                        !bool_from_optional_v<U> && std::is_constructible_v<T, U> &&
+                                        std::is_assignable_v<T&, U>>>
   optional& operator=(U&& value) {
     assign_or_construct(std::forward<U>(value));
     return *this;

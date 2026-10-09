@@ -170,7 +170,10 @@ def clang_tidy_delta(python):
         print("  (no merge-base with origin/main -- skipped)")
         return True
     started = time.monotonic()
-    print(f"  clang-tidy over {base[:9]} and this tree ...", end="", flush=True)
+    # Which binary ran is part of the result: two installed clang-tidys can
+    # disagree about the same line, and the counts are only comparable within
+    # one of them.
+    print(f"  clang-tidy ({tidy}) over {base[:9]} and this tree ...", end="", flush=True)
     env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
     base_tree = BUILD_ROOT / "tidy-base"
     try:

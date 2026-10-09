@@ -19,9 +19,11 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/addressof.hpp"
 #include "metl/in_place.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <new>
 #include <type_traits>
 #include <utility>
@@ -155,6 +157,36 @@ void copy_value(void* destination, const void* source) noexcept(std::is_nothrow_
 template <typename T>
 void move_value(void* destination, void* source) noexcept(std::is_nothrow_move_constructible_v<T>) {
   ::new (destination) T(static_cast<T&&>(*std::launder(static_cast<T*>(source))));
+}
+
+template <typename T>
+void copy_assign_value(void* destination, const void* source) noexcept(std::is_nothrow_copy_assignable_v<T>) {
+  *std::launder(static_cast<T*>(destination)) = *std::launder(static_cast<const T*>(source));
+}
+
+template <typename T>
+void move_assign_value(void* destination, void* source) noexcept(std::is_nothrow_move_assignable_v<T>) {
+  *std::launder(static_cast<T*>(destination)) = static_cast<T&&>(*std::launder(static_cast<T*>(source)));
+}
+
+// The assignment entry for an alternative, or null when it has none -- the
+// same-alternative path then falls back to destroy and reconstruct.
+template <typename T>
+constexpr void (*copy_assign_entry())(void*, const void*) {
+  if constexpr (std::is_copy_assignable_v<T>) {
+    return &copy_assign_value<T>;
+  } else {
+    return nullptr;
+  }
+}
+
+template <typename T>
+constexpr void (*move_assign_entry())(void*, void*) {
+  if constexpr (std::is_move_assignable_v<T>) {
+    return &move_assign_value<T>;
+  } else {
+    return nullptr;
+  }
 }
 
 }  // namespace detail
@@ -383,10 +415,13 @@ class variant {
   }
 
   /// @brief Replaces the active alternative with a `T` constructed from `args`.
-  /// @note `args` may refer into the current alternative (`v.emplace<0>(get<1>(v).x)`):
-  ///       when a movable alternative is active, the new one is built before the
-  ///       old one is destroyed, at the cost of one move. A
-  ///       throwing constructor then leaves the variant unchanged.
+  /// @note `args` may refer into the current alternative (`v.emplace<0>(get<1>(v).x)`)
+  ///       when the TARGET alternative is move constructible: the new value is
+  ///       built before the old one is destroyed, at the cost of one move, and a
+  ///       throwing constructor leaves the variant unchanged. A target that
+  ///       cannot be moved has to be built in place after the old value is
+  ///       gone, so there `args` must not refer into the variant; an argument
+  ///       that does aborts (METL_HARDEN) instead of reading a destroyed object.
   /// @tparam T The (unique) alternative type to activate.
   /// @tparam Args Constructor argument types forwarded to `T`.
   /// @param args Arguments forwarded to `T`'s constructor.
@@ -405,10 +440,13 @@ class variant {
   }
 
   /// @brief Replaces the active alternative with alternative `I` constructed from `args`.
-  /// @note `args` may refer into the current alternative (`v.emplace<0>(get<1>(v).x)`):
-  ///       when a movable alternative is active, the new one is built before the
-  ///       old one is destroyed, at the cost of one move. A
-  ///       throwing constructor then leaves the variant unchanged.
+  /// @note `args` may refer into the current alternative (`v.emplace<0>(get<1>(v).x)`)
+  ///       when the TARGET alternative is move constructible: the new value is
+  ///       built before the old one is destroyed, at the cost of one move, and a
+  ///       throwing constructor leaves the variant unchanged. A target that
+  ///       cannot be moved has to be built in place after the old value is
+  ///       gone, so there `args` must not refer into the variant; an argument
+  ///       that does aborts (METL_HARDEN) instead of reading a destroyed object.
   /// @tparam I The zero-based alternative index to activate.
   /// @tparam Args Constructor argument types forwarded to the alternative.
   /// @param args Arguments forwarded to the alternative's constructor.
@@ -425,8 +463,9 @@ class variant {
                   "alternative must be constructible from the given arguments");
 
     // `args` may refer into the active alternative, which reset() destroys:
-    // build the new value first. Valueless: nothing to
-    // alias. Non-movable target: no such path, constructed directly as before.
+    // build the new value first. Valueless: nothing to alias. A target that
+    // cannot be moved has no such path, so an argument inside the storage is
+    // refused rather than read after its destruction.
     if constexpr (std::is_move_constructible_v<target_type>) {
       if (index_ != variant_npos) {
         target_type incoming(std::forward<Args>(args)...);
@@ -434,6 +473,10 @@ class variant {
         ::new (raw_addr()) target_type(static_cast<target_type&&>(incoming));
         index_ = I;
         return *std::launder(static_cast<target_type*>(raw_addr()));
+      }
+    } else {
+      if (index_ != variant_npos) {
+        METL_HARDEN(!(points_into_storage(detail::addressof(args)) || ...));
       }
     }
     reset();
@@ -470,6 +513,26 @@ class variant {
     return ops;
   }
 
+  static const copy_op* copy_assign_ops() noexcept {
+    static constexpr copy_op ops[] = {detail::copy_assign_entry<Ts>()...};
+    return ops;
+  }
+
+  static const move_op* move_assign_ops() noexcept {
+    static constexpr move_op ops[] = {detail::move_assign_entry<Ts>()...};
+    return ops;
+  }
+
+  static std::uintptr_t address_value(const volatile void* address) noexcept {
+    return reinterpret_cast<std::uintptr_t>(address);
+  }
+
+  bool points_into_storage(const volatile void* address) const noexcept {
+    const std::uintptr_t at = address_value(address);
+    const std::uintptr_t begin = address_value(&storage_.bytes[0]);
+    return at >= begin && at < begin + sizeof(storage_.bytes);
+  }
+
   void* raw_addr() noexcept { return static_cast<void*>(&storage_.bytes[0]); }
   const void* raw_addr() const noexcept { return static_cast<const void*>(&storage_.bytes[0]); }
 
@@ -488,29 +551,30 @@ class variant {
   }
 
   // Assignment from another variant, in two cases:
-  // - Same alternative: destroy the current value and copy-construct (or, for
-  //   the rvalue overload, move-construct) the new one in place. The variant is
-  //   valueless across that construction, so a throw leaves it valueless rather
-  //   than holding a destroyed member under a stale index.
+  // - Same alternative: assign in place with T's own operator=, as
+  //   std::variant does. Destroying and reconstructing instead broke any type
+  //   whose identity lives in the object -- intrusive_ref_counter keeps its
+  //   count across assignment, and lost it. An alternative with no assignment
+  //   operator falls back to destroy and reconstruct, valueless across the
+  //   construction so a throw never leaves a destroyed member under a stale
+  //   index.
   // - Different alternative: copy- (or move-) construct a backup variant from
   //   `other` first, so a throw there leaves *this untouched; then reset() and
   //   move the backup's value in. A throw from that final move leaves *this
   //   valueless (valueless_by_exception()).
   void assign_from(const variant& other) {
     if (index_ == other.index_) {
-      // Same alternative: destroy + copy-construct in place. Mark the variant
-      // valueless across the (possibly throwing) copy-construct so that, if it
-      // throws, we never leave a destroyed member paired with a stale
-      // discriminant (which would double-destroy). On success the discriminant
-      // is restored.
       const std::size_t active = index_;
+      if (const copy_op assign = copy_assign_ops()[active]; assign != nullptr) {
+        assign(raw_addr(), other.raw_addr());
+        return;
+      }
       destroy_ops()[active](raw_addr());
       index_ = variant_npos;
       copy_ops()[active](raw_addr(), other.raw_addr());
       index_ = active;
       return;
     }
-    // Different alternative: copy-construct backup first to minimize valueless window.
     variant backup(other);
     reset();
     move_ops()[backup.index_](raw_addr(), backup.raw_addr());
@@ -519,16 +583,17 @@ class variant {
 
   void assign_from(variant&& other) {
     if (index_ == other.index_) {
-      // Same alternative: destroy + move-construct in place, valueless across
-      // the (possibly throwing) move-construct — see assign_from(const&).
       const std::size_t active = index_;
+      if (const move_op assign = move_assign_ops()[active]; assign != nullptr) {
+        assign(raw_addr(), other.raw_addr());
+        return;
+      }
       destroy_ops()[active](raw_addr());
       index_ = variant_npos;
       move_ops()[active](raw_addr(), other.raw_addr());
       index_ = active;
       return;
     }
-    // Different alternative: move-construct backup first, then assign.
     variant backup(static_cast<variant&&>(other));
     reset();
     move_ops()[backup.index_](raw_addr(), backup.raw_addr());
