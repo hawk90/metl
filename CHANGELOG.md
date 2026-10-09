@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   named object.
 ### Fixed
 
+- `-DMETL_HARDENING=DEBUG` (the level's name rather than `METL_HARDENING_DEBUG`
+  or `2`) silently selected NONE: the range check read the unknown identifier
+  as 0, and every precondition check was compiled out. Anything but 0, 1, 2 or
+  a `METL_HARDENING_*` macro is now an `#error`.
+- A stripped `METL_ASSERT` (at `METL_HARDENING=0`) or `METL_DASSERT` (at FAST,
+  the `-DNDEBUG` default) put its expression in `sizeof`, an unevaluated
+  operand where C++17 forbids a lambda. An assertion with a lambda in it
+  compiled in the checked build and failed in the stripped one. The expression
+  is still type-checked and still never run.
 - The headers now build warning-free under MSVC `/W4 /WX`. `mpmc_queue`,
   `spsc_queue` and `spsc_byte_ring` raised C4324 (padding from their
   cache-line alignment, which is the point of it); `try_format_int` and

@@ -118,6 +118,10 @@ DETAIL_NAMESPACE = "detail"
 _SCAN_TOKEN = re.compile(r"namespace\s+([a-zA-Z_]\w*)\s*\{|\{|\}|static_assert\s*\(")
 _STRING_LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"')
 _MESSAGE_MACRO = re.compile(r"\b(METL_[A-Z0-9_]*MESSAGE)\b")
+# `#error` is the preprocessor's static_assert: a configuration a caller can
+# get wrong (an unknown METL_HARDENING, a target with no byte order) stops the
+# build with it. A directive continues across backslash-newlines.
+_ERROR_DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*error\b((?:[^\n]*\\\n)*[^\n]*)", re.M)
 _DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+(METL_[A-Z0-9_]*MESSAGE)\b(.*?)(?<!\\)$",
                      re.M | re.S)
 
@@ -186,6 +190,10 @@ def static_assert_messages(include_dir):
                     message = macros.get(macro.group(1), "") if macro else ""
                 if message:
                     found.setdefault(message, []).append(path.name)
+        for directive in _ERROR_DIRECTIVE.finditer(text):
+            message = "".join(_STRING_LITERAL.findall(directive.group(1)))
+            if message:
+                found.setdefault(message, []).append(path.name)
     return found
 
 

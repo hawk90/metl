@@ -50,6 +50,20 @@ int main() {
   }
   const bool harden_fired = g_called;
 
+  // A lambda in the condition compiles at every level, and a stripped check
+  // never runs it. The stripped forms used to be sizeof(expr), an unevaluated
+  // operand where C++17 forbids a lambda: NDEBUG builds failed to compile.
+  int assert_runs = 0;
+  int dassert_runs = 0;
+  METL_ASSERT([&] {
+    ++assert_runs;
+    return true;
+  }());
+  METL_DASSERT([&] {
+    ++dassert_runs;
+    return true;
+  }());
+
   const bool expect_assert = (METL_HARDENING >= METL_HARDENING_FAST);
   const bool expect_dassert = (METL_HARDENING >= METL_HARDENING_DEBUG);
   const bool expect_harden = true;
@@ -62,6 +76,12 @@ int main() {
   }
   if (harden_fired != expect_harden) {
     return 3;
+  }
+  if (assert_runs != (expect_assert ? 1 : 0)) {
+    return 4;
+  }
+  if (dassert_runs != (expect_dassert ? 1 : 0)) {
+    return 5;
   }
   return 0;
 }
