@@ -153,7 +153,7 @@ class static_message_queue {
       return false;
     }
 
-    ::new (static_cast<void*>(storage_[tail_].addr())) T(std::forward<Args>(args)...);
+    ::new (storage_[tail_].addr()) T(std::forward<Args>(args)...);
     tail_ = advance(tail_);
     ++size_;
     return true;

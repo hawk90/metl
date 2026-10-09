@@ -123,7 +123,7 @@ class handle_pool {
     }
 
     const size_type index = free_head_;
-    ::new (static_cast<void*>(storage_[index].addr())) T(std::forward<Args>(args)...);
+    ::new (storage_[index].addr()) T(std::forward<Args>(args)...);
     free_head_ = next_[index];
     active_[index] = true;
     ++size_;

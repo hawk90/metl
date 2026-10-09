@@ -102,12 +102,12 @@ R invoke_object_nx(void* storage, Args&&... args) noexcept {
 
 template <typename F>
 void copy_object(void* destination, const void* source) {
-  ::new (static_cast<void*>(destination)) F(*static_cast<const F*>(source));
+  ::new (destination) F(*static_cast<const F*>(source));
 }
 
 template <typename F>
 void move_object(void* destination, void* source) noexcept {
-  ::new (static_cast<void*>(destination)) F(static_cast<F&&>(*static_cast<F*>(source)));
+  ::new (destination) F(static_cast<F&&>(*static_cast<F*>(source)));
 }
 
 template <typename F>
@@ -292,7 +292,7 @@ class fixed_function_impl {
     }
 
     reset();
-    ::new (static_cast<void*>(storage_ptr())) decayed_type(std::forward<F>(function));
+    ::new (storage_ptr()) decayed_type(std::forward<F>(function));
     ops_ = &copyable_ops_for_t<decayed_type, IsNoexcept, R, Args...>::value;
     return true;
   }
@@ -423,7 +423,7 @@ class fixed_any_invocable_impl {
     }
 
     reset();
-    ::new (static_cast<void*>(storage_ptr())) decayed_type(std::forward<F>(function));
+    ::new (storage_ptr()) decayed_type(std::forward<F>(function));
     ops_ = &moveonly_ops_for_t<decayed_type, IsNoexcept, R, Args...>::value;
     return true;
   }

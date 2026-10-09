@@ -531,12 +531,11 @@ class flat_map {
   void insert_shifting(size_type index, value_type&& entry) {
     if constexpr (std::is_move_assignable_v<value_type>) {
       if (index == size_) {
-        ::new (static_cast<void*>(storage_.slot(size_))) value_type(static_cast<value_type&&>(entry));
+        ::new (storage_.slot(size_)) value_type(static_cast<value_type&&>(entry));
         ++size_;
         return;
       }
-      ::new (static_cast<void*>(storage_.slot(size_)))
-          value_type(static_cast<value_type&&>(data()[size_ - 1]));
+      ::new (storage_.slot(size_)) value_type(static_cast<value_type&&>(data()[size_ - 1]));
       ++size_;
 #if !METL_NO_EXCEPTIONS
       try {
@@ -554,7 +553,7 @@ class flat_map {
     } else {
       // A non-assignable element can only be relocated by construct+destroy.
       shift_right_from(index);
-      ::new (static_cast<void*>(storage_.slot(index))) value_type(static_cast<value_type&&>(entry));
+      ::new (storage_.slot(index)) value_type(static_cast<value_type&&>(entry));
       ++size_;
     }
   }
@@ -571,7 +570,7 @@ class flat_map {
     try {
 #endif
       for (; i > index; --i) {
-        ::new (static_cast<void*>(storage_.slot(i))) value_type(static_cast<value_type&&>(data()[i - 1]));
+        ::new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i - 1]));
         data()[i - 1].~value_type();
       }
 #if !METL_NO_EXCEPTIONS
@@ -597,7 +596,7 @@ class flat_map {
     data()[index].~value_type();
     if constexpr (relocate_cannot_throw) {
       for (size_type i = index; i + 1 < size_; ++i) {
-        ::new (static_cast<void*>(storage_.slot(i))) value_type(static_cast<value_type&&>(data()[i + 1]));
+        ::new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i + 1]));
         data()[i + 1].~value_type();
       }
     } else {
@@ -606,7 +605,7 @@ class flat_map {
       try {
 #endif
         for (; i + 1 < size_; ++i) {
-          ::new (static_cast<void*>(storage_.slot(i))) value_type(static_cast<value_type&&>(data()[i + 1]));
+          ::new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i + 1]));
           data()[i + 1].~value_type();
         }
 #if !METL_NO_EXCEPTIONS
