@@ -9,8 +9,10 @@ class three_state : public metl::coro::stepper {
   state s = state::read;
   int read_count = 0;
   int process_count = 0;
+  int steps = 0;
 
   metl::coro::step_result step() noexcept override {
+    ++steps;
     switch (s) {
       case state::read:
         ++read_count;
@@ -31,6 +33,7 @@ class three_state : public metl::coro::stepper {
     s = state::read;
     read_count = 0;
     process_count = 0;
+    steps = 0;
   }
 };
 
@@ -91,12 +94,15 @@ int main() {
       return 10;
     }
 
-    // Further polls are no-ops.
+    // Further polls are no-ops: they do not even reach step().
     if (t.poll()) {
       return 11;
     }
     if (!t.is_done()) {
       return 12;
+    }
+    if (t.steps != 3) {
+      return 20;
     }
 
     // reset() returns to the initial state.

@@ -1,3 +1,5 @@
+#include "metl_check.hpp"
+
 #include <array>
 
 #include <metl/lookup_table.hpp>
@@ -44,5 +46,34 @@ int main() {
     return 5;
   }
 
-  return 0;
+  // The same queries at run time. Everything above is a constant expression,
+  // so the compiler folds it and none of these functions ever executes; a
+  // table built from run-time values makes them run.
+  {
+    volatile int seed = 10;
+    const int base = seed;
+    const metl::lookup_table<int, int, 3> runtime(std::array<metl::lookup_entry<int, int>, 3>{{
+        {base, base * 2},
+        {base + 1, base * 3},
+        {base + 2, base * 4},
+    }});
+    CHECK(!runtime.empty());
+    CHECK_EQ(runtime.size(), std::size_t{3});
+    CHECK_EQ(runtime[0].key, 10);
+    CHECK_EQ(runtime[2].value, 40);
+    CHECK_EQ(runtime.at(1).value, 30);
+    CHECK(runtime.contains(11));
+    CHECK(runtime.contains(12));
+    CHECK(!runtime.contains(13));
+    CHECK(!runtime.contains(9));
+    CHECK_DEREF_EQ(runtime.find(12), 40);
+    CHECK_EQ(runtime.value_or(99, -1), -1);
+
+    const metl::lookup_table<int, int, 0> none{};
+    CHECK(none.empty());
+    CHECK_EQ(none.size(), std::size_t{0});
+    CHECK(!none.contains(base));
+  }
+
+  return metl_test::exit_code();
 }

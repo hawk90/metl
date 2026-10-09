@@ -268,5 +268,23 @@ int main() {
     CHECK_EQ(ring.writable_span().size(), 8u);
   }
 
+  // clear() after the consumer has moved: both indices must go back, not just
+  // the producer's -- a read index left ahead of the write index makes the
+  // readable_size() wrap to SIZE_MAX - 2.
+  {
+    ring8 ring;
+    fill(ring, 0, 5);
+    drain_and_check(ring, 0, 3);
+    ring.clear();
+    CHECK(ring.empty());
+    CHECK_EQ(ring.readable_size(), 0u);
+    CHECK(ring.readable_span().empty());
+    CHECK_EQ(ring.writable_size(), 8u);
+    CHECK_EQ(ring.writable_span().size(), 8u);
+    fill(ring, 40, 8);
+    CHECK(ring.full());
+    drain_and_check(ring, 40, 8);
+  }
+
   return metl_test::exit_code();
 }

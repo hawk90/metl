@@ -1,3 +1,5 @@
+#include "metl_check.hpp"
+
 #include <cstring>
 #include <functional>
 
@@ -295,6 +297,18 @@ int main() {
       return 44;  // key 2 < key 3 decides it, whatever the values are
     }
 
+    // The lhs-greater branches, called as operator< directly (operator> only
+    // ever reaches them with the operands swapped). A greater key or value
+    // decides `false` even where a later value, or the size, would say `true`.
+    CHECK(!(higher_key < a));  // key 3 > key 2, though value 0 < 20
+    metl::flat_map<int, int, 4> longer;
+    CHECK(longer.try_emplace(1, 10));
+    CHECK(longer.try_emplace(2, 20));
+    CHECK(longer.try_emplace(3, 30));
+    CHECK(!(higher_value < longer));  // value 21 > 20, though size 2 < 3
+    CHECK(higher_value > longer);
+    CHECK(!(higher_value <= longer));
+
     // Empty compares equal to empty and below anything non-empty.
     const metl::flat_map<int, int, 4> empty_a;
     const metl::flat_map<int, int, 8> empty_b;
@@ -303,5 +317,5 @@ int main() {
     }
   }
 
-  return 0;
+  return metl_test::exit_code();
 }

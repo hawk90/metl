@@ -375,5 +375,59 @@ int main() {
   }
   CHECK_EQ(tracker::constructions, tracker::destructions);
 
+  // Range erase destroys exactly the vacated tail, at the moment of the erase
+  // -- not later, when the vector itself goes away.
+  tracker::constructions = 0;
+  tracker::destructions = 0;
+  {
+    metl::fixed_vector<tracker, 8> v;
+    for (int i = 0; i < 6; ++i) {
+      v.emplace_back(i);
+    }
+    const int live_before = tracker::constructions - tracker::destructions;
+    CHECK_EQ(live_before, 6);
+    auto it = v.erase(v.begin() + 1, v.begin() + 4);
+    CHECK_EQ(it->value, 4);
+    CHECK_EQ(v.size(), 3u);
+    CHECK_EQ(tracker::constructions - tracker::destructions, 3);
+    CHECK_EQ(v[0].value, 0);
+    CHECK_EQ(v[1].value, 4);
+    CHECK_EQ(v[2].value, 5);
+  }
+  CHECK_EQ(tracker::constructions, tracker::destructions);
+
+  // try_assign at exactly Capacity fits; one more does not and leaves the
+  // contents alone.
+  {
+    metl::fixed_vector<int, 3> v{9};
+    CHECK(v.try_assign(3u, 7));
+    CHECK_EQ(v.size(), 3u);
+    CHECK_EQ(v[0], 7);
+    CHECK_EQ(v[2], 7);
+    CHECK(!v.try_assign(4u, 1));
+    CHECK_EQ(v.size(), 3u);
+    CHECK_EQ(v[0], 7);
+
+    const int exact[3] = {1, 2, 3};
+    const int over[4] = {4, 5, 6, 7};
+    CHECK(v.try_assign(exact, exact + 3));
+    CHECK_EQ(v.size(), 3u);
+    CHECK_EQ(v[2], 3);
+    CHECK(!v.try_assign(over, over + 4));
+    CHECK_EQ(v.size(), 3u);
+    CHECK_EQ(v[0], 1);
+  }
+
+  // operator== on vectors of different sizes, a common prefix both ways.
+  {
+    const metl::fixed_vector<int, 4> shorter{1, 2};
+    const metl::fixed_vector<int, 4> longer{1, 2, 3};
+    CHECK(!(shorter == longer));
+    CHECK(!(longer == shorter));
+    CHECK(shorter != longer);
+    const metl::fixed_vector<int, 8> same{1, 2};
+    CHECK(shorter == same);
+  }
+
   return metl_test::exit_code();
 }

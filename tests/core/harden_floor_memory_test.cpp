@@ -23,11 +23,14 @@
 #include "metl_check.hpp"
 
 #include <csetjmp>
+#include <cstddef>
 
+#include <metl/arena_allocator.hpp>
 #include <metl/assert.hpp>
 #include <metl/delegate.hpp>
 #include <metl/fixed_deque.hpp>
 #include <metl/fixed_function.hpp>
+#include <metl/fixed_priority_queue.hpp>
 #include <metl/fixed_queue.hpp>
 #include <metl/fixed_stack.hpp>
 #include <metl/fixed_string.hpp>
@@ -41,7 +44,9 @@
 #include <metl/parse.hpp>
 #include <metl/ring_buffer.hpp>
 #include <metl/span.hpp>
+#include <metl/spsc_byte_ring.hpp>
 #include <metl/static_message_queue.hpp>
+#include <metl/static_unordered_map.hpp>
 
 namespace {
 
@@ -188,6 +193,32 @@ int main() {
 
     metl::fixed_vector<int, 0> none;
     CHECK(guarded_against([&] { (void)none.emplace_back(1); }));
+
+    // Count and range inserts outside [begin, end] are refused too: by their
+    // own check, or by the emplace each delegates to before anything moves.
+    const int source[2] = {7, 8};
+    CHECK(guarded_against([&] { v.insert(v.begin() + 2, 1u, 9); }));
+    CHECK(guarded_against([&] { v.insert(v.begin() + 2, source, source + 2); }));
+    CHECK_EQ(v.size(), 1u);
+  }
+
+  // fixed_priority_queue: pop on an empty queue underflows the last index.
+  // (Without its own guard, the vector's pop_back would still fire -- but only
+  // after the out-of-bounds move the underflow causes.)
+  {
+    metl::fixed_priority_queue<int, 4> queue;
+    CHECK(guarded_against([&] { queue.pop(); }));
+    CHECK(queue.empty());
+  }
+
+  // static_unordered_map: insert_or_assign of a new key into a full map would
+  // hand back a reference to slot npos.
+  {
+    metl::static_unordered_map<int, int, 2> map;
+    map.emplace(1, 10);
+    map.emplace(2, 20);
+    CHECK(guarded_against([&] { (void)map.insert_or_assign(3, 30); }));
+    CHECK_EQ(map.size(), 2u);
   }
 
   // flat_map / flat_set: a duplicate key would be stored twice.
@@ -201,6 +232,48 @@ int main() {
     set.emplace(1);
     CHECK(guarded_against([&] { set.emplace(1); }));
     CHECK_EQ(set.size(), 1u);
+  }
+
+  // flat_map / flat_set: emplace or insert_or_assign of a new key into a full
+  // container. The insert is refused, which leaves its position at size() ==
+  // Capacity, and the reference handed back would be one past the end.
+  {
+    metl::flat_map<int, int, 2> map;
+    map.emplace(1, 10);
+    map.emplace(2, 20);
+    CHECK(guarded_against([&] { (void)map.emplace(3, 30); }));
+    CHECK(guarded_against([&] { (void)map.insert_or_assign(3, 30); }));
+    CHECK_EQ(map.size(), 2u);
+    CHECK(!guarded_against([&] { (void)map.insert_or_assign(2, 21); }));
+    CHECK_DEREF_EQ(map.find(2), 21);
+
+    metl::flat_set<int, 2> set;
+    set.emplace(1);
+    set.emplace(2);
+    CHECK(guarded_against([&] { (void)set.emplace(3); }));
+    CHECK_EQ(set.size(), 2u);
+  }
+
+  // arena_allocator: a non-power-of-two alignment corrupts the bump offset,
+  // as monotonic_buffer's does.
+  {
+    metl::arena_allocator<64> arena;
+    CHECK(guarded_against([&] { (void)arena.allocate(4, 3); }));
+    CHECK(guarded_against([&] { (void)arena.allocate(4, 0); }));
+    CHECK(arena.empty());
+    CHECK(!guarded_against([&] { (void)arena.allocate(4, 4); }));
+  }
+
+  // spsc_byte_ring: consuming more than is readable moves the read index past
+  // the write index, and readable_size() wraps to nearly SIZE_MAX.
+  {
+    metl::spsc_byte_ring<8> ring;
+    const std::byte bytes[2] = {std::byte{1}, std::byte{2}};
+    CHECK(ring.try_write(metl::span<const std::byte>(bytes, 2)));
+    CHECK(guarded_against([&] { ring.consume(3); }));
+    CHECK_EQ(ring.readable_size(), 2u);
+    CHECK(!guarded_against([&] { ring.consume(2); }));
+    CHECK_EQ(ring.readable_size(), 0u);
   }
 
   // span: a fixed extent over the wrong count, and views past the end, would
@@ -221,6 +294,8 @@ int main() {
     metl::fixed_string<8> text;
     CHECK(guarded_against([&] { (void)text.try_assign(nullptr); }));
     CHECK(guarded_against([&] { (void)text.try_append(nullptr); }));
+    const char* null_text = nullptr;
+    CHECK(guarded_against([&] { (void)(text == null_text); }));
   }
 
   // Callables: a null function stored as engaged, and a call through an empty
