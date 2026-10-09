@@ -78,3 +78,15 @@
 #ifndef METL_CACHELINE_ALIGNED
 #define METL_CACHELINE_ALIGNED alignas(METL_CACHELINE_SIZE)
 #endif
+
+// METL_CACHELINE_PADDED_BEGIN / _END bracket a class whose members are
+// METL_CACHELINE_ALIGNED. MSVC reports the padding that alignment exists to
+// create (C4324, a level-4 warning), so a consumer building with /W4 /WX could
+// not instantiate the class. Nothing elsewhere: other compilers do not warn.
+#if defined(_MSC_VER) && !defined(__clang__)
+#define METL_CACHELINE_PADDED_BEGIN __pragma(warning(push)) __pragma(warning(disable : 4324))
+#define METL_CACHELINE_PADDED_END __pragma(warning(pop))
+#else
+#define METL_CACHELINE_PADDED_BEGIN
+#define METL_CACHELINE_PADDED_END
+#endif

@@ -197,21 +197,24 @@ METL_NODISCARD constexpr span<char> try_format_int(span<char> out, T value) noex
     // Widening to `long long` below wraps an unsigned value above LLONG_MAX
     // into a negative one: UINT64_MAX printed as "-1".
     return try_format_uint(out, value);
-  }
-  const auto widened = static_cast<long long>(value);
-  const unsigned long long magnitude = detail::magnitude_of(widened);
-  const std::size_t digits = detail::decimal_digits(magnitude);
-  const std::size_t count = digits + (widened < 0 ? 1U : 0U);
-  if (count > out.size()) {
-    return out.first(std::size_t{0});
-  }
-  if (widened < 0) {
-    out[0] = '-';
-    detail::write_decimal(out.subspan(1), digits, magnitude);
   } else {
-    detail::write_decimal(out, digits, magnitude);
+    // `else`, not an early return: without it the signed path is still
+    // instantiated for unsigned T, as unreachable code (MSVC C4702 under /W4).
+    const auto widened = static_cast<long long>(value);
+    const unsigned long long magnitude = detail::magnitude_of(widened);
+    const std::size_t digits = detail::decimal_digits(magnitude);
+    const std::size_t count = digits + (widened < 0 ? 1U : 0U);
+    if (count > out.size()) {
+      return out.first(std::size_t{0});
+    }
+    if (widened < 0) {
+      out[0] = '-';
+      detail::write_decimal(out.subspan(1), digits, magnitude);
+    } else {
+      detail::write_decimal(out, digits, magnitude);
+    }
+    return out.first(count);
   }
-  return out.first(count);
 }
 
 /// @brief Write @p value as decimal into @p out.

@@ -18,6 +18,9 @@
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 #pragma GCC diagnostic ignored "-Wfloat-conversion"
 #endif
+#if defined(_MSC_VER)
+#pragma warning(disable : 4244)  // conversion, possible loss of data
+#endif
 
 #include "metl_check.hpp"
 

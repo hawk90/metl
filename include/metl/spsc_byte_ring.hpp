@@ -62,6 +62,7 @@ namespace metl {
 ///
 /// @tparam Capacity Ring size in bytes. Power of two, at least 2, so the index
 ///         wrap is a mask rather than a division.
+METL_CACHELINE_PADDED_BEGIN
 template <std::size_t Capacity>
 class spsc_byte_ring {
   static_assert(Capacity >= 2, "spsc_byte_ring Capacity must be at least 2");
@@ -279,5 +280,6 @@ class spsc_byte_ring {
   METL_CACHELINE_ALIGNED std::atomic<size_type> tail_;  ///< Producer position (monotonic).
   METL_CACHELINE_ALIGNED std::byte storage_[Capacity] = {};
 };
+METL_CACHELINE_PADDED_END
 
 }  // namespace metl

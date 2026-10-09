@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The headers now build warning-free under MSVC `/W4 /WX`. `mpmc_queue`,
+  `spsc_queue` and `spsc_byte_ring` raised C4324 (padding from their
+  cache-line alignment, which is the point of it); `try_format_int` and
+  `byteswap` instantiated their other `if constexpr` path as unreachable code
+  (C4702); `bitfield` and `versioned_handle` reported a shift by the full
+  width (C4293) in the arm of a guard that is never taken.
 - `flat_set`, `flat_map`, `static_unordered_set`, `static_unordered_map`:
   inserting a key of another type found the position (or bucket) with the
   argument and then stored the converted key, so a narrowing or converting

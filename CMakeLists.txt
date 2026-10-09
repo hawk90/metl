@@ -239,7 +239,9 @@ if(METL_BUILD_TESTS)
     if(MSVC)
       file(READ tests/${_t}_test.cpp _src)
       if(_src MATCHES "<csetjmp>|hardening_common\\.h")
-        target_compile_options(metl_${_name}_test PRIVATE /EHs-c-)
+        # C4611 warns that setjmp may skip destructors -- which, built
+        # without /EH, is exactly and only what happens.
+        target_compile_options(metl_${_name}_test PRIVATE /EHs-c- /wd4611)
         target_compile_definitions(metl_${_name}_test PRIVATE _HAS_EXCEPTIONS=0)
       endif()
     endif()

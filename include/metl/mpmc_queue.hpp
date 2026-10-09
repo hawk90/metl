@@ -78,6 +78,7 @@ namespace metl {
 /// The practical reading: **if the roles are genuinely fixed, use `spsc_queue`.**
 /// Reach for this type when the producer or consumer count is not one, and size
 /// the workload knowing that contention, not the queue, will be the limit.
+METL_CACHELINE_PADDED_BEGIN
 template <typename T, std::size_t Capacity>
 class mpmc_queue {
   static_assert(Capacity >= 2, "mpmc_queue Capacity must be at least 2");
@@ -265,5 +266,6 @@ class mpmc_queue {
   METL_CACHELINE_ALIGNED std::atomic<size_type> enqueue_pos_;
   METL_CACHELINE_ALIGNED std::atomic<size_type> dequeue_pos_;
 };
+METL_CACHELINE_PADDED_END
 
 }  // namespace metl

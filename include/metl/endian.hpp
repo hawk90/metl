@@ -65,17 +65,19 @@ using unsigned_like_t = std::make_unsigned_t<T>;
 
 template <typename T>
 constexpr unsigned_like_t<T> byteswap_unsigned(unsigned_like_t<T> value) noexcept {
+  // `else`, not an early return: without it the loop is still instantiated
+  // for one-byte T, as unreachable code (MSVC C4702 under /W4).
   if constexpr (sizeof(T) == 1) {
     return value;
+  } else {
+    unsigned_like_t<T> result = 0;
+    for (std::size_t i = 0; i < sizeof(T); ++i) {
+      result <<= 8;
+      result |= static_cast<unsigned_like_t<T>>(value & static_cast<unsigned_like_t<T>>(0xffu));
+      value >>= 8;
+    }
+    return result;
   }
-
-  unsigned_like_t<T> result = 0;
-  for (std::size_t i = 0; i < sizeof(T); ++i) {
-    result <<= 8;
-    result |= static_cast<unsigned_like_t<T>>(value & static_cast<unsigned_like_t<T>>(0xffu));
-    value >>= 8;
-  }
-  return result;
 }
 
 }  // namespace detail

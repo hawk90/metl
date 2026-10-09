@@ -26,6 +26,7 @@
 #include "metl/detail/construct.hpp"
 #include "metl/detail/crc.hpp"
 #include "metl/detail/index_distance.hpp"
+#include "metl/detail/low_bits.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/plain_integer.hpp"
 #include "metl/detail/ring_core.hpp"
