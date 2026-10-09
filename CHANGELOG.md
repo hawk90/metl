@@ -33,6 +33,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   were; a throwing hasher ended in `std::terminate`. `flat_map` / `flat_set`
   now append the already-sorted source without comparing, and the unordered
   containers are `noexcept` only when the hasher and key comparison are.
+- `fixed_vector`, `ring_buffer`, `fixed_queue`, `fixed_deque`,
+  `static_message_queue`: when an element's constructor or destructor called
+  back into the container that holds it. Removal ran `~T()` before shrinking,
+  so a destructor that unregistered itself was destroyed twice, and one that
+  cleared the container wrapped its size to `SIZE_MAX`. Insertion built the
+  element before claiming its slot, so a constructor that pushed into the same
+  container got the same slot, and `emplace_back` / `emplace_front` /
+  `emplace` returned the inner element. Removal now shrinks first, insertion
+  claims the slot first (undone if the constructor throws), and the emplace
+  forms return the element they built.
 - `coro::protothread`: a yield inside a `switch` of the caller's own put its
   `case` label in that inner switch, so the next `run()` skipped the rest of
   the body and reported the task done. Resuming there now aborts through
