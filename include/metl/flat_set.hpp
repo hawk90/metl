@@ -591,7 +591,7 @@ class flat_set {
   // second time. Its moved-from shell is destroyed during the shift, as every
   // relocated source is.
   void erase_at(size_type index) noexcept(relocate_cannot_throw) {
-    METL_MAYBE_UNUSED value_type leaving(static_cast<value_type&&>(data()[index]));
+    value_type leaving(static_cast<value_type&&>(data()[index]));
     data()[index].~value_type();
     if constexpr (relocate_cannot_throw) {
       for (size_type i = index; i + 1 < size_; ++i) {
@@ -621,6 +621,8 @@ class flat_set {
 #endif
     }
     --size_;
+    // `leaving` is destroyed here, with the container already consistent.
+    static_cast<void>(leaving);
   }
 
   Compare comp_;
