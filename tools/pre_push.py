@@ -27,15 +27,33 @@ WHAT RUNS, cheapest first, stopping at the first failure:
      grew. CI's absolute `--max` cannot be checked here -- the count depends on
      the clang-tidy version -- but a change that adds findings adds them under
      any version. Skipped, and said so, when no clang-tidy is installed.
+  8. every TU under a consumer's warning flags, as the `consumer-warnings`
+     job does. The flags and the compiler/standard matrix are read from
+     ci.yml, so there is one list.
+  9. source-based coverage against its floors (tools/coverage.py), as the
+     `coverage` job does. On macOS the profile tools come from Xcode: the
+     Homebrew llvm-profdata cannot read Apple clang's profiles.
 
-WHAT DOES NOT, and why: the ARM size/stack/RAM budgets and the instruction
-counts are measured on CI's toolchains and a local number is a different
-measurement (tools/check_size.py says so at length); QEMU, Zephyr and ESP-IDF
-need toolchains a workstation rarely has. Those stay CI-only.
+  Step 4b adds two more builds: ASan+UBSan at METL_HARDENING=0, and
+  -fno-exceptions -fno-rtti -- the configurations that differ most from the
+  default, and the two that found defects the default build did not.
 
-Every gate CI runs on a host belongs here. Each one that was left to CI alone
-(the amalgamation's exit codes, the clang-tidy ratchet, a mutant's anchor) was
-first found red on a pushed branch.
+WHAT DOES NOT, and why:
+  * Measured on CI's toolchains, where a local number is a different
+    measurement: the ARM size/stack/RAM budgets and instruction counts
+    (tools/check_size.py says so at length), and the clang-tidy ABSOLUTE count
+    (step 7 compares within one local binary instead).
+  * Toolchains a workstation rarely has: QEMU, Zephyr, ESP-IDF, arm-hints,
+    the cross and big-endian jobs, MSVC.
+  * Further full builds, left to CI for time: TSan, LTO, ASan at
+    RelWithDebInfo, C++20 and CRC-table-off in config-matrix. Each would add a
+    complete build and test run to every push.
+  * Packaging and tooling with their own dependencies: conan, install-check,
+    fuzz-smoke (libFuzzer), bench-smoke, docs (Doxygen).
+
+A gate left to CI is found red on a pushed branch instead of here; the
+amalgamation's exit codes, the clang-tidy ratchet, a mutant's anchor and a
+consumer's -Wconversion all were, before they moved into this script.
 
 Build directories live under build-prepush/ and are reused, so a second push
 only recompiles what changed.
@@ -220,6 +238,51 @@ def clang_tidy_delta(python):
     return True
 
 
+def consumer_matrix():
+    """(flags, [(cxx, std), ...]) from the consumer-warnings job in ci.yml."""
+    text = (REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    job = text[text.index("\n  consumer-warnings:\n"):]
+    job = job[:re.search(r"\n  [a-z][a-z0-9-]*:\n", job[1:]).start() + 1]
+    flags_block = re.search(r"METL_CONSUMER_WARNINGS: >-\n((?:[ \t]+[^\n]*\n)+?)\n", job).group(1)
+    flags = " ".join(flags_block.split())
+    cells = re.findall(r"cxx: ([^,}\s]+), std: ([^,}\s]+)", job)
+    return flags, cells
+
+
+def consumer_warnings():
+    flags, cells = consumer_matrix()
+    gcc = newest_gcc()
+    files = sorted(str(p.relative_to(REPO)) for pattern in ("tests/**/*.cpp", "fuzz/*.cpp", "examples/*.cpp")
+                   for p in REPO.glob(pattern)
+                   if not str(p.relative_to(REPO)).startswith(("tests/embedded/", "tests/compile_fail/")))
+    for cxx, std in cells:
+        local = gcc if cxx == "g++" else cxx
+        if local is None or shutil.which(local) is None:
+            print(f"  ({cxx} not found -- CI's consumer-warnings / {cxx} is the only check)")
+            continue
+        command = [sys.executable, "-c", CONSUMER_WORKER, local, std, flags, *files]
+        if not step(f"{local} -std={std}: {len(files)} TUs", command):
+            return False
+    return True
+
+
+# Compiles each TU with -fsyntax-only in parallel and prints the first failure.
+CONSUMER_WORKER = """
+import concurrent.futures, os, subprocess, sys
+cxx, std, flags, files = sys.argv[1], sys.argv[2], sys.argv[3].split(), sys.argv[4:]
+def one(f):
+    r = subprocess.run([cxx, f"-std={std}", "-fsyntax-only", "-Iinclude", "-Itests", "-Ifuzz",
+                        *flags, "-Werror", f], capture_output=True, text=True)
+    return f, r.returncode, r.stdout + r.stderr
+with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 2) as pool:
+    failed = [(f, out) for f, code, out in pool.map(one, files) if code != 0]
+for f, out in failed[:3]:
+    print("FAIL", f)
+    print(out)
+sys.exit(1 if failed else 0)
+"""
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -260,6 +323,16 @@ def main():
     if not build_and_test("sanitizers", "c++", sanitizers):
         return 1
 
+    print("4b. the two configurations most likely to differ")
+    # METL_ASSERT stripped: what a misuse does when only METL_HARDEN is left.
+    if not build_and_test("sanitizers-hardening-none", "c++",
+                          sanitizers + ["-DCMAKE_CXX_FLAGS=-DMETL_HARDENING=0"]):
+        return 1
+    # The library's primary embedded configuration, on the host.
+    if not build_and_test("no-exceptions", "c++", ["-DCMAKE_BUILD_TYPE=Debug", "-DMETL_WARNINGS_AS_ERRORS=ON",
+                                                   "-DCMAKE_CXX_FLAGS=-fno-exceptions -fno-rtti"]):
+        return 1
+
     print("5. mutation gate")
     if not step("check_mutants.py", [python, "tools/check_mutants.py", "--build-dir",
                                      str(BUILD_ROOT / "sanitizers")]):
@@ -271,6 +344,20 @@ def main():
 
     print("7. clang-tidy delta against origin/main")
     if not clang_tidy_delta(python):
+        return 1
+
+    print("8. consumer warning flags")
+    if not consumer_warnings():
+        return 1
+
+    print("9. coverage floors")
+    env = None
+    xcrun = shutil.which("xcrun")
+    if xcrun:
+        profdata = subprocess.run([xcrun, "-f", "llvm-profdata"], capture_output=True, text=True).stdout.strip()
+        if profdata:
+            env = {"PATH": f"{Path(profdata).parent}{os.pathsep}{os.environ.get('PATH', '')}"}
+    if not step("coverage.py", [python, "tools/coverage.py"], **({"env": env} if env else {})):
         return 1
 
     print("pre-push: all local checks passed (ARM budgets, QEMU, Zephyr and ESP-IDF run on CI)")
