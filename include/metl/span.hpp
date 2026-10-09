@@ -93,6 +93,9 @@ struct span_storage<T, dynamic_extent> {
 /// @tparam Extent Fixed length, or dynamic_extent for a runtime length.
 template <typename T, std::size_t Extent>
 class span {
+  static_assert(std::is_object_v<T>,
+                "span requires an object element type: not a reference, function or void");
+
  public:
   using element_type = T;
   using value_type = std::remove_cv_t<T>;

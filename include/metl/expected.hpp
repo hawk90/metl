@@ -201,6 +201,9 @@ void replace_live(U* slot, Args&&... args) {
 /// std::bad_expected_access. Use `value_or`/`error_or` for checked fallbacks.
 template <typename T, typename E>
 class expected {
+  static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+  static_assert(std::is_object_v<E> && !std::is_array_v<E>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+
  public:
   using value_type = T;
   using error_type = E;
@@ -461,14 +464,15 @@ class expected {
   /// @brief Returns the value if present, else `default_value`. Never asserts.
   /// @param default_value Returned (converted to `T`) in the error state.
   template <typename U>
-  METL_NODISCARD T value_or(U&& default_value) const& {
-    return has_value_ ? *value_ptr() : static_cast<T>(std::forward<U>(default_value));
+  METL_NODISCARD std::remove_cv_t<T> value_or(U&& default_value) const& {
+    return has_value_ ? *value_ptr() : static_cast<std::remove_cv_t<T>>(std::forward<U>(default_value));
   }
 
   /// @brief Returns the value if present, else `default_value`. Never asserts.
   template <typename U>
-  METL_NODISCARD T value_or(U&& default_value) && {
-    return has_value_ ? static_cast<T&&>(*value_ptr()) : static_cast<T>(std::forward<U>(default_value));
+  METL_NODISCARD std::remove_cv_t<T> value_or(U&& default_value) && {
+    return has_value_ ? static_cast<T&&>(*value_ptr())
+                      : static_cast<std::remove_cv_t<T>>(std::forward<U>(default_value));
   }
 
   /// @brief Returns the error if present, else `default_value`. Never asserts.
@@ -976,6 +980,8 @@ class expected {
 /// the error state; `error()` asserts in the success state. Neither throws.
 template <typename E>
 class expected<void, E> {
+  static_assert(std::is_object_v<E> && !std::is_array_v<E>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+
  public:
   using value_type = void;
   using error_type = E;

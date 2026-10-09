@@ -61,6 +61,8 @@ struct is_metl_optional<optional<U>> : true_type {};
 /// for a safe alternative that never asserts.
 template <typename T>
 class optional {
+  static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+
  public:
   using value_type = T;
 
@@ -271,26 +273,28 @@ class optional {
   /// @param default_value Returned (converted to `T`) when the optional is empty.
   /// @return The contained value or the fallback. Never asserts.
   template <typename U>
-  METL_NODISCARD T value_or(U&& default_value) const& {
-    return has_value_ ? *data() : static_cast<T>(std::forward<U>(default_value));
+  METL_NODISCARD std::remove_cv_t<T> value_or(U&& default_value) const& {
+    return has_value_ ? *data() : static_cast<std::remove_cv_t<T>>(std::forward<U>(default_value));
   }
 
   /// @brief Returns the contained value, or `default_value` if empty. Never asserts.
   template <typename U>
-  METL_NODISCARD T value_or(U&& default_value) & {
-    return has_value_ ? *data() : static_cast<T>(std::forward<U>(default_value));
+  METL_NODISCARD std::remove_cv_t<T> value_or(U&& default_value) & {
+    return has_value_ ? *data() : static_cast<std::remove_cv_t<T>>(std::forward<U>(default_value));
   }
 
   /// @brief Returns the contained value, or `default_value` if empty. Never asserts.
   template <typename U>
-  METL_NODISCARD T value_or(U&& default_value) && {
-    return has_value_ ? static_cast<T&&>(*data()) : static_cast<T>(std::forward<U>(default_value));
+  METL_NODISCARD std::remove_cv_t<T> value_or(U&& default_value) && {
+    return has_value_ ? static_cast<T&&>(*data())
+                      : static_cast<std::remove_cv_t<T>>(std::forward<U>(default_value));
   }
 
   /// @brief Returns the contained value, or `default_value` if empty. Never asserts.
   template <typename U>
-  METL_NODISCARD T value_or(U&& default_value) const&& {
-    return has_value_ ? static_cast<const T&&>(*data()) : static_cast<T>(std::forward<U>(default_value));
+  METL_NODISCARD std::remove_cv_t<T> value_or(U&& default_value) const&& {
+    return has_value_ ? static_cast<const T&&>(*data())
+                      : static_cast<std::remove_cv_t<T>>(std::forward<U>(default_value));
   }
 
   // ---- Modifiers ------------------------------------------------------------
@@ -472,7 +476,10 @@ class optional {
   struct empty_byte {};
   union storage_union {
     empty_byte empty_;
-    T value_;
+    // Unqualified: a const T is stored as T and handed out as `const T`, so the
+    // placement new that builds it never needs a const T* turned into void*
+    // (which neither a plain static_cast nor libc++'s std::construct_at does).
+    std::remove_cv_t<T> value_;
 
     constexpr storage_union() noexcept : empty_{} {}
     // T's lifetime is managed explicitly by optional; the union itself does
@@ -493,8 +500,14 @@ class optional {
   template <typename U>
   void assign_or_construct(U&& value) {
     if (has_value_) {
-      *data() = std::forward<U>(value);
-      return;
+      if constexpr (std::is_assignable_v<T&, U>) {
+        *data() = std::forward<U>(value);
+        return;
+      } else {
+        // A const T has no assignment: replace the object, as variant does
+        // for an alternative it cannot assign.
+        reset();
+      }
     }
 
     construct(std::forward<U>(value));

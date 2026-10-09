@@ -2,6 +2,7 @@
 
 #include "metl/attributes.hpp"
 #include "metl/compiler.hpp"
+#include "metl/config.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -246,6 +247,8 @@ class scoped_lock {
 ///       may be inside `with()` cannot be made safe.
 template <typename T, typename Lock = irq_lock>
 class guarded {
+  static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+
  public:
   using value_type = T;
   using lock_type = Lock;

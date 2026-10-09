@@ -77,6 +77,8 @@ namespace metl {
 /// @see object_pool for the pointer-addressed equivalent.
 template <typename T, std::size_t Capacity, typename GenT = std::uint16_t>
 class handle_pool {
+  static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+
  public:
   using value_type = T;
   using size_type = std::size_t;

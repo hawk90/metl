@@ -59,6 +59,9 @@ namespace metl {
 ///         heterogeneous lookup).
 template <typename Key, typename T, std::size_t Capacity, typename Compare = std::less<Key>>
 class flat_map {
+  static_assert(std::is_object_v<Key> && !std::is_array_v<Key>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+  static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+
  public:
   struct value_type {
     Key key;

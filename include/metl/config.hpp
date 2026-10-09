@@ -58,6 +58,12 @@
 //
 // ODR: like METL_HARDENING, this changes the bodies of inline functions and must
 // be uniform across every TU in a program.
+// The message every container and vocabulary type gives for a T it cannot hold,
+// as the first statement of the class: without it, T = int&, void, void() or
+// int[3] stopped the build with errors from deep inside the header.
+#define METL_DETAIL_OBJECT_TYPE_MESSAGE \
+  "a METL container or vocabulary type holds objects: T must not be a reference, function, array or void"
+
 #ifndef METL_CRC_TABLE
 #define METL_CRC_TABLE 1
 #endif

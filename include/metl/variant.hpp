@@ -259,6 +259,8 @@ using variant_alternative_t = typename variant_alternative<I, V>::type;
 /// `get_if<>()` returns nullptr instead of asserting.
 template <typename... Ts>
 class variant {
+  static_assert(((std::is_object_v<Ts> && !std::is_array_v<Ts>) && ...), METL_DETAIL_OBJECT_TYPE_MESSAGE);
+
  public:
   static_assert(sizeof...(Ts) > 0, "variant requires at least one alternative");
 

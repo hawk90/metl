@@ -122,6 +122,9 @@ template <typename Key,
           typename Hash = std::hash<Key>,
           typename KeyEqual = std::equal_to<Key>>
 class static_unordered_map {
+  static_assert(std::is_object_v<Key> && !std::is_array_v<Key>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+  static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+
  public:
   struct value_type {
     Key key;
