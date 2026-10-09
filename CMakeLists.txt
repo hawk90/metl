@@ -194,6 +194,7 @@ if(METL_BUILD_TESTS)
     containers/recoverable_api containers/fixed_priority_queue
     containers/operation_count containers/alias_insert containers/unordered_erase_iteration
     containers/throwing_element containers/array_storage containers/self_range containers/sequence_reentrancy
+    containers/recoverable_unchanged
     # memory/
     memory/arena_allocator memory/static_allocator memory/monotonic_buffer
     memory/object_pool memory/allocator_overflow
