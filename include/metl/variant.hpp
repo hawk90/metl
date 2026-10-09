@@ -942,7 +942,9 @@ constexpr bool compare_alternative(const variant<Ts...>& lhs, const variant<Ts..
     return false;  // Unreachable: index() is always a valid alternative here.
   } else {
     if (lhs.index() == I) {
-      return Op{}(*::metl::get_if<I>(&lhs), *::metl::get_if<I>(&rhs));
+      // get<I>, not *get_if<I>: the index is known to match, and a dereferenced
+      // get_if is a pointer GCC's -Wnull-dereference cannot prove non-null.
+      return Op{}(::metl::get<I>(lhs), ::metl::get<I>(rhs));
     }
     return compare_alternative<Op, I + 1>(lhs, rhs);
   }
