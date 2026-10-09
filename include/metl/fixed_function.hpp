@@ -452,21 +452,6 @@ class fixed_any_invocable_impl {
   const ops_type* ops_;
 };
 
-// Out-of-class definitions of the static constexpr members. Required pre-C++17
-// for ODR-use through &name::value; redundant but harmless in C++17 where
-// such members are implicitly inline.
-template <typename F, typename R, typename... Args>
-constexpr copyable_ops<true, R, Args...> copyable_ops_for_t<F, true, R, Args...>::value;
-
-template <typename F, typename R, typename... Args>
-constexpr copyable_ops<false, R, Args...> copyable_ops_for_t<F, false, R, Args...>::value;
-
-template <typename F, typename R, typename... Args>
-constexpr moveonly_ops<true, R, Args...> moveonly_ops_for_t<F, true, R, Args...>::value;
-
-template <typename F, typename R, typename... Args>
-constexpr moveonly_ops<false, R, Args...> moveonly_ops_for_t<F, false, R, Args...>::value;
-
 }  // namespace detail
 
 // ============================================================================

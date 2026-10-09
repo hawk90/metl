@@ -100,6 +100,10 @@ auto operator+(scope_exit_tag, F&& func) noexcept -> scope_exit<std::decay_t<F>>
 // Creates an anonymous RAII guard executing `expr` when the enclosing
 // scope ends. The expression is wrapped in a noexcept lambda capturing
 // by reference. Usage: METL_SCOPE_EXIT(file.close());
-#define METL_SCOPE_EXIT(...)                                   \
-  auto METL_SCOPE_EXIT_CONCAT(metl_scope_exit_, __COUNTER__) = \
+//
+// The guard is named after __LINE__, so two on one line do not compile.
+// __COUNTER__ would allow that, but it is not standard C++: clang 22+ reports
+// it under -Wpedantic as a C2y extension, which broke -Werror builds.
+#define METL_SCOPE_EXIT(...)                                \
+  auto METL_SCOPE_EXIT_CONCAT(metl_scope_exit_, __LINE__) = \
       ::metl::detail::scope_exit_tag{} + [&]() noexcept { __VA_ARGS__; }

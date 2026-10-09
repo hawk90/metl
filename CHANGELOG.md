@@ -41,6 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   operand where C++17 forbids a lambda. An assertion with a lambda in it
   compiled in the checked build and failed in the stripped one. The expression
   is still type-checked and still never run.
+- Clean under `-Wpedantic -Wdeprecated` again, which newer compilers broke for
+  `-Werror` consumers: `METL_SCOPE_EXIT` used `__COUNTER__` (a C2y extension
+  to clang 22+; it now uses `__LINE__`, so two guards on one line no longer
+  compile), `METL_LIKELY_ATTR` gave `[[likely]]` in C++17 (now C++20 only), and
+  `fixed_function` kept out-of-line definitions of `constexpr` static members
+  that C++17 deprecates.
 - The headers now build warning-free under MSVC `/W4 /WX`. `mpmc_queue`,
   `spsc_queue` and `spsc_byte_ring` raised C4324 (padding from their
   cache-line alignment, which is the point of it); `try_format_int` and

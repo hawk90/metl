@@ -134,7 +134,9 @@
 #define METL_UNLIKELY(x) (!!(x))
 #endif
 
-#if METL_HAS_CPP_ATTRIBUTE(likely) >= 201803L
+// C++20 as well as the attribute: clang reports __has_cpp_attribute(likely) in
+// C++17 mode too, and then warns under -Wpedantic that it is a C++20 extension.
+#if METL_HAS_CPP_ATTRIBUTE(likely) >= 201803L && METL_CXX_STANDARD >= 202002L
 #define METL_LIKELY_ATTR [[likely]]
 #define METL_UNLIKELY_ATTR [[unlikely]]
 #else
