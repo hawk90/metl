@@ -71,14 +71,10 @@ that is not `std::forward`ed, an rvalue-reference parameter that is not
 
 `pre-commit install` also registers a **pre-push hook**, `tools/pre_push.py`,
 which runs every CI check that can run on a workstation before the push leaves
-it: the checkers' self-tests, the source gates below, a Release `-Werror` build
-and ctest with each compiler it finds (the default `c++` and the newest
-`g++-NN`), and an ASan+UBSan build. About 20 s with `--quick` (no builds), a few
-minutes cold, less once its `build-prepush/` directories are warm. `--full` adds
-the mutation gate. The ARM size/stack/RAM budgets, the instruction counts,
-QEMU, Zephyr, ESP-IDF and the clang-tidy count stay on CI: they are measured on
-CI's toolchains. `git push --no-verify` skips the hook; CI still runs
-everything.
+it. What it runs, and what stays on CI and why, is listed at the top of that
+script. A few minutes cold, less once its `build-prepush/` directories are
+warm; `--quick` stops after the source gates. `git push --no-verify` skips the
+hook; CI still runs everything.
 
 ## Gates
 
