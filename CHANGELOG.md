@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   named object.
 ### Fixed
 
+- Comparing two `variant`s whose active alternative is not the first warned
+  under GCC's `-Wnull-dereference` at `-O2`, failing `-Werror` builds: the
+  comparison dereferenced `get_if`. It uses `get` now.
 - `optional<const T>` did not compile: placement new needed the `const T*` as
   a `void*`. It now stores the unqualified type, constructs, assigns (by
   replacing the object, as `variant` does for an alternative it cannot

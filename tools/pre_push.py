@@ -18,8 +18,9 @@ WHAT RUNS, cheapest first, stopping at the first failure:
        disagree about warnings, and CI builds with both.
   4. an ASan + UBSan Debug build and ctest, as the `sanitizers / asan-ubsan`
      job does.
-  5. the mutation gate (tools/check_mutants.py), which also catches a mutant
-     whose anchor text a change has moved.
+  5. the mutation gate (tools/check_mutants.py) for the mutants of the headers
+     this branch changes, which also catches a mutant whose anchor text a
+     change has moved. CI runs every mutant; the full set takes ~15 minutes.
   6. every test built and run through the amalgamation
      (tools/check_amalgamation.py), as the `amalgamation` job does.
   7. clang-tidy, as a DELTA: the same local binary over the merge-base with
@@ -333,10 +334,35 @@ def main():
                                                    "-DCMAKE_CXX_FLAGS=-fno-exceptions -fno-rtti"]):
         return 1
 
-    print("5. mutation gate")
-    if not step("check_mutants.py", [python, "tools/check_mutants.py", "--build-dir",
-                                     str(BUILD_ROOT / "sanitizers")]):
-        return 1
+    print("5. mutation gate (mutants of the headers this branch changes)")
+    # The whole set takes ~15 minutes; CI runs all of it. Locally, a mutant can
+    # only start surviving -- or stop applying, which is the anchor drift this
+    # step exists to catch before CI -- if its header changed, so those are run.
+    # A change to the gate itself runs everything.
+    base = subprocess.run(["git", "merge-base", "HEAD", "origin/main"], cwd=REPO,
+                          capture_output=True, text=True).stdout.strip()
+    changed = subprocess.run(["git", "diff", "--name-only", base or "HEAD"], cwd=REPO,
+                             capture_output=True, text=True).stdout.split()
+    sys.path.insert(0, str(REPO / "tools"))
+    import check_mutants  # noqa: E402 -- the list of mutants lives there
+    everything = "tools/check_mutants.py" in changed
+    selected = [m for m in check_mutants.MUTANTS if everything or m["file"] in changed]
+    if not selected:
+        print("  (no mutated header changed -- CI runs all of them)")
+    else:
+        # The tree CI's `mutants` job builds: Debug, without -Werror. A mutant
+        # is a behaviour change; one that only trips a warning (a variable left
+        # unused by a deleted check) is still a mutant to kill, not a build error.
+        build_dir = BUILD_ROOT / "mutants"
+        jobs = str(os.cpu_count() or 2)
+        command = [python, "tools/check_mutants.py", "--build-dir", str(build_dir)]
+        if not everything:
+            command += ["--files", ",".join(changed)]
+        if not (step("mutants: configure", ["cmake", "-B", str(build_dir), "-S", str(REPO),
+                                            "-DCMAKE_BUILD_TYPE=Debug", "-DMETL_INSTALL=OFF"])
+                and step("mutants: build", ["cmake", "--build", str(build_dir), "-j", jobs])
+                and step(f"check_mutants.py ({len(selected)} mutants)", command)):
+            return 1
 
     print("6. amalgamation")
     if not step("check_amalgamation.py", [python, "tools/check_amalgamation.py"]):

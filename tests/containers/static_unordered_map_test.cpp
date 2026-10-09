@@ -1,3 +1,5 @@
+#include "metl_check.hpp"
+
 #include <cstddef>
 #include <functional>
 
@@ -6,6 +8,26 @@
 #include <metl/static_unordered_map.hpp>
 
 namespace {
+
+// A stateful hasher: each default-constructed instance gets its own id, and
+// every call is counted against the id of the instance that made it. Copying
+// the hasher copies the id, so the counts show whose hasher a map is using.
+struct counting_hash {
+  static int next_id;
+  static int calls[4];
+
+  counting_hash() noexcept : id(next_id++ % 4) {}
+
+  std::size_t operator()(int key) const noexcept {
+    ++calls[id];
+    return static_cast<std::size_t>(key);
+  }
+
+  int id;
+};
+
+int counting_hash::next_id = 0;
+int counting_hash::calls[4] = {};
 
 using test_string = metl::fixed_string<32>;
 
@@ -247,6 +269,13 @@ int main() {
     if (m.contains(test_string("alpha"))) {
       return 16;
     }
+
+    // Heterogeneous erase of a key that is not there reports false and leaves
+    // the map alone -- including one that was there and is already gone.
+    CHECK(!m.erase(static_cast<const char*>("gamma")));
+    CHECK(!m.erase(static_cast<const char*>("alpha")));
+    CHECK_EQ(m.size(), std::size_t{1});
+    CHECK(m.contains(static_cast<const char*>("beta")));
   }
 
   // 17: power-of-2 probing must wrap correctly under collisions (struct identity hash).
@@ -358,5 +387,26 @@ int main() {
     }
   }
 
-  return 0;
+  // Copy assignment carries the source's hasher across, as the copy
+  // constructor does.
+  {
+    counting_hash::next_id = 0;
+    metl::static_unordered_map<int, int, 4, counting_hash> source;  // hasher id 0
+    metl::static_unordered_map<int, int, 4, counting_hash> target;  // hasher id 1
+    CHECK(source.try_emplace(1, 10));
+    CHECK(source.try_emplace(2, 20));
+    target = source;
+    counting_hash::calls[0] = 0;
+    counting_hash::calls[1] = 0;
+    CHECK(target.contains(2));
+    CHECK_EQ(counting_hash::calls[0], 1);
+    CHECK_EQ(counting_hash::calls[1], 0);
+
+    const metl::static_unordered_map<int, int, 4, counting_hash> copied(source);
+    counting_hash::calls[0] = 0;
+    CHECK(copied.contains(1));
+    CHECK_EQ(counting_hash::calls[0], 1);
+  }
+
+  return metl_test::exit_code();
 }

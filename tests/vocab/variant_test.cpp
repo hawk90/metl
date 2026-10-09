@@ -1,5 +1,9 @@
+#include "metl_check.hpp"
+
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
+#include <utility>
 
 #include <metl/in_place.hpp>
 #include <metl/variant.hpp>
@@ -69,11 +73,10 @@ bool visit_does_not_truncate_a_wide_alternative() {
   return result == 5'000'000'000LL;
 }
 
-// A visitor whose result type differs per alternative. metl::visit must refuse
-// it, as std::visit does -- and the TRAIT is what refuses, so the trait is what
-// can be tested here. Instantiating metl::visit with such a visitor is a hard
-// error by design, so the check stops one level short of the call; the
-// static_assert itself is pinned in tests/compile_fail/.
+// A visitor whose result type differs per alternative, and one that declares a
+// single result. metl::visit must refuse the first, as std::visit does; that is
+// a hard error by design, so it is pinned in tests/compile_fail/. What can run
+// here is the other half of the contract, below.
 //
 // Named structs rather than lambdas: a lambda in an unevaluated operand is C++20
 // and METL's baseline is C++17.
@@ -91,17 +94,81 @@ struct declared_visitor {
   }
 };
 
-static_assert(!metl::detail::visit_single_result_lvalue_v<truncating_visitor&&, std::int32_t, std::int64_t>,
-              "the guard must REJECT a visitor that returns a different type per "
-              "alternative -- otherwise metl::visit silently truncates");
+// ---- dispatch past alternative zero -----------------------------------------
+// visit and the comparison operators walk the alternatives one index at a
+// time. A walk that failed to advance would still answer correctly for index
+// 0, which is all the older checks ever held -- so every check here holds a
+// LATER alternative.
+using three = metl::variant<int, long, short>;
 
-static_assert(metl::detail::visit_single_result_lvalue_v<declared_visitor&&, std::int32_t, std::int64_t>,
-              "the guard must ACCEPT a visitor with one declared return type");
+struct widen {
+  long operator()(int input) const noexcept { return input; }
+  long operator()(long input) const noexcept { return input + 1000; }
+  long operator()(short input) const noexcept { return input + 2000L; }
+};
 
-// ...and it must not fire where there is nothing to disagree about.
-static_assert(metl::detail::visit_single_result_lvalue_v<truncating_visitor&&, int>,
-              "the guard must not reject a single-alternative variant");
+void visit_reaches_every_alternative_on_every_value_category() {
+  const three at_one(metl::in_place_index<1>, 5L);
+  const three at_two(metl::in_place_index<2>, static_cast<short>(6));
 
+  // lvalue, const lvalue
+  three mutable_one = at_one;
+  CHECK_EQ(metl::visit(widen{}, mutable_one), 1005L);
+  CHECK_EQ(metl::visit(widen{}, at_two), 2006L);
+
+  // rvalue
+  three moved_one = at_one;
+  three moved_two = at_two;
+  CHECK_EQ(metl::visit(widen{}, std::move(moved_one)), 1005L);
+  CHECK_EQ(metl::visit(widen{}, std::move(moved_two)), 2006L);
+
+  // const rvalue
+  CHECK_EQ(metl::visit(widen{}, static_cast<const three&&>(at_one)), 1005L);
+  CHECK_EQ(metl::visit(widen{}, static_cast<const three&&>(at_two)), 2006L);
+}
+
+template <std::size_t I, typename T>
+void compare_within_alternative(T low, T high) {
+  const three a(metl::in_place_index<I>, low);
+  const three a_again(metl::in_place_index<I>, low);
+  const three b(metl::in_place_index<I>, high);
+
+  CHECK(a == a_again);
+  CHECK(!(a == b));
+  CHECK(a != b);
+  CHECK(!(a != a_again));
+  CHECK(a < b);
+  CHECK(!(b < a));
+  CHECK(b > a);
+  CHECK(!(a > b));
+  CHECK(a <= a_again);
+  CHECK(!(b <= a));
+  CHECK(b >= a);
+  CHECK(!(a >= b));
+}
+
+void comparisons_reach_every_alternative() {
+  compare_within_alternative<0>(1, 2);
+  compare_within_alternative<1>(1L, 2L);
+  compare_within_alternative<2>(static_cast<short>(1), static_cast<short>(2));
+}
+
+// ---- the single-result guard, through the public API ------------------------
+// A visitor with ONE declared return type is accepted even when the
+// alternatives differ in width, and returns that type unconverted. A visitor
+// whose result differs per alternative must be rejected -- that half is a
+// compile error by design, pinned in tests/compile_fail/visit_mixed_return_types.cpp.
+void visit_accepts_a_single_declared_result() {
+  metl::variant<std::int32_t, std::int64_t> wide(metl::in_place_index<1>, 5'000'000'000LL);
+  static_assert(std::is_same_v<decltype(metl::visit(declared_visitor{}, wide)), std::int64_t>,
+                "visit returns the visitor's declared type");
+  CHECK_EQ(metl::visit(declared_visitor{}, wide), 5'000'000'000LL);
+
+  // With one alternative there is nothing to disagree about, so even the
+  // per-alternative visitor is accepted.
+  metl::variant<int> single(metl::in_place_index<0>, 3);
+  CHECK_EQ(metl::visit(truncating_visitor{}, single), 3);
+}
 }  // namespace
 
 int main() {
@@ -561,5 +628,8 @@ int main() {
     }
   }
 
-  return 0;
+  visit_reaches_every_alternative_on_every_value_category();
+  comparisons_reach_every_alternative();
+  visit_accepts_a_single_declared_result();
+  return metl_test::exit_code();
 }

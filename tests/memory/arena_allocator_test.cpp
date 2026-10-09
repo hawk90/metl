@@ -1,3 +1,5 @@
+#include "metl_check.hpp"
+
 #include <cstddef>
 #include <cstdint>
 
@@ -31,6 +33,18 @@ struct alignas(8) aligned_value {
 
 int tracker::constructions = 0;
 int tracker::destructions = 0;
+
+// The per-allocation bookkeeping record: the previous offset, the payload
+// offset and a destroy hook (arena_allocator.hpp, allocation_record). Mirrored
+// here, not measured through used(), so a miscounted offset cannot calibrate
+// the expectation it is checked against.
+struct record_mirror {
+  std::size_t previous_offset;
+  std::size_t payload_offset;
+  void (*destroy)(void*) noexcept;
+};
+
+constexpr std::size_t record_size = sizeof(record_mirror);
 
 }  // namespace
 
@@ -161,5 +175,35 @@ int main() {
     return 23;
   }
 
-  return 0;
+  // used() is exactly payload + padding + one record per allocation, and each
+  // payload starts where the previous record ended (rounded up to alignment).
+  {
+    metl::arena_allocator<256> exact;
+    const auto* base = static_cast<unsigned char*>(exact.allocate(1, 1));
+    CHECK(base != nullptr);
+    CHECK_EQ(exact.used(), 1 + record_size);
+    CHECK_EQ(exact.remaining(), 256 - (1 + record_size));
+    const auto* second = static_cast<unsigned char*>(exact.allocate(5, 1));
+    CHECK(second != nullptr);
+    CHECK_EQ(second - base, static_cast<std::ptrdiff_t>(1 + record_size));
+    CHECK_EQ(exact.used(), 1 + record_size + 5 + record_size);
+    const auto mark = exact.mark();
+    CHECK_EQ(mark.offset, exact.used());
+  }
+
+  // An allocation that fits exactly -- payload plus record fill the arena to
+  // the last byte -- succeeds; one byte more does not.
+  {
+    constexpr std::size_t capacity = 64;
+    metl::arena_allocator<capacity> full;
+    CHECK(full.allocate(capacity - record_size + 1, 1) == nullptr);
+    CHECK(full.empty());
+    void* fits = full.allocate(capacity - record_size, 1);
+    CHECK(fits != nullptr);
+    CHECK_EQ(full.used(), capacity);
+    CHECK_EQ(full.remaining(), std::size_t{0});
+    CHECK(full.allocate(1, 1) == nullptr);
+  }
+
+  return metl_test::exit_code();
 }

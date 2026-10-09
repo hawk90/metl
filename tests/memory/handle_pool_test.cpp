@@ -180,6 +180,38 @@ int main() {
     pool.clear();
   }
 
+  // --- The const get() rejects what the non-const one rejects -----------------
+  {
+    metl::handle_pool<int, 2> pool;
+    const auto& view = pool;
+    const auto live = pool.try_emplace(7);
+    const auto stale = pool.try_emplace(8);
+    CHECK(pool.destroy(stale));
+    CHECK_DEREF_EQ(view.get(live), 7);
+    CHECK_EQ(view.get(stale), static_cast<const int*>(nullptr));
+    CHECK_EQ(view.get(metl::handle_pool<int, 2>::handle_type{}), static_cast<const int*>(nullptr));
+  }
+
+  // --- A forged handle to a never-used slot does not resolve -------------------
+  // Every slot starts at generation 1, so `{unused index, 1}` matches the
+  // slot's generation; only the slot being inactive rejects it.
+  {
+    metl::handle_pool<int, 4> pool;
+    const auto& view = pool;
+    const auto issued = pool.try_emplace(1);
+    CHECK_EQ(issued.index(), 0u);
+    const metl::handle_pool<int, 4>::handle_type forged{2, 1};
+    CHECK_EQ(pool.generation_of(2), 1u);
+    CHECK(!pool.contains(forged));
+    CHECK_EQ(pool.get(forged), static_cast<int*>(nullptr));
+    CHECK_EQ(view.get(forged), static_cast<const int*>(nullptr));
+    CHECK(!pool.destroy(forged));
+    CHECK_EQ(pool.size(), std::size_t{1});
+    // Out of range at a matching generation is rejected too.
+    const metl::handle_pool<int, 4>::handle_type out_of_range{4, 1};
+    CHECK(!pool.contains(out_of_range));
+  }
+
   // --- Generation wraparound skips 0 -----------------------------------------
   // With an 8-bit counter the whole cycle is short enough to walk exhaustively.
   // Generation 0 is the null marker, so a slot must never land on it -- if it

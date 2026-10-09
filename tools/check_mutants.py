@@ -165,6 +165,460 @@ inline constexpr bool visit_single_result_lvalue_v =
         "new": """template <typename Visitor, typename... Ts>
 inline constexpr bool visit_single_result_lvalue_v = true;""",
     },
+    {
+        "name": "fixed_vector_range_erase_skips_dtor",
+        "file": "include/metl/fixed_vector.hpp",
+        "why": "range erase shifts the survivors down but never destroys the "
+               "vacated tail, so those objects leak.",
+        "kills": "ctest:fixed_vector_test|sequence_reentrancy",
+        "old": """    for (size_type i = size_; i < old_size; ++i) {
+      data()[i].~T();
+    }""",
+        "new": """    for (size_type i = size_; i < old_size; ++i) {
+    }""",
+    },
+    {
+        "name": "fixed_vector_try_assign_n_rejects_exact",
+        "file": "include/metl/fixed_vector.hpp",
+        "why": "try_assign(n, value) refuses n == Capacity, which fits.",
+        "kills": "ctest:fixed_vector_test",
+        "old": """  METL_NODISCARD bool try_assign(size_type n, const T& value) {
+    if (n > Capacity) {""",
+        "new": """  METL_NODISCARD bool try_assign(size_type n, const T& value) {
+    if (n >= Capacity) {""",
+    },
+    {
+        "name": "fixed_vector_try_assign_range_rejects_exact",
+        "file": "include/metl/fixed_vector.hpp",
+        "why": "try_assign(first, last) refuses a range of exactly Capacity.",
+        "kills": "ctest:fixed_vector_test",
+        "old": """    if (static_cast<size_type>(std::distance(first, last)) > Capacity) {
+      return false;
+    }
+    assign(first, last);""",
+        "new": """    if (static_cast<size_type>(std::distance(first, last)) >= Capacity) {
+      return false;
+    }
+    assign(first, last);""",
+    },
+    {
+        "name": "fixed_vector_equal_ignores_size",
+        "file": "include/metl/fixed_vector.hpp",
+        "why": "operator== treats a vector as equal to any longer one it is a "
+               "prefix of.",
+        "kills": "ctest:fixed_vector_test",
+        "old": """  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  for (std::size_t i = 0; i < lhs.size(); ++i) {
+    if (!(lhs[i] == rhs[i])) {""",
+        "new": """  if (lhs.size() > rhs.size()) {
+    return false;
+  }
+  for (std::size_t i = 0; i < lhs.size(); ++i) {
+    if (!(lhs[i] == rhs[i])) {""",
+    },
+    {
+        "name": "handle_pool_const_get_past_end",
+        "file": "include/metl/handle_pool.hpp",
+        "why": "the const get() turns the 'does not resolve' index into "
+               "slot_ptr(Capacity), so a stale or null handle returns a "
+               "pointer one past the slots.",
+        "kills": "ctest:handle_pool_test",
+        "old": """  METL_NODISCARD const_pointer get(handle_type handle) const noexcept {
+    const size_type index = live_index(handle);
+    return index < Capacity ? slot_ptr(index) : nullptr;""",
+        "new": """  METL_NODISCARD const_pointer get(handle_type handle) const noexcept {
+    const size_type index = live_index(handle);
+    return index <= Capacity ? slot_ptr(index) : nullptr;""",
+    },
+    {
+        "name": "handle_pool_range_and_inactive",
+        "file": "include/metl/handle_pool.hpp",
+        "why": "the liveness check needs out-of-range AND inactive to reject, "
+               "so a forged handle to a never-used slot at its starting "
+               "generation resolves.",
+        "kills": "ctest:handle_pool_test",
+        "old": "if (index >= Capacity || !active_[index] || generation_[index] != handle.generation()) {",
+        "new": "if ((index >= Capacity && !active_[index]) || generation_[index] != handle.generation()) {",
+    },
+    {
+        "name": "arena_exact_fit_record_rejected",
+        "file": "include/metl/arena_allocator.hpp",
+        "why": "an allocation whose payload and record fill the arena to the "
+               "last byte is refused.",
+        "kills": "ctest:arena_allocator_test",
+        "old": "    if (sizeof(allocation_record) > left) {",
+        "new": "    if (sizeof(allocation_record) >= left) {",
+    },
+    {
+        "name": "arena_offset_skips_a_byte",
+        "file": "include/metl/arena_allocator.hpp",
+        "why": "every allocation consumes one byte more than it reports; "
+               "rewind and reset stay self-consistent, only used() and the "
+               "offsets move.",
+        "kills": "ctest:arena_allocator_test",
+        "old": "    const size_type next_offset = previous_offset + total_bytes;",
+        "new": "    const size_type next_offset = previous_offset + total_bytes + 1;",
+    },
+    {
+        "name": "spsc_byte_ring_clear_keeps_head",
+        "file": "include/metl/spsc_byte_ring.hpp",
+        "why": "clear() resets only the write index; after any consume the "
+               "read index is left ahead of it and readable_size() wraps.",
+        "kills": "ctest:spsc_byte_ring_test",
+        "old": """  void clear() noexcept {
+    head_.store(0, std::memory_order_relaxed);
+""",
+        "new": """  void clear() noexcept {
+""",
+    },
+    {
+        "name": "unordered_map_copy_assign_keeps_hasher",
+        "file": "include/metl/static_unordered_map.hpp",
+        "why": "copy assignment keeps the destination's hasher instead of the "
+               "source's, unlike the copy constructor.",
+        "kills": "ctest:static_unordered_map_test",
+        "old": """    clear();
+    hasher_ = other.hasher_;
+""",
+        "new": """    clear();
+""",
+    },
+    {
+        "name": "unordered_map_heterogeneous_erase_missing_true",
+        "file": "include/metl/static_unordered_map.hpp",
+        "why": "heterogeneous erase of an absent key reports that it erased "
+               "something.",
+        "kills": "ctest:static_unordered_map_test",
+        "old": """  bool erase(const K& key) noexcept(lookup_cannot_throw<K>) {
+    const size_type index = find_existing_index(key);
+    if (index == npos) {
+      return false;""",
+        "new": """  bool erase(const K& key) noexcept(lookup_cannot_throw<K>) {
+    const size_type index = find_existing_index(key);
+    if (index == npos) {
+      return true;""",
+    },
+    {
+        "name": "flat_map_less_ignores_greater_key",
+        "file": "include/metl/flat_map.hpp",
+        "why": "operator< no longer stops at a greater lhs key, so a later "
+               "value or the size decides instead.",
+        "kills": "ctest:flat_map_test",
+        "old": """    if (rhs.begin()[i].key < lhs.begin()[i].key) {
+      return false;
+    }""",
+        "new": """    if (rhs.begin()[i].key < lhs.begin()[i].key && false) {
+      return false;
+    }""",
+    },
+    {
+        "name": "flat_map_less_ignores_greater_value",
+        "file": "include/metl/flat_map.hpp",
+        "why": "operator< no longer stops at a greater lhs value, so the size "
+               "decides instead.",
+        "kills": "ctest:flat_map_test",
+        "old": """    if (rhs.begin()[i].value < lhs.begin()[i].value) {
+      return false;
+    }""",
+        "new": """    if (rhs.begin()[i].value < lhs.begin()[i].value && false) {
+      return false;
+    }""",
+    },
+    {
+        "name": "stepper_poll_reruns_finished_task",
+        "file": "include/metl/coro/stepper.hpp",
+        "why": "poll() keeps calling step() on a task that finished with done. "
+               "It still returns false; only the extra step() calls show.",
+        "kills": "ctest:coro_stepper_test",
+        "old": "    if (done_ || error_) {",
+        "new": "    if (error_) {",
+    },
+    {
+        "name": "lookup_table_index_returns_first",
+        "file": "include/metl/lookup_table.hpp",
+        "why": "operator[] returns entry 0 whatever the index. The constexpr "
+               "checks never call it, and the one other call reads a "
+               "character entry 0 happens to share.",
+        "kills": "ctest:lookup_table_test",
+        "old": """operator[](size_type index) const noexcept {
+    METL_ASSERT(index < Size);
+    return entries_[index];""",
+        "new": """operator[](size_type index) const noexcept {
+    METL_ASSERT(index < Size);
+    return entries_[0];""",
+    },
+    {
+        "name": "spsc_byte_ring_consume_harden_removed",
+        "file": "include/metl/spsc_byte_ring.hpp",
+        "why": "consume() past the readable bytes moves the read index beyond "
+               "the write index at METL_HARDENING_NONE.",
+        "kills": "ctest:harden_floor_memory",
+        "old": "    METL_HARDEN(count <= tail - head);",
+        "new": "",
+    },
+    {
+        "name": "arena_alignment_harden_removed",
+        "file": "include/metl/arena_allocator.hpp",
+        "why": "a non-power-of-two alignment reaches align_up's bitmask at "
+               "METL_HARDENING_NONE.",
+        "kills": "ctest:harden_floor_memory",
+        "old": "    METL_HARDEN(alignment != 0 && (alignment & (alignment - 1)) == 0);",
+        "new": "",
+    },
+    {
+        "name": "flat_map_emplace_full_harden_removed",
+        "file": "include/metl/flat_map.hpp",
+        "why": "emplace of a new key into a full flat_map returns a one-past- "
+               "the-end reference at METL_HARDENING_NONE.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """      // stripped at low hardening levels; METL_HARDEN never is.
+      METL_HARDEN(index < size_);""",
+        "new": "      // stripped at low hardening levels; METL_HARDEN never is.",
+    },
+    {
+        "name": "flat_map_insert_or_assign_full_harden_removed",
+        "file": "include/metl/flat_map.hpp",
+        "why": "insert_or_assign of a new key into a full flat_map returns a "
+               "one-past-the-end reference at METL_HARDENING_NONE.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """      // `index == size_`, which would make this a one-past-the-end reference.
+      METL_HARDEN(index < size_);""",
+        "new": "      // `index == size_`, which would make this a one-past-the-end reference.",
+    },
+    {
+        "name": "flat_set_emplace_full_harden_removed",
+        "file": "include/metl/flat_set.hpp",
+        "why": "emplace of a new key into a full flat_set returns a one-past- "
+               "the-end reference at METL_HARDENING_NONE.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """      // levels; METL_HARDEN never is.
+      METL_HARDEN(index < size_);""",
+        "new": "      // levels; METL_HARDEN never is.",
+    },
+    {
+        "name": "fixed_string_compare_null_harden_removed",
+        "file": "include/metl/fixed_string.hpp",
+        "why": "comparing a fixed_string with a null const char* reads "
+               "through the null pointer at METL_HARDENING_NONE.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """  int compare_c(const char* text) const noexcept {
+    METL_HARDEN(text != nullptr);""",
+        "new": """  int compare_c(const char* text) const noexcept {""",
+    },
+    {
+        "name": "unordered_map_insert_or_assign_full_harden_removed",
+        "file": "include/metl/static_unordered_map.hpp",
+        "why": "insert_or_assign of a new key into a full map returns "
+               "*slot_value(npos) at METL_HARDENING_NONE.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """      // hardening levels; without this, slot_value(npos) would be a wild read.
+      METL_HARDEN(index < bucket_count);""",
+        "new": """      // hardening levels; without this, slot_value(npos) would be a wild read.""",
+    },
+    # ---- metl::expected (#202) ------------------------------------------------
+    {
+        "name": "expected_move_assign_self_check_inverted",
+        "file": "include/metl/expected.hpp",
+        "why": "move assignment returns early for every OTHER object, so it is "
+               "a no-op. Live-object counts stay balanced; only the value is "
+               "wrong, and only the fuzz harness's value oracle reads it.",
+        "kills": "ctest:replay_fuzz_vocab",
+        "old": """                                                 std::is_nothrow_move_constructible_v<E>) {
+    if (this == &other) {""",
+        "new": """                                                 std::is_nothrow_move_constructible_v<E>) {
+    if (this != &other) {""",
+    },
+    {
+        "name": "expected_move_ctor_branches_swapped",
+        "file": "include/metl/expected.hpp",
+        "why": "the move constructor builds the error from a value and the "
+               "value from an error. Copy elision means a prvalue never reaches "
+               "it, so only a test that moves a NAMED expected instantiates it.",
+        "kills": "ctest:expected_test",
+        "old": """    if (has_value_) {
+      construct_value(static_cast<T&&>(other.value_unchecked()));
+    } else {
+      construct_error(static_cast<E&&>(other.error_unchecked()));
+    }""",
+        "new": """    if (!has_value_) {
+      construct_value(static_cast<T&&>(other.value_unchecked()));
+    } else {
+      construct_error(static_cast<E&&>(other.error_unchecked()));
+    }""",
+    },
+    {
+        "name": "expected_void_copy_assign_self_check_inverted",
+        "file": "include/metl/expected.hpp",
+        "why": "expected<void, E> copy assignment becomes a no-op for every "
+               "other object; the state and the error are never copied.",
+        "kills": "ctest:expected_test",
+        "old": """  expected& operator=(const expected& other) {
+    if (this == &other) {
+      return *this;
+    }
+
+    if (other.has_value_) {
+      if (!has_value_) {""",
+        "new": """  expected& operator=(const expected& other) {
+    if (this != &other) {
+      return *this;
+    }
+
+    if (other.has_value_) {
+      if (!has_value_) {""",
+    },
+    {
+        "name": "expected_swap_value_error_leaks_error",
+        "file": "include/metl/expected.hpp",
+        "why": "the value<->error swap (E nothrow-movable) never destroys the "
+               "old error. Both sides read right afterwards; one E is leaked, "
+               "which only a lifetime count sees.",
+        "kills": "ctest:expected_test",
+        "old": """      E tmp(static_cast<E&&>(*e.error_ptr()));
+      e.error_ptr()->~E();""",
+        "new": """      E tmp(static_cast<E&&>(*e.error_ptr()));""",
+    },
+    {
+        "name": "expected_swap_value_error_leaks_error_throwing_move",
+        "file": "include/metl/expected.hpp",
+        "why": "the same leak on the other branch, taken when only T is "
+               "nothrow-movable: the old error is overwritten, not destroyed.",
+        "kills": "ctest:expected_test",
+        "old": """      e.error_ptr()->~E();
+      ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(tmp));""",
+        "new": """      ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(tmp));""",
+    },
+    {
+        "name": "expected_error_copy_assign_dropped",
+        "file": "include/metl/expected.hpp",
+        "why": "assigning an error to an expected that already holds one keeps "
+               "the OLD error. The state is right, so has_value() checks pass.",
+        "kills": "ctest:expected_test",
+        "old": """      *error_ptr() = std::forward<G>(error);
+      return;""",
+        "new": """      return;""",
+    },
+    {
+        "name": "expected_error_error_swap_dropped",
+        "file": "include/metl/expected.hpp",
+        "why": "swapping two expecteds that both hold errors does nothing.",
+        "kills": "ctest:expected_test",
+        "old": """      swap(*value_ptr(), *other.value_ptr());
+    } else if (!has_value_ && !other.has_value_) {
+      using std::swap;
+      swap(*error_ptr(), *other.error_ptr());
+    } else if (has_value_ && !other.has_value_) {""",
+        "new": """      swap(*value_ptr(), *other.value_ptr());
+    } else if (!has_value_ && !other.has_value_) {
+    } else if (has_value_ && !other.has_value_) {""",
+    },
+    {
+        "name": "expected_emplace_move_throw_no_restore",
+        "file": "include/metl/expected.hpp",
+        "why": "when the move that commits a new value throws, the backed-up "
+               "error is not put back: a destroyed E under has_value() == false.",
+        "kills": "ctest:expected_regression",
+        "old": """        construct_error(static_cast<E&&>(backup));
+        throw;""",
+        "new": """        throw;""",
+    },
+    {
+        "name": "expected_emplace_pinned_throw_no_restore",
+        "file": "include/metl/expected.hpp",
+        "why": "the same for a non-movable T whose constructor throws: the "
+               "previous error is destroyed and never restored.",
+        "kills": "ctest:expected_regression",
+        "old": """        construct_error(static_cast<E&&>(backup));  // restore the previous state""",
+        "new": """        // restore the previous state""",
+    },
+    # ---- metl::variant (#202) -------------------------------------------------
+    {
+        "name": "variant_visit_rvalue_same_index",
+        "file": "include/metl/variant.hpp",
+        "why": "rvalue visit recurses on the SAME index, so any alternative "
+               "but the first never terminates. Every test visited index 0.",
+        "kills": "ctest:variant_test",
+        "old": """    return visit_impl<Result, Index + 1>(std::forward<Visitor>(visitor),
+                                         static_cast<variant<Ts...>&&>(value));""",
+        "new": """    return visit_impl<Result, Index>(std::forward<Visitor>(visitor),
+                                     static_cast<variant<Ts...>&&>(value));""",
+    },
+    {
+        "name": "variant_visit_const_rvalue_same_index",
+        "file": "include/metl/variant.hpp",
+        "why": "the same on the const-rvalue overload.",
+        "kills": "ctest:variant_test",
+        "old": """    return visit_impl<Result, Index + 1>(std::forward<Visitor>(visitor),
+                                         static_cast<const variant<Ts...>&&>(value));""",
+        "new": """    return visit_impl<Result, Index>(std::forward<Visitor>(visitor),
+                                     static_cast<const variant<Ts...>&&>(value));""",
+    },
+    {
+        "name": "variant_compare_same_index",
+        "file": "include/metl/variant.hpp",
+        "why": "comparison recurses on the SAME index, so comparing two "
+               "variants that both hold alternative 1 or later never returns.",
+        "kills": "ctest:variant_test",
+        "old": "    return compare_alternative<Op, I + 1>(lhs, rhs);",
+        "new": "    return compare_alternative<Op, I>(lhs, rhs);",
+    },
+    {
+        "name": "variant_valueless_equal_flipped",
+        "file": "include/metl/variant.hpp",
+        "why": "two valueless variants compare unequal.",
+        "kills": "ctest:variant_regression",
+        "old": """  if (lhs.valueless_by_exception()) {
+    return true;
+  }
+  return detail::compare_alternative<detail::cmp_eq, 0>(lhs, rhs);""",
+        "new": """  if (lhs.valueless_by_exception()) {
+    return false;
+  }
+  return detail::compare_alternative<detail::cmp_eq, 0>(lhs, rhs);""",
+    },
+    {
+        "name": "variant_valueless_not_equal_flipped",
+        "file": "include/metl/variant.hpp",
+        "why": "two valueless variants compare not-equal.",
+        "kills": "ctest:variant_regression",
+        "old": """  if (lhs.valueless_by_exception()) {
+    return false;
+  }
+  return detail::compare_alternative<detail::cmp_ne, 0>(lhs, rhs);""",
+        "new": """  if (lhs.valueless_by_exception()) {
+    return true;
+  }
+  return detail::compare_alternative<detail::cmp_ne, 0>(lhs, rhs);""",
+    },
+    {
+        "name": "variant_copy_assign_from_valueless_keeps_old",
+        "file": "include/metl/variant.hpp",
+        "why": "copy-assigning a valueless variant leaves the target holding "
+               "its old alternative instead of becoming valueless.",
+        "kills": "ctest:variant_regression",
+        "old": """      reset();
+      return *this;
+    }
+    assign_from(other);""",
+        "new": """      return *this;
+    }
+    assign_from(other);""",
+    },
+    {
+        "name": "variant_move_assign_from_valueless_keeps_old",
+        "file": "include/metl/variant.hpp",
+        "why": "the same for move assignment.",
+        "kills": "ctest:variant_regression",
+        "old": """      reset();
+      return *this;
+    }
+    assign_from(static_cast<variant&&>(other));""",
+        "new": """      return *this;
+    }
+    assign_from(static_cast<variant&&>(other));""",
+    },
 ]
 
 
@@ -210,7 +664,9 @@ def run_gate(spec, build_dir):
         if build.returncode != 0:
             # A mutant that stops the build is not a useful mutant: it proves the
             # compiler noticed, not that a test did.
-            return None, "the mutated tree did not build"
+            errors = [line for line in (build.stdout + build.stderr).splitlines() if "error" in line]
+            first = errors[0].strip() if errors else "(no error line in the build output)"
+            return None, f"the mutated tree did not build: {first}"
         result = subprocess.run(["ctest", "--test-dir", build_dir, "-R", rest, "-j"],
                                 capture_output=True, text=True, cwd=REPO)
         return result.returncode != 0, result.stdout[-800:]
@@ -351,6 +807,8 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--build-dir", default="build")
     parser.add_argument("--only", help="substring of a mutant name")
+    parser.add_argument("--files", help="comma-separated paths: run only the mutants of these "
+                                        "files (an empty list selects none)")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
@@ -359,6 +817,12 @@ def main():
         return self_test()
 
     selected = [m for m in MUTANTS if not args.only or args.only in m["name"]]
+    if args.files is not None:
+        wanted = {path for path in args.files.split(",") if path}
+        selected = [m for m in selected if m["file"] in wanted]
+        if not selected:
+            print(f"no mutant targets {sorted(wanted) or 'any changed file'}; nothing to run")
+            return 0
 
     if args.list:
         for mutant in selected:
