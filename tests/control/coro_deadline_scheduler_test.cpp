@@ -63,6 +63,21 @@ struct immediate_rearm {
   }
 };
 
+/// Re-arms at `now` and counts its polls: the starvation case. With ties broken
+/// by heap position, a re-armed task could be picked again before the other
+/// tasks already due ever ran.
+struct counting_rearm {
+  int id;
+  int polls;
+
+  static metl::optional<tick> poll(void* self, tick now) noexcept {
+    auto* task = static_cast<counting_rearm*>(self);
+    ++task->polls;
+    record(task->id);
+    return now;
+  }
+};
+
 /// Fills the scheduler from inside its own poll, to exercise the reserved slot.
 struct greedy {
   scheduler_type* owner;
@@ -270,6 +285,43 @@ int main() {
     const metl::optional<tick> next = scheduler.next_deadline();
     CHECK(next.has_value());
     CHECK_EQ(*next, 20u);  // the greedy re-arm at now + 10 beats the fillers at now + 100
+  }
+
+  // ---------------------------------------------------------------------
+  // Equal deadlines run in scheduling order, re-arms included: four tasks due
+  // at 0 that each re-arm at `now` take strict turns. Ties broken by heap
+  // position gave 50 0 0 50 over 100 dispatches.
+  // ---------------------------------------------------------------------
+  {
+    scheduler_type scheduler;
+    counting_rearm tasks[4] = {{1, 0}, {2, 0}, {3, 0}, {4, 0}};
+    for (auto& task : tasks) {
+      scheduler.schedule(&task, &counting_rearm::poll, 0);
+    }
+    reset_log();
+    CHECK_EQ(scheduler.run_due(0, 100), 100u);
+    for (const auto& task : tasks) {
+      CHECK_EQ(task.polls, 25);
+    }
+    // The first 32 dispatches, logged: 1 2 3 4 1 2 3 4 ...
+    for (std::size_t i = 0; i < g_log_size; ++i) {
+      CHECK_EQ(g_log[i], static_cast<int>(i % 4) + 1);
+    }
+  }
+
+  // Ties among one-shots keep scheduling order, whatever the heap does with them.
+  {
+    scheduler_type scheduler;
+    one_shot shots[8] = {{1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}};
+    for (auto& shot : shots) {
+      scheduler.schedule(&shot, &one_shot::poll, 50);
+    }
+    reset_log();
+    CHECK_EQ(scheduler.run_due(50), 8u);
+    CHECK_EQ(g_log_size, 8u);
+    for (std::size_t i = 0; i < g_log_size; ++i) {
+      CHECK_EQ(g_log[i], static_cast<int>(i) + 1);
+    }
   }
 
   return metl_test::exit_code();

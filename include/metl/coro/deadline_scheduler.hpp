@@ -65,6 +65,11 @@ class deadline_scheduler {
     Tick deadline;   ///< Tick at or after which the task should be polled.
     void* task;      ///< Non-owning pointer to the task object.
     poll_type poll;  ///< Trampoline that runs one step and reports the next deadline.
+    /// Order of scheduling, which breaks ties between equal deadlines: first
+    /// scheduled, first polled. 64 bits so that it cannot wrap -- a wrapping
+    /// counter compared modulo its width is not a strict weak ordering, and the
+    /// heap would misorder silently.
+    std::uint64_t sequence;
   };
 
   deadline_scheduler() noexcept = default;
@@ -86,7 +91,7 @@ class deadline_scheduler {
     if (queue_.size() + reserved() >= Capacity) {
       return false;
     }
-    return queue_.try_push(entry{deadline, task, fn});
+    return queue_.try_push(entry{deadline, task, fn, next_sequence_++});
   }
 
   /// @brief Schedule @p task to be polled at or after @p deadline.
@@ -126,7 +131,8 @@ class deadline_scheduler {
     return queue_.top().deadline;
   }
 
-  /// @brief Poll every task whose deadline is at or before @p now, earliest first.
+  /// @brief Poll every task whose deadline is at or before @p now, earliest first;
+  ///        tasks with the same deadline in the order they were scheduled.
   /// @param now The current tick.
   /// @param max_dispatches Upper bound on polls in this call, guaranteeing
   ///        termination. A task that re-arms at a deadline <= `now` is asking to
@@ -155,7 +161,7 @@ class deadline_scheduler {
       if (next.has_value()) {
         // Guaranteed to fit: we popped one slot above and held it reserved for
         // exactly this push while the poll was running.
-        queue_.push(entry{*next, due.task, due.poll});
+        queue_.push(entry{*next, due.task, due.poll, next_sequence_++});
       }
     }
     return dispatched;
@@ -173,9 +179,16 @@ class deadline_scheduler {
  private:
   /// Orders the heap so that the EARLIEST deadline is on top. `fixed_priority_queue`
   /// is a max-heap: `comp(a, b) == true` means "a comes out after b", so comparing
-  /// with `>` puts the smallest deadline first.
+  /// with `>` puts the smallest deadline first. Equal deadlines come out in
+  /// scheduling order: without that, a task re-arming at `now` could be picked
+  /// again ahead of tasks that were already due, and starve them.
   struct later_deadline {
-    bool operator()(const entry& lhs, const entry& rhs) const noexcept { return lhs.deadline > rhs.deadline; }
+    bool operator()(const entry& lhs, const entry& rhs) const noexcept {
+      if (lhs.deadline != rhs.deadline) {
+        return lhs.deadline > rhs.deadline;
+      }
+      return lhs.sequence > rhs.sequence;
+    }
   };
 
   /// One slot held back per poll on the stack, for that task's re-arm. A depth,
@@ -186,6 +199,7 @@ class deadline_scheduler {
 
   fixed_priority_queue<entry, Capacity, later_deadline> queue_;
   size_type poll_depth_ = 0;
+  std::uint64_t next_sequence_ = 0;
 };
 
 }  // namespace coro
