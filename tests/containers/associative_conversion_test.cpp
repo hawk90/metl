@@ -11,6 +11,14 @@
 //     append the already-sorted source without comparing, and the unordered
 //     containers' noexcept includes the hasher and key comparison.
 
+// This test passes narrowing and converting keys on purpose; a consumer's
+// -Wconversion would report the very conversion it exists to check.
+#if defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wconversion"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+#pragma GCC diagnostic ignored "-Wfloat-conversion"
+#endif
+
 #include "metl_check.hpp"
 
 #include <cstddef>

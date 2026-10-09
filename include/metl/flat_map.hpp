@@ -366,14 +366,18 @@ class flat_map {
       // Convert first, so the position, the duplicate check and the stored
       // key all come from the same value; a narrowing conversion would
       // otherwise store a key that does not belong where the argument put it.
-      return try_emplace(key_type{std::forward<K>(key)}, std::forward<V>(value));
-    }
-    const size_type index = lower_bound_index(key);
-    if (index < size_ && !comp_(key, data()[index].key)) {
-      return false;
-    }
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted{std::forward<K>(key)};
+      return try_emplace(static_cast<key_type&&>(converted), std::forward<V>(value));
+    } else {
+      const size_type index = lower_bound_index(key);
+      if (index < size_ && !comp_(key, data()[index].key)) {
+        return false;
+      }
 
-    return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
+      return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
+    }
   }
 
   /// @brief Insert @p key/@p value and return a reference to the new element.
@@ -386,19 +390,23 @@ class flat_map {
       // Convert first, so the position, the duplicate check and the stored
       // key all come from the same value; a narrowing conversion would
       // otherwise store a key that does not belong where the argument put it.
-      return emplace(key_type{std::forward<K>(key)}, std::forward<V>(value));
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted{std::forward<K>(key)};
+      return emplace(static_cast<key_type&&>(converted), std::forward<V>(value));
+    } else {
+      const size_type index = lower_bound_index(key);
+      METL_HARDEN(!(index < size_ && !comp_(key, data()[index].key)));
+      const bool inserted = try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
+      METL_ASSERT(inserted);
+      (void)inserted;
+      // Hard guard on the full-map path: on a full map
+      // try_insert_at returns false with `index == size_ == Capacity`, so the
+      // return below would hand out a one-past-the-end reference. METL_ASSERT is
+      // stripped at low hardening levels; METL_HARDEN never is.
+      METL_HARDEN(index < size_);
+      return data()[index];
     }
-    const size_type index = lower_bound_index(key);
-    METL_HARDEN(!(index < size_ && !comp_(key, data()[index].key)));
-    const bool inserted = try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
-    METL_ASSERT(inserted);
-    (void)inserted;
-    // Hard guard on the full-map path: on a full map
-    // try_insert_at returns false with `index == size_ == Capacity`, so the
-    // return below would hand out a one-past-the-end reference. METL_ASSERT is
-    // stripped at low hardening levels; METL_HARDEN never is.
-    METL_HARDEN(index < size_);
-    return data()[index];
   }
 
   /// @brief Assign @p value to an existing @p key, or insert the pair if absent.
@@ -412,15 +420,19 @@ class flat_map {
       // Convert first, so the position, the duplicate check and the stored
       // key all come from the same value; a narrowing conversion would
       // otherwise store a key that does not belong where the argument put it.
-      return try_insert_or_assign(key_type{std::forward<K>(key)}, std::forward<V>(value));
-    }
-    const size_type index = lower_bound_index(key);
-    if (index < size_ && !comp_(key, data()[index].key)) {
-      data()[index].value = std::forward<V>(value);
-      return true;
-    }
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted{std::forward<K>(key)};
+      return try_insert_or_assign(static_cast<key_type&&>(converted), std::forward<V>(value));
+    } else {
+      const size_type index = lower_bound_index(key);
+      if (index < size_ && !comp_(key, data()[index].key)) {
+        data()[index].value = std::forward<V>(value);
+        return true;
+      }
 
-    return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
+      return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
+    }
   }
 
   /// @brief Assign @p value to an existing @p key, or insert the pair if absent.
@@ -432,16 +444,20 @@ class flat_map {
       // Convert first, so the position, the duplicate check and the stored
       // key all come from the same value; a narrowing conversion would
       // otherwise store a key that does not belong where the argument put it.
-      return insert_or_assign(key_type{std::forward<K>(key)}, std::forward<V>(value));
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted{std::forward<K>(key)};
+      return insert_or_assign(static_cast<key_type&&>(converted), std::forward<V>(value));
+    } else {
+      const size_type index = lower_bound_index(key);
+      const bool stored = try_insert_or_assign(std::forward<K>(key), std::forward<V>(value));
+      METL_ASSERT(stored);
+      (void)stored;
+      // Same full-map hazard as emplace above: a refused insert leaves
+      // `index == size_`, which would make this a one-past-the-end reference.
+      METL_HARDEN(index < size_);
+      return data()[index];
     }
-    const size_type index = lower_bound_index(key);
-    const bool stored = try_insert_or_assign(std::forward<K>(key), std::forward<V>(value));
-    METL_ASSERT(stored);
-    (void)stored;
-    // Same full-map hazard as emplace above: a refused insert leaves
-    // `index == size_`, which would make this a one-past-the-end reference.
-    METL_HARDEN(index < size_);
-    return data()[index];
   }
 
   /// @brief Erase the element with the given key, if present.

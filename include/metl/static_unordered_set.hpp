@@ -447,25 +447,29 @@ class static_unordered_set {
       // Convert first, so the position, the duplicate check and the stored
       // key all come from the same value; a narrowing conversion would
       // otherwise store a key that does not belong where the argument put it.
-      return try_emplace(key_type(std::forward<K>(key)));
-    }
-    size_type index = npos;
-    if (!locate_insert_index(key, &index)) {
-      return false;
-    }
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted(std::forward<K>(key));
+      return try_emplace(static_cast<key_type&&>(converted));
+    } else {
+      size_type index = npos;
+      if (!locate_insert_index(key, &index)) {
+        return false;
+      }
 
-    if (states_[index] == slot_state::occupied) {
-      return false;
-    }
+      if (states_[index] == slot_state::occupied) {
+        return false;
+      }
 
-    // Capacity is the user-requested element ceiling; bucket_count is the (larger) table size.
-    // Refuse insertion past Capacity even when an empty/tombstone slot is still available.
-    if (size_ >= Capacity) {
-      return false;
-    }
+      // Capacity is the user-requested element ceiling; bucket_count is the (larger) table size.
+      // Refuse insertion past Capacity even when an empty/tombstone slot is still available.
+      if (size_ >= Capacity) {
+        return false;
+      }
 
-    (void)construct_at(index, std::forward<K>(key));
-    return true;
+      (void)construct_at(index, std::forward<K>(key));
+      return true;
+    }
   }
 
   /// @brief Insert @p key and return a reference to the stored element.
@@ -478,23 +482,27 @@ class static_unordered_set {
       // Convert first, so the position, the duplicate check and the stored
       // key all come from the same value; a narrowing conversion would
       // otherwise store a key that does not belong where the argument put it.
-      return emplace(key_type(std::forward<K>(key)));
-    }
-    // Find-existing first, as static_unordered_map::emplace does: a duplicate
-    // returns the stored element as documented, instead of asserting -- or, at
-    // METL_HARDENING_NONE, constructing over the live element.
-    const size_type existing = find_existing_index(key);
-    if (existing != npos) {
-      return *slot_value(existing);
-    }
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted(std::forward<K>(key));
+      return emplace(static_cast<key_type&&>(converted));
+    } else {
+      // Find-existing first, as static_unordered_map::emplace does: a duplicate
+      // returns the stored element as documented, instead of asserting -- or, at
+      // METL_HARDENING_NONE, constructing over the live element.
+      const size_type existing = find_existing_index(key);
+      if (existing != npos) {
+        return *slot_value(existing);
+      }
 
-    METL_ASSERT(size_ < Capacity);
-    size_type index = npos;
-    const bool available = locate_insert_index(key, &index);
-    METL_ASSERT(available);
-    METL_ASSERT(states_[index] != slot_state::occupied);
-    index = construct_at(index, std::forward<K>(key));
-    return *slot_value(index);
+      METL_ASSERT(size_ < Capacity);
+      size_type index = npos;
+      const bool available = locate_insert_index(key, &index);
+      METL_ASSERT(available);
+      METL_ASSERT(states_[index] != slot_state::occupied);
+      index = construct_at(index, std::forward<K>(key));
+      return *slot_value(index);
+    }
   }
 
   /// @brief Erase the element equal to the given key, if present (leaves a tombstone slot).

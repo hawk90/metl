@@ -358,14 +358,18 @@ class flat_set {
       // Convert first, so the position, the duplicate check and the stored
       // key all come from the same value; a narrowing conversion would
       // otherwise store a key that does not belong where the argument put it.
-      return try_emplace(key_type(std::forward<K>(key)));
-    }
-    const size_type index = lower_bound_index(key);
-    if (index < size_ && !comp_(key, data()[index])) {
-      return false;
-    }
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted(std::forward<K>(key));
+      return try_emplace(static_cast<key_type&&>(converted));
+    } else {
+      const size_type index = lower_bound_index(key);
+      if (index < size_ && !comp_(key, data()[index])) {
+        return false;
+      }
 
-    return try_insert_at(index, std::forward<K>(key));
+      return try_insert_at(index, std::forward<K>(key));
+    }
   }
 
   /// @brief Insert @p key and return a reference to the new element.
@@ -378,18 +382,22 @@ class flat_set {
       // Convert first, so the position, the duplicate check and the stored
       // key all come from the same value; a narrowing conversion would
       // otherwise store a key that does not belong where the argument put it.
-      return emplace(key_type(std::forward<K>(key)));
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted(std::forward<K>(key));
+      return emplace(static_cast<key_type&&>(converted));
+    } else {
+      const size_type index = lower_bound_index(key);
+      METL_HARDEN(!(index < size_ && !comp_(key, data()[index])));
+      const bool inserted = try_insert_at(index, std::forward<K>(key));
+      METL_ASSERT(inserted);
+      (void)inserted;
+      // Hard guard on the full-set path — see the twin
+      // comment on flat_map::emplace. METL_ASSERT is stripped at low hardening
+      // levels; METL_HARDEN never is.
+      METL_HARDEN(index < size_);
+      return data()[index];
     }
-    const size_type index = lower_bound_index(key);
-    METL_HARDEN(!(index < size_ && !comp_(key, data()[index])));
-    const bool inserted = try_insert_at(index, std::forward<K>(key));
-    METL_ASSERT(inserted);
-    (void)inserted;
-    // Hard guard on the full-set path — see the twin
-    // comment on flat_map::emplace. METL_ASSERT is stripped at low hardening
-    // levels; METL_HARDEN never is.
-    METL_HARDEN(index < size_);
-    return data()[index];
   }
 
   /// @brief Erase the element equal to the given key, if present.

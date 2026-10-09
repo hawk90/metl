@@ -460,25 +460,29 @@ class static_unordered_map {
       // Convert first, so the position, the duplicate check and the stored
       // key all come from the same value; a narrowing conversion would
       // otherwise store a key that does not belong where the argument put it.
-      return try_emplace(key_type{std::forward<K>(key)}, std::forward<V>(value));
-    }
-    size_type index = npos;
-    if (!locate_insert_index(key, &index)) {
-      return false;
-    }
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted{std::forward<K>(key)};
+      return try_emplace(static_cast<key_type&&>(converted), std::forward<V>(value));
+    } else {
+      size_type index = npos;
+      if (!locate_insert_index(key, &index)) {
+        return false;
+      }
 
-    if (states_[index] == slot_state::occupied) {
-      return false;
-    }
+      if (states_[index] == slot_state::occupied) {
+        return false;
+      }
 
-    // Capacity is the user-requested element ceiling; bucket_count is the (larger) table size.
-    // Refuse insertion past Capacity even when an empty/tombstone slot is still available.
-    if (size_ >= Capacity) {
-      return false;
-    }
+      // Capacity is the user-requested element ceiling; bucket_count is the (larger) table size.
+      // Refuse insertion past Capacity even when an empty/tombstone slot is still available.
+      if (size_ >= Capacity) {
+        return false;
+      }
 
-    (void)construct_at(index, std::forward<K>(key), std::forward<V>(value));
-    return true;
+      (void)construct_at(index, std::forward<K>(key), std::forward<V>(value));
+      return true;
+    }
   }
 
   /// @brief Insert @p key/@p value, or return the existing element if @p key is already present.
@@ -491,22 +495,26 @@ class static_unordered_map {
       // Convert first, so the position, the duplicate check and the stored
       // key all come from the same value; a narrowing conversion would
       // otherwise store a key that does not belong where the argument put it.
-      return emplace(key_type{std::forward<K>(key)}, std::forward<V>(value));
-    }
-    // Find-existing first so a duplicate key never double-constructs over a
-    // live element (which would also increment size_ twice).
-    const size_type existing = find_existing_index(key);
-    if (existing != npos) {
-      return *slot_value(existing);
-    }
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted{std::forward<K>(key)};
+      return emplace(static_cast<key_type&&>(converted), std::forward<V>(value));
+    } else {
+      // Find-existing first so a duplicate key never double-constructs over a
+      // live element (which would also increment size_ twice).
+      const size_type existing = find_existing_index(key);
+      if (existing != npos) {
+        return *slot_value(existing);
+      }
 
-    METL_ASSERT(size_ < Capacity);
-    size_type index = npos;
-    const bool available = locate_insert_index(key, &index);
-    METL_ASSERT(available);
-    METL_ASSERT(states_[index] != slot_state::occupied);
-    index = construct_at(index, std::forward<K>(key), std::forward<V>(value));
-    return *slot_value(index);
+      METL_ASSERT(size_ < Capacity);
+      size_type index = npos;
+      const bool available = locate_insert_index(key, &index);
+      METL_ASSERT(available);
+      METL_ASSERT(states_[index] != slot_state::occupied);
+      index = construct_at(index, std::forward<K>(key), std::forward<V>(value));
+      return *slot_value(index);
+    }
   }
 
   /// @brief Assign @p value to an existing @p key, or insert the pair if absent.
@@ -520,9 +528,13 @@ class static_unordered_map {
       // Convert first, so the position, the duplicate check and the stored
       // key all come from the same value; a narrowing conversion would
       // otherwise store a key that does not belong where the argument put it.
-      return try_insert_or_assign(key_type{std::forward<K>(key)}, std::forward<V>(value));
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted{std::forward<K>(key)};
+      return try_insert_or_assign(static_cast<key_type&&>(converted), std::forward<V>(value));
+    } else {
+      return insert_or_assign_impl(std::forward<K>(key), std::forward<V>(value)) != npos;
     }
-    return insert_or_assign_impl(std::forward<K>(key), std::forward<V>(value)) != npos;
   }
 
   /// @brief Assign @p value to an existing @p key, or insert the pair if absent.
@@ -534,14 +546,18 @@ class static_unordered_map {
       // Convert first, so the position, the duplicate check and the stored
       // key all come from the same value; a narrowing conversion would
       // otherwise store a key that does not belong where the argument put it.
-      return insert_or_assign(key_type{std::forward<K>(key)}, std::forward<V>(value));
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted{std::forward<K>(key)};
+      return insert_or_assign(static_cast<key_type&&>(converted), std::forward<V>(value));
+    } else {
+      const size_type index = insert_or_assign_impl(std::forward<K>(key), std::forward<V>(value));
+      METL_ASSERT(index != npos);
+      // A refused insert returns npos, and METL_ASSERT is stripped at low
+      // hardening levels; without this, slot_value(npos) would be a wild read.
+      METL_HARDEN(index < bucket_count);
+      return *slot_value(index);
     }
-    const size_type index = insert_or_assign_impl(std::forward<K>(key), std::forward<V>(value));
-    METL_ASSERT(index != npos);
-    // A refused insert returns npos, and METL_ASSERT is stripped at low
-    // hardening levels; without this, slot_value(npos) would be a wild read.
-    METL_HARDEN(index < bucket_count);
-    return *slot_value(index);
   }
 
   /// @brief Key-based subscript: return the mapped value for @p key, default-constructing and
