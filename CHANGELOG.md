@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   value: an empty `optional<int>` gave an engaged `optional<bool>` holding
   `false`. Test `has_value()` explicitly.
 
+- `delegate::bind` for a const member function no longer accepts a
+  temporary: it compiled on GCC and called through a destroyed object. Bind a
+  named object.
 ### Fixed
 
 - `flat_set`, `flat_map`, `static_unordered_set`, `static_unordered_map`:
@@ -43,6 +46,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `emplace` returned the inner element. Removal now shrinks first, insertion
   claims the slot first (undone if the constructor throws), and the emplace
   forms return the element they built.
+- `fixed_function` / `fixed_any_invocable` assignment released the old
+  target before copying the new one, so a target replacing itself with a member
+  it carried (`slot = next_;`) was copied from a destroyed object. The new
+  target is built first. `reset()` now empties the wrapper before destroying the
+  target, so a target whose destructor resets the wrapper is destroyed once.
+- `fixed_function`, `fixed_any_invocable` and `function_ref` claimed (through
+  their constructors' constraints) to accept member pointers, then failed to
+  compile deep inside the header when given one. They refuse them up front.
+  `event_dispatcher` with an rvalue-reference parameter is a `static_assert`
+  instead of an error inside `dispatch`.
 - `coro::protothread`: a yield inside a `switch` of the caller's own put its
   `case` label in that inner switch, so the next `run()` skipped the rest of
   the body and reported the task done. Resuming there now aborts through

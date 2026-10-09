@@ -63,6 +63,19 @@ class delegate<R(Args...)> {
                     &invoke_const_method<T, Method>);
   }
 
+  /// @brief Refused: binding a temporary would leave the delegate dangling.
+  ///
+  /// `const T&` above also binds an rvalue, and METL_LIFETIME_BOUND only warns
+  /// on clang, so `bind<S, &S::get>(make_s())` compiled on GCC and called
+  /// through a destroyed object. Bind a named object instead.
+  template <typename T, R (T::*Method)(Args...) const>
+  static delegate bind(const T&&) noexcept {
+    static_assert(sizeof(T) == 0,
+                  "delegate::bind cannot take a temporary: the delegate would call through a "
+                  "destroyed object. Bind a named object that outlives the delegate");
+    return delegate{};
+  }
+
   /// @brief Tests whether a target is bound.
   METL_NODISCARD constexpr explicit operator bool() const noexcept { return callback_ != nullptr; }
   /// @brief Tests whether a target is bound.
