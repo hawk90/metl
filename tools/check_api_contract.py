@@ -47,6 +47,7 @@ BOOL_ALLOWLIST = {
     "is_attached": "state query",
     "is_scheduled": "state query",
     "aliases_own_storage": "precondition query: does an iterator range point into this fixed_vector",
+    "points_into_storage": "private precondition query: does an argument point into this variant",
     "holds_alternative": "type query, mirrors std::holds_alternative",
     "can_dispatch": "predicate: would dispatch() fire?",
     "can_append": "predicate: would the characters fit?",

@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Pass a lock policy for the target; on a multi-core part such as the ESP32,
   that is the RTOS critical section. Builds under a hosted OS (Linux, macOS,
   Windows) are unchanged.
+- `optional<bool>` can no longer be constructed or assigned from another
+  `optional`. It used to compile, and stored the source's `has_value()` as the
+  value: an empty `optional<int>` gave an engaged `optional<bool>` holding
+  `false`. Test `has_value()` explicitly.
 
 ### Fixed
 
@@ -23,6 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `case` label in that inner switch, so the next `run()` skipped the rest of
   the body and reported the task done. Resuming there now aborts through
   `METL_HARDEN`; the limitation is documented with the others.
+- `variant` assigned the alternative it already holds by destroying and
+  reconstructing it instead of calling `T::operator=`, which lost state a type
+  keeps across assignment (`intrusive_ref_counter`'s count). It now assigns in
+  place, and falls back to reconstruction only for an alternative with no
+  assignment operator.
+- `variant::emplace` of an alternative that cannot be moved, from an argument
+  inside the variant, constructed from the object `reset()` had just destroyed.
+  That case now aborts (`METL_HARDEN`); the documented aliasing guarantee was
+  corrected to say it holds when the target is movable.
 - `mpmc_queue` compared its free-running tickets by converting each to
   `ptrdiff_t` and subtracting, which overflows once the counters straddle
   half the range -- after 2^31 operations on a 32-bit target. That is

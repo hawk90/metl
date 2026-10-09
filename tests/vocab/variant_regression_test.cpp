@@ -2,9 +2,12 @@
 //   (1) comparison operators must compile and work for a variant with
 //       DUPLICATE alternative types (previously compared via get<T>, which is
 //       ill-formed when a type is not a unique alternative).
-//   (2) same-index assignment must be exception-safe: if the underlying
-//       copy/move constructor throws, the variant must not be left with a
-//       destroyed member paired with a stale discriminant (double-destroy UB).
+//   (2) same-index assignment must be exception-safe. It assigns in place
+//       with T::operator=, so a throwing assignment leaves the alternative
+//       held (T's own guarantee). An alternative with no assignment operator
+//       is destroyed and reconstructed instead; if that construction throws,
+//       the variant must be valueless, never a destroyed member paired with a
+//       stale discriminant (double-destroy UB).
 
 #include "metl_check.hpp"
 
@@ -30,12 +33,40 @@ struct throwing {
     }
     ++live;
   }
-  throwing& operator=(const throwing&) = default;
+  throwing& operator=(const throwing& o) {
+    if (arm) {
+      arm = false;
+      throw 43;
+    }
+    value = o.value;
+    return *this;
+  }
   ~throwing() { --live; }
 };
 
 int throwing::live = 0;
 bool throwing::arm = false;
+
+// The same, without an assignment operator: the reconstruct path.
+struct throwing_unassignable {
+  static int live;
+  static bool arm;
+  const int value;
+
+  explicit throwing_unassignable(int v) : value(v) { ++live; }
+  throwing_unassignable(const throwing_unassignable& o) : value(o.value) {
+    if (arm) {
+      arm = false;
+      throw 42;
+    }
+    ++live;
+  }
+  throwing_unassignable& operator=(const throwing_unassignable&) = delete;
+  ~throwing_unassignable() { --live; }
+};
+
+int throwing_unassignable::live = 0;
+bool throwing_unassignable::arm = false;
 
 }  // namespace
 
@@ -66,7 +97,27 @@ int main() {
     metl::variant<throwing> src(metl::in_place_index<0>, 2);
     CHECK_EQ(throwing::live, 2);
 
-    throwing::arm = true;  // the same-index copy-assign will throw mid-construct
+    throwing::arm = true;  // the in-place copy-assign throws
+    bool threw = false;
+    try {
+      dst = src;
+    } catch (int) {
+      threw = true;
+    }
+    CHECK(threw);
+    // Assigned in place: the member was never destroyed, so it is still held.
+    CHECK(!dst.valueless_by_exception());
+    CHECK_EQ(throwing::live, 2);
+  }
+  CHECK_EQ(throwing::live, 0);
+
+  {
+    throwing_unassignable::live = 0;
+    metl::variant<throwing_unassignable> dst(metl::in_place_index<0>, 1);
+    metl::variant<throwing_unassignable> src(metl::in_place_index<0>, 2);
+    CHECK_EQ(throwing_unassignable::live, 2);
+
+    throwing_unassignable::arm = true;  // the reconstruct throws mid-construct
     bool threw = false;
     try {
       dst = src;
@@ -77,11 +128,9 @@ int main() {
     // dst's old member was destroyed before the throwing construct; it must now
     // be valueless (not pointing at a destroyed object).
     CHECK(dst.valueless_by_exception());
-    // Only src's member remains live; dst's destroyed member was accounted for.
-    CHECK_EQ(throwing::live, 1);
+    CHECK_EQ(throwing_unassignable::live, 1);
   }
-  // dst destroyed (valueless: nothing to destroy), src destroyed its member.
-  CHECK_EQ(throwing::live, 0);
+  CHECK_EQ(throwing_unassignable::live, 0);
 #endif
 
   return metl_test::exit_code();
