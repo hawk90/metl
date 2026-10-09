@@ -125,9 +125,13 @@ function(metl_cc_test)
   # nothing to check, and it must show as skipped rather than passed.
   set_tests_properties(${ARG_NAME} PROPERTIES SKIP_RETURN_CODE 77)
 
-  if(ARG_TIMEOUT)
-    set_tests_properties(${ARG_NAME} PROPERTIES TIMEOUT ${ARG_TIMEOUT})
+  # A hung test must fail as itself, with its output, instead of running until
+  # the CI job's own limit cancels the whole step and names nothing. Every test
+  # here finishes in seconds; a slow one passes TIMEOUT.
+  if(NOT ARG_TIMEOUT)
+    set(ARG_TIMEOUT 300)
   endif()
+  set_tests_properties(${ARG_NAME} PROPERTIES TIMEOUT ${ARG_TIMEOUT})
   if(ARG_LABELS)
     set_tests_properties(${ARG_NAME} PROPERTIES LABELS "${ARG_LABELS}")
   endif()

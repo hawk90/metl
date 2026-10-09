@@ -393,7 +393,7 @@ if(METL_BUILD_TESTS)
       NAME metl_header_self_contained
       COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
               --target metl_header_self_contained --config $<CONFIG>)
-    set_tests_properties(metl_header_self_contained PROPERTIES LABELS "metl")
+    set_tests_properties(metl_header_self_contained PROPERTIES LABELS "metl" TIMEOUT 300)
 
     # (b) Umbrella completeness.
     add_test(
@@ -401,7 +401,7 @@ if(METL_BUILD_TESTS)
       COMMAND ${CMAKE_COMMAND}
               -D METL_INCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
               -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckUmbrella.cmake)
-    set_tests_properties(metl_umbrella_complete PROPERTIES LABELS "metl")
+    set_tests_properties(metl_umbrella_complete PROPERTIES LABELS "metl" TIMEOUT 300)
   endif()
 endif()
 
