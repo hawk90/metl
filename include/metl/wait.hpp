@@ -8,6 +8,23 @@
 #include <intrin.h>
 #endif
 
+// Whether the target has the ARM hint instructions YIELD, SEV and WFE. They
+// arrived with ARMv6K and ARMv6T2 (and are in ARMv6-M and every later
+// profile); an ARM7TDMI, ARM9 or non-K ARM11 does not assemble them. On those
+// cores the three functions below fall back to a compiler barrier, as on any
+// other target without the instructions. (GCC has spelled ARMv6KZ both
+// __ARM_ARCH_6KZ__ and __ARM_ARCH_6ZK__.) The arm-hints CI job assembles this
+// header per architecture and checks where the hints appear.
+#ifdef __aarch64__
+#define METL_DETAIL_ARM_HINTS 1
+#elif defined(__arm__) && defined(__ARM_ARCH) &&                                 \
+    (__ARM_ARCH >= 7 || defined(__ARM_ARCH_6K__) || defined(__ARM_ARCH_6KZ__) || \
+     defined(__ARM_ARCH_6ZK__) || defined(__ARM_ARCH_6T2__) || defined(__ARM_ARCH_6M__))
+#define METL_DETAIL_ARM_HINTS 1
+#else
+#define METL_DETAIL_ARM_HINTS 0
+#endif
+
 namespace metl {
 
 /// @file
@@ -32,9 +49,10 @@ namespace metl {
 
 /// @brief Spin-loop hint: this iteration is a poll, not work.
 ///
-/// Lowers to `PAUSE` on x86, `YIELD` on ARM, `PAUSE` (Zihintpause) on RISC-V
-/// where available, and a compiler barrier elsewhere. Never sleeps and never
-/// blocks; the loop keeps running at full speed.
+/// Lowers to `PAUSE` on x86, `YIELD` on ARM (ARMv6K/v6T2/v6-M and later),
+/// `PAUSE` (Zihintpause) on RISC-V where available, and a compiler barrier
+/// elsewhere. Never sleeps and never blocks; the loop keeps running at full
+/// speed.
 ///
 /// Includes a compiler barrier in every configuration, so a spin loop around a
 /// `volatile` or atomic load cannot be hoisted out by the optimizer even on
@@ -56,7 +74,7 @@ METL_FORCE_INLINE void cpu_relax() noexcept {
 #endif
 #elif defined(__i386__) || defined(__x86_64__)
   __asm__ __volatile__("pause" ::: "memory");
-#elif defined(__aarch64__) || defined(__arm__) || defined(__thumb__)
+#elif METL_DETAIL_ARM_HINTS
   // YIELD is a hint in both A-profile and M-profile. On Cortex-M it is a NOP in
   // practice — see the warning above.
   __asm__ __volatile__("yield" ::: "memory");
@@ -84,7 +102,7 @@ METL_FORCE_INLINE void send_event() noexcept {
 #else
   std::atomic_signal_fence(std::memory_order_seq_cst);
 #endif
-#elif defined(__aarch64__) || defined(__arm__) || defined(__thumb__)
+#elif METL_DETAIL_ARM_HINTS
   __asm__ __volatile__("sev" ::: "memory");
 #else
   std::atomic_signal_fence(std::memory_order_seq_cst);
@@ -95,9 +113,9 @@ METL_FORCE_INLINE void send_event() noexcept {
 ///
 /// The low-power counterpart to `cpu_relax()`. On ARM the core halts until the
 /// event register is set — by an interrupt, by another core's `SEV`, or by an
-/// exclusive-monitor clear. On targets with no such mechanism this degrades to
-/// `cpu_relax()`, so a loop written against this API stays correct everywhere;
-/// only the power behaviour differs.
+/// exclusive-monitor clear. On targets with no such mechanism -- including ARM
+/// cores before ARMv6K -- this degrades to `cpu_relax()`, so a loop written
+/// against this API stays correct everywhere; only the power behaviour differs.
 ///
 /// **Always call this in a loop that re-checks the condition.** `WFE` may return
 /// spuriously, and the event register is sticky: an event that arrives before
@@ -123,7 +141,7 @@ METL_FORCE_INLINE void wait_for_event() noexcept {
 #else
   cpu_relax();
 #endif
-#elif defined(__aarch64__) || defined(__arm__) || defined(__thumb__)
+#elif METL_DETAIL_ARM_HINTS
   __asm__ __volatile__("wfe" ::: "memory");
 #else
   cpu_relax();

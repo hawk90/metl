@@ -534,6 +534,67 @@ jobs:
         run: ${{ matrix.compile_cmd }}
 
   # ---------------------------------------------------------------------------
+  # ARM hint instructions across architecture versions.
+  #
+  # wait.hpp emits YIELD / SEV / WFE on ARM. They exist from ARMv6K and ARMv6T2
+  # on, and in ARMv6-M; an ARM9 or a non-K ARM11 does not assemble them.
+  # cross-syntax compiles with -fsyntax-only, which never reaches the
+  # assembler, so a wrong architecture test is invisible there. This job
+  # assembles one TU per architecture and reads the object back: each hint must
+  # be present where the core has it and absent where it does not -- a test
+  # that only checked "it builds" would also pass if the hints vanished
+  # everywhere.
+  # ---------------------------------------------------------------------------
+  arm-hints:
+    name: arm-hints
+    runs-on: ubuntu-26.04
+    needs: preflight
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Install ARM toolchain
+        uses: ./.github/actions/apt-install
+        with:
+          packages: gcc-arm-none-eabi
+          cache-key: gcc-arm-none-eabi
+
+      - name: wait.hpp assembles, with the hints exactly where the core has them
+        run: |
+          set -euo pipefail
+          printf '%s\n' '#include <metl/wait.hpp>' \
+            'void relax() { metl::cpu_relax(); }' \
+            'void signal() { metl::send_event(); }' \
+            'void idle() { metl::wait_for_event(); }' > hints.cpp
+          status=0
+          # cpu, instruction set, hint instructions expected (yield + sev + wfe)
+          while read -r cpu isa want; do
+            if ! arm-none-eabi-g++ -std=c++17 -O2 -ffreestanding -fno-exceptions -fno-rtti \
+                 -mcpu="${cpu}" "${isa}" -Iinclude -c hints.cpp -o hints.o 2> build.log; then
+              echo "::error::${cpu}: wait.hpp does not assemble"
+              cat build.log
+              status=1
+              continue
+            fi
+            got=$(arm-none-eabi-objdump -d hints.o | grep -cE '[[:space:]](yield|sev|wfe)([[:space:]]|$)' || true)
+            echo "${cpu}: ${got} hint instruction(s), expected ${want}"
+            if [[ "${got}" != "${want}" ]]; then
+              echo "::error::${cpu}: expected ${want} hint instruction(s), found ${got}"
+              status=1
+            fi
+          done <<'CPUS'
+          arm926ej-s -marm 0
+          arm1136j-s -marm 0
+          arm1176jzf-s -marm 3
+          cortex-m0 -mthumb 3
+          cortex-m3 -mthumb 3
+          cortex-a7 -marm 3
+          CPUS
+          exit "${status}"
+
+  # ---------------------------------------------------------------------------
   # Big-endian build — exercises endian.hpp on a real big-endian target.
   #
   # metl's byte-order logic is otherwise only ever compiled little-endian.
@@ -2286,6 +2347,7 @@ jobs:
       - lto
       - sanitizers
       - arm-cross
+      - arm-hints
       - cross-syntax
       - big-endian
       - newlib-link

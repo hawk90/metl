@@ -50,6 +50,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   included first: `detail/construct.hpp` tested the library's feature macro
   before including the header that defines it. Which declarations a TU saw
   therefore depended on include order.
+- `wait.hpp` (`cpu_relax`, `send_event`, `wait_for_event`) emitted
+  `YIELD`/`SEV`/`WFE` on every ARM core, so it did not assemble for ARM9 or a
+  non-K ARM11. Those cores now get the compiler-barrier fallback; ARMv6K,
+  ARMv6T2, ARMv6-M and later are unchanged.
 - `irq_lock` no longer compiles to a no-op on targets with real interrupts
   (see Upgrading above). Cortex-M with GCC or Clang is unchanged.
 - Containers, `optional`, `variant`, the pools, the allocators and
