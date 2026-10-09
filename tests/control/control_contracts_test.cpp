@@ -79,7 +79,6 @@ using tick = std::uint32_t;
 constexpr std::size_t kDeadlineCapacity = 4;
 using deadline_type = metl::coro::deadline_scheduler<kDeadlineCapacity, tick>;
 
-deadline_type* g_deadline = nullptr;
 std::size_t g_accepted_in_poll = 0;
 int g_dummy_task = 0;
 
@@ -89,8 +88,15 @@ metl::optional<tick> idle_poll(void*, tick) noexcept {
 
 // Schedules as many entries as the scheduler will take while its own poll is
 // on the stack, then finishes without re-arming.
+// Function-local, not a stack object behind a global pointer: CodeQL flags a
+// stack address stored in non-local memory.
+deadline_type& reserve_sched() {
+  static deadline_type sched;
+  return sched;
+}
+
 metl::optional<tick> filling_poll(void*, tick) noexcept {
-  while (g_deadline->try_schedule(&g_dummy_task, &idle_poll, tick{100})) {
+  while (reserve_sched().try_schedule(&g_dummy_task, &idle_poll, tick{100})) {
     ++g_accepted_in_poll;
   }
   return metl::nullopt;
@@ -113,10 +119,10 @@ void test_deadline_reserve_only_during_poll() {
   // Inside a poll: the running task's entry is popped (one slot free) and one
   // slot is held back for its re-arm, so try_schedule says full one early.
   {
-    deadline_type sched;
-    g_deadline = &sched;
+    deadline_type& sched = reserve_sched();
+    sched.clear();
     g_accepted_in_poll = 0;
-    int filler = 0;
+    static int filler = 0;
     CHECK(sched.try_schedule(&filler, &filling_poll, tick{0}));
     CHECK_EQ(sched.run_due(tick{0}), std::size_t{1});
     CHECK_EQ(g_accepted_in_poll, kDeadlineCapacity - 1);
@@ -126,7 +132,6 @@ void test_deadline_reserve_only_during_poll() {
     CHECK(sched.try_schedule(&g_dummy_task, &idle_poll, tick{100}));
     CHECK(!sched.try_schedule(&g_dummy_task, &idle_poll, tick{100}));
     CHECK_EQ(sched.task_count(), kDeadlineCapacity);
-    g_deadline = nullptr;
   }
 }
 
@@ -134,7 +139,10 @@ void test_deadline_reserve_only_during_poll() {
 
 using round_type = metl::coro::scheduler<4>;
 
-round_type* g_round = nullptr;
+round_type& round_sched() {
+  static round_type sched;
+  return sched;
+}
 int g_victim_polls = 0;
 int g_detacher_polls = 0;
 int g_victim_task = 0;
@@ -146,14 +154,13 @@ bool victim_poll(void*) noexcept {
 
 bool detacher_poll(void*) noexcept {
   ++g_detacher_polls;
-  CHECK(g_round->detach(&g_victim_task));
+  CHECK(round_sched().detach(&g_victim_task));
   return false;
 }
 
 void test_scheduler_skips_detached_in_round() {
-  round_type sched;
-  g_round = &sched;
-  int detacher_task = 0;
+  round_type& sched = round_sched();
+  static int detacher_task = 0;
 
   // The detacher runs first in attachment order and removes the victim, which
   // was in the round's snapshot.
@@ -164,7 +171,6 @@ void test_scheduler_skips_detached_in_round() {
   CHECK_EQ(g_detacher_polls, 1);
   CHECK_EQ(g_victim_polls, 0);
   CHECK(sched.empty());
-  g_round = nullptr;
 }
 
 #if !METL_NO_EXCEPTIONS
