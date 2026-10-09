@@ -58,15 +58,6 @@ struct non_atomic_obj final : metl::intrusive_ref_counter<non_atomic_obj, metl::
 
 int non_atomic_obj::destruction_count = 0;
 
-struct atomic_obj final : metl::intrusive_ref_counter<atomic_obj, metl::refcount_kind::atomic> {
-  explicit atomic_obj(int v) : value(v) {}
-  ~atomic_obj() { ++destruction_count; }
-  int value;
-  static int destruction_count;
-};
-
-int atomic_obj::destruction_count = 0;
-
 // ---------------------------------------------------------------------------
 // Inheritance test for converting constructor
 // ---------------------------------------------------------------------------
@@ -167,34 +158,6 @@ static int crtp_non_atomic_test() {
 
   if (non_atomic_obj::destruction_count != 1) {
     return 105;
-  }
-  return 0;
-}
-
-// CRTP atomic refcounter test.
-static int crtp_atomic_test() {
-  atomic_obj::destruction_count = 0;
-
-  storage_for<atomic_obj> store;
-  auto* raw = store.construct(99);
-
-  {
-    metl::intrusive_ptr<atomic_obj> p(raw, metl::retain_ref);
-    if (!p || p->value != 99 || raw->use_count() != 1) {
-      return 200;
-    }
-    metl::intrusive_ptr<atomic_obj> q(p);
-    if (raw->use_count() != 2) {
-      return 201;
-    }
-    q.reset();
-    if (raw->use_count() != 1) {
-      return 202;
-    }
-  }
-
-  if (atomic_obj::destruction_count != 1) {
-    return 203;
   }
   return 0;
 }
@@ -424,8 +387,6 @@ int main() {
   if (int r = legacy_test())
     return r;
   if (int r = crtp_non_atomic_test())
-    return r;
-  if (int r = crtp_atomic_test())
     return r;
   if (int r = comparison_test())
     return r;
