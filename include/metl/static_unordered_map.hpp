@@ -90,6 +90,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/addressof.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
 #include "metl/hash.hpp"
@@ -161,7 +162,7 @@ class static_unordered_map {
     iterator() noexcept : map_(nullptr), index_(0) {}
 
     reference operator*() const noexcept { return *map_->slot_value(index_); }
-    pointer operator->() const noexcept { return &(**this); }
+    pointer operator->() const noexcept { return detail::addressof(**this); }
 
     iterator& operator++() noexcept {
       ++index_;
@@ -215,7 +216,7 @@ class static_unordered_map {
     const_iterator(iterator other) noexcept : map_(other.map_), index_(other.index_) {}
 
     reference operator*() const noexcept { return *map_->slot_value(index_); }
-    pointer operator->() const noexcept { return &(**this); }
+    pointer operator->() const noexcept { return detail::addressof(**this); }
 
     const_iterator& operator++() noexcept {
       ++index_;
@@ -348,12 +349,12 @@ class static_unordered_map {
   /// @return Pointer to the mapped value, or @c nullptr when the key is not found.
   METL_NODISCARD mapped_type* find(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
     const size_type index = find_existing_index(key);
-    return index == npos ? nullptr : &slot_value(index)->value;
+    return index == npos ? nullptr : detail::addressof(slot_value(index)->value);
   }
 
   METL_NODISCARD const mapped_type* find(const key_type& key) const noexcept(lookup_cannot_throw<key_type>) {
     const size_type index = find_existing_index(key);
-    return index == npos ? nullptr : &slot_value(index)->value;
+    return index == npos ? nullptr : detail::addressof(slot_value(index)->value);
   }
 
   /// @brief Key lookup returning an iterator, or @c end() if the key is absent.
@@ -389,7 +390,7 @@ class static_unordered_map {
                                    !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD mapped_type* find(const K& key) noexcept(lookup_cannot_throw<K>) {
     const size_type index = find_existing_index(key);
-    return index == npos ? nullptr : &slot_value(index)->value;
+    return index == npos ? nullptr : detail::addressof(slot_value(index)->value);
   }
 
   template <typename K,
@@ -397,7 +398,7 @@ class static_unordered_map {
                                    !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD const mapped_type* find(const K& key) const noexcept(lookup_cannot_throw<K>) {
     const size_type index = find_existing_index(key);
-    return index == npos ? nullptr : &slot_value(index)->value;
+    return index == npos ? nullptr : detail::addressof(slot_value(index)->value);
   }
 
   template <typename K,

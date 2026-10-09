@@ -100,7 +100,7 @@ class arena_allocator {
       return nullptr;
     }
 
-    T* object = new (memory) T(std::forward<Args>(args)...);
+    T* object = ::new (memory) T(std::forward<Args>(args)...);
 
     // Construction succeeded: register the destructor on the just-stored record
     // (its end offset is the current `offset_`). A throwing constructor never

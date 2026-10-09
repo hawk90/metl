@@ -24,6 +24,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/addressof.hpp"
 #include "metl/detail/array_storage.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
@@ -242,7 +243,7 @@ class flat_set {
   METL_NODISCARD value_type* find(const key_type& key) noexcept(compare_cannot_throw<key_type>) {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index])) {
-      return &data()[index];
+      return detail::addressof(data()[index]);
     }
     return nullptr;
   }
@@ -250,7 +251,7 @@ class flat_set {
   METL_NODISCARD const value_type* find(const key_type& key) const noexcept(compare_cannot_throw<key_type>) {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index])) {
-      return &data()[index];
+      return detail::addressof(data()[index]);
     }
     return nullptr;
   }
@@ -316,7 +317,7 @@ class flat_set {
   METL_NODISCARD value_type* find(const K& key) noexcept(compare_cannot_throw<K>) {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index])) {
-      return &data()[index];
+      return detail::addressof(data()[index]);
     }
     return nullptr;
   }
@@ -327,7 +328,7 @@ class flat_set {
   METL_NODISCARD const value_type* find(const K& key) const noexcept(compare_cannot_throw<K>) {
     const size_type index = lower_bound_index(key);
     if (index < size_ && !comp_(key, data()[index])) {
-      return &data()[index];
+      return detail::addressof(data()[index]);
     }
     return nullptr;
   }
@@ -488,11 +489,11 @@ class flat_set {
   void insert_shifting(size_type index, value_type&& entry) {
     if constexpr (std::is_move_assignable_v<value_type>) {
       if (index == size_) {
-        new (storage_.slot(size_)) value_type(static_cast<value_type&&>(entry));
+        ::new (storage_.slot(size_)) value_type(static_cast<value_type&&>(entry));
         ++size_;
         return;
       }
-      new (storage_.slot(size_)) value_type(static_cast<value_type&&>(data()[size_ - 1]));
+      ::new (storage_.slot(size_)) value_type(static_cast<value_type&&>(data()[size_ - 1]));
       ++size_;
 #if !METL_NO_EXCEPTIONS
       try {
@@ -510,7 +511,7 @@ class flat_set {
     } else {
       // A non-assignable element can only be relocated by construct+destroy.
       shift_right_from(index);
-      new (storage_.slot(index)) value_type(static_cast<value_type&&>(entry));
+      ::new (storage_.slot(index)) value_type(static_cast<value_type&&>(entry));
       ++size_;
     }
   }
@@ -527,7 +528,7 @@ class flat_set {
     try {
 #endif
       for (; i > index; --i) {
-        new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i - 1]));
+        ::new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i - 1]));
         data()[i - 1].~value_type();
       }
 #if !METL_NO_EXCEPTIONS
@@ -553,7 +554,7 @@ class flat_set {
     data()[index].~value_type();
     if constexpr (relocate_cannot_throw) {
       for (size_type i = index; i + 1 < size_; ++i) {
-        new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i + 1]));
+        ::new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i + 1]));
         data()[i + 1].~value_type();
       }
     } else {
@@ -562,7 +563,7 @@ class flat_set {
       try {
 #endif
         for (; i + 1 < size_; ++i) {
-          new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i + 1]));
+          ::new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i + 1]));
           data()[i + 1].~value_type();
         }
 #if !METL_NO_EXCEPTIONS

@@ -92,7 +92,7 @@ class monotonic_buffer {
       return nullptr;
     }
 
-    return new (memory) T(std::forward<Args>(args)...);
+    return ::new (memory) T(std::forward<Args>(args)...);
   }
 
   /// @brief Like `try_emplace`, but asserts that the allocation succeeds.

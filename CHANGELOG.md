@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Containers, `optional`, `variant`, the pools, the allocators and
+  `fixed_function` construct elements with `::new`. An element type that
+  deletes its own `operator new` (the usual way to forbid heap allocation)
+  did not compile in `object_pool`, `handle_pool`, `fixed_deque`,
+  `ring_buffer`, `fixed_queue`, `static_message_queue`, `variant`,
+  `flat_set`, `fixed_function` and the three allocators.
+- Library code takes a user object's address with `addressof`, not `&`. A
+  type with its own `operator&` got that operator's result: `optional::emplace`
+  constructed at the address it returned, `flat_map`/`static_unordered_map`/
+  `lookup_table::find` returned it, and `delegate::bind`,
+  `scheduler::try_attach_protothread`, `atomic_ref` and `fnv1a_hash` used it.
+  A type that deletes `operator&` did not compile in those.
+
 ## [1.1.0] - 2026-10-09
 
 **Highlights.** `tick_extender`, the non-wrapping tick that

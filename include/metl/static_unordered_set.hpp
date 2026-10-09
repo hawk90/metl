@@ -84,6 +84,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/addressof.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
 #include "metl/hash.hpp"
@@ -148,7 +149,7 @@ class static_unordered_set {
     iterator() noexcept : set_(nullptr), index_(0) {}
 
     reference operator*() const noexcept { return *set_->slot_value(index_); }
-    pointer operator->() const noexcept { return &(**this); }
+    pointer operator->() const noexcept { return detail::addressof(**this); }
 
     iterator& operator++() noexcept {
       ++index_;
@@ -202,7 +203,7 @@ class static_unordered_set {
     const_iterator(iterator other) noexcept : set_(other.set_), index_(other.index_) {}
 
     reference operator*() const noexcept { return *set_->slot_value(index_); }
-    pointer operator->() const noexcept { return &(**this); }
+    pointer operator->() const noexcept { return detail::addressof(**this); }
 
     const_iterator& operator++() noexcept {
       ++index_;

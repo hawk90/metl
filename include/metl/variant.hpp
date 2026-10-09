@@ -149,12 +149,12 @@ void destroy_value(void* storage) noexcept {
 
 template <typename T>
 void copy_value(void* destination, const void* source) noexcept(std::is_nothrow_copy_constructible_v<T>) {
-  new (destination) T(*std::launder(static_cast<const T*>(source)));
+  ::new (destination) T(*std::launder(static_cast<const T*>(source)));
 }
 
 template <typename T>
 void move_value(void* destination, void* source) noexcept(std::is_nothrow_move_constructible_v<T>) {
-  new (destination) T(static_cast<T&&>(*std::launder(static_cast<T*>(source))));
+  ::new (destination) T(static_cast<T&&>(*std::launder(static_cast<T*>(source))));
 }
 
 }  // namespace detail
@@ -238,7 +238,7 @@ class variant {
   template <typename First = first_type, typename = std::enable_if_t<std::is_default_constructible_v<First>>>
   constexpr variant() noexcept(std::is_nothrow_default_constructible_v<First>)
       : storage_{}, index_(variant_npos) {
-    new (raw_addr()) first_type();
+    ::new (raw_addr()) first_type();
     index_ = 0;
   }
 
@@ -284,7 +284,7 @@ class variant {
       std::is_nothrow_constructible_v<typename detail::nth_type<I, Ts...>::type, Args&&...>)
       : storage_{}, index_(variant_npos) {
     using target_type = typename detail::nth_type<I, Ts...>::type;
-    new (raw_addr()) target_type(std::forward<Args>(args)...);
+    ::new (raw_addr()) target_type(std::forward<Args>(args)...);
     index_ = I;
   }
 
@@ -431,13 +431,13 @@ class variant {
       if (index_ != variant_npos) {
         target_type incoming(std::forward<Args>(args)...);
         reset();
-        new (raw_addr()) target_type(static_cast<target_type&&>(incoming));
+        ::new (raw_addr()) target_type(static_cast<target_type&&>(incoming));
         index_ = I;
         return *std::launder(static_cast<target_type*>(raw_addr()));
       }
     }
     reset();
-    new (raw_addr()) target_type(std::forward<Args>(args)...);
+    ::new (raw_addr()) target_type(std::forward<Args>(args)...);
     index_ = I;
     return *std::launder(static_cast<target_type*>(raw_addr()));
   }
@@ -482,7 +482,7 @@ class variant {
 
   template <typename T, typename... Args>
   T& construct(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>) {
-    new (raw_addr()) T(std::forward<Args>(args)...);
+    ::new (raw_addr()) T(std::forward<Args>(args)...);
     index_ = detail::index_of_type<T, Ts...>::value;
     return *std::launder(static_cast<T*>(raw_addr()));
   }

@@ -17,6 +17,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/addressof.hpp"
 #include "metl/detail/construct.hpp"
 #include "metl/in_place.hpp"
 #include "metl/type_traits.hpp"
@@ -467,12 +468,12 @@ class optional {
     METL_CONSTEXPR20 ~storage_union() {}
   };
 
-  METL_CONSTEXPR20 T* data() noexcept { return &storage_.value_; }
-  constexpr const T* data() const noexcept { return &storage_.value_; }
+  METL_CONSTEXPR20 T* data() noexcept { return detail::addressof(storage_.value_); }
+  constexpr const T* data() const noexcept { return detail::addressof(storage_.value_); }
 
   template <typename... Args>
   METL_CONSTEXPR20 void construct(Args&&... args) {
-    detail::construct_at(&storage_.value_, std::forward<Args>(args)...);
+    detail::construct_at(detail::addressof(storage_.value_), std::forward<Args>(args)...);
     has_value_ = true;
   }
 

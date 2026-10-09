@@ -20,6 +20,7 @@
 /// be bounded by something you control.
 
 #include "metl/compiler.hpp"
+#include "metl/detail/addressof.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -291,7 +292,7 @@ struct fnv1a_hash {
                     "fnv1a_hash default overload hashes the raw object representation, which is only "
                     "sound for types with a unique object representation (no padding / no ambiguous "
                     "bit patterns). Provide a specialized hash for other types.");
-      return fnv1a(reinterpret_cast<const unsigned char*>(&value), sizeof(T));
+      return fnv1a(reinterpret_cast<const unsigned char*>(detail::addressof(value)), sizeof(T));
     }
   }
 
