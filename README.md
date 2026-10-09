@@ -516,8 +516,8 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | Host LTO | Release + IPO/LTO | build + `ctest` | `lto` |
 | Sanitizers | Linux / clang — ASan+UBSan (Debug; again at `METL_HARDENING=0`; again optimized), TSan (Debug, `-Werror`) | build + `ctest` (incl. threaded tests) | `sanitizers` |
 | ARM Cortex-M (gcc) | Cortex-M0/M3/M4/M7, freestanding | cross-compile + code size | `arm-cross` |
-| **ARM Cortex-M (run)** | **Cortex-M3 / M4 / M7 under qemu-system-arm** (mps2-an385 / an386 / an500) | **cross-compile + RUN the test suite** — 106 tests per core | `qemu-conformance` |
-| ARM Cortex-M0 (run) | an **ARMv6-M build** executed on the AN385's ARMv7-M core — QEMU has no M0 board | runs 102 tests, and asserts that the three CAS-requiring types — `mpmc_queue`, `atomic_handle`, `intrusive_ptr`, across four test files — *fail to compile*. Proves the M0 **build** runs, **not** that an M0 **core** runs it: core-level differences (unaligned access, absent VTOR) are out of scope, which is why the interrupt tests skip themselves there | `qemu-conformance` |
+| **ARM Cortex-M (run)** | **Cortex-M3 / M4 / M7 under qemu-system-arm** (mps2-an385 / an386 / an500) | **cross-compile + RUN the test suite** — 107 tests per core | `qemu-conformance` |
+| ARM Cortex-M0 (run) | an **ARMv6-M build** executed on the AN385's ARMv7-M core — QEMU has no M0 board | runs 103 tests, and asserts that the three CAS-requiring types — `mpmc_queue`, `atomic_handle`, `intrusive_ptr`, across four test files — *fail to compile*. Proves the M0 **build** runs, **not** that an M0 **core** runs it: core-level differences (unaligned access, absent VTOR) are out of scope, which is why the interrupt tests skip themselves there | `qemu-conformance` |
 | ARM Cortex-M (clang) | cortex-m4, `arm-none-eabi` target | second frontend, `-fsyntax-only` | `cross-syntax` (`arm-cross-clang / cortex-m4`) |
 | RISC-V | rv64 (linux-gnu g++) | freestanding `-fsyntax-only` | `cross-syntax` (`riscv-cross / rv64`) |
 | Xtensa (ESP32) | ESP-IDF component, `esp32` target | `idf.py build` (Docker) | `esp-idf` |
@@ -551,8 +551,8 @@ Release, MinSizeRel (`-Os`), plus LTO. Runtime configs: no-exceptions, no-RTTI,
 freestanding, newlib-nano and picolibc libcs.
 
 The distinction worth drawing out: most embedded C++ libraries are *cross-compiled*
-in CI. METL's test suite is **executed** under emulation — 106 tests on each of
-Cortex-M3, M4 and M7, and 102 for an ARMv6-M (M0) build — so container, queue, allocator and vocabulary behaviour is verified on
+in CI. METL's test suite is **executed** under emulation — 107 tests on each of
+Cortex-M3, M4 and M7, and 103 for an ARMv6-M (M0) build — so container, queue, allocator and vocabulary behaviour is verified on
 the target rather than inferred from a host run. `irq_lock` in particular is
 checked against a **real SysTick interrupt**: the test observes that the handler
 does not run while the lock is held, after first confirming it does run when the
