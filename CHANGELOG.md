@@ -43,6 +43,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `expected`, `variant`, `flat_map`, `flat_set`, `static_unordered_map`,
   `static_unordered_set`, `lookup_table`, `guarded` and `span` now refuse it
   in a `static_assert` that is the first thing the compiler reports.
+- `flat_map`, `flat_set`, `static_unordered_map`, `static_unordered_set`,
+  `optional` and `variant` ran an element's destructor before committing its
+  removal. A destructor that erased itself (a self-unregistering handle) or
+  reset its holder found itself still present and was destroyed twice; ASan
+  reported a buffer overflow in `flat_map`. Removal now commits first and
+  destroys after. A destructor must still not insert into the container or
+  emplace into the `optional`/`variant` being emptied.
 - `mmio_register`, `mmio_ptr`, `read_once` and `write_once` documented any
   trivially copyable type, but a class type cannot be copied from a volatile
   lvalue, so a register-overlay struct failed deep inside `register_access.hpp`.

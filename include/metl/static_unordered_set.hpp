@@ -705,13 +705,16 @@ class static_unordered_set {
     ++size_;
   }
 
+  // The slot leaves the table before its element's destructor runs, so a
+  // destructor that erases from this container sees it gone. It must not
+  // insert: the slot being destroyed may be the next one handed out.
   void destroy_at(size_type index, slot_state next_state) noexcept {
-    slot_value(index)->~value_type();
     states_[index] = next_state;
     --size_;
     if (next_state == slot_state::tombstone) {
       ++tombstones_;
     }
+    slot_value(index)->~value_type();
   }
 
   /// @brief Rebuild the table in place, clearing every tombstone, so misses stop early again.

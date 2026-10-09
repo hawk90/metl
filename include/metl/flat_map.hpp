@@ -646,7 +646,15 @@ class flat_map {
   // dead and (i, size_) live; the handler destroys exactly those and empties the
   // container -- the same outcome as a throwing insert. The noexcept is
   // conditional so that throw propagates instead of terminating.
+  //
+  // The element leaves the container before its destructor runs: it is moved
+  // into a local, the gap is closed and size_ updated, and only then does the
+  // local die. An element whose destructor erases itself from this container
+  // (a self-unregistering handle) then finds it gone instead of erasing a
+  // second time. Its moved-from shell is destroyed during the shift, as every
+  // relocated source is.
   void erase_at(size_type index) noexcept(relocate_cannot_throw) {
+    METL_MAYBE_UNUSED value_type leaving(static_cast<value_type&&>(data()[index]));
     data()[index].~value_type();
     if constexpr (relocate_cannot_throw) {
       for (size_type i = index; i + 1 < size_; ++i) {

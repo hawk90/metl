@@ -326,13 +326,19 @@ class optional {
   }
 
   /// @brief Destroys the contained value if engaged, leaving the optional empty.
+  /// @note The optional is empty before the value's destructor runs, so that
+  ///       destructor may call reset() or has_value(). It must not emplace into
+  ///       this optional: the storage being destroyed is the storage it would use.
   METL_CONSTEXPR20 void reset() noexcept {
     if (!has_value_) {
       return;
     }
 
-    detail::destroy_at(data());
+    // Disengage first, then destroy: a destructor that calls back into this
+    // optional (reset(), has_value()) must find it empty, not destroy the value
+    // a second time.
     has_value_ = false;
+    detail::destroy_at(data());
   }
 
   /// @brief Swaps the contents (and engaged state) with another optional.
