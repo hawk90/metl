@@ -2357,9 +2357,13 @@ jobs:
   #   * The action's inputs: path, esp_idf_version, esp_idf_docker_image,
   #     target, command (default `idf.py build`), extra_docker_args.
   #   * The action runs a plain `docker run`, which uses a local image without
-  #     asking the registry. Docker Hub answers anonymous pulls with 429 when
-  #     the runner pool is over its rate limit, so the image is pulled first,
-  #     with retries, in a step of its own.
+  #     asking the registry. Docker Hub answers anonymous pulls from the shared
+  #     runner pool with 429 for long stretches (ten minutes of retries did not
+  #     get through), so a step of its own pulls the image by digest from
+  #     Google's Docker Hub mirror, falls back to Docker Hub, and tags it as the
+  #     name the action runs. Pulling by digest makes either registry deliver
+  #     exactly that image. On a version bump, take the new digest from
+  #     `docker buildx imagetools inspect espressif/idf:<tag>`.
   #   * `target` sets IDF_TARGET; the matrix covers esp32 (Xtensa) + esp32c3
   #     (RISC-V). Add esp32s3/esp32c6/... by extending the matrix.
   #   * C++: ESP-IDF compiles .cpp as C++ automatically (default std is newer
@@ -2388,17 +2392,25 @@ jobs:
       # Exact patch pin for reproducibility; see ITERATION NOTES above for
       # moving alternatives (release-v6.0 / v6.0).
       ESP_IDF_VERSION: v6.0.3
+      # The index digest of espressif/idf:v6.0.3 (identical on both registries).
+      ESP_IDF_DIGEST: sha256:54278f2c01e6e759502e2f04c9103589c17528923426f4d63193490c7a08f555
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
-      - name: Pull the ESP-IDF image (retried on registry rate limits)
+      - name: Pull the ESP-IDF image by digest (mirror first, then Docker Hub)
         timeout-minutes: 15
         run: |
-          for attempt in 1 2 3 4 5; do
-            docker pull "espressif/idf:${ESP_IDF_VERSION}" && exit 0
-            echo "pull attempt ${attempt} failed; retrying in $((attempt * 30))s"
+          for attempt in 1 2 3; do
+            for registry in mirror.gcr.io docker.io; do
+              ref="${registry}/espressif/idf@${ESP_IDF_DIGEST}"
+              if docker pull "${ref}"; then
+                docker tag "${ref}" "espressif/idf:${ESP_IDF_VERSION}"
+                exit 0
+              fi
+              echo "pull from ${registry} failed (attempt ${attempt})"
+            done
             sleep $((attempt * 30))
           done
           exit 1
