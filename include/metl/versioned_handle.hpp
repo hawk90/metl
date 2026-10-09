@@ -1,6 +1,7 @@
 #pragma once
 
 #include "metl/attributes.hpp"
+#include "metl/detail/low_bits.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -101,11 +102,7 @@ class versioned_handle {
   /// value, so it is stripped on construction — otherwise two handles with
   /// identical index and generation could compare unequal because of junk the
   /// caller happened to pass to `from_packed`.
-  static constexpr packed_type value_mask =
-      used_bits >= sizeof(packed_type) * 8u
-          ? static_cast<packed_type>(~packed_type{0})
-          : static_cast<packed_type>((static_cast<packed_type>(packed_type{1} << used_bits)) -
-                                     packed_type{1});
+  static constexpr packed_type value_mask = detail::low_bits<packed_type>(used_bits);
 
   /// Largest representable slot index.
   static constexpr index_type max_index = static_cast<index_type>(~index_type{0});

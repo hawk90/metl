@@ -510,7 +510,7 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 
 | Area | Platform / config | What CI does | Job |
 | --- | --- | --- | --- |
-| Host | Linux × gcc / clang and macOS × clang, each × Debug / Release / MinSizeRel; Windows × MSVC × Release | build + `ctest` | `host-test` |
+| Host | Linux × gcc / clang and macOS × clang, each × Debug / Release / MinSizeRel; Windows × MSVC × Debug / Release, `/WX`, with the examples | build + `ctest` | `host-test` |
 | Host hardening | Release **+ `-Werror`** (clang **and gcc**) | build + `ctest` (NDEBUG warning gate) | `release-werror` |
 | Host LTO | Release + IPO/LTO | build + `ctest` | `lto` |
 | Sanitizers | Linux / clang — ASan+UBSan, TSan (Debug, `-Werror`) | build + `ctest` (incl. threaded tests) | `sanitizers` |

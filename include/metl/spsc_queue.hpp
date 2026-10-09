@@ -51,6 +51,7 @@ namespace metl {
 /// @warning Undefined behavior with more than one concurrent producer or more than
 ///          one concurrent consumer. The destructor is NOT thread-safe: it drains
 ///          remaining elements and assumes no concurrent access.
+METL_CACHELINE_PADDED_BEGIN
 template <typename T, std::size_t Capacity>
 class spsc_queue {
   static_assert(Capacity >= 2, "spsc_queue Capacity must be at least 2");
@@ -194,5 +195,6 @@ class spsc_queue {
   std::size_t cached_head_;
   METL_CACHELINE_ALIGNED storage_for<T> slots_[Capacity];
 };
+METL_CACHELINE_PADDED_END
 
 }  // namespace metl

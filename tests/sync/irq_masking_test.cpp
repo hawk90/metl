@@ -212,7 +212,7 @@ int main() {
   }
 
   std::printf("irq_masking_test: SysTick observed blocked and resumed\n");
-#endif
 
   return metl_test::exit_code();
+#endif
 }

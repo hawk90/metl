@@ -108,6 +108,9 @@ constexpr bool fits(std::size_t payload, std::size_t words, std::size_t functors
 // alignment, and no constructor (so a container's default constructor still
 // does no Capacity * sizeof(T) stores).
 namespace layout_pin {
+#if defined(_MSC_VER)
+#pragma warning(disable : 4324)  // padded due to alignas: the padding is the point
+#endif
 struct alignas(32) wide {
   unsigned char payload[40];
 };

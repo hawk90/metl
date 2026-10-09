@@ -12,6 +12,7 @@
 /// written.
 
 #include "metl/compiler.hpp"
+#include "metl/detail/low_bits.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -40,10 +41,9 @@ struct bitfield {
   static constexpr std::size_t lsb = Lsb;
   static constexpr std::size_t width = Width;
 
-  // Full-width fields need a guarded ones value to avoid UB from a shift
-  // equal to the type width.
-  static constexpr T mask = static_cast<T>(
-      (Width == sizeof(T) * 8 ? static_cast<T>(~T{0}) : static_cast<T>((T{1} << Width) - T{1})) << Lsb);
+  // low_bits handles a full-width field, where (T{1} << Width) would shift by
+  // the type's width (undefined).
+  static constexpr T mask = static_cast<T>(detail::low_bits<T>(Width) << Lsb);
 
   /// @brief Reads the field out of a full storage word, right-aligned.
   /// @param value The whole storage word.

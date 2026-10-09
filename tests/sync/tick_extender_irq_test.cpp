@@ -242,7 +242,7 @@ int main() {
   CHECK(locked.min_step > kPeriod / 2);
 
   std::printf("tick_extender_irq_test: stale read gained a period without the lock, none with it\n");
-#endif
 
   return metl_test::exit_code();
+#endif
 }
