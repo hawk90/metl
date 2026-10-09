@@ -26,6 +26,12 @@ hangs never prints the line, and a crash never reaches it. No sentinel is a
 failure -- a conformance gate that cannot tell a hang from a pass is not a
 gate.
 
+Before the suite, tests/embedded/qemu_canary.cpp -- one failing CHECK -- must
+read as METL_QEMU_EXIT 1, or nothing runs: a shim or grading bug that turned
+every exit into 0 would otherwise pass the whole suite. And a test named in
+--expect-build-fail must fail on a capability static_assert (its text names
+ARMv6-M), not on just any error.
+
 --plan prints what this script WOULD run and exits, without a toolchain, a
 QEMU or a build. It exists so the count in README.md can be checked instead of
 retyped: that figure is derived from a glob, it went stale by five without
@@ -48,6 +54,11 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 BUILD_DIR = REPO / "build-qemu-conformance"
 SHIM = REPO / "tests" / "embedded" / "qemu_runner_shim.cpp"
+CANARY = REPO / "tests" / "embedded" / "qemu_canary.cpp"
+# Every capability static_assert names the core it is about. A test expected not
+# to build must fail with this text -- any other error (a typo, a missing
+# include) is a broken test, not the gate firing.
+CAPABILITY_GATE_TEXT = "ARMv6-M (Cortex-M0/M0+)"
 LINKER_SCRIPT = REPO / "tests" / "embedded" / "mps2-an385.ld"
 TIMEOUT_SECONDS = 20
 SENTINEL = re.compile(r"^METL_QEMU_EXIT (\d+)$", re.MULTILINE)
@@ -207,6 +218,23 @@ def main():
 
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
     flags = cflags(args.cpu)
+
+    # Negative control first: a test whose CHECK fails must be read as exit 1.
+    canary = BUILD_DIR / "canary.elf"
+    build = subprocess.run(["arm-none-eabi-g++", *flags, str(CANARY), str(SHIM), "-o", str(canary)],
+                           capture_output=True, text=True, cwd=REPO)
+    if build.returncode != 0:
+        print("::error::the runner's canary did not build:")
+        print(indented(build.stdout + build.stderr, 20))
+        return 1
+    code, output = run_one(canary, args.machine, canary.with_suffix(".log"))
+    if code != 1:
+        print(f"::error::the canary's CHECK fails, so it must report METL_QEMU_EXIT 1; "
+              f"the runner read {code}. Nothing below would mean anything.")
+        print(indented(output, 15))
+        return 1
+    print("canary: a failing CHECK reads as exit 1, as it must")
+    print()
     passed = skipped = runtime_skipped = xfailed = 0
     failures, build_failures = [], []
 
@@ -225,12 +253,16 @@ def main():
         log.write_text(build.stdout + build.stderr)
 
         if build.returncode != 0:
-            if rel in expect_fail:
+            if rel in expect_fail and CAPABILITY_GATE_TEXT in build.stdout + build.stderr:
                 # The capability gate fired, which is the point of the gate.
                 print(f"{rel:<52} XFAIL-BUILD  (capability gate fired, as required)")
                 xfailed += 1
                 continue
-            print(f"{rel:<52} BUILD-FAIL")
+            if rel in expect_fail:
+                print(f"{rel:<52} BUILD-FAIL  (expected the capability gate, "
+                      f"got another error)")
+            else:
+                print(f"{rel:<52} BUILD-FAIL")
             # Print the diagnostic inline. Hiding it in an artifact means a red
             # build tells you only that something broke, not what.
             print(indented(build.stdout + build.stderr, 20))
