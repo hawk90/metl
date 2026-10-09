@@ -217,7 +217,7 @@ if(METL_BUILD_TESTS)
     # control/
     control/fsm control/fsm_reentrancy control/event_dispatcher
     control/coro_protothread control/coro_protothread_nested_switch control/coro_scheduler control/coro_scheduler_reentrancy
-    control/coro_stepper control/coro_deadline_scheduler
+    control/coro_stepper control/coro_deadline_scheduler control/control_contracts
     # core/  (assert/compiler + the METL_HARDENING level checks + smoke)
     core/assert core/compiler core/smoke core/ram_footprint core/version
     core/hardening_none core/hardening_fast core/hardening_debug core/hostile_types
