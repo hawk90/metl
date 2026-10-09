@@ -50,6 +50,9 @@ struct lookup_entry {
 ///       terminating.
 template <typename Key, typename Value, std::size_t Size>
 class lookup_table {
+  static_assert(std::is_object_v<Key> && !std::is_array_v<Key>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+  static_assert(std::is_object_v<Value> && !std::is_array_v<Value>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+
  public:
   using key_type = Key;
   using mapped_type = Value;

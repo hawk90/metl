@@ -32,6 +32,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   named object.
 ### Fixed
 
+- `optional<const T>` did not compile: placement new needed the `const T*` as
+  a `void*`. It now stores the unqualified type, constructs, assigns (by
+  replacing the object, as `variant` does for an alternative it cannot
+  assign) and returns `value_or` as `std::remove_cv_t<T>`, like
+  `std::optional`.
+- Containers and vocabulary types given a reference, function, array or `void`
+  failed with errors from inside the header. `fixed_vector`, `fixed_deque`,
+  `ring_buffer`, `fixed_queue`, `object_pool`, `handle_pool`, `optional`,
+  `expected`, `variant`, `flat_map`, `flat_set`, `static_unordered_map`,
+  `static_unordered_set`, `lookup_table`, `guarded` and `span` now refuse it
+  in a `static_assert` that is the first thing the compiler reports.
 - `mmio_register`, `mmio_ptr`, `read_once` and `write_once` documented any
   trivially copyable type, but a class type cannot be copied from a volatile
   lvalue, so a register-overlay struct failed deep inside `register_access.hpp`.

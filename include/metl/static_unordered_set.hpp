@@ -114,6 +114,8 @@ template <typename Key,
           typename Hash = std::hash<Key>,
           typename KeyEqual = std::equal_to<Key>>
 class static_unordered_set {
+  static_assert(std::is_object_v<Key> && !std::is_array_v<Key>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+
  public:
   using key_type = Key;
   using value_type = Key;

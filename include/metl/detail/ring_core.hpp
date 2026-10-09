@@ -152,6 +152,8 @@ class ring_iterator {
 /// @tparam Capacity Maximum number of elements (fixed at compile time).
 template <typename T, std::size_t Capacity>
 class ring_core {
+  static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+
  public:
   using value_type = T;
   using size_type = std::size_t;
