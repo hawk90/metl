@@ -27,6 +27,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   did not compile in `object_pool`, `handle_pool`, `fixed_deque`,
   `ring_buffer`, `fixed_queue`, `static_message_queue`, `variant`,
   `flat_set`, `fixed_function` and the three allocators.
+- `arena_allocator::try_emplace`: when `T`'s constructor allocated from the
+  same arena, `~T()` was registered on the inner allocation's record, so
+  `rewind`/`reset` ran it on the inner object and never ran the inner
+  destructor. Destructors still run in reverse allocation order, so `T`'s
+  destructor must not use what its constructor placed in the arena.
+- `object_pool` / `handle_pool`: a constructor that emplaced into the same
+  pool got the same slot; a destructor that called back into the pool
+  (a self-unregistering handle) destroyed itself twice, and one that
+  emplaced could be handed the slot still being destroyed. Slots are now
+  claimed before construction and released after destruction.
+- `object_pool::destroy` / `contains` rejected a pointer into the middle of
+  a slot only by accident of layout; they now reject it.
+- `handle_pool` / `versioned_handle` with a `bool` generation is a compile
+  error: the generation never advanced, so stale handles stayed valid.
 - Library code takes a user object's address with `addressof`, not `&`. A
   type with its own `operator&` got that operator's result: `optional::emplace`
   constructed at the address it returned, `flat_map`/`static_unordered_map`/
