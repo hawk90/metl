@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `coro::protothread`: a yield inside a `switch` of the caller's own put its
+  `case` label in that inner switch, so the next `run()` skipped the rest of
+  the body and reported the task done. Resuming there now aborts through
+  `METL_HARDEN`; the limitation is documented with the others.
 - `mpmc_queue` compared its free-running tickets by converting each to
   `ptrdiff_t` and subtracting, which overflows once the counters straddle
   half the range -- after 2^31 operations on a 32-bit target. That is

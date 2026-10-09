@@ -34,11 +34,16 @@
 //   - Yield macros expand to `case __LINE__:` labels. Therefore no two yield
 //     sites may appear on the same source line. Put each yield on its own line.
 //   - Locals are not preserved across yields: store state in class members.
+//   - No yield inside a `switch` of your own. The `case __LINE__:` label then
+//     belongs to that inner switch, and the outer one cannot jump back to it.
+//     Resuming there reaches METL_PT_BEGIN's `default:`, which aborts through
+//     METL_HARDEN rather than reporting the task done with its body skipped.
 //
 // All operations are noexcept; the type has no virtuals, no allocations, and
 // is freestanding-safe.
 
 #include "metl/compiler.hpp"
+#include "metl/config.hpp"
 
 namespace metl {
 namespace coro {
@@ -51,7 +56,9 @@ namespace coro {
 /// on yield (still running) and true on completion. Runs on a single-threaded
 /// cooperative loop; the body must be non-blocking.
 /// @note Locals are not preserved across yields — store state in members. No two
-///       yield sites may share a source line (each expands to a `case` label).
+///       yield sites may share a source line (each expands to a `case` label),
+///       and no yield may sit inside a `switch` of your own (resuming there
+///       aborts).
 class protothread {
  public:
   protothread() noexcept = default;
@@ -84,10 +91,17 @@ class protothread {
 
 /// @brief Open a protothread body: dispatches to the last suspend point.
 ///        Must pair with `METL_PT_END()` and be used inside `bool run()`.
-#define METL_PT_BEGIN()           \
-  bool METL_PT_yielded__ = false; \
-  (void)METL_PT_yielded__;        \
-  switch (this->pt_line_) {       \
+#define METL_PT_BEGIN()                                                         \
+  bool METL_PT_yielded__ = false;                                               \
+  (void)METL_PT_yielded__;                                                      \
+  switch (this->pt_line_) {                                                     \
+    default:                                                                    \
+      /* A finished task (-1) run again stays finished. Any other value is a */ \
+      /* resume point this switch cannot reach: a yield inside a nested     */  \
+      /* switch. Skipping to the end would report the task done.            */  \
+      METL_HARDEN(this->pt_line_ < 0);                                          \
+      this->pt_line_ = -1;                                                      \
+      return true;                                                              \
     case 0:
 
 /// @brief Suspend the task, returning control to the caller; resumes here next

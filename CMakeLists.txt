@@ -214,7 +214,7 @@ if(METL_BUILD_TESTS)
     bits/crc_table_equivalence bits/format bits/parse
     # control/
     control/fsm control/fsm_reentrancy control/event_dispatcher
-    control/coro_protothread control/coro_scheduler control/coro_scheduler_reentrancy
+    control/coro_protothread control/coro_protothread_nested_switch control/coro_scheduler control/coro_scheduler_reentrancy
     control/coro_stepper control/coro_deadline_scheduler
     # core/  (assert/compiler + the METL_HARDENING level checks + smoke)
     core/assert core/compiler core/smoke core/ram_footprint core/version
