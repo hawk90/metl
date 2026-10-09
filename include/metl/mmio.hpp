@@ -28,13 +28,15 @@ namespace metl {
 ///
 /// All accesses route through `read_once` / `write_once` (volatile lvalues), so
 /// reads and writes are not folded, reordered, or eliminated by the optimizer.
-/// @tparam T Trivially copyable register value type (e.g. `std::uint32_t`).
+/// @tparam T Scalar register value type (e.g. `std::uint32_t`, or an enum).
 /// @tparam Address Absolute peripheral address; must be aligned to `alignof(T)`.
 /// @pre `Address % alignof(T) == 0` (enforced by static_assert): a misaligned
 ///      volatile access to a peripheral register is undefined behavior.
 template <typename T, std::uintptr_t Address>
 struct mmio_register {
-  static_assert(std::is_trivially_copyable_v<T>, "mmio_register requires a trivially copyable type");
+  static_assert(std::is_scalar_v<T>,
+                "mmio_register requires a scalar register type (an integer, enum or pointer): a class has no "
+                "copy from a volatile lvalue");
   // A misaligned volatile access to a peripheral register is undefined
   // behavior. The address is a compile-time constant, so enforce it here.
   static_assert(Address % alignof(T) == 0, "mmio_register address must be aligned to alignof(T)");
@@ -77,10 +79,12 @@ struct mmio_register {
 /// Same volatile-access semantics as `mmio_register`, but the address is held in
 /// the instance and may be configured at runtime (e.g. when the same peripheral
 /// block exists at several addresses).
-/// @tparam T Trivially copyable register value type.
+/// @tparam T Scalar register value type (integer, enum or pointer).
 template <typename T>
 class mmio_ptr {
-  static_assert(std::is_trivially_copyable_v<T>, "mmio_ptr requires a trivially copyable type");
+  static_assert(std::is_scalar_v<T>,
+                "mmio_ptr requires a scalar register type (an integer, enum or pointer): a class has no copy "
+                "from a volatile lvalue");
 
  public:
   /// @brief Construct from an integer address (volatile hardware pointer).

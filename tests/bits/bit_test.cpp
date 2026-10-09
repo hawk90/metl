@@ -107,6 +107,13 @@ int main() {
     return 3;
   }
 
+  // Narrow types: the shift promotes to int, so a missing cast back was a
+  // -Wconversion error in any consumer build that instantiated these.
+  if (metl::bit_floor(static_cast<std::uint8_t>(200u)) != 128u ||
+      metl::bit_floor(static_cast<std::uint16_t>(40000u)) != 32768u) {
+    return 3;
+  }
+
   if (metl::bit_ceil<std::uint32_t>(0u) != 1u) {
     return 4;
   }

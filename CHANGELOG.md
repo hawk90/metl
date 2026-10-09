@@ -32,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   named object.
 ### Fixed
 
+- `mmio_register`, `mmio_ptr`, `read_once` and `write_once` documented any
+  trivially copyable type, but a class type cannot be copied from a volatile
+  lvalue, so a register-overlay struct failed deep inside `register_access.hpp`.
+  They now require a scalar type (integer, enum or pointer) and say so in a
+  `static_assert`.
+- `bit_floor` on `unsigned char` or `unsigned short` returned an `int` shift
+  unconverted, a `-Wconversion` error in consumer builds.
+- `bitfield`'s range check was `Lsb + Width <= bits`, which wraps for a huge
+  `Lsb` and then passed. It is written so it cannot wrap.
 - `-DMETL_HARDENING=DEBUG` (the level's name rather than `METL_HARDENING_DEBUG`
   or `2`) silently selected NONE: the range check read the unknown identifier
   as 0, and every precondition check was compiled out. Anything but 0, 1, 2 or

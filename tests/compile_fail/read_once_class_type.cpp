@@ -1,7 +1,7 @@
-// EXPECT-ERROR: read_once requires a trivially copyable type
+// EXPECT-ERROR: read_once requires a scalar type
 //
 // read_once exists to make ONE volatile access the compiler may not split,
-// duplicate or reorder. A non-trivially-copyable type is read by running a copy
+// duplicate or reorder. A class type is read by running a copy
 // constructor, which is an arbitrary amount of ordinary code over a volatile
 // object -- so the single-access guarantee the function's whole name is about
 // quietly stops holding.

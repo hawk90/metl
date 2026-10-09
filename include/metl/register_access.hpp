@@ -23,22 +23,27 @@ namespace metl {
 ///
 /// The access goes through a volatile lvalue, so the compiler cannot fold,
 /// reorder, or eliminate it. Force-inlined for interrupt/time-critical paths.
-/// @tparam T Trivially copyable value type.
+/// @tparam T Scalar value type (integer, enum or pointer). A class type cannot be
+///         copied from a volatile lvalue: its copy constructor takes `const T&`.
 /// @param addr Pointer to the volatile location; must be aligned for `T`.
 /// @return The value read from `addr`.
 template <typename T>
 METL_NODISCARD METL_FORCE_INLINE T read_once(const volatile T* addr) noexcept {
-  static_assert(std::is_trivially_copyable_v<T>, "read_once requires a trivially copyable type");
+  static_assert(std::is_scalar_v<T>,
+                "read_once requires a scalar type (an integer, enum or pointer): a class has no copy from a "
+                "volatile lvalue");
   return *addr;
 }
 
 /// @brief Volatile MMIO write that the optimizer may not fold or elide.
-/// @tparam T Trivially copyable value type.
+/// @tparam T Scalar value type (integer, enum or pointer).
 /// @param addr Pointer to the volatile location; must be aligned for `T`.
 /// @param value The value to store at `addr`.
 template <typename T>
 METL_FORCE_INLINE void write_once(volatile T* addr, T value) noexcept {
-  static_assert(std::is_trivially_copyable_v<T>, "write_once requires a trivially copyable type");
+  static_assert(std::is_scalar_v<T>,
+                "write_once requires a scalar type (an integer, enum or pointer): a class has no copy from a "
+                "volatile lvalue");
   *addr = value;
 }
 
