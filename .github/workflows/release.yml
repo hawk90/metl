@@ -103,33 +103,7 @@ jobs:
             --date "$(git log -1 --format=%cs)"
 
       - name: Verify the amalgamation runs the whole test suite
-        run: |
-          mkdir -p shim
-          cp "metl-${version}-single.hpp" shim/metl_amalgamated.hpp
-          while read -r header; do
-            mkdir -p "shim/$(dirname "${header}")"
-            printf '#pragma once\n#include "metl_amalgamated.hpp"\n' > "shim/${header}"
-          done < <(cd include && find metl -name '*.hpp')
-
-          failed=()
-          while read -r test; do
-            if ! clang++ -std=c++17 -O1 -Wall -Wextra -Werror -pthread \
-                   -I shim -I tests "${test}" -o /tmp/amal_bin; then
-              failed+=("${test}")
-              continue
-            fi
-            # 77 is metl_test::skip_code: nothing to check in this build.
-            status=0
-            /tmp/amal_bin > /dev/null 2>&1 || status=$?
-            if [[ "${status}" != 0 && "${status}" != 77 ]]; then
-              failed+=("${test}")
-            fi
-          done < <(find tests -name '*_test.cpp' -not -path 'tests/embedded/*')
-
-          if (( ${#failed[@]} > 0 )); then
-            printf 'FAILED through the amalgamated header: %s\n' "${failed[@]}" >&2
-            exit 1
-          fi
+        run: tools/check_amalgamation.py --header "metl-${version}-single.hpp"
 
       - name: Extract this version's changelog section
         run: |

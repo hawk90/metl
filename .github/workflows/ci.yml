@@ -1608,45 +1608,11 @@ jobs:
       - name: Generate
         run: python3 tools/amalgamate.py -o metl-single.hpp
 
+      - name: The amalgamation checker must still bite (canary)
+        run: tools/check_amalgamation.py --self-test
+
       - name: Build every test through the amalgamated header
-        run: |
-          mkdir -p shim
-          cp metl-single.hpp shim/metl_amalgamated.hpp
-          # One shim per public header, so an `#include "metl/x.hpp"` in a test
-          # resolves to the amalgamation instead of the include directory.
-          while read -r header; do
-            mkdir -p "shim/$(dirname "${header}")"
-            printf '#pragma once\n#include "metl_amalgamated.hpp"\n' > "shim/${header}"
-          done < <(cd include && find metl -name '*.hpp')
-
-          pass=0
-          failed=()
-          skipped=()
-          while read -r test; do
-            if ! clang++ -std=c++17 -O1 -Wall -Wextra -Werror -pthread \
-                 -I shim -I tests "${test}" -o /tmp/amal_bin; then
-              failed+=("${test}")
-              continue
-            fi
-            # 77 is metl_test::skip_code: nothing to check in this build (no
-            # ASan, no interrupt masking). Reported, never counted as a pass.
-            status=0
-            /tmp/amal_bin > /dev/null 2>&1 || status=$?
-            case "${status}" in
-              0) pass=$(( pass + 1 )) ;;
-              77) skipped+=("${test}") ;;
-              *) failed+=("${test}") ;;
-            esac
-          done < <(find tests -name '*_test.cpp' -not -path 'tests/embedded/*')
-
-          echo "${pass} tests passed through the amalgamated header"
-          if (( ${#skipped[@]} > 0 )); then
-            printf 'skipped (nothing to check here): %s\n' "${skipped[@]}"
-          fi
-          if (( ${#failed[@]} > 0 )); then
-            printf 'FAILED: %s\n' "${failed[@]}" >&2
-            exit 1
-          fi
+        run: tools/check_amalgamation.py --header metl-single.hpp
 
 
   # ---------------------------------------------------------------------------

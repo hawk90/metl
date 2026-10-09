@@ -18,13 +18,24 @@ WHAT RUNS, cheapest first, stopping at the first failure:
        disagree about warnings, and CI builds with both.
   4. an ASan + UBSan Debug build and ctest, as the `sanitizers / asan-ubsan`
      job does.
+  5. the mutation gate (tools/check_mutants.py), which also catches a mutant
+     whose anchor text a change has moved.
+  6. every test built and run through the amalgamation
+     (tools/check_amalgamation.py), as the `amalgamation` job does.
+  7. clang-tidy, as a DELTA: the same local binary over the merge-base with
+     origin/main and over this tree, failing if the distinct-finding count
+     grew. CI's absolute `--max` cannot be checked here -- the count depends on
+     the clang-tidy version -- but a change that adds findings adds them under
+     any version. Skipped, and said so, when no clang-tidy is installed.
 
 WHAT DOES NOT, and why: the ARM size/stack/RAM budgets and the instruction
 counts are measured on CI's toolchains and a local number is a different
 measurement (tools/check_size.py says so at length); QEMU, Zephyr and ESP-IDF
-need toolchains a workstation rarely has; clang-tidy's count depends on its
-version. Those stay CI-only. `--full` adds the mutation gate, which rebuilds
-the tree several times.
+need toolchains a workstation rarely has. Those stay CI-only.
+
+Every gate CI runs on a host belongs here. Each one that was left to CI alone
+(the amalgamation's exit codes, the clang-tidy ratchet, a mutant's anchor) was
+first found red on a pushed branch.
 
 Build directories live under build-prepush/ and are reused, so a second push
 only recompiles what changed.
@@ -32,11 +43,11 @@ only recompiles what changed.
 Usage:
     tools/pre_push.py            # what the hook runs
     tools/pre_push.py --quick    # steps 1-2 only (no builds)
-    tools/pre_push.py --full     # also tools/check_mutants.py
     git push --no-verify         # skip the hook (CI still runs everything)
 """
 
 import argparse
+import collections
 import os
 import re
 import shutil
@@ -116,12 +127,94 @@ def build_and_test(name, cxx, cmake_args):
                                         "--output-on-failure"]))
 
 
+def find_clang_tidy():
+    found = shutil.which("clang-tidy")
+    if found:
+        return found
+    for candidate in ("/opt/homebrew/opt/llvm/bin/clang-tidy", "/usr/local/opt/llvm/bin/clang-tidy"):
+        if Path(candidate).is_file():
+            return candidate
+    return None
+
+
+def tidy_findings(python, tidy, source_dir, build_dir, env):
+    """The distinct-finding lines of clang_tidy_report.py over `source_dir`.
+
+    Both trees are configured with the same compiler and environment in the
+    same run. The flags in compile_commands.json decide which #if branches
+    clang-tidy sees, so a base measured under one PATH (a shell) and a head
+    under another (git's hook) once differed by 136 findings."""
+    configure = ["cmake", "-B", str(build_dir), "-S", str(source_dir), "--fresh",
+                 "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON", "-DMETL_BUILD_DOCS=OFF", "-DMETL_INSTALL=OFF",
+                 f"-DCMAKE_CXX_COMPILER={shutil.which('c++') or 'c++'}"]
+    subprocess.run(configure, cwd=source_dir, capture_output=True, check=True, env=env)
+    report = subprocess.run([python, str(source_dir / "tools" / "clang_tidy_report.py"),
+                             "-p", str(build_dir), "--clang-tidy", tidy],
+                            cwd=source_dir, capture_output=True, text=True, check=True, env=env).stdout
+    lines = report.split("Distinct findings:", 1)[-1].splitlines()
+    # Line numbers move with any edit above a finding, so they are dropped --
+    # but the result is a COUNT per message, not a set: two findings with the
+    # same message in one file are two findings, and a new one must show.
+    return collections.Counter(re.sub(r":\d+:\d+:", ":", line.strip())
+                               for line in lines if "warning:" in line)
+
+
+def clang_tidy_delta(python):
+    tidy = find_clang_tidy()
+    if tidy is None:
+        print("  (no clang-tidy installed -- CI's clang-tidy job is the only check)")
+        return True
+    base = subprocess.run(["git", "merge-base", "HEAD", "origin/main"], cwd=REPO,
+                          capture_output=True, text=True).stdout.strip()
+    if not base:
+        print("  (no merge-base with origin/main -- skipped)")
+        return True
+    started = time.monotonic()
+    print(f"  clang-tidy over {base[:9]} and this tree ...", end="", flush=True)
+    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    base_tree = BUILD_ROOT / "tidy-base"
+    try:
+        if base_tree.exists():
+            subprocess.run(["git", "worktree", "remove", "--force", str(base_tree)], cwd=REPO,
+                           capture_output=True, env=env)
+        subprocess.run(["git", "worktree", "add", "--detach", str(base_tree), base], cwd=REPO,
+                       capture_output=True, check=True, env=env)
+        try:
+            before = tidy_findings(python, tidy, base_tree, base_tree / "build-tidy", env)
+        finally:
+            subprocess.run(["git", "worktree", "remove", "--force", str(base_tree)], cwd=REPO,
+                           capture_output=True, env=env)
+        after = tidy_findings(python, tidy, REPO, BUILD_ROOT / "tidy-head", env)
+    except subprocess.CalledProcessError as error:
+        print(f" FAILED to run\n      | {error}")
+        return False
+    elapsed = time.monotonic() - started
+    added = sorted((after - before).elements())
+    if added:
+        # A real regression is deterministic; run this tree once more so a
+        # one-off difference is reported as such instead of blocking the push.
+        again = tidy_findings(python, tidy, REPO, BUILD_ROOT / "tidy-head", env)
+        if again != after:
+            print(f" (first run: {sum(after.values())} findings, second: {sum(again.values())};"
+                  f" clang-tidy output differed between two runs)", end="")
+        after = again
+        added = sorted((after - before).elements())
+    total_before, total_after = sum(before.values()), sum(after.values())
+    if added:
+        print(f" FAILED ({elapsed:.0f}s): {total_before} -> {total_after} distinct findings, "
+              f"{len(added)} new")
+        for line in added:
+            print(f"      | {line}")
+        return False
+    print(f" ok ({elapsed:.0f}s): {total_before} -> {total_after} distinct findings")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--quick", action="store_true", help="self-tests and source gates only")
-    mode.add_argument("--full", action="store_true", help="also run the mutation gate")
     args = parser.parse_args()
     sys.stdout.reconfigure(line_buffering=True)
     python = sys.executable
@@ -157,14 +250,20 @@ def main():
     if not build_and_test("sanitizers", "c++", sanitizers):
         return 1
 
-    if args.full:
-        print("5. mutation gate")
-        if not step("check_mutants.py", [python, "tools/check_mutants.py", "--build-dir",
-                                         str(BUILD_ROOT / "sanitizers")]):
-            return 1
+    print("5. mutation gate")
+    if not step("check_mutants.py", [python, "tools/check_mutants.py", "--build-dir",
+                                     str(BUILD_ROOT / "sanitizers")]):
+        return 1
 
-    print("pre-push: all local checks passed (ARM budgets, QEMU, Zephyr, ESP-IDF and "
-          "clang-tidy run on CI)")
+    print("6. amalgamation")
+    if not step("check_amalgamation.py", [python, "tools/check_amalgamation.py"]):
+        return 1
+
+    print("7. clang-tidy delta against origin/main")
+    if not clang_tidy_delta(python):
+        return 1
+
+    print("pre-push: all local checks passed (ARM budgets, QEMU, Zephyr and ESP-IDF run on CI)")
     return 0
 
 
