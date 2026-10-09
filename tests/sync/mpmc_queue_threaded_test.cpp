@@ -37,6 +37,7 @@ int main() {
   metl::mpmc_queue<std::uint32_t, 1024> queue;
 
   std::atomic<bool> go{false};
+  std::atomic<bool> out_of_range{false};
   std::atomic<std::uint32_t> received_total{0};
 
   // One slot per possible value; each must end at exactly 1.
@@ -61,7 +62,7 @@ int main() {
   }
 
   for (int c = 0; c < kConsumers; ++c) {
-    threads.emplace_back([&queue, &go, &received_total, &seen] {
+    threads.emplace_back([&queue, &go, &received_total, &seen, &out_of_range] {
       while (!go.load(std::memory_order_acquire)) {
       }
       std::uint32_t value = 0;
@@ -69,7 +70,13 @@ int main() {
         if (queue.try_pop(value)) {
           // fetch_add rather than a plain store: if the same value were handed
           // to two consumers, the count would reach 2 and the check below fails.
-          seen[value].fetch_add(1, std::memory_order_relaxed);
+          // A value no producer sent fails the check below instead of
+          // indexing past `seen`.
+          if (value < kTotal) {
+            seen[value].fetch_add(1, std::memory_order_relaxed);
+          } else {
+            out_of_range.store(true, std::memory_order_relaxed);
+          }
           received_total.fetch_add(1, std::memory_order_relaxed);
         }
       }
@@ -82,6 +89,7 @@ int main() {
   }
 
   CHECK_EQ(received_total.load(), kTotal);
+  CHECK(!out_of_range.load());
 
   // Conservation: every value exactly once.
   std::uint32_t missing = 0;

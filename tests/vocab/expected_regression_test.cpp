@@ -64,7 +64,6 @@ int main() {
   }
   CHECK_EQ(val::live, 0);
 
-#if defined(__cpp_exceptions)
   // ---- (1) throwing cross-state assignment rolls back to error state ----
   {
     val::live = 0;
@@ -109,7 +108,6 @@ int main() {
     CHECK_EQ(val::live, 1);
   }
   CHECK_EQ(val::live, 0);
-#endif
 
   // ---- Happy-path cross-state swap ----
   {
@@ -124,7 +122,6 @@ int main() {
   }
   CHECK_EQ(val::live, 0);
 
-#if defined(__cpp_exceptions)
   // ---- (3) a throwing emplace / emplace_error must not double-destroy ----
   // These used to destroy the active member, then throw
   // from the constructor with has_value_ unchanged, so ~expected destroyed it
@@ -188,7 +185,6 @@ int main() {
     }
     CHECK_EQ(val::live, 0);
   }
-#endif
 
   // A non-movable value whose constructor may throw still emplaces (the
   // rollback path cannot set it aside, so it constructs in place as before).

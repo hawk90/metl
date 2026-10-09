@@ -45,11 +45,19 @@ int main() {
   metl::atomic_handle<handle> cell{handle{0, 1}};
   std::atomic<int> successes{0};
 
+  // Released together, so the threads contend instead of each finishing its
+  // share before the next one has started.
+  std::atomic<bool> go{false};
   std::vector<std::thread> threads;
   threads.reserve(thread_count);
   for (int t = 0; t < thread_count; ++t) {
-    threads.emplace_back([&cell, &successes] { bump(cell, successes); });
+    threads.emplace_back([&cell, &successes, &go] {
+      while (!go.load(std::memory_order_acquire)) {
+      }
+      bump(cell, successes);
+    });
   }
+  go.store(true, std::memory_order_release);
   for (auto& thread : threads) {
     thread.join();
   }

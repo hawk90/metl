@@ -29,7 +29,9 @@ struct poisoned {
     o.value = -2;
     return *this;
   }
-  ~poisoned() { value = -1; }
+  // Volatile: a plain store to a dying object is a dead store GCC removes at
+  // -O2, and a use-after-destroy would then read the old value and pass.
+  ~poisoned() { *static_cast<volatile int*>(&value) = -1; }
 };
 
 struct error_with_fallback {

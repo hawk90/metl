@@ -37,8 +37,9 @@ std::size_t worst_observed(Queue& queue, Push push, Pop pop) {
     while (!done.load(std::memory_order_relaxed)) {
       const std::size_t n = queue.size_approx();
       worst = n > worst ? n : worst;
-      // empty() and full() are derived from the same reading; they must never
-      // both claim the queue is something it cannot be.
+      // Called only so the race detector sees them run against the producer
+      // and consumer: two separate readings, so no relation between their
+      // results holds that this thread could check.
       (void)queue.empty();
       (void)queue.full();
     }
