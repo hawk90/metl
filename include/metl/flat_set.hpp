@@ -83,9 +83,10 @@ class flat_set {
   flat_set(flat_set&& other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
                                       std::is_nothrow_move_constructible_v<Compare>)
       : flat_set(adopt_compare{}, static_cast<Compare&&>(other.comp_)) {
-    for (auto& item : other) {
-      emplace(static_cast<Key&&>(item));
-    }
+    // `other` is already sorted and unique, so its elements are appended in
+    // order: no comparison runs, which is what makes the noexcept above true
+    // for a comparator that can throw.
+    append_sorted_from(other);
     other.clear();
   }
 
@@ -116,9 +117,10 @@ class flat_set {
 
     clear();
     comp_ = static_cast<Compare&&>(other.comp_);
-    for (auto& item : other) {
-      emplace(static_cast<Key&&>(item));
-    }
+    // `other` is already sorted and unique, so its elements are appended in
+    // order: no comparison runs, which is what makes the noexcept above true
+    // for a comparator that can throw.
+    append_sorted_from(other);
     other.clear();
     return *this;
   }
@@ -352,12 +354,22 @@ class flat_set {
   ///       rather than an assertion.
   template <typename K>
   METL_NODISCARD bool try_emplace(K&& key) {
-    const size_type index = lower_bound_index(key);
-    if (index < size_ && !comp_(key, data()[index])) {
-      return false;
-    }
+    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
+      // Convert first, so the position, the duplicate check and the stored
+      // key all come from the same value; a narrowing conversion would
+      // otherwise store a key that does not belong where the argument put it.
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted(std::forward<K>(key));
+      return try_emplace(static_cast<key_type&&>(converted));
+    } else {
+      const size_type index = lower_bound_index(key);
+      if (index < size_ && !comp_(key, data()[index])) {
+        return false;
+      }
 
-    return try_insert_at(index, std::forward<K>(key));
+      return try_insert_at(index, std::forward<K>(key));
+    }
   }
 
   /// @brief Insert @p key and return a reference to the new element.
@@ -366,16 +378,26 @@ class flat_set {
   ///      handle a full set or duplicate key without asserting.
   template <typename K>
   reference emplace(K&& key) {
-    const size_type index = lower_bound_index(key);
-    METL_HARDEN(!(index < size_ && !comp_(key, data()[index])));
-    const bool inserted = try_insert_at(index, std::forward<K>(key));
-    METL_ASSERT(inserted);
-    (void)inserted;
-    // Hard guard on the full-set path — see the twin
-    // comment on flat_map::emplace. METL_ASSERT is stripped at low hardening
-    // levels; METL_HARDEN never is.
-    METL_HARDEN(index < size_);
-    return data()[index];
+    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
+      // Convert first, so the position, the duplicate check and the stored
+      // key all come from the same value; a narrowing conversion would
+      // otherwise store a key that does not belong where the argument put it.
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted(std::forward<K>(key));
+      return emplace(static_cast<key_type&&>(converted));
+    } else {
+      const size_type index = lower_bound_index(key);
+      METL_HARDEN(!(index < size_ && !comp_(key, data()[index])));
+      const bool inserted = try_insert_at(index, std::forward<K>(key));
+      METL_ASSERT(inserted);
+      (void)inserted;
+      // Hard guard on the full-set path — see the twin
+      // comment on flat_map::emplace. METL_ASSERT is stripped at low hardening
+      // levels; METL_HARDEN never is.
+      METL_HARDEN(index < size_);
+      return data()[index];
+    }
   }
 
   /// @brief Erase the element equal to the given key, if present.
@@ -407,6 +429,15 @@ class flat_set {
       detail::nothrow_binary_call_v<Compare, const value_type&, const K&>;
   // erase relocates the tail by move construction.
   static constexpr bool relocate_cannot_throw = std::is_nothrow_move_constructible_v<value_type>;
+
+  // Moves every element of `other` (sorted, unique) onto the end of this empty
+  // container, in order.
+  void append_sorted_from(flat_set& other) noexcept(std::is_nothrow_move_constructible_v<value_type>) {
+    for (auto& item : other) {
+      ::new (storage_.slot(size_)) value_type(static_cast<value_type&&>(item));
+      ++size_;
+    }
+  }
   // Empty set that MOVES its comparator in; the move constructor delegates
   // here (the public comparator constructor copies).
   struct adopt_compare {};

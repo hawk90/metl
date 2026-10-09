@@ -23,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `flat_set`, `flat_map`, `static_unordered_set`, `static_unordered_map`:
+  inserting a key of another type found the position (or bucket) with the
+  argument and then stored the converted key, so a narrowing or converting
+  key landed where it did not belong -- the same `uint32` stored twice, or a
+  `flat_set` out of order. The key is converted first.
+- The moves of those four containers re-inserted every element, running the
+  hasher or comparator, while being `noexcept` whenever the elements' moves
+  were; a throwing hasher ended in `std::terminate`. `flat_map` / `flat_set`
+  now append the already-sorted source without comparing, and the unordered
+  containers are `noexcept` only when the hasher and key comparison are.
 - `coro::protothread`: a yield inside a `switch` of the caller's own put its
   `case` label in that inner switch, so the next `run()` skipped the rest of
   the body and reported the task done. Resuming there now aborts through

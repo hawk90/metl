@@ -96,9 +96,10 @@ class flat_map {
   flat_map(flat_map&& other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
                                       std::is_nothrow_move_constructible_v<Compare>)
       : flat_map(adopt_compare{}, static_cast<Compare&&>(other.comp_)) {
-    for (auto& item : other) {
-      emplace(static_cast<Key&&>(item.key), static_cast<T&&>(item.value));
-    }
+    // `other` is already sorted and unique, so its elements are appended in
+    // order: no comparison runs, which is what makes the noexcept above true
+    // for a comparator that can throw.
+    append_sorted_from(other);
     other.clear();
   }
 
@@ -129,9 +130,10 @@ class flat_map {
 
     clear();
     comp_ = static_cast<Compare&&>(other.comp_);
-    for (auto& item : other) {
-      emplace(static_cast<Key&&>(item.key), static_cast<T&&>(item.value));
-    }
+    // `other` is already sorted and unique, so its elements are appended in
+    // order: no comparison runs, which is what makes the noexcept above true
+    // for a comparator that can throw.
+    append_sorted_from(other);
     other.clear();
     return *this;
   }
@@ -360,12 +362,22 @@ class flat_map {
   ///       rather than an assertion.
   template <typename K, typename V>
   METL_NODISCARD bool try_emplace(K&& key, V&& value) {
-    const size_type index = lower_bound_index(key);
-    if (index < size_ && !comp_(key, data()[index].key)) {
-      return false;
-    }
+    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
+      // Convert first, so the position, the duplicate check and the stored
+      // key all come from the same value; a narrowing conversion would
+      // otherwise store a key that does not belong where the argument put it.
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted{std::forward<K>(key)};
+      return try_emplace(static_cast<key_type&&>(converted), std::forward<V>(value));
+    } else {
+      const size_type index = lower_bound_index(key);
+      if (index < size_ && !comp_(key, data()[index].key)) {
+        return false;
+      }
 
-    return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
+      return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
+    }
   }
 
   /// @brief Insert @p key/@p value and return a reference to the new element.
@@ -374,17 +386,27 @@ class flat_map {
   ///      handle a full map or duplicate key without asserting.
   template <typename K, typename V>
   reference emplace(K&& key, V&& value) {
-    const size_type index = lower_bound_index(key);
-    METL_HARDEN(!(index < size_ && !comp_(key, data()[index].key)));
-    const bool inserted = try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
-    METL_ASSERT(inserted);
-    (void)inserted;
-    // Hard guard on the full-map path: on a full map
-    // try_insert_at returns false with `index == size_ == Capacity`, so the
-    // return below would hand out a one-past-the-end reference. METL_ASSERT is
-    // stripped at low hardening levels; METL_HARDEN never is.
-    METL_HARDEN(index < size_);
-    return data()[index];
+    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
+      // Convert first, so the position, the duplicate check and the stored
+      // key all come from the same value; a narrowing conversion would
+      // otherwise store a key that does not belong where the argument put it.
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted{std::forward<K>(key)};
+      return emplace(static_cast<key_type&&>(converted), std::forward<V>(value));
+    } else {
+      const size_type index = lower_bound_index(key);
+      METL_HARDEN(!(index < size_ && !comp_(key, data()[index].key)));
+      const bool inserted = try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
+      METL_ASSERT(inserted);
+      (void)inserted;
+      // Hard guard on the full-map path: on a full map
+      // try_insert_at returns false with `index == size_ == Capacity`, so the
+      // return below would hand out a one-past-the-end reference. METL_ASSERT is
+      // stripped at low hardening levels; METL_HARDEN never is.
+      METL_HARDEN(index < size_);
+      return data()[index];
+    }
   }
 
   /// @brief Assign @p value to an existing @p key, or insert the pair if absent.
@@ -394,13 +416,23 @@ class flat_map {
   ///       asserting form below.
   template <typename K, typename V>
   METL_NODISCARD bool try_insert_or_assign(K&& key, V&& value) {
-    const size_type index = lower_bound_index(key);
-    if (index < size_ && !comp_(key, data()[index].key)) {
-      data()[index].value = std::forward<V>(value);
-      return true;
-    }
+    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
+      // Convert first, so the position, the duplicate check and the stored
+      // key all come from the same value; a narrowing conversion would
+      // otherwise store a key that does not belong where the argument put it.
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted{std::forward<K>(key)};
+      return try_insert_or_assign(static_cast<key_type&&>(converted), std::forward<V>(value));
+    } else {
+      const size_type index = lower_bound_index(key);
+      if (index < size_ && !comp_(key, data()[index].key)) {
+        data()[index].value = std::forward<V>(value);
+        return true;
+      }
 
-    return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
+      return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
+    }
   }
 
   /// @brief Assign @p value to an existing @p key, or insert the pair if absent.
@@ -408,14 +440,24 @@ class flat_map {
   /// @pre A new key fits; a full map asserts. Use @c try_insert_or_assign otherwise.
   template <typename K, typename V>
   reference insert_or_assign(K&& key, V&& value) {
-    const size_type index = lower_bound_index(key);
-    const bool stored = try_insert_or_assign(std::forward<K>(key), std::forward<V>(value));
-    METL_ASSERT(stored);
-    (void)stored;
-    // Same full-map hazard as emplace above: a refused insert leaves
-    // `index == size_`, which would make this a one-past-the-end reference.
-    METL_HARDEN(index < size_);
-    return data()[index];
+    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
+      // Convert first, so the position, the duplicate check and the stored
+      // key all come from the same value; a narrowing conversion would
+      // otherwise store a key that does not belong where the argument put it.
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted{std::forward<K>(key)};
+      return insert_or_assign(static_cast<key_type&&>(converted), std::forward<V>(value));
+    } else {
+      const size_type index = lower_bound_index(key);
+      const bool stored = try_insert_or_assign(std::forward<K>(key), std::forward<V>(value));
+      METL_ASSERT(stored);
+      (void)stored;
+      // Same full-map hazard as emplace above: a refused insert leaves
+      // `index == size_`, which would make this a one-past-the-end reference.
+      METL_HARDEN(index < size_);
+      return data()[index];
+    }
   }
 
   /// @brief Erase the element with the given key, if present.
@@ -447,6 +489,15 @@ class flat_map {
       detail::nothrow_binary_call_v<Compare, const key_type&, const K&>;
   // erase relocates the tail by move construction.
   static constexpr bool relocate_cannot_throw = std::is_nothrow_move_constructible_v<value_type>;
+
+  // Moves every element of `other` (sorted, unique) onto the end of this empty
+  // container, in order.
+  void append_sorted_from(flat_map& other) noexcept(std::is_nothrow_move_constructible_v<value_type>) {
+    for (auto& item : other) {
+      ::new (storage_.slot(size_)) value_type(static_cast<value_type&&>(item));
+      ++size_;
+    }
+  }
   // Empty map that MOVES its comparator in; the move constructor delegates
   // here (the public comparator constructor copies).
   struct adopt_compare {};
