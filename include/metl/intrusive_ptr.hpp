@@ -154,11 +154,28 @@ class intrusive_ref_counter {
   }
 };
 
-// METL_ATTRIBUTE_TRIVIAL_ABI: intrusive_ptr owns a single raw pointer and is
-// trivially relocatable (its move leaves the source null; it holds no pointer
-// to itself). The attribute lets it be passed/returned in a register and
-// destroyed by the callee, matching a raw pointer's calling convention, without
-// changing observable behavior. No-op on toolchains lacking the attribute.
+// METL_INTRUSIVE_PTR_TRIVIAL_ABI — an ABI switch, off by default.
+//
+// On, intrusive_ptr is [[clang::trivial_abi]]: Clang passes and returns it in a
+// register and the CALLEE destroys a by-value parameter. GCC ignores the
+// attribute and passes it in memory, so a function taking or returning
+// intrusive_ptr by value has two incompatible ABIs, and a program mixing GCC-
+// and Clang-built objects crashes there (a vendor library built with one, the
+// application with the other). It also moves when a by-value parameter is
+// destroyed. libc++ keeps the same optimisation for unique_ptr opt-in for the
+// same reason.
+//
+// Turn it on only when every object that passes an intrusive_ptr is built by
+// Clang, and uniformly: like METL_HARDENING it must match across a program.
+#ifndef METL_INTRUSIVE_PTR_TRIVIAL_ABI
+#define METL_INTRUSIVE_PTR_TRIVIAL_ABI 0
+#endif
+#if METL_INTRUSIVE_PTR_TRIVIAL_ABI
+#define METL_DETAIL_INTRUSIVE_PTR_ABI METL_ATTRIBUTE_TRIVIAL_ABI
+#else
+#define METL_DETAIL_INTRUSIVE_PTR_ABI
+#endif
+
 /// @brief Owning smart pointer for types carrying their own reference count.
 ///
 /// Manages the strong reference count through the ADL hooks
@@ -169,7 +186,7 @@ class intrusive_ref_counter {
 /// @warning The pointee must supply the intrusive_ptr_add_ref /
 ///          intrusive_ptr_release hooks, or use will fail to compile.
 template <typename T>
-class METL_ATTRIBUTE_TRIVIAL_ABI intrusive_ptr {
+class METL_DETAIL_INTRUSIVE_PTR_ABI intrusive_ptr {
  public:
   using element_type = T;
   using pointer = T*;

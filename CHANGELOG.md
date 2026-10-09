@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Upgrading from 1.1.0
 
+- `intrusive_ptr` is no longer `[[clang::trivial_abi]]` by default. Clang
+  passed it in a register and GCC in memory, so a program mixing GCC- and
+  Clang-built objects crashed where one passed an `intrusive_ptr` by value to
+  the other. This changes Clang's ABI for the type: rebuild everything that
+  passes it across a function boundary. `-DMETL_INTRUSIVE_PTR_TRIVIAL_ABI=1`
+  restores the old layout, for programs built by Clang alone.
 - **Using** `irq_lock` (including as the default lock of `guarded` and
   `tick_extender`) is now a compile error on any target that has interrupts
   but no masking sequence in METL: ESP32 (Xtensa or RISC-V), Cortex-A/R, AVR,
