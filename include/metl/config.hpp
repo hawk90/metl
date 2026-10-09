@@ -74,8 +74,18 @@
 #endif
 #endif
 
-#if (METL_HARDENING < METL_HARDENING_NONE) || (METL_HARDENING > METL_HARDENING_DEBUG)
-#error "METL_HARDENING must be 0 (NONE), 1 (FAST), or 2 (DEBUG)"
+// Validated by token pasting, not by range. The preprocessor reads an unknown
+// identifier as 0, so a range check let -DMETL_HARDENING=DEBUG (the level's
+// name, not its macro) through as NONE -- every precondition check gone, and no
+// diagnostic. Pasting accepts exactly 0, 1 and 2, after METL_HARDENING_* has
+// expanded to one of them.
+#define METL_DETAIL_HARDENING_VALID_0 1
+#define METL_DETAIL_HARDENING_VALID_1 1
+#define METL_DETAIL_HARDENING_VALID_2 1
+#define METL_DETAIL_HARDENING_PASTE(level) METL_DETAIL_HARDENING_VALID_##level
+#define METL_DETAIL_HARDENING_VALID(level) METL_DETAIL_HARDENING_PASTE(level)
+#if METL_DETAIL_HARDENING_VALID(METL_HARDENING) != 1
+#error "METL_HARDENING must be 0 (NONE), 1 (FAST), or 2 (DEBUG), or METL_HARDENING_NONE / _FAST / _DEBUG"
 #endif
 
 // METL_ASSERT — the default precondition check (bounds, non-empty, capacity,
@@ -94,10 +104,10 @@
     }                                                              \
   } while (false)
 #else
-#define METL_ASSERT(expr)         \
-  do {                            \
-    (void)sizeof((expr) ? 1 : 0); \
-  } while (false)
+// Type-checks `expr` without running it. Not `sizeof(expr)`: that is an
+// unevaluated operand, where C++17 forbids a lambda, so an assertion that
+// compiled in a checked build failed to compile in the stripped one.
+#define METL_ASSERT(expr) (false ? static_cast<void>(!(expr)) : static_cast<void>(0))
 #endif
 #endif
 
@@ -129,8 +139,8 @@
 #endif
 
 // METL_DASSERT — debug-only assertion (a DCHECK). Active only at
-// METL_HARDENING_DEBUG; at FAST and NONE it compiles to nothing — evaluating
-// `expr` only in an unevaluated context so it neither runs side effects nor
+// METL_HARDENING_DEBUG; at FAST and NONE it compiles to nothing — `expr` is
+// type-checked in a branch that never runs, so it neither runs side effects nor
 // triggers unused warnings.
 //
 // Use METL_DASSERT ONLY for checks too EXPENSIVE to keep in a shipping build
@@ -142,10 +152,8 @@
 #if METL_HARDENING >= METL_HARDENING_DEBUG
 #define METL_DASSERT(expr) METL_ASSERT(expr)
 #else
-#define METL_DASSERT(expr)        \
-  do {                            \
-    (void)sizeof((expr) ? 1 : 0); \
-  } while (false)
+// As the stripped METL_ASSERT: `expr` is checked, never run.
+#define METL_DASSERT(expr) (false ? static_cast<void>(!(expr)) : static_cast<void>(0))
 #endif
 #endif
 
