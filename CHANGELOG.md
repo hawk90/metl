@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   undefined behaviour, and clang at `-O1` and above compiled it into a
   `try_push` that never returned. The distance is now taken in unsigned
   arithmetic.
+- `try_format_uint` / `try_format_int` / `try_format_hex` (and the asserting
+  forms) narrowed `__int128` to 64 bits silently -- 2^64 printed as `"0"`.
+  A wider-than-64-bit integer is now a compile error there.
 - `irq_lock` no longer compiles to a no-op on targets with real interrupts
   (see Upgrading above). Cortex-M with GCC or Clang is unchanged.
 - Containers, `optional`, `variant`, the pools, the allocators and
