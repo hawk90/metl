@@ -262,8 +262,12 @@ class static_unordered_set {
   }
 
   /// @brief Move-construct, moving elements out of @p other and leaving it empty.
+  //
+  // The elements are re-inserted, which runs the hasher and key comparison, so
+  // the move is noexcept only when those are too (a throw from one used to end
+  // in std::terminate).
   static_unordered_set(static_unordered_set&& other) noexcept(
-      std::is_nothrow_move_constructible_v<value_type>)
+      std::is_nothrow_move_constructible_v<value_type> && lookup_cannot_throw<key_type>)
       : static_unordered_set(
             empty_with{}, static_cast<Hash&&>(other.hasher_), static_cast<KeyEqual&&>(other.key_equal_)) {
     for (auto& item : other) {
@@ -293,7 +297,7 @@ class static_unordered_set {
   /// @brief Move-assign from @p other, leaving it empty (self-assignment safe).
   static_unordered_set& operator=(static_unordered_set&& other) noexcept(
       std::is_nothrow_move_constructible_v<value_type> && std::is_nothrow_move_assignable_v<Hash> &&
-      std::is_nothrow_move_assignable_v<KeyEqual>) {
+      std::is_nothrow_move_assignable_v<KeyEqual> && lookup_cannot_throw<key_type>) {
     if (this == &other) {
       return *this;
     }
@@ -439,6 +443,12 @@ class static_unordered_set {
   ///       rather than an assertion.
   template <typename K>
   METL_NODISCARD bool try_emplace(K&& key) {
+    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
+      // Convert first, so the position, the duplicate check and the stored
+      // key all come from the same value; a narrowing conversion would
+      // otherwise store a key that does not belong where the argument put it.
+      return try_emplace(key_type(std::forward<K>(key)));
+    }
     size_type index = npos;
     if (!locate_insert_index(key, &index)) {
       return false;
@@ -464,6 +474,12 @@ class static_unordered_set {
   ///      handle a full set without asserting.
   template <typename K>
   reference emplace(K&& key) {
+    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
+      // Convert first, so the position, the duplicate check and the stored
+      // key all come from the same value; a narrowing conversion would
+      // otherwise store a key that does not belong where the argument put it.
+      return emplace(key_type(std::forward<K>(key)));
+    }
     // Find-existing first, as static_unordered_map::emplace does: a duplicate
     // returns the stored element as documented, instead of asserting -- or, at
     // METL_HARDENING_NONE, constructing over the live element.

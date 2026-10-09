@@ -275,8 +275,12 @@ class static_unordered_map {
   }
 
   /// @brief Move-construct, moving elements out of @p other and leaving it empty.
+  //
+  // The elements are re-inserted, which runs the hasher and key comparison, so
+  // the move is noexcept only when those are too (a throw from one used to end
+  // in std::terminate).
   static_unordered_map(static_unordered_map&& other) noexcept(
-      std::is_nothrow_move_constructible_v<value_type>)
+      std::is_nothrow_move_constructible_v<value_type> && lookup_cannot_throw<key_type>)
       : static_unordered_map(
             empty_with{}, static_cast<Hash&&>(other.hasher_), static_cast<KeyEqual&&>(other.key_equal_)) {
     for (auto& item : other) {
@@ -306,7 +310,7 @@ class static_unordered_map {
   /// @brief Move-assign from @p other, leaving it empty (self-assignment safe).
   static_unordered_map& operator=(static_unordered_map&& other) noexcept(
       std::is_nothrow_move_constructible_v<value_type> && std::is_nothrow_move_assignable_v<Hash> &&
-      std::is_nothrow_move_assignable_v<KeyEqual>) {
+      std::is_nothrow_move_assignable_v<KeyEqual> && lookup_cannot_throw<key_type>) {
     if (this == &other) {
       return *this;
     }
@@ -452,6 +456,12 @@ class static_unordered_map {
   ///       rather than an assertion.
   template <typename K, typename V>
   METL_NODISCARD bool try_emplace(K&& key, V&& value) {
+    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
+      // Convert first, so the position, the duplicate check and the stored
+      // key all come from the same value; a narrowing conversion would
+      // otherwise store a key that does not belong where the argument put it.
+      return try_emplace(key_type{std::forward<K>(key)}, std::forward<V>(value));
+    }
     size_type index = npos;
     if (!locate_insert_index(key, &index)) {
       return false;
@@ -477,6 +487,12 @@ class static_unordered_map {
   ///      handle a full map without asserting.
   template <typename K, typename V>
   reference emplace(K&& key, V&& value) {
+    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
+      // Convert first, so the position, the duplicate check and the stored
+      // key all come from the same value; a narrowing conversion would
+      // otherwise store a key that does not belong where the argument put it.
+      return emplace(key_type{std::forward<K>(key)}, std::forward<V>(value));
+    }
     // Find-existing first so a duplicate key never double-constructs over a
     // live element (which would also increment size_ twice).
     const size_type existing = find_existing_index(key);
@@ -500,6 +516,12 @@ class static_unordered_map {
   ///       asserting form below.
   template <typename K, typename V>
   METL_NODISCARD bool try_insert_or_assign(K&& key, V&& value) {
+    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
+      // Convert first, so the position, the duplicate check and the stored
+      // key all come from the same value; a narrowing conversion would
+      // otherwise store a key that does not belong where the argument put it.
+      return try_insert_or_assign(key_type{std::forward<K>(key)}, std::forward<V>(value));
+    }
     return insert_or_assign_impl(std::forward<K>(key), std::forward<V>(value)) != npos;
   }
 
@@ -508,6 +530,12 @@ class static_unordered_map {
   /// @pre A new key fits; a full map asserts. Use @c try_insert_or_assign otherwise.
   template <typename K, typename V>
   reference insert_or_assign(K&& key, V&& value) {
+    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
+      // Convert first, so the position, the duplicate check and the stored
+      // key all come from the same value; a narrowing conversion would
+      // otherwise store a key that does not belong where the argument put it.
+      return insert_or_assign(key_type{std::forward<K>(key)}, std::forward<V>(value));
+    }
     const size_type index = insert_or_assign_impl(std::forward<K>(key), std::forward<V>(value));
     METL_ASSERT(index != npos);
     // A refused insert returns npos, and METL_ASSERT is stripped at low
