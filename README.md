@@ -495,7 +495,8 @@ the standard library's feature-test macro rather than on the language version.
 Tested targets:
 
 - Cortex-M0, Cortex-M3, Cortex-M4, Cortex-M7
-- RISC-V (32-bit and 64-bit)
+- RISC-V: 32-bit through an ESP-IDF build for the ESP32-C3, 64-bit as a
+  syntax check. Neither runs; see the table below.
 - x86-64 host (Linux, Windows) and AArch64 host (macOS)
 
 Cortex-A is not exercised by any CI job.
@@ -513,7 +514,7 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | Host | Linux × gcc / clang and macOS × clang, each × Debug / Release / MinSizeRel; Windows × MSVC × Debug / Release, `/WX`, with the examples | build + `ctest` | `host-test` |
 | Host hardening | Release **+ `-Werror`** (clang **and gcc**) | build + `ctest` (NDEBUG warning gate) | `release-werror` |
 | Host LTO | Release + IPO/LTO | build + `ctest` | `lto` |
-| Sanitizers | Linux / clang — ASan+UBSan, TSan (Debug, `-Werror`) | build + `ctest` (incl. threaded tests) | `sanitizers` |
+| Sanitizers | Linux / clang — ASan+UBSan (Debug; again at `METL_HARDENING=0`; again optimized), TSan (Debug, `-Werror`) | build + `ctest` (incl. threaded tests) | `sanitizers` |
 | ARM Cortex-M (gcc) | Cortex-M0/M3/M4/M7, freestanding | cross-compile + code size | `arm-cross` |
 | **ARM Cortex-M (run)** | **Cortex-M3 / M4 / M7 under qemu-system-arm** (mps2-an385 / an386 / an500) | **cross-compile + RUN the test suite** — 102 tests per core | `qemu-conformance` |
 | ARM Cortex-M0 (run) | an **ARMv6-M build** executed on the AN385's ARMv7-M core — QEMU has no M0 board | runs 98 tests, and asserts that the three CAS-requiring types — `mpmc_queue`, `atomic_handle`, `intrusive_ptr`, across four test files — *fail to compile*. Proves the M0 **build** runs, **not** that an M0 **core** runs it: core-level differences (unaligned access, absent VTOR) are out of scope, which is why the interrupt tests skip themselves there | `qemu-conformance` |
@@ -527,7 +528,7 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | Zephyr RTOS | qemu_cortex_m3 module build + run | `west build` + twister **run** (QEMU) | `zephyr` |
 | No heap / no exceptions / no RTTI | Cortex-M0/M3/M4/M7, newlib-nano | link + **audit the image's symbol table**; a deliberate canary must fail it | `invariants` |
 | Lock-free capability | Cortex-M0/M3/M4/M7 | the trait must match the target **and** the opposite expectation must not compile | `handle-atomics` |
-| Non-default configs | `METL_CRC_TABLE=0`, **`-std=c++20`** | build + `ctest` for each (`#if` arms nothing else compiles) | `config-matrix` |
+| Non-default configs | `METL_CRC_TABLE=0`, **`-std=c++20`**, `-fno-exceptions` | build + `ctest` for each (`#if` arms nothing else compiles) | `config-matrix` |
 | Coverage | host, Clang source-based | `include/metl` line + branch coverage against a floor | `coverage` |
 | Benchmarks | host | build + run each suite (`--quick`); instructions executed per benchmark, counted under cachegrind, against a budget (`tools/check_instructions.py`); wall-clock numbers are informational only | `bench-smoke` |
 | Code size and RAM | Cortex-M0/M3/M4/M7, `-Os` | `.text`, `.rodata`, `.bss`+`.data` and deepest stack frame of the **linked** probe against per-target budgets (`tools/check_size.py`, `tools/check_stack.py`) | `invariants` |
