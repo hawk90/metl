@@ -47,6 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compile), `METL_LIKELY_ATTR` gave `[[likely]]` in C++17 (now C++20 only), and
   `fixed_function` kept out-of-line definitions of `constexpr` static members
   that C++17 deprecates.
+- Comparing a `fixed_string` with a string literal longer than its capacity
+  aborted: there was no `const char*` overload, so the literal went through the
+  asserting converting constructor. `==`, `!=`, `<`, `>`, `<=` and `>=` now take
+  a `const char*` on either side and compare in place.
 - The headers now build warning-free under MSVC `/W4 /WX`. `mpmc_queue`,
   `spsc_queue` and `spsc_byte_ring` raised C4324 (padding from their
   cache-line alignment, which is the point of it); `try_format_int` and
