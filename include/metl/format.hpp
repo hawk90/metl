@@ -13,6 +13,9 @@
 /// string, allocates, or consults a locale, so there is no path whose cost depends
 /// on anything but the value and the buffer.
 ///
+/// Integers up to 64 bits. A wider one (`__int128`) is a compile error rather
+/// than a silent truncation; `parse.hpp` does read 128-bit values.
+///
 /// A buffer too small to hold the result is a capacity failure like any other: the
 /// `try_` form returns an empty span and the asserting form aborts. Neither writes past
 /// the span.
@@ -144,6 +147,9 @@ METL_NODISCARD constexpr span<char> try_format_uint(span<char> out, T value) noe
   static_assert(std::is_unsigned_v<T>,
                 "try_format_uint takes an UNSIGNED value; a negative signed value would convert "
                 "to a huge positive one and print as such. Use try_format_int instead");
+  static_assert(sizeof(T) <= sizeof(unsigned long long),
+                "try_format_uint takes at most a 64-bit integer: the value is formatted through "
+                "unsigned long long, and a wider one (__int128) would be truncated silently");
   const auto magnitude = static_cast<unsigned long long>(value);
   const std::size_t count = detail::decimal_digits(magnitude);
   if (count > out.size()) {
@@ -184,6 +190,9 @@ METL_NODISCARD constexpr span<char> try_format_int(span<char> out, T value) noex
   static_assert(detail::is_plain_integer_v<T>,
                 "try_format_int takes an integer: bool and the character types are excluded "
                 "because printing them as numbers is almost never what was meant");
+  static_assert(sizeof(T) <= sizeof(unsigned long long),
+                "try_format_int takes at most a 64-bit integer: the value is formatted through "
+                "unsigned long long, and a wider one (__int128) would be truncated silently");
   if constexpr (std::is_unsigned_v<T>) {
     // Widening to `long long` below wraps an unsigned value above LLONG_MAX
     // into a negative one: UINT64_MAX printed as "-1".
@@ -246,6 +255,9 @@ METL_NODISCARD constexpr span<char> try_format_hex(span<char> out,
                 "try_format_hex takes an UNSIGNED value; a negative signed value would be "
                 "sign-extended to a 64-bit pattern of f's. Cast to the unsigned type whose "
                 "width you actually mean");
+  static_assert(sizeof(T) <= sizeof(unsigned long long),
+                "try_format_hex takes at most a 64-bit integer: the value is formatted through "
+                "unsigned long long, and a wider one (__int128) would be truncated silently");
   const auto widened = static_cast<unsigned long long>(value);
   const std::size_t needed = detail::hex_digits(widened);
   const std::size_t count = digits == 0 ? needed : digits;
