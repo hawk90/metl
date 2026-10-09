@@ -1,4 +1,4 @@
-// EXPECT-ERROR: write_once requires a trivially copyable type
+// EXPECT-ERROR: write_once requires a scalar type
 //
 // The companion to read_once, and the more dangerous direction: a write that
 // runs a copy assignment over a volatile object is an arbitrary number of

@@ -223,7 +223,9 @@ METL_NODISCARD constexpr T bit_floor(T value) noexcept {
     return 0;
   }
 
-  return T{1} << (bit_width(value) - 1);
+  // Cast back, as bit_ceil does: for unsigned char/short the shift promotes to
+  // int, which -Wconversion reports on the return.
+  return static_cast<T>(T{1} << (bit_width(value) - 1));
 }
 
 /// @brief Smallest power of two not less than the value.
