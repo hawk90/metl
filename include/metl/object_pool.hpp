@@ -50,7 +50,7 @@ class object_pool {
   using const_pointer = const T*;
 
   /// Constructs an empty pool with all slots free.
-  constexpr object_pool() noexcept : active_{}, size_(0) {}
+  constexpr object_pool() noexcept = default;
 
   ~object_pool() { clear(); }
 
@@ -61,13 +61,19 @@ class object_pool {
 
   /// Constructs an object in the first free slot.
   /// @return Pointer to the new object, or nullptr if the pool is full (no assert).
+  ///
+  /// The slot is claimed before T's constructor runs, so a constructor that
+  /// emplaces into this pool gets a different slot; if the constructor throws,
+  /// the claim is released.
   template <typename... Args>
   METL_NODISCARD pointer try_emplace(Args&&... args) {
     for (size_type i = 0; i < Capacity; ++i) {
-      if (!active_[i]) {
-        ::new (storage_[i].addr()) T(std::forward<Args>(args)...);
-        active_[i] = true;
+      if (state_[i] == slot_state::free) {
+        state_[i] = slot_state::live;
         ++size_;
+        release_on_unwind claim{this, i};
+        ::new (storage_[i].addr()) T(std::forward<Args>(args)...);
+        claim.dismiss();
         return slot_ptr(i);
       }
     }
@@ -90,31 +96,30 @@ class object_pool {
   /// @return true if destroyed; false if `object` is not a live slot of this pool.
   bool destroy(pointer object) noexcept {
     const size_type index = index_of(object);
-    if (index >= Capacity || !active_[index]) {
-      return false;
+    const bool live = index < Capacity && state_[index] == slot_state::live;
+    if (live) {
+      end_life(index);
     }
-
-    slot_ptr(index)->~T();
-    active_[index] = false;
-    --size_;
-    return true;
+    return live;
   }
 
   /// Destroys all live objects and frees every slot.
+  ///
+  /// Each object leaves the pool before its destructor runs, as in `destroy`.
+  /// An object a destructor emplaces into a slot this pass has already cleared
+  /// survives, and is counted.
   void clear() noexcept {
     for (size_type i = 0; i < Capacity; ++i) {
-      if (active_[i]) {
-        slot_ptr(i)->~T();
-        active_[i] = false;
+      if (state_[i] == slot_state::live) {
+        end_life(i);
       }
     }
-    size_ = 0;
   }
 
   /// Returns true if `object` points to a live slot of this pool.
   METL_NODISCARD bool contains(const_pointer object) const noexcept {
     const size_type index = index_of(object);
-    return index < Capacity && active_[index];
+    return index < Capacity && state_[index] == slot_state::live;
   }
 
   /// Returns true if no slots are in use.
@@ -151,13 +156,51 @@ class object_pool {
     if (addr < lo || addr >= hi) {
       return Capacity;
     }
+    // Inside the storage but not at the start of a slot (a pointer to a member
+    // of a live object, say) is not one of this pool's pointers.
+    if ((addr - lo) % sizeof(storage_type) != 0) {
+      return Capacity;
+    }
 
-    return static_cast<size_type>(object - begin);
+    return static_cast<size_type>((addr - lo) / sizeof(storage_type));
+  }
+
+  // Releases a claimed slot if T's constructor exits by an exception.
+  class release_on_unwind {
+   public:
+    release_on_unwind(object_pool* pool, size_type index) noexcept : pool_(pool), index_(index) {}
+    release_on_unwind(const release_on_unwind&) = delete;
+    release_on_unwind& operator=(const release_on_unwind&) = delete;
+    release_on_unwind(release_on_unwind&&) = delete;
+    release_on_unwind& operator=(release_on_unwind&&) = delete;
+    ~release_on_unwind() {
+      if (pool_ != nullptr) {
+        pool_->state_[index_] = slot_state::free;
+        --pool_->size_;
+      }
+    }
+    void dismiss() noexcept { pool_ = nullptr; }
+
+   private:
+    object_pool* pool_ = nullptr;
+    size_type index_ = 0;
+  };
+
+  // A slot is `dying` while its destructor runs: no longer live, so a
+  // re-entrant destroy() or contains() does not see it, and not yet free, so a
+  // re-entrant try_emplace() cannot build over the object being destroyed.
+  enum class slot_state : unsigned char { free, live, dying };
+
+  void end_life(size_type index) noexcept {
+    state_[index] = slot_state::dying;
+    --size_;
+    slot_ptr(index)->~T();
+    state_[index] = slot_state::free;
   }
 
   storage_type storage_[Capacity == 0 ? 1 : Capacity];
-  bool active_[Capacity == 0 ? 1 : Capacity];
-  size_type size_;
+  slot_state state_[Capacity == 0 ? 1 : Capacity]{};
+  size_type size_ = 0;
 };
 
 }  // namespace metl

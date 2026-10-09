@@ -116,6 +116,10 @@ class handle_pool {
   /// Constructs an object in a free slot.
   /// @return Handle to the new object, or a null handle if the pool is full
   ///         (no assert).
+  ///
+  /// The slot leaves the free list before T's constructor runs, so a
+  /// constructor that emplaces into this pool gets a different slot; if the
+  /// constructor throws, the slot goes back.
   template <typename... Args>
   METL_NODISCARD handle_type try_emplace(Args&&... args) {
     if (free_head_ >= Capacity) {
@@ -123,10 +127,12 @@ class handle_pool {
     }
 
     const size_type index = free_head_;
-    ::new (storage_[index].addr()) T(std::forward<Args>(args)...);
     free_head_ = next_[index];
     active_[index] = true;
     ++size_;
+    return_on_unwind claim{this, index};
+    ::new (storage_[index].addr()) T(std::forward<Args>(args)...);
+    claim.dismiss();
     return handle_type{static_cast<index_type>(index), generation_[index]};
   }
 
@@ -222,8 +228,12 @@ class handle_pool {
 
   /// Destroys the object in `index` and pushes the slot onto the free list,
   /// bumping the generation so every outstanding handle to it goes stale.
+  ///
+  /// Order matters when ~T() calls back into this pool. The handle goes stale
+  /// before the destructor runs, so a re-entrant destroy() of it reports false
+  /// instead of destroying twice; the slot joins the free list only after, so
+  /// a re-entrant try_emplace() cannot build over the object being destroyed.
   void release(size_type index) noexcept {
-    slot_ptr(index)->~T();
     active_[index] = false;
 
     // Skip 0 on wraparound: generation 0 is the null-handle marker, and a slot
@@ -233,11 +243,37 @@ class handle_pool {
     if (generation_[index] == generation_type{0}) {
       generation_[index] = generation_type{1};
     }
+    --size_;
+
+    slot_ptr(index)->~T();
 
     next_[index] = static_cast<index_type>(free_head_);
     free_head_ = index;
-    --size_;
   }
+
+  // Puts a claimed slot back on the free list if T's constructor exits by an
+  // exception. No handle to it was handed out, so the generation stays.
+  class return_on_unwind {
+   public:
+    return_on_unwind(handle_pool* pool, size_type index) noexcept : pool_(pool), index_(index) {}
+    return_on_unwind(const return_on_unwind&) = delete;
+    return_on_unwind& operator=(const return_on_unwind&) = delete;
+    return_on_unwind(return_on_unwind&&) = delete;
+    return_on_unwind& operator=(return_on_unwind&&) = delete;
+    ~return_on_unwind() {
+      if (pool_ != nullptr) {
+        pool_->active_[index_] = false;
+        --pool_->size_;
+        pool_->next_[index_] = static_cast<index_type>(pool_->free_head_);
+        pool_->free_head_ = index_;
+      }
+    }
+    void dismiss() noexcept { pool_ = nullptr; }
+
+   private:
+    handle_pool* pool_ = nullptr;
+    size_type index_ = 0;
+  };
 
   // `Capacity == 0 ? 1 : Capacity` throughout: a zero-capacity pool is a valid
   // degenerate case (every other fixed-capacity METL container accepts one), and

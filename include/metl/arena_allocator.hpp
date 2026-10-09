@@ -86,6 +86,10 @@ class arena_allocator {
   /// @brief Construct a @c T in the arena, registering its destructor for `rewind`.
   /// @tparam T Object type to construct; its alignment must not exceed max alignment.
   /// @return Pointer to the constructed object, or null if the arena is out of space.
+  /// @note Destructors run in reverse ALLOCATION order. If T's constructor
+  ///       allocates from this arena, those allocations come after T's own, so
+  ///       `rewind` destroys them before `~T()` runs: T's destructor must not
+  ///       use objects its constructor placed in the same arena.
   template <typename T, typename... Args>
   METL_NODISCARD T* try_emplace(Args&&... args) {
     static_assert(alignof(T) <= alignof(std::max_align_t),
@@ -99,15 +103,19 @@ class arena_allocator {
     if (memory == nullptr) {
       return nullptr;
     }
+    // Where this allocation's record ends, captured now: T's constructor may
+    // allocate from this arena too, and then `offset_` names the newest of
+    // those records, not this one.
+    const size_type record_end = offset_;
 
     T* object = ::new (memory) T(std::forward<Args>(args)...);
 
-    // Construction succeeded: register the destructor on the just-stored record
-    // (its end offset is the current `offset_`). A throwing constructor never
-    // reaches here, so no record ever points at unconstructed storage.
-    allocation_record record = load_record(offset_);
+    // Construction succeeded: register the destructor on this allocation's own
+    // record. A throwing constructor never reaches here, so no record ever
+    // points at unconstructed storage.
+    allocation_record record = load_record(record_end);
     record.destroy = &destroy_object<T>;
-    store_record(offset_, record);
+    store_record(record_end, record);
     return object;
   }
 

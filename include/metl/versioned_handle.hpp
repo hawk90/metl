@@ -75,6 +75,11 @@ template <typename Tag, typename IndexT = std::uint16_t, typename GenT = std::ui
 class versioned_handle {
   static_assert(std::is_unsigned_v<IndexT>, "versioned_handle IndexT must be unsigned");
   static_assert(std::is_unsigned_v<GenT>, "versioned_handle GenT must be unsigned");
+  // bool is an unsigned integral type, but `true + 1` converts back to `true`:
+  // a bool generation never advances, so every stale handle stays valid.
+  static_assert(!std::is_same_v<std::remove_cv_t<IndexT>, bool>, "versioned_handle IndexT must not be bool");
+  static_assert(!std::is_same_v<std::remove_cv_t<GenT>, bool>,
+                "versioned_handle GenT must not be bool: a bool generation never advances");
 
  public:
   using tag_type = Tag;
