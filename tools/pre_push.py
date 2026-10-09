@@ -147,6 +147,13 @@ def tidy_findings(python, tidy, source_dir, build_dir, env):
     configure = ["cmake", "-B", str(build_dir), "-S", str(source_dir), "--fresh",
                  "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON", "-DMETL_BUILD_DOCS=OFF", "-DMETL_INSTALL=OFF",
                  f"-DCMAKE_CXX_COMPILER={shutil.which('c++') or 'c++'}"]
+    if sys.platform == "darwin":
+        # CMake no longer writes -isysroot into compile_commands.json, and a
+        # clang-tidy that is not Apple's then cannot find <cstdlib>: 67 of 71
+        # headers stopped at that error and read as clean.
+        sdk = subprocess.run(["xcrun", "--show-sdk-path"], capture_output=True, text=True).stdout.strip()
+        if sdk:
+            configure.append(f"-DCMAKE_OSX_SYSROOT={sdk}")
     subprocess.run(configure, cwd=source_dir, capture_output=True, check=True, env=env)
     report = subprocess.run([python, str(source_dir / "tools" / "clang_tidy_report.py"),
                              "-p", str(build_dir), "--clang-tidy", tidy],

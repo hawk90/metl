@@ -35,6 +35,12 @@ Usage:
                      ratchet for promoting clang-tidy from advisory to blocking:
                      set it to today's count, and it can only go down.
     --clang-tidy P   clang-tidy binary (default: clang-tidy on PATH)
+    --self-test      check the failure classification against fixed outputs
+
+A header clang-tidy could not analyse -- a compiler error, or a run that
+failed outright -- is a failure whatever the budget says. It contributes no
+findings, so it would otherwise read as a clean header, and a toolchain change
+that broke every header would pass the ratchet at zero.
 
 Note that the count is clang-tidy-version dependent -- a newer binary knows
 more checks. Pin the version wherever you pin the budget.
@@ -51,6 +57,44 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 FINDING = re.compile(r"^[^ ]+:\d+:\d+: warning: .*\[([a-z][^]]*)\]$")
+COMPILE_ERROR = re.compile(r"^[^ ]+:\d+:\d+: (?:fatal )?error: ")
+
+
+def unanalysed(header, returncode, stdout, stderr):
+    """Why `header` was not analysed, or None if clang-tidy got through it.
+
+    clang-tidy exits 1 for warnings as well as for errors, so the status alone
+    cannot tell them apart: a compiler error shows as an `error:` diagnostic
+    and as "Error while processing" on stderr. Any other status is a crash."""
+    errors = [line for line in stdout.splitlines() if COMPILE_ERROR.match(line)]
+    if errors:
+        return f"{header}: {errors[0]}"
+    stderr_errors = [line for line in stderr.splitlines() if line.startswith("Error")]
+    if stderr_errors:
+        return f"{header}: {stderr_errors[-1]}"
+    if returncode not in (0, 1):
+        return f"{header}: clang-tidy exited {returncode}"
+    return None
+
+
+def self_test():
+    cases = [
+        (("a.hpp", 0, "", ""), False),
+        (("a.hpp", 1, "x.hpp:1:2: warning: w [readability-x]", "1 warning generated."), False),
+        (("a.hpp", 1, "x.hpp:1:2: error: unknown type name 'foo' [clang-diagnostic-error]",
+          "Found compiler error(s)."), True),
+        (("a.hpp", 0, "x.hpp:1:2: fatal error: 'y.hpp' file not found", ""), True),
+        (("a.hpp", 1, "", "Error while processing a.hpp."), True),
+        (("a.hpp", 1, "", "Error: no checks enabled."), True),
+        (("a.hpp", -9, "", ""), True),
+    ]
+    for args, refused in cases:
+        if (unanalysed(*args) is not None) != refused:
+            print(f"self-test FAILED: {args} should {'' if refused else 'not '}be a failure")
+            return 1
+    print(f"self-test passed: {len(cases)} clang-tidy outcomes classified, "
+          "including a compiler error, a missing include and a killed run")
+    return 0
 
 
 def main():
@@ -59,8 +103,11 @@ def main():
     parser.add_argument("-p", dest="build_dir", default="build")
     parser.add_argument("--max", type=int, default=None)
     parser.add_argument("--clang-tidy", default="clang-tidy")
+    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     sys.stdout.reconfigure(line_buffering=True)
+    if args.self_test:
+        return self_test()
 
     if not (Path(args.build_dir) / "compile_commands.json").is_file():
         print(f"error: {args.build_dir}/compile_commands.json not found.\n"
@@ -68,17 +115,18 @@ def main():
               file=sys.stderr)
         return 2
 
-    # One TU per header, in parallel. clang-tidy exits nonzero on findings and
-    # this script is the one deciding whether findings are fatal, so its exit
-    # status is ignored.
+    # One TU per header, in parallel.
     def tidy(header):
         result = subprocess.run([args.clang_tidy, "-p", args.build_dir, "--quiet", str(header)],
-                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-        return result.stdout
+                                capture_output=True, text=True)
+        return header.relative_to(REPO), result
 
     headers = sorted((REPO / "include" / "metl").rglob("*.hpp"))
     with ThreadPoolExecutor(max_workers=os.cpu_count() or 1) as pool:
-        raw = "\n".join(pool.map(tidy, headers))
+        results = list(pool.map(tidy, headers))
+    raw = "\n".join(result.stdout for _, result in results)
+    failures = [reason for header, result in results
+                if (reason := unanalysed(header, result.returncode, result.stdout, result.stderr))]
 
     # A finding is identified by file:line:col plus its message and check name --
     # the same finding reported from two includers is byte-identical apart from
@@ -100,6 +148,14 @@ def main():
         print("Distinct findings:")
         for line in distinct:
             print(f"  {line}")
+
+    if failures:
+        print()
+        print(f"FAIL: clang-tidy could not analyse {len(failures)} of {len(headers)} headers; "
+              "their findings are missing from the count above:")
+        for reason in failures:
+            print(f"  {reason}")
+        return 2
 
     if args.max is not None:
         print()
