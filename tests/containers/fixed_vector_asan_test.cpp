@@ -92,7 +92,7 @@ int main() {
 #else  // Not built under AddressSanitizer.
 
 int main() {
-#if METL_TEST_ASAN_BUILD
+#ifdef METL_TEST_ASAN_BUILD
   // The build passed -fsanitize=address, yet fixed_vector did not see it: the
   // annotations are off where they were meant to be checked. Skipping here
   // would turn the ASan legs green without running this test.
