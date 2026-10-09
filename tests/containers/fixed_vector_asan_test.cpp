@@ -4,8 +4,8 @@
 // tail [size(), capacity()) is poisoned so an out-of-bounds access past size()
 // is trapped by ASan even though the whole buffer is a single object.
 //
-// This test is a no-op unless built under AddressSanitizer (it is compiled in
-// every configuration, including gcc/msvc/TSAN, where it must trivially pass).
+// Without AddressSanitizer there is nothing to check, so the test reports a
+// skip (it is compiled in every configuration, including gcc/msvc/TSAN).
 // Under ASan it verifies two things:
 //   1. the poison boundaries are exact — live elements [0, size()) are
 //      addressable, the tail [size(), capacity()) is poisoned, and the boundary
@@ -70,7 +70,11 @@ int main() {
   // ASan abort does not take down the test process.
   const pid_t pid = fork();
   if (pid == 0) {
-    volatile std::int64_t sink = v.data()[5];  // OOB past size() -> ASan trap
+    // The index is volatile: at -O1 and above a constant offset the compiler
+    // can prove lies inside the stack object is not instrumented, and the read
+    // would go unchecked.
+    volatile std::size_t index = 5;
+    volatile std::int64_t sink = v.data()[index];  // OOB past size() -> ASan trap
     (void)sink;
     _exit(0);  // reached only if ASan did NOT catch it
   }
@@ -85,10 +89,10 @@ int main() {
   return metl_test::exit_code();
 }
 
-#else  // Not built under AddressSanitizer: trivially pass.
+#else  // Not built under AddressSanitizer.
 
 int main() {
-  return metl_test::exit_code();
+  return metl_test::skip("fixed_vector_asan_test", "not built under AddressSanitizer");
 }
 
 #endif

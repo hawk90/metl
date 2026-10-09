@@ -3,7 +3,7 @@
 // constructed. The old code committed the record first, so a throwing
 // constructor left a record pointing at unconstructed storage and a later
 // rewind/reset ran ~T() on raw memory (UB). Only reachable when exceptions are
-// enabled; a no-op pass under METL_NO_EXCEPTIONS.
+// enabled; under METL_NO_EXCEPTIONS only the happy path runs.
 #include "metl_check.hpp"
 
 #include <metl/arena_allocator.hpp>
@@ -18,9 +18,13 @@ struct Boom {
 
   int value;
   explicit Boom(bool should_throw, int v = 0) : value(v) {
+#if !METL_NO_EXCEPTIONS
     if (should_throw) {
       throw 1;
     }
+#else
+    (void)should_throw;  // the throwing half below is compiled out
+#endif
     ++ctors;
   }
   ~Boom() { ++dtors; }

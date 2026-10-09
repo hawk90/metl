@@ -4,6 +4,7 @@
 // static_unordered_map reaches construct_at with an out-of-range index; only the
 // always-on METL_HARDEN guard stands between that and a wild out-of-bounds
 // write. A forked child performs the overflow and must be killed by the abort.
+#undef METL_HARDENING  // this test pins its own level, whatever the build passes
 #define METL_HARDENING 0
 #include "metl_check.hpp"
 

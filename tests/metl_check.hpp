@@ -22,7 +22,25 @@
 #include <cstdio>
 #include <type_traits>
 
+#include <metl/config.hpp>
+
 namespace metl_test {
+
+// METL_ASSERT compiles to nothing at METL_HARDENING_NONE, so a check that
+// expects one to fire means something only where it is active. METL_HARDEN is
+// never stripped and needs no gate.
+inline constexpr bool asserts_active = METL_HARDENING >= METL_HARDENING_FAST;
+
+// What a test returns when this build gives it nothing to check (no ASan, no
+// exceptions, no interrupt masking). CTest reports it as skipped through
+// SKIP_RETURN_CODE, and tools/run_qemu_tests.py does the same, so a test that
+// cannot run is never counted as a pass.
+inline constexpr int skip_code = 77;
+
+inline int skip(const char* test, const char* reason) {
+  std::printf("%s: skipped (%s)\n", test, reason);
+  return skip_code;
+}
 
 inline int& failure_count() {
   static int count = 0;

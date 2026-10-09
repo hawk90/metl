@@ -121,6 +121,9 @@ function(metl_cc_test)
   endif()
 
   add_test(NAME ${ARG_NAME} COMMAND ${ARG_NAME})
+  # 77 is metl_test::skip_code (tests/metl_check.hpp): the build gives the test
+  # nothing to check, and it must show as skipped rather than passed.
+  set_tests_properties(${ARG_NAME} PROPERTIES SKIP_RETURN_CODE 77)
 
   if(ARG_TIMEOUT)
     set_tests_properties(${ARG_NAME} PROPERTIES TIMEOUT ${ARG_TIMEOUT})

@@ -216,9 +216,9 @@ phase_result run_phase(Clock& ext, bool use_locked) {
 
 int main() {
 #if !METL_HAS_IRQ_MASKING
-  std::printf("tick_extender_irq_test: skipped (METL_HAS_IRQ_MASKING == 0)\n");
+  return metl_test::skip("tick_extender_irq_test", "METL_HAS_IRQ_MASKING == 0");
 #elif !METL_IRQ_TEST_HAS_VTOR
-  std::printf("tick_extender_irq_test: skipped (ARMv6-M has no VTOR; see irq_masking_test)\n");
+  return metl_test::skip("tick_extender_irq_test", "ARMv6-M has no VTOR; see irq_masking_test");
 #else
   install_vector_table();
   __asm__ __volatile__("cpsie i" ::: "memory");

@@ -1,3 +1,5 @@
+#include "metl_check.hpp"
+
 #include <csetjmp>
 
 #include <metl/assert.hpp>
@@ -71,15 +73,19 @@ int main() {
   g_previous_panic = metl::set_panic_handler(&test_panic_handler);
 
   // setjmp returns 0 on the initial call; the handler longjmps back with 1.
-  if (setjmp(g_assert_jmp) == 0) {
-    METL_ASSERT(false);
-    // Unreachable: the assert path must never fall through.
-    return 3;
-  }
+  // METL_ASSERT is stripped at METL_HARDENING_NONE, so this half needs it on.
+  if (metl_test::asserts_active) {
+    if (setjmp(g_assert_jmp) == 0) {
+      METL_ASSERT(false);
+      // Unreachable: the assert path must never fall through.
+      return 3;
+    }
 
-  if (!assert_capture::called || assert_capture::expression == nullptr ||
-      assert_capture::expression[0] != 'f' || assert_capture::line <= 0 || assert_capture::file == nullptr) {
-    return 1;
+    if (!assert_capture::called || assert_capture::expression == nullptr ||
+        assert_capture::expression[0] != 'f' || assert_capture::line <= 0 ||
+        assert_capture::file == nullptr) {
+      return 1;
+    }
   }
 
   if (setjmp(g_panic_jmp) == 0) {

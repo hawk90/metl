@@ -135,9 +135,9 @@ void start_systick() noexcept {
 int main() {
 #if !METL_HAS_IRQ_MASKING
   // No interrupts to mask on this target; lock_test covers the fallback path.
-  std::printf("irq_masking_test: skipped (METL_HAS_IRQ_MASKING == 0)\n");
+  return metl_test::skip("irq_masking_test", "METL_HAS_IRQ_MASKING == 0");
 #elif !METL_IRQ_TEST_HAS_VTOR
-  std::printf("irq_masking_test: skipped (ARMv6-M has no VTOR; see the note above)\n");
+  return metl_test::skip("irq_masking_test", "ARMv6-M has no VTOR; see the note above");
 #else
   install_vector_table();
   __asm__ __volatile__("cpsie i" ::: "memory");
