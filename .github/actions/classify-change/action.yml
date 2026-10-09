@@ -22,12 +22,20 @@ outputs:
 runs:
   using: composite
   steps:
+    # Every job downstream trusts this answer, and ci-gate accepts their
+    # `skipped` on a documentation-only change -- so the rule is proven here,
+    # not only in the pre-push hook that --no-verify skips.
+    - name: Classifier self-test
+      shell: bash
+      env:
+        CHECKOUT: ${{ inputs.path }}
+      run: python3 "${CHECKOUT}/tools/classify_change.py" --self-test
+
     - name: Classify the change
       id: classify
       shell: bash
       env:
         EVENT: ${{ github.event_name }}
         CHECKOUT: ${{ inputs.path }}
-      # The rule, and why a rename counts as code, live in the tool: it has a
-      # --self-test that the pre-push hook runs.
+      # The rule, and why a rename counts as code, live in the tool.
       run: python3 "${CHECKOUT}/tools/classify_change.py" --event "${EVENT}" --repo "${CHECKOUT}"

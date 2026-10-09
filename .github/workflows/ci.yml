@@ -118,7 +118,7 @@ jobs:
           cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DMETL_WARNINGS_AS_ERRORS=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j
-          ctest --test-dir build -j --output-on-failure
+          ctest --no-tests=error --test-dir build -j --output-on-failure
 
   # ---------------------------------------------------------------------------
   # Host build & test matrix
@@ -194,10 +194,10 @@ jobs:
         run: cmake --build build -j --config ${{ matrix.build_type }}
 
       - name: Test
-        run: ctest --test-dir build -j --output-on-failure -C ${{ matrix.build_type }}
+        run: ctest --no-tests=error --test-dir build -j --output-on-failure -C ${{ matrix.build_type }}
 
       - name: Upload test logs on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: host-test-logs-${{ matrix.os }}-${{ matrix.compiler.cc || 'msvc' }}-${{ matrix.build_type }}
@@ -259,10 +259,10 @@ jobs:
         run: cmake --build build -j --config Release
 
       - name: Test
-        run: ctest --test-dir build -j --output-on-failure -C Release
+        run: ctest --no-tests=error --test-dir build -j --output-on-failure -C Release
 
       - name: Upload test logs on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: release-werror-logs-${{ matrix.compiler.cc }}
@@ -310,7 +310,7 @@ jobs:
         run: cmake --build build -j
 
       - name: Test
-        run: ctest --test-dir build -j --output-on-failure
+        run: ctest --no-tests=error --test-dir build -j --output-on-failure
 
   # ---------------------------------------------------------------------------
   # Sanitizers (Linux + Clang, Debug, warnings-as-errors)
@@ -377,10 +377,10 @@ jobs:
         env:
           UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1:abort_on_error=1"
           ASAN_OPTIONS: "halt_on_error=1:abort_on_error=1:detect_leaks=1"
-        run: ctest --test-dir build -j --output-on-failure -C ${{ matrix.build_type }}
+        run: ctest --no-tests=error --test-dir build -j --output-on-failure -C ${{ matrix.build_type }}
 
       - name: Upload test logs on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: sanitizers-logs-${{ matrix.san }}
@@ -455,7 +455,7 @@ jobs:
           arm-none-eabi-size build-arm-minsizerel/libmetl_embedded_smoke.a
 
       - name: Upload logs on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: arm-cross-logs-${{ matrix.cpu }}
@@ -1035,7 +1035,7 @@ jobs:
             --expect-build-fail '${{ matrix.expect_build_fail }}'
 
       - name: Upload build/run logs on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: qemu-conformance-logs-${{ matrix.cpu }}
@@ -1133,7 +1133,7 @@ jobs:
         run: cmake --build build-config -j
 
       - name: Test
-        run: ctest --test-dir build-config -j --output-on-failure
+        run: ctest --no-tests=error --test-dir build-config -j --output-on-failure
 
   # ---------------------------------------------------------------------------
   # Coverage (host, Clang source-based).
@@ -1203,11 +1203,13 @@ jobs:
         run: tools/coverage.py --min-lines 90 --min-branches 72
 
       - name: Upload the report on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: coverage-report
-          path: build-coverage/report.txt
+          path: |
+            build-coverage/report.txt
+            build-coverage/ctest.log
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
@@ -1267,7 +1269,7 @@ jobs:
         run: cmake --build build -j --target metl_header_self_contained
 
       - name: Umbrella completeness + self-containment (CTest)
-        run: ctest --test-dir build -R 'metl_umbrella_complete|metl_header_self_contained' --output-on-failure
+        run: ctest --no-tests=error --test-dir build -R 'metl_umbrella_complete|metl_header_self_contained' --output-on-failure
 
   # ---------------------------------------------------------------------------
   # Recoverable-API contract (docs/SCOPE.md section 9)
@@ -1336,6 +1338,11 @@ jobs:
       # looks like nothing at all in the workflow file.
       - name: The merge-boundary checker must still bite (canary)
         run: tools/check_ci_gate.py --self-test
+
+      # The release gate runs only when a tag is pushed; a regression in it
+      # would surface at release time, after the commit it should refuse.
+      - name: The release gate must still refuse (canary)
+        run: tools/release_gate.py --self-test
 
       - name: Every job blocks a merge, and every required check can report
         run: tools/check_ci_gate.py
@@ -1802,7 +1809,7 @@ jobs:
           fi
 
       - name: Upload crash artifacts on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: fuzz-smoke-crashes
@@ -1867,7 +1874,7 @@ jobs:
         run: cmake --build build-bench -j
 
       - name: Run each benchmark (--quick)
-        run: ctest --test-dir build-bench -L bench --output-on-failure
+        run: ctest --no-tests=error --test-dir build-bench -L bench --output-on-failure
 
       # The wall-clock numbers stay informational, for the reason above.
       #
@@ -1969,7 +1976,7 @@ jobs:
         run: cmake --build build -j
 
       - name: Run examples
-        run: ctest --test-dir build -R metl_example --output-on-failure
+        run: ctest --no-tests=error --test-dir build -R metl_example --output-on-failure
 
   # ---------------------------------------------------------------------------
   # Docs — generate Doxygen API docs; fail on malformed doc comments.
@@ -2182,7 +2189,7 @@ jobs:
             -x=EXTRA_ZEPHYR_MODULES="$GITHUB_WORKSPACE/metl"
 
       - name: Upload Zephyr build logs on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: zephyr-logs
