@@ -46,7 +46,7 @@ foreach(_ex IN LISTS _metl_examples)
   # Run each example as a smoke test (they self-check and return non-zero on
   # failure), so `ctest` catches an example that stops behaving correctly.
   add_test(NAME metl_example_${_ex} COMMAND metl_example_${_ex})
-  set_tests_properties(metl_example_${_ex} PROPERTIES LABELS "metl;example")
+  set_tests_properties(metl_example_${_ex} PROPERTIES LABELS "metl;example" TIMEOUT 300)
 endforeach()
 
 # Threaded example needs the system thread library on POSIX.

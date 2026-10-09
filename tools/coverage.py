@@ -83,14 +83,16 @@ def main():
         return 1
 
     env = dict(os.environ, LLVM_PROFILE_FILE=str(PROF_DIR / "%p.profraw"))
-    ctest = subprocess.run(["ctest", "--test-dir", str(BUILD_DIR), "-j4", "--output-on-failure"],
-                           env=env, capture_output=True, text=True)
+    ctest = subprocess.run(["ctest", "--no-tests=error", "--test-dir", str(BUILD_DIR), "-j4",
+                            "--output-on-failure"], env=env, capture_output=True, text=True)
     (BUILD_DIR / "ctest.log").write_text(ctest.stdout + ctest.stderr)
-    print("\n".join((ctest.stdout + ctest.stderr).splitlines()[-3:]))
     if ctest.returncode != 0:
+        # The whole log: the failing test's own output is what explains it.
+        print(ctest.stdout + ctest.stderr)
         print("error: tests failed under instrumentation; coverage numbers would be meaningless",
               file=sys.stderr)
         return 1
+    print("\n".join((ctest.stdout + ctest.stderr).splitlines()[-3:]))
 
     profile = BUILD_DIR / "coverage.profdata"
     if subprocess.run([profdata, "merge", "-sparse", *map(str, PROF_DIR.glob("*.profraw")),

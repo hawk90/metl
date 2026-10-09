@@ -35,5 +35,5 @@ foreach(_b IN LISTS _metl_benchmarks)
   )
 
   add_test(NAME metl_${_b}_smoke COMMAND metl_${_b} --quick)
-  set_tests_properties(metl_${_b}_smoke PROPERTIES LABELS "bench")
+  set_tests_properties(metl_${_b}_smoke PROPERTIES LABELS "bench" TIMEOUT 300)
 endforeach()
