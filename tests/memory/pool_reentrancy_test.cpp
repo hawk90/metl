@@ -59,7 +59,9 @@ void arena_constructor_allocates() {
 // --- object_pool ------------------------------------------------------------
 
 struct node;
-metl::object_pool<node, 4>* g_pool = nullptr;
+// Each pool is a function-local static, so the elements reach it without a
+// global holding the address of a stack object.
+metl::object_pool<node, 4>& node_pool();
 int g_node_destroyed = 0;
 
 struct node {
@@ -67,15 +69,19 @@ struct node {
   int depth;
   explicit node(int d) : depth(d) {
     if (d > 0) {
-      child = g_pool->emplace(d - 1);
+      child = node_pool().emplace(d - 1);
     }
   }
   ~node() { ++g_node_destroyed; }
 };
 
+metl::object_pool<node, 4>& node_pool() {
+  static metl::object_pool<node, 4> pool;
+  return pool;
+}
+
 void object_pool_constructor_emplaces() {
-  metl::object_pool<node, 4> pool;
-  g_pool = &pool;
+  auto& pool = node_pool();
   node* parent = pool.emplace(1);
   CHECK(parent != parent->child);
   CHECK_EQ(parent->depth, 1);
@@ -88,7 +94,7 @@ void object_pool_constructor_emplaces() {
 }
 
 struct self_unregistering;
-metl::object_pool<self_unregistering, 4>* g_registry = nullptr;
+metl::object_pool<self_unregistering, 4>& registry();
 int g_unregistered = 0;
 
 struct self_unregistering {
@@ -96,20 +102,24 @@ struct self_unregistering {
   ~self_unregistering() {
     ++g_unregistered;
     // A handle that removes itself: must report "not live", not destroy again.
-    CHECK(!g_registry->destroy(this));
-    CHECK(!g_registry->contains(this));
+    CHECK(!registry().destroy(this));
+    CHECK(!registry().contains(this));
     if (replace_on_destroy) {
       // Must land in a free slot, not over the object being destroyed.
-      self_unregistering* replacement = g_registry->try_emplace();
+      self_unregistering* replacement = registry().try_emplace();
       CHECK(replacement != nullptr);
       CHECK(replacement != this);
     }
   }
 };
 
+metl::object_pool<self_unregistering, 4>& registry() {
+  static metl::object_pool<self_unregistering, 4> pool;
+  return pool;
+}
+
 void object_pool_destructor_reenters() {
-  metl::object_pool<self_unregistering, 4> pool;
-  g_registry = &pool;
+  auto& pool = registry();
   self_unregistering* a = pool.emplace();
   g_unregistered = 0;
   CHECK(pool.destroy(a));
@@ -146,20 +156,24 @@ using h_node_pool = metl::handle_pool<h_node, 4>;
 // h_node_pool::handle_type, spelled out: naming the member would instantiate
 // the pool while h_node is still incomplete.
 using h_node_handle = metl::versioned_handle<h_node_pool, std::uint16_t, std::uint16_t>;
-h_node_pool* g_handles = nullptr;
+h_node_pool& handles();
 
 struct h_node {
   h_node_handle child{};
   explicit h_node(int d) {
     if (d > 0) {
-      child = g_handles->emplace(d - 1);
+      child = handles().emplace(d - 1);
     }
   }
 };
 
+h_node_pool& handles() {
+  static h_node_pool pool;
+  return pool;
+}
+
 void handle_pool_constructor_emplaces() {
-  metl::handle_pool<h_node, 4> pool;
-  g_handles = &pool;
+  auto& pool = handles();
   const auto parent = pool.emplace(1);
   const h_node* p = pool.get(parent);
   if (CHECK(p != nullptr)) {
@@ -172,7 +186,7 @@ void handle_pool_constructor_emplaces() {
 struct h_self;
 using h_self_pool = metl::handle_pool<h_self, 4>;
 using h_self_handle = metl::versioned_handle<h_self_pool, std::uint16_t, std::uint16_t>;
-h_self_pool* g_h_registry = nullptr;
+h_self_pool& h_registry();
 int g_h_destroyed = 0;
 
 struct h_self {
@@ -180,18 +194,22 @@ struct h_self {
   bool replace_on_destroy = false;
   ~h_self() {
     ++g_h_destroyed;
-    CHECK(!g_h_registry->destroy(me));
+    CHECK(!h_registry().destroy(me));
     if (replace_on_destroy) {
-      const auto replacement = g_h_registry->try_emplace();
+      const auto replacement = h_registry().try_emplace();
       CHECK(replacement.valid());
       CHECK(replacement.index() != me.index());
     }
   }
 };
 
+h_self_pool& h_registry() {
+  static h_self_pool pool;
+  return pool;
+}
+
 void handle_pool_destructor_reenters() {
-  metl::handle_pool<h_self, 4> pool;
-  g_h_registry = &pool;
+  auto& pool = h_registry();
   const auto a = pool.emplace();
   if (h_self* object = pool.get(a); CHECK(object != nullptr)) {
     object->me = a;
