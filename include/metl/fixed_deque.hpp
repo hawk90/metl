@@ -19,6 +19,7 @@
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/ring_core.hpp"
+#include "metl/scope_exit.hpp"
 
 #include <cstddef>
 #include <utility>
@@ -67,13 +68,19 @@ class fixed_deque : public detail::ring_core<T, Capacity> {
     if (full()) {
       return false;
     }
-
-    // Construct first, then commit head_: if the constructor throws, head_ must
-    // not already point at an unconstructed slot the destructor would destroy.
+    // Claim the slot before T's constructor runs, so a constructor that pushes
+    // into this deque gets another one. If the constructor throws the claim is
+    // undone, so head_ never stays on an unconstructed slot.
+    const auto previous_head = this->head_;
     const auto slot = this->retreat(this->head_);
-    ::new (this->storage_[slot].addr()) T(std::forward<Args>(args)...);
     this->head_ = slot;
     ++this->size_;
+    auto undo = make_scope_exit([this, previous_head]() noexcept {
+      this->head_ = previous_head;
+      --this->size_;
+    });
+    ::new (this->storage_[slot].addr()) T(std::forward<Args>(args)...);
+    undo.release();
     return true;
   }
 
@@ -81,10 +88,12 @@ class fixed_deque : public detail::ring_core<T, Capacity> {
   /// @pre Deque is not full; overflow asserts and aborts. Use try_emplace_front instead.
   template <typename... Args>
   reference emplace_front(Args&&... args) {
+    // Where the element will be built, taken before T's constructor runs: if
+    // that constructor pushes to the front, front() is the inner element.
+    const auto slot = this->retreat(this->head_);
     const bool inserted = try_emplace_front(std::forward<Args>(args)...);
     METL_ASSERT(inserted);
-    (void)inserted;
-    return this->front();
+    return inserted ? this->storage_at(slot) : this->front();
   }
 
   /// Prepends a copy of `value` at the front if there is room; false when full.
@@ -102,6 +111,9 @@ class fixed_deque : public detail::ring_core<T, Capacity> {
   reference push_front(T&& value) { return emplace_front(static_cast<T&&>(value)); }
 
   /// Removes the back element.
+  /// @note The element leaves the container before its destructor runs, so a
+  ///       destructor that calls back to remove elements sees it gone. It must
+  ///       not insert: the slot being destroyed may be the next one handed out.
   /// @pre Deque is non-empty; asserts and aborts otherwise.
   void pop_back() noexcept {
     // Hard, not METL_ASSERT: an empty pop at METL_HARDENING_NONE destroyed a
@@ -109,8 +121,8 @@ class fixed_deque : public detail::ring_core<T, Capacity> {
     // destructor then looped ~2^64 times (fixed_vector's
     // pop_back has the same guard).
     METL_HARDEN(this->size_ > 0);
-    this->storage_at(this->physical_index(this->size_ - 1)).~T();
-    --this->size_;
+    --this->size_;  // shrink first, then destroy, as in pop_front
+    this->storage_at(this->physical_index(this->size_)).~T();
   }
 };
 

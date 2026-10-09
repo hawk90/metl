@@ -25,6 +25,7 @@
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/array_storage.hpp"
+#include "metl/scope_exit.hpp"
 #include "metl/span.hpp"
 #include "metl/type_traits.hpp"
 
@@ -253,8 +254,16 @@ class fixed_vector {
     }
 
     asan_unpoison_all_();
-    ::new (static_cast<void*>(slot_(size_))) T(std::forward<Args>(args)...);
-    ++size_;
+    // Claim the slot before T's constructor runs: a constructor that pushes
+    // into this vector then gets the next slot instead of this one. Undone if
+    // the constructor throws.
+    const size_type index = size_++;
+    auto undo = make_scope_exit([this]() noexcept {
+      --size_;
+      asan_poison_tail_();
+    });
+    ::new (static_cast<void*>(slot_(index))) T(std::forward<Args>(args)...);
+    undo.release();
     asan_poison_tail_();
     return true;
   }
@@ -264,13 +273,18 @@ class fixed_vector {
   /// try_emplace_back for a non-asserting path.
   template <typename... Args>
   reference emplace_back(Args&&... args) {
+    // Where the element will be built, taken before T's constructor runs: if
+    // that constructor pushes into this vector, back() is the inner element.
+    const size_type index = size_;
     const bool inserted = try_emplace_back(std::forward<Args>(args)...);
     METL_ASSERT(inserted);
-    (void)inserted;
-    // With METL_ASSERT stripped, a full vector returns its last element -- in
-    // bounds, unless Capacity is 0 and back() would be data()[SIZE_MAX].
-    METL_HARDEN(size_ > 0);
-    return back();
+    if (!inserted) {
+      // With METL_ASSERT stripped, a full vector returns its last element -- in
+      // bounds, unless Capacity is 0 and back() would be data()[SIZE_MAX].
+      METL_HARDEN(size_ > 0);
+      return back();
+    }
+    return data()[index];
   }
 
   /// Appends a copy of `value` if there is room; returns false when full.
@@ -286,14 +300,20 @@ class fixed_vector {
   reference push_back(T&& value) { return emplace_back(static_cast<T&&>(value)); }
 
   /// Removes the last element.
+  /// @note The element leaves the container before its destructor runs, so a
+  ///       destructor that calls back to remove elements sees it gone. It must
+  ///       not insert: the slot being destroyed may be the next one handed out.
   /// @pre Container is non-empty; asserts and aborts otherwise.
   void pop_back() noexcept {
     // Hard: an empty pop would destroy data()[-1] and wrap size_ to SIZE_MAX,
     // after which the next push writes far out of bounds.
     METL_HARDEN(size_ > 0);
     asan_unpoison_all_();
-    data()[size_ - 1].~T();
+    // Shrink first, then destroy: a destructor that calls back into this
+    // vector (a handle that unregisters itself) must see the element gone,
+    // not destroy it a second time.
     --size_;
+    data()[size_].~T();
     asan_poison_tail_();
   }
 
@@ -458,8 +478,8 @@ class fixed_vector {
     for (size_type i = index; i + 1 < size_; ++i) {
       data()[i] = static_cast<T&&>(data()[i + 1]);
     }
-    data()[size_ - 1].~T();
-    --size_;
+    --size_;  // shrink first, as in pop_back
+    data()[size_].~T();
     asan_poison_tail_();
     return begin() + index;
   }
@@ -479,10 +499,11 @@ class fixed_vector {
     for (size_type i = last_index; i < size_; ++i) {
       data()[i - erase_count] = static_cast<T&&>(data()[i]);
     }
-    for (size_type i = 0; i < erase_count; ++i) {
-      data()[size_ - 1 - i].~T();
+    const size_type old_size = size_;
+    size_ -= erase_count;  // shrink first, as in pop_back
+    for (size_type i = size_; i < old_size; ++i) {
+      data()[i].~T();
     }
-    size_ -= erase_count;
     asan_poison_tail_();
     return begin() + first_index;
   }

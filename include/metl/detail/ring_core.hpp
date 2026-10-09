@@ -18,6 +18,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/scope_exit.hpp"
 #include "metl/type_traits.hpp"
 
 #include <cstddef>
@@ -287,9 +288,12 @@ class ring_core {
     if (size_ == Capacity) {
       return false;
     }
-
-    ::new (storage_[physical_index(size_)].addr()) T(std::forward<Args>(args)...);
-    ++size_;
+    // Claim the slot before T's constructor runs, so a constructor that pushes
+    // into this ring gets the next one; undone if the constructor throws.
+    const size_type slot = physical_index(size_++);
+    auto undo = make_scope_exit([this]() noexcept { --size_; });
+    ::new (storage_[slot].addr()) T(std::forward<Args>(args)...);
+    undo.release();
     return true;
   }
 
@@ -297,10 +301,12 @@ class ring_core {
   /// @pre Not full; overflow asserts and aborts.
   template <typename... Args>
   reference emplace_back(Args&&... args) {
+    // Where the element will be built, taken before T's constructor runs: if
+    // that constructor pushes into this ring, back() is the inner element.
+    const size_type slot = physical_index(size_);
     const bool inserted = try_emplace_back(std::forward<Args>(args)...);
     METL_ASSERT(inserted);
-    (void)inserted;
-    return back();
+    return inserted ? storage_at(slot) : back();
   }
 
   /// Appends a copy of `value` at the back if there is room; false when full.
@@ -309,6 +315,9 @@ class ring_core {
   METL_NODISCARD bool try_push_back(T&& value) { return try_emplace_back(static_cast<T&&>(value)); }
 
   /// Removes the front (oldest) element.
+  /// @note The element leaves the container before its destructor runs, so a
+  ///       destructor that calls back to remove elements sees it gone. It must
+  ///       not insert: the slot being destroyed may be the next one handed out.
   /// @pre Non-empty; asserts and aborts otherwise.
   void pop_front() noexcept {
     // Hard, not METL_ASSERT: an empty pop at METL_HARDENING_NONE destroyed a
@@ -316,9 +325,12 @@ class ring_core {
     // destructor then looped ~2^64 times (fixed_vector's
     // pop_back has the same guard).
     METL_HARDEN(size_ > 0);
-    storage_at(head_).~T();
+    // Unlink first, then destroy: a destructor that calls back into the ring
+    // must see the element gone, not destroy it a second time.
+    T& leaving = storage_at(head_);
     head_ = advance(head_);
     --size_;
+    leaving.~T();
   }
 
   /// Removes all elements.

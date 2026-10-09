@@ -20,6 +20,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/scope_exit.hpp"
 #include "metl/type_traits.hpp"
 
 #include <cstddef>
@@ -152,10 +153,17 @@ class static_message_queue {
     if (full()) {
       return false;
     }
-
-    ::new (storage_[tail_].addr()) T(std::forward<Args>(args)...);
+    // Claim the slot before T's constructor runs, so a constructor that pushes
+    // into this queue gets the next one; undone if the constructor throws.
+    const size_type slot = tail_;
     tail_ = advance(tail_);
     ++size_;
+    auto undo = make_scope_exit([this, slot]() noexcept {
+      tail_ = slot;
+      --size_;
+    });
+    ::new (storage_[slot].addr()) T(std::forward<Args>(args)...);
+    undo.release();
     return true;
   }
 
@@ -164,10 +172,12 @@ class static_message_queue {
   /// @pre The queue must not be full.
   template <typename... Args>
   reference emplace(Args&&... args) {
+    // Where the element will be built, taken before T's constructor runs: if
+    // that constructor pushes into this queue, the back is the inner element.
+    const size_type slot = tail_;
     const bool inserted = try_emplace(std::forward<Args>(args)...);
     METL_ASSERT(inserted);
-    (void)inserted;
-    return back_ref();
+    return inserted ? storage_at(slot) : back_ref();
   }
 
   /// @brief Copy-enqueue an element if space is available.
@@ -205,6 +215,9 @@ class static_message_queue {
 
   /// @brief Remove the front element without returning it.
   /// @pre The queue must not be empty.
+  /// @note The element leaves the container before its destructor runs, so a
+  ///       destructor that calls back to remove elements sees it gone. It must
+  ///       not insert: the slot being destroyed may be the next one handed out.
   void pop() noexcept {
     // Hard, not METL_ASSERT: unchecked, an empty pop destroys a dead slot and
     // wraps size_ to SIZE_MAX -- the next push leaks, and the destructor then
@@ -240,9 +253,12 @@ class static_message_queue {
   }
 
   void pop_front() noexcept {
-    storage_at(head_).~T();
+    // Unlink first, then destroy: a destructor that calls back into the queue
+    // must see the element gone, not destroy it a second time.
+    T& leaving = storage_at(head_);
     head_ = advance(head_);
     --size_;
+    leaving.~T();
   }
 
   storage_type storage_[Capacity == 0 ? 1 : Capacity];
