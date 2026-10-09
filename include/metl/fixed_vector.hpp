@@ -5,10 +5,11 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `push_back`, `pop_back`, `emplace_back`, `try_*`, `back`, indexing | wait-free, bounded |
-///   | `insert`/`emplace` of one element, `erase` | wait-free, bounded by `size()` moves |
-///   | `insert(pos, n, v)`, range `insert` | wait-free, bounded by `n * size()` moves |
-///   | `clear`, `resize`, copy, destructor | wait-free, bounded by `size()` |
+///   | `push_back`, `pop_back`, `emplace_back`, `try_push_back`, `try_emplace_back`, `back`, indexing |
+///   wait-free, bounded | | `insert`/`emplace`/`try_insert`/`try_emplace` of one element, `erase` |
+///   wait-free, bounded by `size()` moves | | `insert(pos, n, v)`, range `insert`, and their `try_insert`
+///   forms | wait-free, bounded by `n * size()` moves | | `clear`, copy, destructor | wait-free, bounded by
+///   `size()` | | `resize`, `try_resize`, `assign`, `try_assign` | wait-free, bounded by `size()` + `n` |
 ///
 /// Appending and removing at the end are one construction or destruction plus an
 /// index update; they do not depend on `size()`. Inserting or erasing in the middle

@@ -7,9 +7,10 @@
 ///   |-----------|-----------|
 ///   | every function in this header | wait-free, bounded by the output span |
 ///
-/// Formatting an integer costs one iteration per digit produced, and the number of
-/// digits is bounded twice over: by the type (20 for a 64-bit value in decimal, 16
-/// in hex) and by the size of the span you pass. Nothing here scans an input
+/// Formatting an integer costs one iteration per digit produced. The digits a value
+/// needs are bounded by its type (20 for a 64-bit value in decimal, 16 in hex);
+/// `try_format_hex` pads further when asked for more `digits`. Either way the
+/// output is bounded by the size of the span you pass. Nothing here scans an input
 /// string, allocates, or consults a locale, so there is no path whose cost depends
 /// on anything but the value and the buffer.
 ///

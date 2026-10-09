@@ -41,7 +41,8 @@ namespace metl {
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `try_push` / `try_emplace` / `try_pop` | **lock-free**, not wait-free |
+///   | `try_push` / `try_emplace` | **lock-free**, not wait-free |
+///   | `try_pop` | **lock-free**, not wait-free -- except behind a stalled producer (below) |
 ///   | `size_approx` / `empty` / `full` | wait-free, bounded (and only a hint) |
 ///
 /// Lock-free means system-wide progress, not per-thread: a thread can lose the
@@ -53,10 +54,16 @@ namespace metl {
 ///         nothrow destructible, for the same reason `spsc_queue` requires it.
 /// @tparam Capacity Number of slots; must be a power of two and at least 2.
 ///
-/// @note `try_pop` returning false means the queue *appeared* empty at some
-///       point during the call, and `try_push` returning false likewise means it
-///       appeared full. Neither is a synchronised snapshot — no lock-free queue
-///       can offer one.
+/// @note `try_pop` returning false does NOT mean the queue was empty. It means
+///       the slot at the next dequeue ticket was not published yet -- which is
+///       also what a producer that has claimed that slot and not finished
+///       writing it looks like, even with later slots full. A producer stalled
+///       there (preempted, or halted in a debugger) makes every `try_pop` fail
+///       until it resumes: `size_approx()` can read 2 while `try_pop` keeps
+///       returning false. This is the known limit of this bounded MPMC design;
+///       consumers are lock-free only while producers keep running.
+///       `try_push` returning false likewise means the next slot was not yet
+///       released, which a full queue and a stalled consumer both produce.
 ///
 /// **This queue does not scale with thread count — it degrades.** Every producer
 /// contends on one enqueue counter and every consumer on one dequeue counter, so
