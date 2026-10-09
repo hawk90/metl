@@ -85,12 +85,12 @@ class mmio_ptr {
  public:
   /// @brief Construct from an integer address (volatile hardware pointer).
   /// @param address Absolute peripheral address.
-  /// @pre `address % alignof(T) == 0` (checked by runtime `METL_ASSERT`): a
+  /// @pre `address % alignof(T) == 0` (checked by `METL_HARDEN`, at every level): a
   ///      misaligned volatile access is undefined behavior.
   /// @note Intentionally NOT constexpr: the integer-to-pointer reinterpret_cast
   ///       can never be a constant expression.
   explicit mmio_ptr(std::uintptr_t address) noexcept : addr_(reinterpret_cast<volatile T*>(address)) {
-    METL_ASSERT(address % alignof(T) == 0);
+    METL_HARDEN(address % alignof(T) == 0);
   }
 
   /// @brief Construct from an existing volatile pointer.

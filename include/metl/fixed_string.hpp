@@ -194,7 +194,7 @@ class fixed_string {
   /// @return true on success; false if `text` does not fit (contents unchanged).
   /// @pre `text != nullptr`.
   METL_NODISCARD bool try_assign(const char* text) noexcept {
-    METL_ASSERT(text != nullptr);
+    METL_HARDEN(text != nullptr);
 
     const size_type input_size = string_length(text);
     if (input_size > Capacity) {
@@ -221,7 +221,7 @@ class fixed_string {
   /// @return true on success; false if it does not fit (contents unchanged).
   /// @pre `text != nullptr`.
   METL_NODISCARD bool try_append(const char* text) noexcept {
-    METL_ASSERT(text != nullptr);
+    METL_HARDEN(text != nullptr);
 
     const size_type input_size = string_length(text);
     if (!can_append(input_size)) {

@@ -33,26 +33,24 @@ int widen(long v) {
 int main() {
   metl::set_assert_handler(&capture);
 
-  // Converting signature, null: asserts (METL_ASSERT, so not at NONE).
-  if (metl_test::asserts_active) {
-    {
-      int (*null_fn)(long) = nullptr;
-      g_asserted = false;
-      if (setjmp(g_jump) == 0) {
-        metl::fixed_function<int(int)> f(null_fn);
-        (void)f;
-      }
-      CHECK(g_asserted);
+  // Converting signature, null: METL_HARDEN, so this holds at every level.
+  {
+    int (*null_fn)(long) = nullptr;
+    g_asserted = false;
+    if (setjmp(g_jump) == 0) {
+      metl::fixed_function<int(int)> f(null_fn);
+      (void)f;
     }
-    {
-      int (*null_fn)(long) = nullptr;
-      g_asserted = false;
-      if (setjmp(g_jump) == 0) {
-        metl::fixed_any_invocable<int(int)> f(null_fn);
-        (void)f;
-      }
-      CHECK(g_asserted);
+    CHECK(g_asserted);
+  }
+  {
+    int (*null_fn)(long) = nullptr;
+    g_asserted = false;
+    if (setjmp(g_jump) == 0) {
+      metl::fixed_any_invocable<int(int)> f(null_fn);
+      (void)f;
     }
+    CHECK(g_asserted);
   }
 
   // Converting signature, non-null: stored and callable, no assert.

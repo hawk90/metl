@@ -33,6 +33,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `lookup_table::find` returned it, and `delegate::bind`,
   `scheduler::try_attach_protothread`, `atomic_ref` and `fnv1a_hash` used it.
   A type that deletes `operator&` did not compile in those.
+- At `METL_HARDENING_NONE`, misuse no longer corrupts memory, hangs, or hands
+  back a hazard: these checks are now `METL_HARDEN`, which no level strips.
+  The rule for which checks are, and which stay `METL_ASSERT`, is in
+  `config.hpp`.
+  - `fixed_vector`: a position outside `[begin, end]` for insert/emplace,
+    `erase` on an empty vector or a reversed range, `resize` past `Capacity`
+    (looped forever), `assign` from its own range (read destroyed elements),
+    and `emplace_back` on a `Capacity`-0 vector.
+  - `flat_map` / `flat_set`: `emplace` of an existing key stored it twice.
+  - `span`: a fixed extent built over the wrong count, and `first`, `last`,
+    `subspan` past the end, produced a view larger than its storage.
+  - `fixed_string::try_assign` / `try_append` with a null pointer.
+  - `fixed_function`, `fixed_any_invocable`, `function_ref` built from a null
+    function pointer stored it as engaged; calling an empty one, or an empty
+    `delegate`, jumped to address 0 (the vector table on Cortex-M).
+  - `intrusive_ptr` releasing a zero count wrapped it to `SIZE_MAX`.
+  - `parse_int` / `parse_uint` / `parse_hex` returned a result built from the
+    error.
+  - `mmio_ptr` from a misaligned address, and a misaligned `atomic_ref`.
 
 ## [1.1.0] - 2026-10-09
 

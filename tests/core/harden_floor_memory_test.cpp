@@ -10,6 +10,10 @@
 //   - monotonic_buffer::allocate with a non-power-of-two alignment returned a
 //     misaligned pointer.
 //
+// The cases after those are the rest of the rule in config.hpp: the library
+// corrupting its own state, looping without bound, handing back a hazard, or
+// calling through an empty callable.
+//
 // Each now sits behind METL_HARDEN, which survives NONE. The handler longjmps
 // out before the abort -- as tests/core/hardening_common.h does -- so the check
 // runs without fork() and therefore on QEMU too.
@@ -21,12 +25,22 @@
 #include <csetjmp>
 
 #include <metl/assert.hpp>
+#include <metl/delegate.hpp>
 #include <metl/fixed_deque.hpp>
+#include <metl/fixed_function.hpp>
 #include <metl/fixed_queue.hpp>
 #include <metl/fixed_stack.hpp>
+#include <metl/fixed_string.hpp>
 #include <metl/fixed_vector.hpp>
+#include <metl/flat_map.hpp>
+#include <metl/flat_set.hpp>
+#include <metl/function_ref.hpp>
+#include <metl/intrusive_ptr.hpp>
+#include <metl/mmio.hpp>
 #include <metl/monotonic_buffer.hpp>
+#include <metl/parse.hpp>
 #include <metl/ring_buffer.hpp>
+#include <metl/span.hpp>
 #include <metl/static_message_queue.hpp>
 
 namespace {
@@ -38,6 +52,23 @@ void capture(const char* /*expr*/, const char* /*file*/, int /*line*/) noexcept 
   g_fired = true;
   std::longjmp(g_jump, 1);
 }
+
+// Runs `misuse` and reports whether a guard stopped it. Only trivially
+// destructible locals live inside `misuse`, so the longjmp skips nothing.
+template <typename F>
+bool guarded_against(F misuse) {
+  g_fired = false;
+  if (setjmp(g_jump) == 0) {
+    misuse();
+  }
+  return g_fired;
+}
+
+int widen(long x) {
+  return static_cast<int>(x);
+}
+
+struct counted final : metl::intrusive_ref_counter<counted> {};
 
 }  // namespace
 
@@ -131,6 +162,100 @@ int main() {
     }
     CHECK(g_fired);
     CHECK_EQ(messages.size(), 0u);
+  }
+
+  // fixed_vector: positions outside [begin, end], empty and reversed erase, a
+  // resize that can never finish, an own-range assign, and emplace_back on a
+  // Capacity-0 vector (back() would be data()[SIZE_MAX]).
+  {
+    metl::fixed_vector<int, 4> v;
+    v.push_back(1);
+    CHECK(guarded_against([&] { v.emplace(v.begin() + 2, 9); }));
+    CHECK(guarded_against([&] { v.insert(v.begin() + 2, 9); }));
+    CHECK(guarded_against([&] { (void)v.try_insert(v.begin() + 2, 9); }));
+    CHECK_EQ(v.size(), 1u);
+
+    metl::fixed_vector<int, 4> empty;
+    CHECK(guarded_against([&] { empty.erase(empty.begin()); }));
+    CHECK(guarded_against([&] { v.erase(v.begin() + 1, v.begin()); }));
+    CHECK(guarded_against([&] { v.resize(5); }));
+    CHECK(guarded_against([&] { v.resize(5, 0); }));
+    CHECK(guarded_against([&] { v.assign(v.begin(), v.end()); }));
+    CHECK_EQ(v.size(), 1u);
+    CHECK_EQ(v[0], 1);
+
+    metl::fixed_vector<int, 0> none;
+    CHECK(guarded_against([&] { (void)none.emplace_back(1); }));
+  }
+
+  // flat_map / flat_set: a duplicate key would be stored twice.
+  {
+    metl::flat_map<int, int, 4> map;
+    map.emplace(1, 10);
+    CHECK(guarded_against([&] { map.emplace(1, 20); }));
+    CHECK_EQ(map.size(), 1u);
+
+    metl::flat_set<int, 4> set;
+    set.emplace(1);
+    CHECK(guarded_against([&] { set.emplace(1); }));
+    CHECK_EQ(set.size(), 1u);
+  }
+
+  // span: a fixed extent over the wrong count, and views past the end, would
+  // report a size() larger than the storage behind them.
+  {
+    int data[4] = {1, 2, 3, 4};
+    metl::span<int> all(data);
+    CHECK(guarded_against([&] { (void)metl::span<int, 4>(data, 2); }));
+    CHECK(guarded_against([&] { (void)all.subspan(9); }));
+    CHECK(guarded_against([&] { (void)all.subspan(1, 9); }));
+    CHECK(guarded_against([&] { (void)all.first(9); }));
+    CHECK(guarded_against([&] { (void)all.last(9); }));
+    CHECK(guarded_against([&] { (void)all.first<9>(); }));
+  }
+
+  // fixed_string: strlen of a null pointer.
+  {
+    metl::fixed_string<8> text;
+    CHECK(guarded_against([&] { (void)text.try_assign(nullptr); }));
+    CHECK(guarded_against([&] { (void)text.try_append(nullptr); }));
+  }
+
+  // Callables: a null function stored as engaged, and a call through an empty
+  // wrapper -- both a jump to address 0.
+  {
+    int (*null_fn)(long) = nullptr;
+    CHECK(guarded_against([&] { metl::fixed_function<int(int)> f(null_fn); }));
+    CHECK(guarded_against([&] { metl::fixed_any_invocable<int(int)> f(null_fn); }));
+    int (*null_exact)(int) = nullptr;
+    CHECK(guarded_against([&] { metl::function_ref<int(int)> f(null_exact); }));
+
+    metl::fixed_function<int(long)> empty_function;
+    CHECK(guarded_against([&] { (void)empty_function(1); }));
+    metl::fixed_any_invocable<int(long)> empty_invocable;
+    CHECK(guarded_against([&] { (void)empty_invocable(1); }));
+    metl::delegate<int(long)> empty_delegate;
+    CHECK(guarded_against([&] { (void)empty_delegate(1); }));
+
+    metl::fixed_function<int(long)> bound(&widen);
+    CHECK(!guarded_against([&] { (void)bound(1); }));
+  }
+
+  // intrusive_ptr: releasing a count that is already zero wraps it.
+  {
+    counted object;
+    CHECK(guarded_against([&] { intrusive_ptr_release(&object); }));
+  }
+
+  // parse: the asserting form would return a result built from the error.
+  {
+    const char text[] = "x";
+    CHECK(guarded_against([&] { (void)metl::parse_uint<unsigned>(metl::span<const char>(text, 1)); }));
+  }
+
+  // mmio: a misaligned register address hard-faults on Cortex-M0.
+  {
+    CHECK(guarded_against([&] { metl::mmio_ptr<std::uint32_t> reg(std::uintptr_t{0x1002}); }));
   }
 
   return metl_test::exit_code();

@@ -80,8 +80,10 @@ Consequences:
   cannot fall through a failed precondition into undefined behaviour.
 - **Checks are on in release builds by default.** `METL_HARDENING` keeps every
   `METL_ASSERT` unless you select `METL_HARDENING_NONE`; there the precondition
-  asserts compile out and a broken precondition is undefined behaviour. Only the
-  `METL_HARDEN` memory-safety guards remain at that level.
+  asserts compile out and a broken precondition on an accessor (`operator[]`,
+  `front()`, `value()`) is undefined behaviour, as with the `std` type it
+  mirrors. Where the library itself would corrupt memory, hang, or hand back a
+  hazard, a `METL_HARDEN` guard remains; the rule is in `config.hpp`.
 - **`flat_map` is not `std::map`.** `operator[]` and `at()` take an integer
   **position** into the key-sorted storage (like a vector), *not* a key. To work
   by key, use `find(key)` (returns `mapped_type*` / `nullptr`), `contains(key)`,

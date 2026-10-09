@@ -327,7 +327,7 @@ claim about a **gate** going stale, and nothing was checking those.
 | [`check_instructions.py`](../tools/check_instructions.py) | instructions executed per benchmark, via cachegrind | `--self-test` |
 | [`check_api_contract.py`](../tools/check_api_contract.py) | §9 R2/R3 across every public header | `--self-test` |
 | [`check_progress_guarantee.py`](../tools/check_progress_guarantee.py) | I3: every public header states a progress guarantee | `--self-test` |
-| [`check_source_rules.py`](../tools/check_source_rules.py) | S1: placement new is `::new`, so a type that deletes its own `operator new` still fits | `--self-test` |
+| [`check_source_rules.py`](../tools/check_source_rules.py) | S1: placement new is `::new`; S2: a check shaped like a memory-safety guard is `METL_HARDEN` or carries its reason | `--self-test` |
 | [`check_amalgamation.py`](../tools/check_amalgamation.py) | the shipped single header builds and runs the whole suite | `--self-test` |
 | [`check_docs.py`](../tools/check_docs.py) | D1–D7: the documentation claims a machine can settle | `--self-test` |
 | [`check_compile_fail.py`](../tools/check_compile_fail.py) | that the public `static_assert`s actually fire, and that the gap between how many there are and how many are pinned only shrinks | `--self-test` |

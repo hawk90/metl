@@ -284,7 +284,7 @@ class fixed_function_impl {
       // into `R(int)`) arrives here, not at the exact-signature overload, and
       // was stored as an engaged target that jumps to 0. Hold it to the same
       // non-null precondition.
-      METL_ASSERT(function != nullptr);
+      METL_HARDEN(function != nullptr);
     }
 
     if (sizeof(decayed_type) > Capacity) {
@@ -415,7 +415,7 @@ class fixed_any_invocable_impl {
       // into `R(int)`) arrives here, not at the exact-signature overload, and
       // was stored as an engaged target that jumps to 0. Hold it to the same
       // non-null precondition.
-      METL_ASSERT(function != nullptr);
+      METL_HARDEN(function != nullptr);
     }
 
     if (sizeof(decayed_type) > Capacity) {
@@ -538,14 +538,14 @@ class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<
   /// @brief Invokes the stored callable.
   /// @pre A target must be stored (has_value() is true); else asserts.
   R operator()(Args... args) const {
-    METL_ASSERT(this->ops_ != nullptr);
+    METL_HARDEN(this->ops_ != nullptr);
     return this->ops_->invoke(this->storage_ptr(), std::forward<Args>(args)...);
   }
 
   /// @brief Stores a function pointer if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
   METL_NODISCARD bool try_assign(R (*function)(Args...)) {
-    METL_ASSERT(function != nullptr);
+    METL_HARDEN(function != nullptr);
     return this->try_assign_callable(function);
   }
 
@@ -646,14 +646,14 @@ class fixed_function<R(Args...) noexcept, Capacity>
   /// @brief Invokes the stored callable.
   /// @pre A target must be stored (has_value() is true); else asserts.
   R operator()(Args... args) const noexcept {
-    METL_ASSERT(this->ops_ != nullptr);
+    METL_HARDEN(this->ops_ != nullptr);
     return this->ops_->invoke(this->storage_ptr(), std::forward<Args>(args)...);
   }
 
   /// @brief Stores a noexcept function pointer if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
   METL_NODISCARD bool try_assign(R (*function)(Args...) noexcept) {
-    METL_ASSERT(function != nullptr);
+    METL_HARDEN(function != nullptr);
     return this->try_assign_callable(function);
   }
 
@@ -799,14 +799,14 @@ class fixed_any_invocable<R(Args...), Capacity>
   /// @brief Invokes the stored callable.
   /// @pre A target must be stored (has_value() is true); else asserts.
   R operator()(Args... args) const {
-    METL_ASSERT(this->ops_ != nullptr);
+    METL_HARDEN(this->ops_ != nullptr);
     return this->ops_->invoke(this->storage_ptr(), std::forward<Args>(args)...);
   }
 
   /// @brief Stores a function pointer if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
   METL_NODISCARD bool try_assign(R (*function)(Args...)) {
-    METL_ASSERT(function != nullptr);
+    METL_HARDEN(function != nullptr);
     return this->try_assign_callable(function);
   }
 
@@ -907,14 +907,14 @@ class fixed_any_invocable<R(Args...) noexcept, Capacity>
   /// @brief Invokes the stored callable.
   /// @pre A target must be stored (has_value() is true); else asserts.
   R operator()(Args... args) const noexcept {
-    METL_ASSERT(this->ops_ != nullptr);
+    METL_HARDEN(this->ops_ != nullptr);
     return this->ops_->invoke(this->storage_ptr(), std::forward<Args>(args)...);
   }
 
   /// @brief Stores a noexcept function pointer if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
   METL_NODISCARD bool try_assign(R (*function)(Args...) noexcept) {
-    METL_ASSERT(function != nullptr);
+    METL_HARDEN(function != nullptr);
     return this->try_assign_callable(function);
   }
 

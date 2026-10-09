@@ -267,6 +267,9 @@ class fixed_vector {
     const bool inserted = try_emplace_back(std::forward<Args>(args)...);
     METL_ASSERT(inserted);
     (void)inserted;
+    // With METL_ASSERT stripped, a full vector returns its last element -- in
+    // bounds, unless Capacity is 0 and back() would be data()[SIZE_MAX].
+    METL_HARDEN(size_ > 0);
     return back();
   }
 
@@ -327,7 +330,7 @@ class fixed_vector {
   ///       yields an iterator to a live element, which `end()` never is.
   template <typename... Args>
   METL_NODISCARD iterator try_emplace(const_iterator pos, Args&&... args) {
-    METL_ASSERT(pos >= begin() && pos <= end());
+    METL_HARDEN(pos >= begin() && pos <= end());
     if (size_ == Capacity) {
       return end();
     }
@@ -338,7 +341,7 @@ class fixed_vector {
   /// @return Iterator to the first new element, or `end()` if they do not fit
   ///         (contents unchanged — this is all-or-nothing, never partial).
   METL_NODISCARD iterator try_insert(const_iterator pos, size_type n, const T& value) {
-    METL_ASSERT(pos >= begin() && pos <= end());
+    METL_HARDEN(pos >= begin() && pos <= end());
     if (n > Capacity - size_) {
       return end();
     }
@@ -358,7 +361,7 @@ class fixed_vector {
         std::is_base_of_v<std::forward_iterator_tag, typename std::iterator_traits<It>::iterator_category>,
         "try_insert requires a forward iterator: the range must be measurable "
         "before anything is written, so that a failure leaves contents unchanged");
-    METL_ASSERT(pos >= begin() && pos <= end());
+    METL_HARDEN(pos >= begin() && pos <= end());
     if (static_cast<size_type>(std::distance(first, last)) > Capacity - size_) {
       return end();
     }
@@ -378,7 +381,7 @@ class fixed_vector {
   /// @pre `pos` in [begin(), end()] and container is not full; asserts otherwise.
   template <typename... Args>
   iterator emplace(const_iterator pos, Args&&... args) {
-    METL_ASSERT(pos >= begin() && pos <= end());
+    METL_HARDEN(pos >= begin() && pos <= end());
     // METL_HARDEN, not METL_ASSERT: on a full vector the shift below writes one
     // past the storage, so stripping this check turns a precondition violation
     // into memory corruption.
@@ -406,7 +409,7 @@ class fixed_vector {
   /// Inserts `n` copies of `value` before `pos`.
   /// @pre `pos` in [begin(), end()] and `size() + n <= Capacity`; asserts otherwise.
   iterator insert(const_iterator pos, size_type n, const T& value) {
-    METL_ASSERT(pos >= begin() && pos <= end());
+    METL_HARDEN(pos >= begin() && pos <= end());
     // Written as a subtraction, not `size_ + n <= Capacity`: the sum overflows for
     // a large `n` and would wrap into a passing assert.
     METL_ASSERT(n <= Capacity - size_);
@@ -432,7 +435,7 @@ class fixed_vector {
   ///      Copy it out first.
   template <typename It, typename = std::enable_if_t<!std::is_integral_v<It>>>
   iterator insert(const_iterator pos, It first, It last) {
-    METL_ASSERT(pos >= begin() && pos <= end());
+    METL_HARDEN(pos >= begin() && pos <= end());
     METL_ASSERT(!aliases_own_storage(first, last));
     const size_type index = static_cast<size_type>(pos - begin());
     iterator out = begin() + index;
@@ -449,7 +452,7 @@ class fixed_vector {
   /// @return Iterator to the element after the erased one.
   /// @pre `pos` in [begin(), end()); asserts otherwise.
   iterator erase(const_iterator pos) noexcept(std::is_nothrow_move_assignable_v<T>) {
-    METL_ASSERT(pos >= begin() && pos < end());
+    METL_HARDEN(pos >= begin() && pos < end());
     const size_type index = static_cast<size_type>(pos - begin());
     asan_unpoison_all_();
     for (size_type i = index; i + 1 < size_; ++i) {
@@ -465,7 +468,7 @@ class fixed_vector {
   /// @return Iterator to the element after the last erased one.
   /// @pre `begin() <= first <= last <= end()`; asserts otherwise.
   iterator erase(const_iterator first, const_iterator last) noexcept(std::is_nothrow_move_assignable_v<T>) {
-    METL_ASSERT(first >= begin() && last <= end() && first <= last);
+    METL_HARDEN(first >= begin() && last <= end() && first <= last);
     const size_type first_index = static_cast<size_type>(first - begin());
     const size_type last_index = static_cast<size_type>(last - begin());
     const size_type erase_count = last_index - first_index;
@@ -534,7 +537,7 @@ class fixed_vector {
   /// Resizes to `n` elements, default-constructing or removing from the back.
   /// @pre `n <= Capacity`; asserts otherwise.
   void resize(size_type n) {
-    METL_ASSERT(n <= Capacity);
+    METL_HARDEN(n <= Capacity);
     if (n < size_) {
       while (size_ > n) {
         pop_back();
@@ -549,7 +552,7 @@ class fixed_vector {
   /// Resizes to `n` elements, appending copies of `value` when growing.
   /// @pre `n <= Capacity`; asserts otherwise.
   void resize(size_type n, const T& value) {
-    METL_ASSERT(n <= Capacity);
+    METL_HARDEN(n <= Capacity);
     if (n < size_) {
       while (size_ > n) {
         pop_back();
@@ -583,7 +586,7 @@ class fixed_vector {
   ///      Copy it out first.
   template <typename It, typename = std::enable_if_t<!std::is_integral_v<It>>>
   void assign(It first, It last) {
-    METL_ASSERT(!aliases_own_storage(first, last));
+    METL_HARDEN(!aliases_own_storage(first, last));
     clear();
     for (It it = first; it != last; ++it) {
       METL_ASSERT(size_ < Capacity);

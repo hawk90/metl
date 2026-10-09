@@ -38,29 +38,33 @@ int main() {
   metl::set_assert_handler(&capture);
 
   // Own ranges assert, through every entry point that takes a range.
-  // METL_ASSERT checks these; at METL_HARDENING_NONE there is nothing to observe.
+  //
+  // assign() clears before it reads, so an own range would be read from dead
+  // objects: METL_HARDEN, at every level.
+  {
+    vec v = make();
+    g_asserted = false;
+    if (setjmp(g_jump) == 0) {
+      v.assign(v.begin() + 1, v.end());
+    }
+    CHECK(g_asserted);
+  }
+  {
+    vec v = make();
+    g_asserted = false;
+    if (setjmp(g_jump) == 0) {
+      v.assign(v.rbegin(), v.rend());
+    }
+    CHECK(g_asserted);
+  }
+  // insert() shifts before it reads, which copies wrong values but stays in
+  // bounds: METL_ASSERT, so there is nothing to observe at METL_HARDENING_NONE.
   if (metl_test::asserts_active) {
     {
       vec v = make();
       g_asserted = false;
       if (setjmp(g_jump) == 0) {
         v.insert(v.end(), v.begin(), v.end());
-      }
-      CHECK(g_asserted);
-    }
-    {
-      vec v = make();
-      g_asserted = false;
-      if (setjmp(g_jump) == 0) {
-        v.assign(v.begin() + 1, v.end());
-      }
-      CHECK(g_asserted);
-    }
-    {
-      vec v = make();
-      g_asserted = false;
-      if (setjmp(g_jump) == 0) {
-        v.assign(v.rbegin(), v.rend());
       }
       CHECK(g_asserted);
     }
