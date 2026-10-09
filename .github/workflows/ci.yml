@@ -542,6 +542,48 @@ jobs:
         run: ${{ matrix.compile_cmd }}
 
   # ---------------------------------------------------------------------------
+  # Mixed-compiler ABI. A vendor library built with GCC and an application built
+  # with Clang (or the reverse) share METL types across a function boundary. An
+  # attribute one compiler honours and the other ignores -- trivial_abi on
+  # intrusive_ptr was one -- gives the same signature two calling conventions,
+  # and only a link across that boundary shows it.
+  # ---------------------------------------------------------------------------
+  mixed-abi:
+    name: mixed-abi
+    runs-on: ubuntu-26.04
+    needs: preflight
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Install build deps
+        uses: ./.github/actions/apt-install
+        with:
+          packages: build-essential clang
+          cache-key: build-essential-clang
+
+      - name: intrusive_ptr crosses a GCC/Clang boundary both ways
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          status=0
+          for pair in "g++ clang++" "clang++ g++"; do
+            read -r lib app <<< "${pair}"
+            "${lib}" -std=c++17 -O2 -Iinclude -c tests/abi/intrusive_ptr_lib.cpp -o lib.o
+            "${app}" -std=c++17 -O2 -Iinclude -c tests/abi/intrusive_ptr_main.cpp -o main.o
+            "${app}" lib.o main.o -o mixed
+            if ./mixed; then
+              echo "library ${lib}, application ${app}: ok"
+            else
+              echo "::error::intrusive_ptr built by ${lib} and used from ${app} crossed the boundary wrongly (exit $?)"
+              status=1
+            fi
+          done
+          exit "${status}"
+
+  # ---------------------------------------------------------------------------
   # ARM hint instructions across architecture versions.
   #
   # wait.hpp emits YIELD / SEV / WFE on ARM. They exist from ARMv6K and ARMv6T2
@@ -2376,6 +2418,7 @@ jobs:
       - sanitizers
       - arm-cross
       - arm-hints
+      - mixed-abi
       - cross-syntax
       - big-endian
       - newlib-link
