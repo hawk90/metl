@@ -72,7 +72,7 @@ class delegate<R(Args...)> {
   /// @pre A target must be bound (has_value() is true); calling an empty
   ///      delegate asserts.
   R operator()(Args... args) const {
-    METL_ASSERT(callback_ != nullptr);
+    METL_HARDEN(callback_ != nullptr);
     return callback_(object_, std::forward<Args>(args)...);
   }
 

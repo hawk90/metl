@@ -133,7 +133,7 @@ class intrusive_ref_counter {
     } else {
       prev = base->refcount_--;
     }
-    METL_ASSERT(prev != 0);
+    METL_HARDEN(prev != 0);
     if (prev == 1) {
       // Destroy the object in place. Memory is owned by the caller (pool,
       // static storage, etc.) and must be released by the user.

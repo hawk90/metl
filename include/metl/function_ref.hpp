@@ -43,7 +43,7 @@ class function_ref<R(Args...)> {
   /// @brief Binds a free-function pointer.
   /// @param function Non-null function pointer to reference.
   constexpr function_ref(R (*function)(Args...)) noexcept : storage_(function), callback_(&invoke_function) {
-    METL_ASSERT(function != nullptr);
+    METL_HARDEN(function != nullptr);
   }
 
   // Bind an lvalue callable (const or non-const). Only lvalue references are
@@ -92,7 +92,7 @@ class function_ref<R(Args...)> {
   /// @pre A callable must be bound (has_value() is true); invoking an empty
   ///      function_ref asserts.
   R operator()(Args... args) const {
-    METL_ASSERT(callback_ != nullptr);
+    METL_HARDEN(callback_ != nullptr);
     return callback_(storage_, std::forward<Args>(args)...);
   }
 
@@ -118,7 +118,7 @@ class function_ref<R(Args...)> {
   using callback_type = R (*)(storage, Args&&...);
 
   static R invoke_function(storage bound, Args&&... args) {
-    METL_ASSERT(bound.function != nullptr);
+    METL_HARDEN(bound.function != nullptr);
     return bound.function(std::forward<Args>(args)...);
   }
 

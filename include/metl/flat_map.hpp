@@ -375,7 +375,7 @@ class flat_map {
   template <typename K, typename V>
   reference emplace(K&& key, V&& value) {
     const size_type index = lower_bound_index(key);
-    METL_ASSERT(!(index < size_ && !comp_(key, data()[index].key)));
+    METL_HARDEN(!(index < size_ && !comp_(key, data()[index].key)));
     const bool inserted = try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
     METL_ASSERT(inserted);
     (void)inserted;

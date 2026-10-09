@@ -101,13 +101,24 @@
 #endif
 #endif
 
-// METL_HARDEN — an ALWAYS-ON hard guard, independent of METL_HARDENING (it is
-// NOT stripped even at METL_HARDENING_NONE). Reserved for the handful of
-// defense-in-depth checks whose failure would let library misuse escalate into a
-// wild out-of-bounds *write* / memory-safety hole (e.g. a full-table insert
-// reaching an out-of-range index). This is metl's security floor and mirrors
-// Abseil's ABSL_HARDENING_ASSERT: preconditions may be compiled out, but the
-// "never corrupt arbitrary memory" guarantee is not a precondition and stays.
+// METL_HARDEN — an ALWAYS-ON guard, independent of METL_HARDENING (it is NOT
+// stripped at METL_HARDENING_NONE). This is metl's security floor, as Abseil's
+// ABSL_HARDENING_ASSERT is: preconditions may be compiled out, but these may not.
+//
+// The rule for which one a check is. METL_HARDEN when, with the check gone, the
+// LIBRARY ITSELF would:
+//   1. write out of bounds, or corrupt its own size, counters or state;
+//   2. loop without bound (a resize that can never finish);
+//   3. hand out or store a hazard that fails somewhere else later -- a span
+//      whose size() is wrong, a null callable stored as engaged, a parse result
+//      built from an error;
+//   4. call through an empty delegate / fixed_function / function_ref (a jump
+//      to address 0, which on Cortex-M is the vector table);
+//   5. form a misaligned mmio or atomic_ref pointer.
+// METL_ASSERT for the CALLER's side of an access -- operator[], front()/back(),
+// value(), get<>() -- which at NONE behaves like the unchecked std accessor it
+// mirrors, and for asserting forms whose stripped result stays in bounds.
+// tools/check_source_rules.py (S2) holds the line between the two.
 #ifndef METL_HARDEN
 #define METL_HARDEN(expr)                                          \
   do {                                                             \

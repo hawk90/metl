@@ -105,7 +105,7 @@ class atomic_ref {
   /// @param obj Object to operate on atomically; must outlive this reference.
   /// @pre @c obj must be aligned to `required_alignment`.
   explicit atomic_ref(T& obj) noexcept : ptr_(detail::addressof(obj)) {
-    METL_ASSERT((reinterpret_cast<std::uintptr_t>(ptr_) % required_alignment) == 0u);
+    METL_HARDEN((reinterpret_cast<std::uintptr_t>(ptr_) % required_alignment) == 0u);
   }
 
   atomic_ref(const atomic_ref&) noexcept = default;

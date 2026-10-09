@@ -7,6 +7,15 @@
       kind of type a static pool is for -- does not compile, though nothing
       touches the heap. A class-defined placement `operator new(size_t, void*)`
       would be called instead of the global one.
+  S2  a check that guards the library's own memory safety is METL_HARDEN, not
+      METL_ASSERT. METL_ASSERT is stripped at METL_HARDENING_NONE; the rule for
+      which checks must survive it is in include/metl/config.hpp. A
+      METL_ASSERT whose condition has the shape of such a guard -- a position or
+      count against the bounds, a null pointer, an alignment, a reference
+      count, an own-range alias -- must be listed in ASSERT_ALLOWLIST with the
+      reason stripping it is safe, or be METL_HARDEN. An allowlist entry that
+      no longer matches a METL_ASSERT is an error too, so the list cannot
+      outlive the code it excuses.
 
 The companion rule -- take a user object's address with `detail::addressof`,
 never `&obj` -- is not checked here. Which `&` applies to a user's type is a
@@ -27,18 +36,67 @@ import sys
 
 UNQUALIFIED_PLACEMENT_NEW = re.compile(r"(?<![:\w])new\s*\(")
 
+METL_ASSERT_CALL = re.compile(r"\bMETL_ASSERT\((.*)\);")
+# The shapes of a memory-safety guard (config.hpp, "The rule").
+GUARD_SHAPE = re.compile(r"!= *nullptr|\bpos\b|\bfirst\b|\blast\b|Extent|\b[Cc]ount\b|"
+                         r"\b[Oo]ffset\b|prev *!= *0|align|aliases_own_storage|\bn *<= *Capacity")
+
+# (header, condition) -> why METL_ASSERT is enough there.
+ASSERT_ALLOWLIST = {
+    ("arena_allocator.hpp", "object != nullptr"):
+        "asserting emplace: stripped, it returns the null try_emplace gave; the caller dereferences",
+    ("monotonic_buffer.hpp", "object != nullptr"):
+        "asserting emplace: stripped, it returns the null try_emplace gave; the caller dereferences",
+    ("object_pool.hpp", "object != nullptr"):
+        "asserting emplace: stripped, it returns the null try_emplace gave; the caller dereferences",
+    ("static_allocator.hpp", "memory != nullptr"):
+        "asserting allocate: stripped, it returns the null try_allocate gave",
+    ("static_allocator.hpp", "object != nullptr"):
+        "asserting create: stripped, it returns the null try_new gave",
+    ("static_allocator.hpp", "location != nullptr"):
+        "construct/destroy at a caller-supplied address: the caller's access",
+    ("arena_allocator.hpp", "target.offset <= offset_"):
+        "rewind to a stale mark: stripped, the unwinding loop does nothing",
+    ("fixed_vector.hpp", "n <= Capacity - size_"):
+        "insert(pos, n, v): every emplace it makes is position-checked by METL_HARDEN",
+    ("fixed_vector.hpp", "n <= Capacity"):
+        "assign(n, v): a full emplace_back returns the last element, in bounds",
+    ("fixed_vector.hpp", "!aliases_own_storage(first, last)"):
+        "insert of an own range shifts before it reads: wrong values, in bounds",
+    ("intrusive_ptr.hpp", "ptr != nullptr"):
+        "add_ref/release are called by intrusive_ptr only with a non-null pointer",
+    ("intrusive_ptr.hpp", "ptr_ != nullptr"):
+        "operator* / operator->: the caller's access",
+    ("variant.hpp", "pointer != nullptr"):
+        "get<>: the caller's access, as std::get without exceptions",
+}
+
 
 def strip_comment(line):
     index = line.find("//")
     return line if index < 0 else line[:index]
 
 
-def check_text(text, path):
+def check_text(text, path, used=None):
+    header = pathlib.PurePath(path).name
     violations = []
     for number, line in enumerate(text.splitlines(), start=1):
         code = strip_comment(line)
         if UNQUALIFIED_PLACEMENT_NEW.search(code):
             violations.append((path, number, "S1", "placement new must be written ::new"))
+        if "#define" in code:
+            continue
+        match = METL_ASSERT_CALL.search(code)
+        if match and GUARD_SHAPE.search(match.group(1)):
+            key = (header, match.group(1).strip())
+            if key in ASSERT_ALLOWLIST:
+                if used is not None:
+                    used.add(key)
+            else:
+                violations.append((path, number, "S2",
+                                   f"METL_ASSERT({key[1]}) has the shape of a memory-safety guard: "
+                                   "make it METL_HARDEN, or list it in ASSERT_ALLOWLIST with the "
+                                   "reason stripping it is safe (rule: include/metl/config.hpp)"))
     return violations
 
 
@@ -46,9 +104,15 @@ CANARY_S1 = """
 template <typename T> void make(void* p) { new (p) T(); }
 """
 
+CANARY_S2 = """
+void at(int* first, int* pos, int* last) { METL_ASSERT(pos >= first && pos <= last); }
+"""
+
 CANARY_CLEAN = """
 template <typename T> void make(void* p) { ::new (static_cast<void*>(p)) T(); }
 // new (p) T() in a comment is fine
+void at(int* first, int* pos, int* last) { METL_HARDEN(pos >= first && pos <= last); }
+int& front(int* data, unsigned size) { METL_ASSERT(size > 0); return data[0]; }
 """
 
 
@@ -56,6 +120,11 @@ def self_test():
     failures = []
     if {rule for _, _, rule, _ in check_text(CANARY_S1, "<canary-S1>")} != {"S1"}:
         failures.append("S1 canary was NOT reported -- the ::new check is dead")
+    if {rule for _, _, rule, _ in check_text(CANARY_S2, "canary.hpp")} != {"S2"}:
+        failures.append("S2 canary was NOT reported -- the METL_HARDEN check is dead")
+    allowed = 'void f(int* p) { METL_ASSERT(pointer != nullptr); }'
+    if check_text(allowed, "variant.hpp"):
+        failures.append("an ASSERT_ALLOWLIST entry was flagged anyway")
     noise = check_text(CANARY_CLEAN, "<canary-clean>")
     if noise:
         failures.append(f"rule-abiding code was flagged: {noise}")
@@ -63,7 +132,7 @@ def self_test():
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
         return 1
-    print("self-test passed: S1 bites, and clean code is not flagged")
+    print("self-test passed: S1 and S2 bite, the allowlist is honoured, clean code is not flagged")
     return 0
 
 
@@ -83,8 +152,13 @@ def main():
         return 2
 
     violations = []
+    used = set()
     for header in headers:
-        violations += check_text(header.read_text(encoding="utf-8"), str(header))
+        violations += check_text(header.read_text(encoding="utf-8"), str(header), used)
+    for header, condition in sorted(set(ASSERT_ALLOWLIST) - used):
+        violations.append((f"{root}/{header}", 0, "S2",
+                           f"ASSERT_ALLOWLIST names METL_ASSERT({condition}), which no longer "
+                           "exists there: remove the entry"))
     for path, number, rule, message in violations:
         print(f"{path}:{number}: [{rule}] {message}", file=sys.stderr)
     if violations:

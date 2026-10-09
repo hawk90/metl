@@ -116,7 +116,7 @@ class span {
   /// Constructs a span over `count` elements starting at `ptr`.
   /// @pre For a fixed extent, `count == Extent`; asserts otherwise.
   constexpr span(pointer ptr, size_type count) noexcept : storage_(ptr, count) {
-    METL_ASSERT(Extent == dynamic_extent || count == Extent);
+    METL_HARDEN(Extent == dynamic_extent || count == Extent);
   }
 
   /// Constructs a span over the range [first, last).
@@ -126,8 +126,8 @@ class span {
   ///       pointer constant and would be ambiguous between the two.
   template <typename Last, typename = std::enable_if_t<std::is_same_v<Last, pointer>>>
   constexpr span(pointer first, Last last) noexcept : storage_(first, static_cast<size_type>(last - first)) {
-    METL_ASSERT(last >= first);
-    METL_ASSERT(Extent == dynamic_extent || static_cast<size_type>(last - first) == Extent);
+    METL_HARDEN(last >= first);
+    METL_HARDEN(Extent == dynamic_extent || static_cast<size_type>(last - first) == Extent);
   }
 
   /// Constructs a span viewing all `N` elements of a C array.
@@ -150,7 +150,7 @@ class span {
   constexpr span(C& container METL_LIFETIME_BOUND) noexcept(noexcept(std::declval<C&>().data()) &&
                                                             noexcept(std::declval<C&>().size()))
       : storage_(container.data(), container.size()) {
-    METL_ASSERT(Extent == dynamic_extent || container.size() == Extent);
+    METL_HARDEN(Extent == dynamic_extent || container.size() == Extent);
   }
 
   /// Converting constructor between compatible spans (extent/qualification).
@@ -159,7 +159,7 @@ class span {
             typename = std::enable_if_t<(Extent == dynamic_extent || N == dynamic_extent || Extent == N) &&
                                         detail::is_qualification_convertible<T, U>::value>>
   constexpr span(const span<U, N>& other) noexcept : storage_(other.data(), other.size()) {
-    METL_ASSERT(Extent == dynamic_extent || other.size() == Extent);
+    METL_HARDEN(Extent == dynamic_extent || other.size() == Extent);
   }
 
   constexpr span(const span&) noexcept = default;
@@ -214,7 +214,7 @@ class span {
   METL_NODISCARD constexpr span<element_type, Count> first() const noexcept {
     static_assert(Extent == dynamic_extent || Count <= Extent,
                   "first<Count>(): Count must not exceed Extent");
-    METL_ASSERT(Count <= size());
+    METL_HARDEN(Count <= size());
     return span<element_type, Count>(storage_.data, Count);
   }
 
@@ -223,7 +223,7 @@ class span {
   template <std::size_t Count>
   METL_NODISCARD constexpr span<element_type, Count> last() const noexcept {
     static_assert(Extent == dynamic_extent || Count <= Extent, "last<Count>(): Count must not exceed Extent");
-    METL_ASSERT(Count <= size());
+    METL_HARDEN(Count <= size());
     return span<element_type, Count>(storage_.data + (size() - Count), Count);
   }
 
@@ -238,25 +238,25 @@ class span {
                   "subspan<Offset, Count>(): Offset must not exceed Extent");
     static_assert(Count == dynamic_extent || Extent == dynamic_extent || Count <= Extent - Offset,
                   "subspan<Offset, Count>(): Count out of range");
-    METL_ASSERT(Offset <= size());
+    METL_HARDEN(Offset <= size());
     constexpr std::size_t kResultExtent =
         (Count != dynamic_extent ? Count : (Extent != dynamic_extent ? Extent - Offset : dynamic_extent));
     const size_type actual_count = (Count == dynamic_extent) ? (size() - Offset) : Count;
-    METL_ASSERT(actual_count <= (size() - Offset));
+    METL_HARDEN(actual_count <= (size() - Offset));
     return span<element_type, kResultExtent>(storage_.data + Offset, actual_count);
   }
 
   /// Returns a dynamic-extent subview of the first `count` elements.
   /// @pre `count <= size()`; asserts otherwise.
   METL_NODISCARD constexpr span<element_type, dynamic_extent> first(size_type count) const noexcept {
-    METL_ASSERT(count <= size());
+    METL_HARDEN(count <= size());
     return span<element_type, dynamic_extent>(storage_.data, count);
   }
 
   /// Returns a dynamic-extent subview of the last `count` elements.
   /// @pre `count <= size()`; asserts otherwise.
   METL_NODISCARD constexpr span<element_type, dynamic_extent> last(size_type count) const noexcept {
-    METL_ASSERT(count <= size());
+    METL_HARDEN(count <= size());
     return span<element_type, dynamic_extent>(storage_.data + (size() - count), count);
   }
 
@@ -264,9 +264,9 @@ class span {
   /// @pre `offset <= size()` and `count` fits within the remainder; asserts otherwise.
   METL_NODISCARD constexpr span<element_type, dynamic_extent> subspan(
       size_type offset, size_type count = dynamic_extent) const noexcept {
-    METL_ASSERT(offset <= size());
+    METL_HARDEN(offset <= size());
     const size_type actual_count = (count == dynamic_extent) ? (size() - offset) : count;
-    METL_ASSERT(actual_count <= (size() - offset));
+    METL_HARDEN(actual_count <= (size() - offset));
     return span<element_type, dynamic_extent>(storage_.data + offset, actual_count);
   }
 

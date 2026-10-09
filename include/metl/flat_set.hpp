@@ -367,7 +367,7 @@ class flat_set {
   template <typename K>
   reference emplace(K&& key) {
     const size_type index = lower_bound_index(key);
-    METL_ASSERT(!(index < size_ && !comp_(key, data()[index])));
+    METL_HARDEN(!(index < size_ && !comp_(key, data()[index])));
     const bool inserted = try_insert_at(index, std::forward<K>(key));
     METL_ASSERT(inserted);
     (void)inserted;
