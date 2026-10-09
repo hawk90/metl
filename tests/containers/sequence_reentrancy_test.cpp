@@ -36,6 +36,9 @@ struct v_item {
       vec().emplace_back(100 + c);
     }
   }
+  // erase() shifts by assignment; declared, since the destructor is user-provided.
+  v_item(const v_item&) = default;
+  v_item& operator=(const v_item&) = default;
   ~v_item() {
     ++g_destroyed;
     // Unregister: if this element is still listed, remove it.
