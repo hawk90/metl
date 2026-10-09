@@ -13,6 +13,7 @@
 /// does is the target's business, and this header does not bound it.
 
 #include "metl/config.hpp"
+#include "metl/detail/addressof.hpp"
 
 #include <type_traits>
 #include <utility>
@@ -50,7 +51,7 @@ class delegate<R(Args...)> {
   /// @return A delegate invoking `Method` on `instance`.
   template <typename T, R (T::*Method)(Args...)>
   METL_NODISCARD static constexpr delegate bind(T& instance METL_LIFETIME_BOUND) noexcept {
-    return delegate(static_cast<void*>(&instance), &invoke_method<T, Method>);
+    return delegate(static_cast<void*>(detail::addressof(instance)), &invoke_method<T, Method>);
   }
 
   /// @brief Binds a const member function to an instance.
@@ -58,7 +59,8 @@ class delegate<R(Args...)> {
   /// @return A delegate invoking const `Method` on `instance`.
   template <typename T, R (T::*Method)(Args...) const>
   METL_NODISCARD static constexpr delegate bind(const T& instance METL_LIFETIME_BOUND) noexcept {
-    return delegate(const_cast<void*>(static_cast<const void*>(&instance)), &invoke_const_method<T, Method>);
+    return delegate(const_cast<void*>(static_cast<const void*>(detail::addressof(instance))),
+                    &invoke_const_method<T, Method>);
   }
 
   /// @brief Tests whether a target is bound.

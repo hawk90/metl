@@ -288,7 +288,7 @@ class ring_core {
       return false;
     }
 
-    new (storage_[physical_index(size_)].addr()) T(std::forward<Args>(args)...);
+    ::new (static_cast<void*>(storage_[physical_index(size_)].addr())) T(std::forward<Args>(args)...);
     ++size_;
     return true;
   }

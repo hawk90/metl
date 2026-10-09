@@ -100,7 +100,7 @@ class static_allocator {
   template <typename... Args>
   void construct(pointer location, Args&&... args) {
     METL_ASSERT(location != nullptr);
-    new (location) T(std::forward<Args>(args)...);
+    ::new (static_cast<void*>(location)) T(std::forward<Args>(args)...);
   }
 
   /// @brief Run the destructor of a @c T (storage is not reclaimed).

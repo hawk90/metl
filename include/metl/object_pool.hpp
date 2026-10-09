@@ -65,7 +65,7 @@ class object_pool {
   METL_NODISCARD pointer try_emplace(Args&&... args) {
     for (size_type i = 0; i < Capacity; ++i) {
       if (!active_[i]) {
-        new (storage_[i].addr()) T(std::forward<Args>(args)...);
+        ::new (static_cast<void*>(storage_[i].addr())) T(std::forward<Args>(args)...);
         active_[i] = true;
         ++size_;
         return slot_ptr(i);

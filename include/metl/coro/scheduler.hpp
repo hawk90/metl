@@ -34,6 +34,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/coro/stepper.hpp"
+#include "metl/detail/addressof.hpp"
 #include "metl/fixed_vector.hpp"
 
 #include <cstddef>
@@ -71,7 +72,7 @@ class scheduler {
   /// @return true if attached, false if the scheduler is full.
   template <typename Protothread>
   METL_NODISCARD bool try_attach_protothread(Protothread& t) noexcept {
-    return try_attach_impl(static_cast<void*>(&t), &protothread_poll<Protothread>);
+    return try_attach_impl(static_cast<void*>(detail::addressof(t)), &protothread_poll<Protothread>);
   }
 
   /// @brief Attach a `stepper`-derived task.

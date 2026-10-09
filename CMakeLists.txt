@@ -218,7 +218,7 @@ if(METL_BUILD_TESTS)
     control/coro_stepper control/coro_deadline_scheduler
     # core/  (assert/compiler + the METL_HARDENING level checks + smoke)
     core/assert core/compiler core/smoke core/ram_footprint core/version
-    core/hardening_none core/hardening_fast core/hardening_debug
+    core/hardening_none core/hardening_fast core/hardening_debug core/hostile_types
     core/harden_floor_none core/harden_floor_memory core/low_findings core/audit_g6
   )
 

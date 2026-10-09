@@ -32,6 +32,7 @@
 /// `atomic_ref` on any path with a deadline.
 
 #include "metl/config.hpp"
+#include "metl/detail/addressof.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -103,7 +104,7 @@ class atomic_ref {
   /// @brief Bind the reference to an existing object.
   /// @param obj Object to operate on atomically; must outlive this reference.
   /// @pre @c obj must be aligned to `required_alignment`.
-  explicit atomic_ref(T& obj) noexcept : ptr_(&obj) {
+  explicit atomic_ref(T& obj) noexcept : ptr_(detail::addressof(obj)) {
     METL_ASSERT((reinterpret_cast<std::uintptr_t>(ptr_) % required_alignment) == 0u);
   }
 

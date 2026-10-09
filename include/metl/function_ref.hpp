@@ -13,29 +13,13 @@
 /// is not something this header can bound.
 
 #include "metl/config.hpp"
+#include "metl/detail/addressof.hpp"
 
 #include <cstddef>
 #include <type_traits>
 #include <utility>
 
 namespace metl {
-
-namespace detail {
-
-// Local std::addressof so function_ref does not pull in all of <memory> for a
-// single one-liner. __builtin_addressof is available on every compiler in the
-// matrix (gcc/clang/MSVC) and is constant-evaluable; the fallback (only used on
-// a hypothetical compiler without it) is the standard operator&-defeating cast.
-template <typename T>
-inline T* function_ref_addressof(T& arg) noexcept {
-#if METL_HAS_BUILTIN(__builtin_addressof) || defined(__GNUC__) || defined(_MSC_VER)
-  return __builtin_addressof(arg);
-#else
-  return reinterpret_cast<T*>(&const_cast<char&>(reinterpret_cast<const volatile char&>(arg)));
-#endif
-}
-
-}  // namespace detail
 
 template <typename>
 class function_ref;
@@ -82,7 +66,7 @@ class function_ref<R(Args...)> {
   // complements the deleted rvalue-binding overload below, which already
   // rejects temporaries outright.
   function_ref(F&& function METL_LIFETIME_BOUND) noexcept
-      : storage_(const_cast<void*>(static_cast<const void*>(detail::function_ref_addressof(function)))),
+      : storage_(const_cast<void*>(static_cast<const void*>(detail::addressof(function)))),
         callback_(&invoke_object<Referenced>) {}
 
   /// @brief Deleted rvalue-binding overload.

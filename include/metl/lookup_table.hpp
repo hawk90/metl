@@ -18,6 +18,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/addressof.hpp"
 
 #include <array>
 #include <cstddef>
@@ -98,7 +99,7 @@ class lookup_table {
   METL_NODISCARD constexpr const mapped_type* find(const key_type& key) const noexcept(nothrow_compare) {
     for (size_type i = 0; i < Size; ++i) {
       if (entries_[i].key == key) {
-        return &entries_[i].value;
+        return detail::addressof(entries_[i].value);
       }
     }
     return nullptr;

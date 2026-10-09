@@ -50,6 +50,7 @@ BUILD_ROOT = REPO / "build-prepush"
 GATES = [
     ["tools/check_docs.py"],
     ["tools/check_api_contract.py"],
+    ["tools/check_source_rules.py"],
     ["tools/check_progress_guarantee.py"],
     ["tools/check_ci_gate.py"],
     ["tools/check_compile_fail.py"],
