@@ -32,7 +32,7 @@
 // defines it through <new>, libstdc++ does not: without this include the
 // C++20 path was off under GCC unless the user happened to include <memory>
 // first -- and then which declarations a TU saw depended on include order.
-#if defined(__has_include)
+#ifdef __has_include
 #if __has_include(<version>)
 #include <version>
 #endif
