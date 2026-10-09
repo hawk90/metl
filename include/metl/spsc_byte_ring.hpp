@@ -123,6 +123,13 @@ class spsc_byte_ring {
   ///       would accept `commit_write(8)`, publishing six bytes the caller never
   ///       wrote and could not have written — its span was two bytes long.
   ///       Asymmetric with `consume` on purpose; see the note there.
+  /// @note The guard checks the run as it is NOW, not the span the producer was
+  ///       handed. A concurrent `consume` can lengthen the run in between, and a
+  ///       count larger than the handed-out span then passes the guard (handed 1
+  ///       byte, consumer drained 7: `commit_write(8)` is accepted). The guard
+  ///       keeps the producer from overwriting bytes the consumer has not read;
+  ///       publishing only bytes actually written is the @pre's job, and the
+  ///       caller's.
   void commit_write(size_type count) noexcept {
     // Never stripped: a bad count publishes bytes that were never written, and
     // every later span calculation is built on this index, so this must hold even
