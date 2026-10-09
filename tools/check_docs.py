@@ -28,6 +28,11 @@ can settle:
       still produces, asked of the runner itself via `--plan`. The figure is
       derived from a glob over tests/, so it moves whenever a test is added:
       README said 71 and 68 where the runner produced 76 and 72.
+  D8  every tests/**/*_test.cpp is registered in CMakeLists.txt -- in
+      set(_metl_tests) or as a metl_cc_test SRCS -- and the list names no file
+      that is gone. The QEMU runner and the amalgamation check glob tests/, so
+      an unregistered test still runs there and looks covered, while no host,
+      sanitizer, MSVC or coverage leg ever builds it.
 
 D5 is a different shape from the others and the difference is the point. D1-D4
 check that two things agree; D5 forbids the second thing from existing. It was
@@ -149,6 +154,39 @@ def registered_examples(cmake_path):
     if not match:
         return None
     return set(match.group(1).split())
+
+
+def registered_tests(cmake_path):
+    """Tests CMakeLists.txt builds, as paths under tests/ without `_test.cpp`."""
+    text = pathlib.Path(cmake_path).read_text(encoding="utf-8")
+    uncommented = "\n".join(line.split("#")[0] for line in text.splitlines())
+    match = re.search(r"set\(\s*_metl_tests\b(.*?)\)", uncommented, re.S)
+    if not match:
+        return None
+    names = set(match.group(1).split())
+    # A variable (`tests/${_t}_test.cpp`, the loop over the list) is not a file.
+    names |= set(re.findall(r"SRCS\s+tests/([\w/]+)_test\.cpp", uncommented))
+    return names
+
+
+def check_test_registration(root):
+    cmake = root / "CMakeLists.txt"
+    tests_dir = root / "tests"
+    if not cmake.is_file() or not tests_dir.is_dir():
+        return []
+    registered = registered_tests(cmake)
+    if registered is None:
+        return [("D8", "could not find set(_metl_tests ...) in CMakeLists.txt")]
+    on_disk = {path.relative_to(tests_dir).as_posix()[:-len("_test.cpp")]
+               for path in tests_dir.rglob("*_test.cpp")}
+    problems = []
+    for name in sorted(on_disk - registered):
+        problems.append(("D8", f"tests/{name}_test.cpp is not registered in CMakeLists.txt "
+                               f"-- no host, sanitizer, MSVC or coverage leg builds it"))
+    for name in sorted(registered - on_disk):
+        problems.append(("D8", f"CMakeLists.txt registers tests/{name}_test.cpp, which "
+                               f"does not exist"))
+    return problems
 
 
 def fuzz_targets(repo_root):
@@ -311,6 +349,9 @@ def check(repo_root="."):
     # and report agreement between two wrong numbers.
     problems.extend(check_test_counts(root))
 
+    # D8: every test on disk is built by CMake.
+    problems.extend(check_test_registration(root))
+
     return problems
 
 
@@ -450,8 +491,20 @@ def self_test():
                          "runs 9 tests per core\n")
         (root / "README.md").write_text(readme_broken)
 
+        # D8 fixture: one test in the list, one wired through SRCS (as the
+        # threaded tests are), one on disk that neither names, one listed but gone.
+        (root / "tests" / "a").mkdir(parents=True)
+        for name in ("listed", "wired", "orphan"):
+            (root / "tests" / "a" / f"{name}_test.cpp").write_text("int main(){}\n")
+        (root / "CMakeLists.txt").write_text(
+            "set(_metl_tests\n  a/listed  # (a comment with a paren)\n  a/gone\n)\n"
+            "metl_cc_test(NAME t SRCS tests/a/wired_test.cpp)\n")
+
         found = {rule for rule, _ in check(root)}
-        for rule in ("D1", "D2", "D3", "D4", "D5", "D6", "D7"):
+        d8 = sorted(message for rule, message in check(root) if rule == "D8")
+        if len(d8) != 2 or "orphan" not in d8[1] or "a/gone" not in d8[0]:
+            failures.append(f"D8 should flag exactly the orphan and the vanished test: {d8}")
+        for rule in ("D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8"):
             if rule not in found:
                 failures.append(f"{rule} did not fire on a tree that violates it")
 
@@ -478,6 +531,9 @@ def self_test():
         (root / "README.md").write_text("`metl::fixed_vector` is fine.\n"
                                         "runs 5 tests per core\n")
         (root / "examples" / "orphan.cpp").unlink()
+        (root / "tests" / "a" / "orphan_test.cpp").unlink()
+        (root / "CMakeLists.txt").write_text(
+            "set(_metl_tests\n  a/listed\n)\nmetl_cc_test(NAME t SRCS tests/a/wired_test.cpp)\n")
         # The fixture must stay hermetic inside a git hook, where GIT_DIR points
         # at the real repository: scanning has to follow `cwd`, not GIT_DIR, or
         # the restated budget above is never read (the failure seen from a
@@ -516,7 +572,7 @@ def self_test():
         for failure in failures:
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
-    print("self-test passed: D1-D7 each bite, and a clean tree is not flagged")
+    print("self-test passed: D1-D8 each bite, and a clean tree is not flagged")
     return 0
 
 
@@ -540,7 +596,7 @@ def main():
           "every example is built and run by CI, every fuzz harness is in both "
           "lists, the size budgets are stated in exactly one file, every\n"
           "      gate is listed in SCOPE.md section 8, and every test count in "
-          "the README is one the runner still produces")
+          "the README is one the runner still produces, and every test is registered")
     return 0
 
 
