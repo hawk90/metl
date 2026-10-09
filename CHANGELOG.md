@@ -41,6 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unconverted, a `-Wconversion` error in consumer builds.
 - `bitfield`'s range check was `Lsb + Width <= bits`, which wraps for a huge
   `Lsb` and then passed. It is written so it cannot wrap.
+- `coro::deadline_scheduler` broke ties between equal deadlines by heap
+  position, so a task re-arming at `now` could be polled again ahead of tasks
+  already due and starve them (four tasks re-arming at 0 ran 50, 0, 0, 50
+  times in 100 dispatches). Equal deadlines now run in scheduling order. Each
+  entry carries a 64-bit sequence number for it: 8 bytes more per scheduled
+  task.
 - `-DMETL_HARDENING=DEBUG` (the level's name rather than `METL_HARDENING_DEBUG`
   or `2`) silently selected NONE: the range check read the unknown identifier
   as 0, and every precondition check was compiled out. Anything but 0, 1, 2 or

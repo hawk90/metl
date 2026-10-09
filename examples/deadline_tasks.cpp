@@ -111,13 +111,13 @@ int main() {
     }
   }
 
-  // Expected timeline, earliest deadline first at every step:
-  //   10 f | 20 f | 25 s | 30 f,t | 40 f | 50 f,s | 60 f
-  // The tie at 50 (fast re-armed to 50, slow re-armed to 50) is broken in an
-  // unspecified order -- the heap is not stable -- so only the SET at each tick
-  // is checked below, not the order within a tick.
-  static const char* const kExpectedPrefix = "ffsf";
-  for (std::size_t i = 0; i < 4; ++i) {
+  // Expected timeline, earliest deadline first at every step, and equal
+  // deadlines in the order they were scheduled:
+  //   10 f | 20 f | 25 s | 30 t,f | 40 f | 50 s,f | 60 f
+  // At 30 the timeout was scheduled at the start and fast only re-armed at 20,
+  // so the timeout runs first; at 50 slow re-armed (at 25) before fast (at 40).
+  static const char* const kExpectedPrefix = "ffstffsff";
+  for (std::size_t i = 0; i < 9; ++i) {
     if (g_log[i] != kExpectedPrefix[i]) {
       std::printf("dispatch order wrong at %zu: got '%c', want '%c' (log=%s)\n",
                   i,
