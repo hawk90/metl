@@ -56,6 +56,7 @@ class function_ref<R(Args...)> {
             typename = std::enable_if_t<std::is_lvalue_reference_v<F>>,
             typename = std::enable_if_t<!std::is_same_v<Decayed, function_ref>>,
             typename = std::enable_if_t<!std::is_pointer_v<Decayed>>,
+            typename = std::enable_if_t<!std::is_member_pointer_v<Decayed>>,
             typename = std::enable_if_t<std::is_invocable_r_v<R, Referenced&, Args...>>>
   /// @brief Binds an lvalue callable (const or non-const), preserving cv-qualification.
   /// @param function Lvalue callable to reference; must outlive this function_ref.

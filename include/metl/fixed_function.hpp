@@ -230,8 +230,11 @@ class fixed_function_impl {
     if (ops_ == nullptr) {
       return;
     }
-    ops_->destroy(storage_ptr());
+    // Empty first, then destroy: a target whose destructor calls back into this
+    // wrapper must find it empty, not destroy the target a second time.
+    const ops_type* const ops = ops_;
     ops_ = nullptr;
+    ops->destroy(storage_ptr());
   }
 
   void swap(fixed_function_impl& other) noexcept {
@@ -279,7 +282,7 @@ class fixed_function_impl {
     static_assert(alignof(decayed_type) <= alignof(std::max_align_t),
                   "callable alignment exceeds fixed_function storage alignment");
 
-    if constexpr (std::is_pointer_v<decayed_type> || std::is_member_pointer_v<decayed_type>) {
+    if constexpr (std::is_pointer_v<decayed_type>) {
       // A null pointer whose signature only CONVERTS to this one (`int (*)(long)`
       // into `R(int)`) arrives here, not at the exact-signature overload, and
       // was stored as an engaged target that jumps to 0. Hold it to the same
@@ -291,8 +294,12 @@ class fixed_function_impl {
       return false;
     }
 
+    // Build the new target before releasing the old one: `function` may live
+    // inside the current target (a stage that replaces itself with a member
+    // it carries), and reset() would destroy it before it was copied.
+    decayed_type incoming(std::forward<F>(function));
     reset();
-    ::new (storage_ptr()) decayed_type(std::forward<F>(function));
+    ::new (storage_ptr()) decayed_type(static_cast<decayed_type&&>(incoming));
     ops_ = &copyable_ops_for_t<decayed_type, IsNoexcept, R, Args...>::value;
     return true;
   }
@@ -362,8 +369,11 @@ class fixed_any_invocable_impl {
     if (ops_ == nullptr) {
       return;
     }
-    ops_->destroy(storage_ptr());
+    // Empty first, then destroy: a target whose destructor calls back into this
+    // wrapper must find it empty, not destroy the target a second time.
+    const ops_type* const ops = ops_;
     ops_ = nullptr;
+    ops->destroy(storage_ptr());
   }
 
   void swap(fixed_any_invocable_impl& other) noexcept {
@@ -410,7 +420,7 @@ class fixed_any_invocable_impl {
     static_assert(alignof(decayed_type) <= alignof(std::max_align_t),
                   "callable alignment exceeds fixed_any_invocable storage alignment");
 
-    if constexpr (std::is_pointer_v<decayed_type> || std::is_member_pointer_v<decayed_type>) {
+    if constexpr (std::is_pointer_v<decayed_type>) {
       // A null pointer whose signature only CONVERTS to this one (`int (*)(long)`
       // into `R(int)`) arrives here, not at the exact-signature overload, and
       // was stored as an engaged target that jumps to 0. Hold it to the same
@@ -422,8 +432,12 @@ class fixed_any_invocable_impl {
       return false;
     }
 
+    // Build the new target before releasing the old one: `function` may live
+    // inside the current target (a stage that replaces itself with a member
+    // it carries), and reset() would destroy it before it was copied.
+    decayed_type incoming(std::forward<F>(function));
     reset();
-    ::new (storage_ptr()) decayed_type(std::forward<F>(function));
+    ::new (storage_ptr()) decayed_type(static_cast<decayed_type&&>(incoming));
     ops_ = &moveonly_ops_for_t<decayed_type, IsNoexcept, R, Args...>::value;
     return true;
   }
@@ -502,9 +516,9 @@ class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<
   /// @pre The decayed callable fits within `Capacity` bytes (else asserts).
   template <typename F,
             typename Decayed = std::decay_t<F>,
-            typename = std::enable_if_t<!std::is_same_v<Decayed, fixed_function> &&
-                                        std::is_copy_constructible_v<Decayed> &&
-                                        std::is_invocable_r_v<R, Decayed&, Args...>>>
+            typename = std::enable_if_t<
+                !std::is_same_v<Decayed, fixed_function> && !std::is_member_pointer_v<Decayed> &&
+                std::is_copy_constructible_v<Decayed> && std::is_invocable_r_v<R, Decayed&, Args...>>>
   fixed_function(F&& function) : base() {
     assign(std::forward<F>(function));
   }
@@ -527,9 +541,9 @@ class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<
 
   template <typename F,
             typename Decayed = std::decay_t<F>,
-            typename = std::enable_if_t<!std::is_same_v<Decayed, fixed_function> &&
-                                        std::is_copy_constructible_v<Decayed> &&
-                                        std::is_invocable_r_v<R, Decayed&, Args...>>>
+            typename = std::enable_if_t<
+                !std::is_same_v<Decayed, fixed_function> && !std::is_member_pointer_v<Decayed> &&
+                std::is_copy_constructible_v<Decayed> && std::is_invocable_r_v<R, Decayed&, Args...>>>
   fixed_function& operator=(F&& function) {
     assign(std::forward<F>(function));
     return *this;
@@ -559,6 +573,9 @@ class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<
     // terminate the program. The wrapper cannot make its
     // noexcept depend on what it holds, so the callable is refused instead.
     // Lambdas whose captures move without throwing -- nearly all -- are fine.
+    static_assert(!std::is_member_pointer_v<std::decay_t<F>>,
+                  "fixed_function / fixed_any_invocable cannot store a member pointer: they call "
+                  "their target as f(args...). Wrap it in a lambda");
     static_assert(std::is_nothrow_move_constructible_v<std::decay_t<F>>,
                   "fixed_function requires a callable that is nothrow move constructible");
     return this->try_assign_callable(std::forward<F>(function));
@@ -610,9 +627,9 @@ class fixed_function<R(Args...) noexcept, Capacity>
   /// @pre The decayed callable fits within `Capacity` bytes (else asserts).
   template <typename F,
             typename Decayed = std::decay_t<F>,
-            typename = std::enable_if_t<!std::is_same_v<Decayed, fixed_function> &&
-                                        std::is_copy_constructible_v<Decayed> &&
-                                        std::is_nothrow_invocable_r_v<R, Decayed&, Args...>>>
+            typename = std::enable_if_t<
+                !std::is_same_v<Decayed, fixed_function> && !std::is_member_pointer_v<Decayed> &&
+                std::is_copy_constructible_v<Decayed> && std::is_nothrow_invocable_r_v<R, Decayed&, Args...>>>
   fixed_function(F&& function) : base() {
     assign(std::forward<F>(function));
   }
@@ -635,9 +652,9 @@ class fixed_function<R(Args...) noexcept, Capacity>
 
   template <typename F,
             typename Decayed = std::decay_t<F>,
-            typename = std::enable_if_t<!std::is_same_v<Decayed, fixed_function> &&
-                                        std::is_copy_constructible_v<Decayed> &&
-                                        std::is_nothrow_invocable_r_v<R, Decayed&, Args...>>>
+            typename = std::enable_if_t<
+                !std::is_same_v<Decayed, fixed_function> && !std::is_member_pointer_v<Decayed> &&
+                std::is_copy_constructible_v<Decayed> && std::is_nothrow_invocable_r_v<R, Decayed&, Args...>>>
   fixed_function& operator=(F&& function) {
     assign(std::forward<F>(function));
     return *this;
@@ -667,6 +684,9 @@ class fixed_function<R(Args...) noexcept, Capacity>
     // terminate the program. The wrapper cannot make its
     // noexcept depend on what it holds, so the callable is refused instead.
     // Lambdas whose captures move without throwing -- nearly all -- are fine.
+    static_assert(!std::is_member_pointer_v<std::decay_t<F>>,
+                  "fixed_function / fixed_any_invocable cannot store a member pointer: they call "
+                  "their target as f(args...). Wrap it in a lambda");
     static_assert(std::is_nothrow_move_constructible_v<std::decay_t<F>>,
                   "fixed_function requires a callable that is nothrow move constructible");
     return this->try_assign_callable(std::forward<F>(function));
@@ -763,9 +783,9 @@ class fixed_any_invocable<R(Args...), Capacity>
   /// @pre The decayed callable fits within `Capacity` bytes (else asserts).
   template <typename F,
             typename Decayed = std::decay_t<F>,
-            typename = std::enable_if_t<!std::is_same_v<Decayed, fixed_any_invocable> &&
-                                        std::is_move_constructible_v<Decayed> &&
-                                        std::is_invocable_r_v<R, Decayed&, Args...>>>
+            typename = std::enable_if_t<
+                !std::is_same_v<Decayed, fixed_any_invocable> && !std::is_member_pointer_v<Decayed> &&
+                std::is_move_constructible_v<Decayed> && std::is_invocable_r_v<R, Decayed&, Args...>>>
   fixed_any_invocable(F&& function) : base() {
     assign(std::forward<F>(function));
   }
@@ -788,9 +808,9 @@ class fixed_any_invocable<R(Args...), Capacity>
 
   template <typename F,
             typename Decayed = std::decay_t<F>,
-            typename = std::enable_if_t<!std::is_same_v<Decayed, fixed_any_invocable> &&
-                                        std::is_move_constructible_v<Decayed> &&
-                                        std::is_invocable_r_v<R, Decayed&, Args...>>>
+            typename = std::enable_if_t<
+                !std::is_same_v<Decayed, fixed_any_invocable> && !std::is_member_pointer_v<Decayed> &&
+                std::is_move_constructible_v<Decayed> && std::is_invocable_r_v<R, Decayed&, Args...>>>
   fixed_any_invocable& operator=(F&& function) {
     assign(std::forward<F>(function));
     return *this;
@@ -820,6 +840,9 @@ class fixed_any_invocable<R(Args...), Capacity>
     // terminate the program. The wrapper cannot make its
     // noexcept depend on what it holds, so the callable is refused instead.
     // Lambdas whose captures move without throwing -- nearly all -- are fine.
+    static_assert(!std::is_member_pointer_v<std::decay_t<F>>,
+                  "fixed_function / fixed_any_invocable cannot store a member pointer: they call "
+                  "their target as f(args...). Wrap it in a lambda");
     static_assert(std::is_nothrow_move_constructible_v<std::decay_t<F>>,
                   "fixed_any_invocable requires a callable that is nothrow move constructible");
     return this->try_assign_callable(std::forward<F>(function));
@@ -871,9 +894,9 @@ class fixed_any_invocable<R(Args...) noexcept, Capacity>
   /// @pre The decayed callable fits within `Capacity` bytes (else asserts).
   template <typename F,
             typename Decayed = std::decay_t<F>,
-            typename = std::enable_if_t<!std::is_same_v<Decayed, fixed_any_invocable> &&
-                                        std::is_move_constructible_v<Decayed> &&
-                                        std::is_nothrow_invocable_r_v<R, Decayed&, Args...>>>
+            typename = std::enable_if_t<
+                !std::is_same_v<Decayed, fixed_any_invocable> && !std::is_member_pointer_v<Decayed> &&
+                std::is_move_constructible_v<Decayed> && std::is_nothrow_invocable_r_v<R, Decayed&, Args...>>>
   fixed_any_invocable(F&& function) : base() {
     assign(std::forward<F>(function));
   }
@@ -896,9 +919,9 @@ class fixed_any_invocable<R(Args...) noexcept, Capacity>
 
   template <typename F,
             typename Decayed = std::decay_t<F>,
-            typename = std::enable_if_t<!std::is_same_v<Decayed, fixed_any_invocable> &&
-                                        std::is_move_constructible_v<Decayed> &&
-                                        std::is_nothrow_invocable_r_v<R, Decayed&, Args...>>>
+            typename = std::enable_if_t<
+                !std::is_same_v<Decayed, fixed_any_invocable> && !std::is_member_pointer_v<Decayed> &&
+                std::is_move_constructible_v<Decayed> && std::is_nothrow_invocable_r_v<R, Decayed&, Args...>>>
   fixed_any_invocable& operator=(F&& function) {
     assign(std::forward<F>(function));
     return *this;
@@ -928,6 +951,9 @@ class fixed_any_invocable<R(Args...) noexcept, Capacity>
     // terminate the program. The wrapper cannot make its
     // noexcept depend on what it holds, so the callable is refused instead.
     // Lambdas whose captures move without throwing -- nearly all -- are fine.
+    static_assert(!std::is_member_pointer_v<std::decay_t<F>>,
+                  "fixed_function / fixed_any_invocable cannot store a member pointer: they call "
+                  "their target as f(args...). Wrap it in a lambda");
     static_assert(std::is_nothrow_move_constructible_v<std::decay_t<F>>,
                   "fixed_any_invocable requires a callable that is nothrow move constructible");
     return this->try_assign_callable(std::forward<F>(function));

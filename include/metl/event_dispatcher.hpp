@@ -28,6 +28,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 namespace metl {
 
@@ -48,6 +49,11 @@ class event_dispatcher;
 ///       concurrently.
 template <typename R, typename... Args, std::size_t Capacity>
 class event_dispatcher<R(Args...), Capacity> {
+  static_assert(!(std::is_rvalue_reference_v<Args> || ...),
+                "event_dispatcher cannot take an rvalue-reference parameter: one event is handed "
+                "to every listener, so none of them may move from it. Take it by value or by "
+                "const reference");
+
  public:
   using delegate_type = delegate<R(Args...)>;
   using size_type = std::size_t;
