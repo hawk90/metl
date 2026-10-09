@@ -343,11 +343,26 @@ def main():
                           capture_output=True, text=True).stdout.strip()
     changed = subprocess.run(["git", "diff", "--name-only", base or "HEAD"], cwd=REPO,
                              capture_output=True, text=True).stdout.split()
-    mutant_command = [python, "tools/check_mutants.py", "--build-dir", str(BUILD_ROOT / "sanitizers")]
-    if "tools/check_mutants.py" not in changed:
-        mutant_command += ["--files", ",".join(changed)]
-    if not step("check_mutants.py", mutant_command):
-        return 1
+    sys.path.insert(0, str(REPO / "tools"))
+    import check_mutants  # noqa: E402 -- the list of mutants lives there
+    everything = "tools/check_mutants.py" in changed
+    selected = [m for m in check_mutants.MUTANTS if everything or m["file"] in changed]
+    if not selected:
+        print("  (no mutated header changed -- CI runs all of them)")
+    else:
+        # The tree CI's `mutants` job builds: Debug, without -Werror. A mutant
+        # is a behaviour change; one that only trips a warning (a variable left
+        # unused by a deleted check) is still a mutant to kill, not a build error.
+        build_dir = BUILD_ROOT / "mutants"
+        jobs = str(os.cpu_count() or 2)
+        command = [python, "tools/check_mutants.py", "--build-dir", str(build_dir)]
+        if not everything:
+            command += ["--files", ",".join(changed)]
+        if not (step("mutants: configure", ["cmake", "-B", str(build_dir), "-S", str(REPO),
+                                            "-DCMAKE_BUILD_TYPE=Debug", "-DMETL_INSTALL=OFF"])
+                and step("mutants: build", ["cmake", "--build", str(build_dir), "-j", jobs])
+                and step(f"check_mutants.py ({len(selected)} mutants)", command)):
+            return 1
 
     print("6. amalgamation")
     if not step("check_amalgamation.py", [python, "tools/check_amalgamation.py"]):

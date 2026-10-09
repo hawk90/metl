@@ -664,7 +664,9 @@ def run_gate(spec, build_dir):
         if build.returncode != 0:
             # A mutant that stops the build is not a useful mutant: it proves the
             # compiler noticed, not that a test did.
-            return None, "the mutated tree did not build"
+            errors = [line for line in (build.stdout + build.stderr).splitlines() if "error" in line]
+            first = errors[0].strip() if errors else "(no error line in the build output)"
+            return None, f"the mutated tree did not build: {first}"
         result = subprocess.run(["ctest", "--test-dir", build_dir, "-R", rest, "-j"],
                                 capture_output=True, text=True, cwd=REPO)
         return result.returncode != 0, result.stdout[-800:]
