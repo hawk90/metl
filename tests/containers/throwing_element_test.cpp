@@ -36,6 +36,9 @@
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
 
+// Every case here throws; without exceptions there is nothing to run.
+#if !METL_NO_EXCEPTIONS
+
 namespace {
 
 int g_live = 0;
@@ -589,3 +592,11 @@ int main() {
 
   return metl_test::exit_code();
 }
+
+#else
+
+int main() {
+  return metl_test::skip("throwing_element_test", "built without exceptions");
+}
+
+#endif  // !METL_NO_EXCEPTIONS

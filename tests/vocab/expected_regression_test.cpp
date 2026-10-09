@@ -8,6 +8,9 @@
 
 #include <metl/expected.hpp>
 
+// Every case here throws; without exceptions there is nothing to run.
+#if !METL_NO_EXCEPTIONS
+
 namespace {
 
 // A value type that is neither nothrow-constructible-from-int nor
@@ -207,3 +210,11 @@ int main() {
 
   return metl_test::exit_code();
 }
+
+#else
+
+int main() {
+  return metl_test::skip("expected_regression_test", "built without exceptions");
+}
+
+#endif  // !METL_NO_EXCEPTIONS

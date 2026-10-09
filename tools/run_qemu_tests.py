@@ -51,6 +51,8 @@ SHIM = REPO / "tests" / "embedded" / "qemu_runner_shim.cpp"
 LINKER_SCRIPT = REPO / "tests" / "embedded" / "mps2-an385.ld"
 TIMEOUT_SECONDS = 20
 SENTINEL = re.compile(r"^METL_QEMU_EXIT (\d+)$", re.MULTILINE)
+# metl_test::skip_code in tests/metl_check.hpp.
+SKIP_CODE = 77
 
 # Deny-list: tests that cannot run freestanding, each with the reason.
 DENIED = {
@@ -70,6 +72,15 @@ DENIED = {
     "vocab/variant_regression_test.cpp": "throws; needs -fexceptions",
     "containers/throwing_element_test.cpp": "throws; needs -fexceptions",
     "sync/atomic_ref_test.cpp": "atomic_ref<8-byte> needs libatomic on ARMv7-M; see atomic_ref.hpp",
+}
+
+# Tests allowed to report a skip (metl_test::skip_code), and the cores where
+# they may. A skip anywhere else is a FAILURE: the interrupt tests are the only
+# evidence irq_lock masks anything, and a core that should run them but skips
+# them would otherwise turn that evidence into a quiet no-op.
+EXPECTED_SELF_SKIP = {
+    "sync/irq_masking_test.cpp": {"cortex-m0"},        # ARMv6-M has no VTOR
+    "sync/tick_extender_irq_test.cpp": {"cortex-m0"},  # same
 }
 
 # The `throws; needs -fexceptions` entries above deliberately `throw` to check
@@ -196,7 +207,7 @@ def main():
 
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
     flags = cflags(args.cpu)
-    passed = skipped = xfailed = 0
+    passed = skipped = runtime_skipped = xfailed = 0
     failures, build_failures = [], []
 
     print(f"{'test':<52} result")
@@ -242,6 +253,15 @@ def main():
         if code == 0:
             print(f"{rel:<52} PASS")
             passed += 1
+        elif code == SKIP_CODE and args.cpu in EXPECTED_SELF_SKIP.get(rel, set()):
+            # The test found nothing it can check on this core (no VTOR on
+            # ARMv6-M). Counted apart from passes so it cannot read as evidence.
+            print(f"{rel:<52} SKIP  (reported by the test, expected on {args.cpu})")
+            runtime_skipped += 1
+        elif code == SKIP_CODE:
+            print(f"{rel:<52} FAIL  (skipped itself; not expected to on {args.cpu})")
+            print(indented(output, 15))
+            failures.append(f"{rel} (unexpected self-skip on {args.cpu})")
         elif code is not None:
             print(f"{rel:<52} FAIL  (exit {code})")
             print(indented(output, 15))
@@ -261,6 +281,7 @@ def main():
     print(f"  build-failed: {len(build_failures)}")
     print(f"  xfail-build:  {xfailed} (capability gate fired, as required)")
     print(f"  skipped:      {skipped} (deny-listed, see the table above)")
+    print(f"  self-skipped: {runtime_skipped} (the test reported nothing to check here)")
     print("=" * 62)
     if build_failures:
         print(f"\nBuild failures (compiler output is in {BUILD_DIR}/*.log):")

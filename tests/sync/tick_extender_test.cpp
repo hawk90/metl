@@ -232,7 +232,7 @@ int main() {
   CHECK_EQ(error_after_preempted_read<sim_irq_lock>(), std::uint64_t{0});
 
   // --- a raw value wider than Bits asserts --------------------------------------
-  {
+  if (metl_test::asserts_active) {
     metl::set_assert_handler(&capture);
     metl::tick_extender<16, null_lock> ext;
     g_asserted = false;

@@ -326,8 +326,22 @@ jobs:
         include:
           - san: asan-ubsan
             opts: "-DMETL_ENABLE_ASAN=ON -DMETL_ENABLE_UBSAN=ON"
+            build_type: Debug
           - san: tsan
             opts: "-DMETL_ENABLE_TSAN=ON"
+            build_type: Debug
+          # METL_ASSERT is compiled out here and only METL_HARDEN remains, so
+          # this is the one leg that sees what a misuse does with the checks
+          # stripped. Tests that rely on METL_ASSERT gate on
+          # metl_test::asserts_active.
+          - san: asan-ubsan-hardening-none
+            opts: "-DMETL_ENABLE_ASAN=ON -DMETL_ENABLE_UBSAN=ON -DCMAKE_CXX_FLAGS=-DMETL_HARDENING=0"
+            build_type: Debug
+          # Optimized: the instrumentation differs from -O0 (constant-offset
+          # stack accesses go unchecked, inlining changes what UBSan sees).
+          - san: asan-ubsan-optimized
+            opts: "-DMETL_ENABLE_ASAN=ON -DMETL_ENABLE_UBSAN=ON"
+            build_type: RelWithDebInfo
 
     steps:
       - name: Checkout
@@ -352,18 +366,18 @@ jobs:
         run: |
           cmake -B build -S . \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -DMETL_WARNINGS_AS_ERRORS=ON \
             ${{ matrix.opts }}
 
       - name: Build
-        run: cmake --build build -j --config Debug
+        run: cmake --build build -j --config ${{ matrix.build_type }}
 
       - name: Test
         env:
           UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1:abort_on_error=1"
           ASAN_OPTIONS: "halt_on_error=1:abort_on_error=1:detect_leaks=1"
-        run: ctest --test-dir build -j --output-on-failure -C Debug
+        run: ctest --test-dir build -j --output-on-failure -C ${{ matrix.build_type }}
 
       - name: Upload test logs on failure
         if: failure()
@@ -1081,6 +1095,11 @@ jobs:
           # prerequisite for any decision about raising it.
           - name: cxx20
             cmake_args: -DCMAKE_CXX_STANDARD=20 -DCMAKE_CXX_STANDARD_REQUIRED=ON
+          # The library's primary embedded configuration, built and run on the
+          # host. qemu-conformance runs it too, but with a deny-list; this leg
+          # runs every host test. Tests that need exceptions report a skip.
+          - name: no-exceptions
+            cmake_args: '"-DCMAKE_CXX_FLAGS=-fno-exceptions -fno-rtti"'
 
     steps:
       - name: Checkout

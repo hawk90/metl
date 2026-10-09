@@ -13,6 +13,7 @@
 // Each now sits behind METL_HARDEN, which survives NONE. The handler longjmps
 // out before the abort -- as tests/core/hardening_common.h does -- so the check
 // runs without fork() and therefore on QEMU too.
+#undef METL_HARDENING  // this test pins its own level, whatever the build passes
 #define METL_HARDENING 0
 
 #include "metl_check.hpp"

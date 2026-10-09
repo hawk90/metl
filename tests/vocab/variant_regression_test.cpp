@@ -11,6 +11,9 @@
 #include <metl/in_place.hpp>
 #include <metl/variant.hpp>
 
+// Every case here throws; without exceptions there is nothing to run.
+#if !METL_NO_EXCEPTIONS
+
 namespace {
 
 // ---- (2) support: a type whose copy-construction can be made to throw ----
@@ -83,3 +86,11 @@ int main() {
 
   return metl_test::exit_code();
 }
+
+#else
+
+int main() {
+  return metl_test::skip("variant_regression_test", "built without exceptions");
+}
+
+#endif  // !METL_NO_EXCEPTIONS

@@ -38,37 +38,40 @@ int main() {
   metl::set_assert_handler(&capture);
 
   // Own ranges assert, through every entry point that takes a range.
-  {
-    vec v = make();
-    g_asserted = false;
-    if (setjmp(g_jump) == 0) {
-      v.insert(v.end(), v.begin(), v.end());
+  // METL_ASSERT checks these; at METL_HARDENING_NONE there is nothing to observe.
+  if (metl_test::asserts_active) {
+    {
+      vec v = make();
+      g_asserted = false;
+      if (setjmp(g_jump) == 0) {
+        v.insert(v.end(), v.begin(), v.end());
+      }
+      CHECK(g_asserted);
     }
-    CHECK(g_asserted);
-  }
-  {
-    vec v = make();
-    g_asserted = false;
-    if (setjmp(g_jump) == 0) {
-      v.assign(v.begin() + 1, v.end());
+    {
+      vec v = make();
+      g_asserted = false;
+      if (setjmp(g_jump) == 0) {
+        v.assign(v.begin() + 1, v.end());
+      }
+      CHECK(g_asserted);
     }
-    CHECK(g_asserted);
-  }
-  {
-    vec v = make();
-    g_asserted = false;
-    if (setjmp(g_jump) == 0) {
-      v.assign(v.rbegin(), v.rend());
+    {
+      vec v = make();
+      g_asserted = false;
+      if (setjmp(g_jump) == 0) {
+        v.assign(v.rbegin(), v.rend());
+      }
+      CHECK(g_asserted);
     }
-    CHECK(g_asserted);
-  }
-  {
-    vec v = make();
-    g_asserted = false;
-    if (setjmp(g_jump) == 0) {
-      (void)v.try_insert(v.begin(), v.cbegin(), v.cend());
+    {
+      vec v = make();
+      g_asserted = false;
+      if (setjmp(g_jump) == 0) {
+        (void)v.try_insert(v.begin(), v.cbegin(), v.cend());
+      }
+      CHECK(g_asserted);
     }
-    CHECK(g_asserted);
   }
 
   // Ranges of another vector, of a plain array, and empty own ranges are fine.
