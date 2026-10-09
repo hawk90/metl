@@ -947,8 +947,15 @@ jobs:
           # shellcheck disable=SC2086
           if arm-none-eabi-g++ $METL_CAP_FLAGS \
                -DMETL_EXPECT_LOCK_FREE_HANDLE=${{ matrix.opposite }} \
-               -Iinclude -c "$METL_LOCKFREE_CAP_SRC" -o opposite.o 2>/dev/null; then
+               -Iinclude -c "$METL_LOCKFREE_CAP_SRC" -o opposite.o 2>opposite.err; then
             echo "::error::the capability assertion did not fire for ${{ matrix.cpu }} — the gate is dead"
+            exit 1
+          fi
+          # Failing is not enough: a typo or a missing include fails too, and
+          # would read as the gate firing. It must be the probe's own assertion.
+          if ! grep -q "capability does not match what the CI matrix declares" opposite.err; then
+            echo "::error::the opposite build failed, but not on the capability assertion:"
+            cat opposite.err
             exit 1
           fi
           echo "capability assertion correctly rejected the wrong expectation"
