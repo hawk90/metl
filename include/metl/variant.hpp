@@ -424,6 +424,9 @@ class variant {
   ///       cannot be moved has to be built in place after the old value is
   ///       gone, so there `args` must not refer into the variant; an argument
   ///       that does aborts (METL_HARDEN) instead of reading a destroyed object.
+  /// @note The old alternative's destructor runs with the variant already
+  ///       valueless, so it sees itself gone. It must not emplace into this
+  ///       variant: the storage being destroyed is the storage it would use.
   /// @tparam T The (unique) alternative type to activate.
   /// @tparam Args Constructor argument types forwarded to `T`.
   /// @param args Arguments forwarded to `T`'s constructor.
@@ -449,6 +452,9 @@ class variant {
   ///       cannot be moved has to be built in place after the old value is
   ///       gone, so there `args` must not refer into the variant; an argument
   ///       that does aborts (METL_HARDEN) instead of reading a destroyed object.
+  /// @note The old alternative's destructor runs with the variant already
+  ///       valueless, so it sees itself gone. It must not emplace into this
+  ///       variant: the storage being destroyed is the storage it would use.
   /// @tparam I The zero-based alternative index to activate.
   /// @tparam Args Constructor argument types forwarded to the alternative.
   /// @param args Arguments forwarded to the alternative's constructor.
@@ -540,8 +546,11 @@ class variant {
 
   void reset() noexcept(detail::all_nothrow_destructible<Ts...>::value) {
     if (index_ != variant_npos) {
-      destroy_ops()[index_](raw_addr());
+      // Valueless first, then destroy: an alternative whose destructor calls
+      // back into this variant must not find itself still active.
+      const std::size_t leaving = index_;
       index_ = variant_npos;
+      destroy_ops()[leaving](raw_addr());
     }
   }
 
