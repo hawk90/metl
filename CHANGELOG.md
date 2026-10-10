@@ -49,6 +49,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   non-power-of-two alignment instead of stopping at the `METL_HARDEN` check,
   because the empty request returned first. `monotonic_buffer` already checked
   the alignment whatever the size; both now do.
+- `function_ref`, `fixed_function` and `fixed_any_invocable` with a
+  signature that returns a reference accepted a callable that returns by
+  value (with libc++; libstdc++ already refused it). The call then returned a
+  reference to a temporary that died inside it. Such a callable is now refused
+  at compile time, as is one whose result would only convert to the reference
+  through a temporary (`int&` for `const long&`). C++23 makes the same rule
+  part of `std::function`.
 - `spsc_queue`, `spsc_byte_ring`, `mpmc_queue` and `atomic_handle` can now be
   constant-initialized, and `METL_CONST_INIT` accepts them. Their constructors
   were not `constexpr`, so a namespace-scope instance was initialized at run
