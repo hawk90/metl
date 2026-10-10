@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `METL_SCOPE_EXIT` (storing the callable). `scope_exit` now also follows
   P0052: when storing the callable throws, it calls the callable before the
   exception propagates, so the cleanup still happens.
+- `fsm::dispatch` was `METL_NODISCARD`, so `machine.dispatch(event);` warned.
+  Its bool answers whether a transition fired; it does not report a failure,
+  and SCOPE.md R4 keeps such answers discardable, as `erase`'s is.
+  `tools/check_api_contract.py` now enforces R4 for these names.
 
 ## [1.2.0] - 2026-10-10
 
