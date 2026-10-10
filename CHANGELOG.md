@@ -61,7 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round -- or a different object attached in its storage -- was then polled
   through the snapshot's old poll function, a call through the wrong type in
   the second case. Completion likewise removed whatever was attached at that
-  address. Both now match the exact (task, poll function) pair.
+  address, so a task that re-attached itself from the poll in which it
+  completed -- even with the same poll function -- was dropped. Each
+  attachment now carries its own number, and `run_once` polls and removes
+  exactly the attachments it snapshotted; anything attached mid-round, at
+  whatever address and with whatever poll function, waits for the next round.
+  Each slot grows by one `std::size_t`.
 
 ## [1.2.0] - 2026-10-10
 
