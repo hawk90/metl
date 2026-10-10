@@ -336,6 +336,18 @@ int main() {
     CHECK(guarded_against([&] { (void)arena.allocate(4, 0); }));
     CHECK(arena.empty());
     CHECK(!guarded_against([&] { (void)arena.allocate(4, 4); }));
+    // The alignment is checked whatever the size, as monotonic_buffer checks it:
+    // an empty request with a bad alignment is the same caller bug, and
+    // returning null for it hid that.
+    CHECK(guarded_against([&] { (void)arena.allocate(0, 3); }));
+    CHECK(!guarded_against([&] { CHECK(arena.allocate(0, 4) == nullptr); }));
+  }
+
+  // monotonic_buffer: the same zero-byte cases, which it already got right.
+  {
+    metl::monotonic_buffer<64> buffer;
+    CHECK(guarded_against([&] { (void)buffer.allocate(0, 3); }));
+    CHECK(!guarded_against([&] { CHECK(buffer.allocate(0, 4) == nullptr); }));
   }
 
   // spsc_byte_ring: consuming more than is readable moves the read index past

@@ -183,16 +183,17 @@ class arena_allocator {
   }
 
   void* allocate_impl(size_type bytes, size_type alignment, destroy_fn_t destroy) noexcept {
-    if (bytes == 0) {
-      return nullptr;
-    }
-
     // `align_up`'s bitmask arithmetic is only correct for a power-of-two
     // alignment; a non-power-of-two `alignment` (only reachable via the runtime
     // `allocate(bytes, alignment)` overload) would silently corrupt the offset
     // and hand back overlapping/out-of-bounds allocations. Always-on hard guard
-    // so this memory-safety floor survives METL_HARDENING_NONE.
+    // so this memory-safety floor survives METL_HARDENING_NONE. Checked before
+    // the size, as monotonic_buffer checks it: a bad alignment is a caller bug
+    // whatever the size, and an empty request must not hide it.
     METL_HARDEN(alignment != 0 && (alignment & (alignment - 1)) == 0);
+    if (bytes == 0) {
+      return nullptr;
+    }
 
     const std::uintptr_t base = reinterpret_cast<std::uintptr_t>(&storage_[0]);
     const std::uintptr_t current = base + offset_;

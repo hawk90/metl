@@ -45,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Its bool answers whether a transition fired; it does not report a failure,
   and SCOPE.md R4 keeps such answers discardable, as `erase`'s is.
   `tools/check_api_contract.py` now enforces R4 for these names.
+- `arena_allocator::allocate(0, alignment)` returned `nullptr` for a
+  non-power-of-two alignment instead of stopping at the `METL_HARDEN` check,
+  because the empty request returned first. `monotonic_buffer` already checked
+  the alignment whatever the size; both now do.
 
 ## [1.2.0] - 2026-10-10
 
