@@ -204,6 +204,17 @@ if(METL_BUILD_TESTS)
   # run in every configuration, including the TSAN sanitizer job where they
   # actually validate those types' memory ordering.
   # -------------------------------------------------------------------------
+  # Three translation units, linked in this order on purpose: the first pushes
+  # into queues that the second defines, from a global constructor. Only a
+  # constant-initialized queue keeps what was pushed (see the test).
+  metl_cc_test(
+    NAME metl_init_order_test
+    SRCS tests/sync/init_order_early.cpp tests/sync/init_order_queues.cpp tests/sync/init_order_test.cpp
+    DEPS metl::metl_test_options
+    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/sync
+    LABELS "metl"
+  )
+
   metl_cc_test(
     NAME metl_spsc_queue_threaded_test
     SRCS tests/sync/spsc_queue_threaded_test.cpp

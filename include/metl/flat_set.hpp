@@ -416,8 +416,13 @@ class flat_set {
 
   /// @brief Remove all elements (destroys each; size becomes 0).
   void clear() noexcept {
+    // From the back, in place, as fixed_vector::pop_back: the last element never
+    // needs relocating, so nothing is moved and nothing here can throw. size_
+    // drops before each destructor runs, so a destructor that erases its own
+    // element from this container finds it already gone.
     while (size_ > 0) {
-      erase_at(size_ - 1);
+      --size_;
+      data()[size_].~value_type();
     }
   }
 
@@ -544,7 +549,25 @@ class flat_set {
     } else {
       // A non-assignable element can only be relocated by construct+destroy.
       shift_right_from(index);
-      ::new (storage_.slot(index)) value_type(static_cast<value_type&&>(entry));
+      // The shift left slot `index` dead and [0, index) and (index, size_]
+      // live. If moving the entry in throws, clean up exactly those, as
+      // shift_right_from does, rather than leave a dead slot inside size_.
+#if !METL_NO_EXCEPTIONS
+      try {
+#endif
+        ::new (storage_.slot(index)) value_type(static_cast<value_type&&>(entry));
+#if !METL_NO_EXCEPTIONS
+      } catch (...) {
+        for (size_type j = 0; j < index; ++j) {
+          data()[j].~value_type();
+        }
+        for (size_type j = index + 1; j <= size_; ++j) {
+          data()[j].~value_type();
+        }
+        size_ = 0;
+        throw;
+      }
+#endif
       ++size_;
     }
   }

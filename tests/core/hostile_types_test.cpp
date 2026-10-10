@@ -243,8 +243,32 @@ void deleted_operator_new() {
 
 }  // namespace
 
+// The ring containers' iterator operator-> took the element's address with a
+// raw `&` (#274): with a hijacked operator&, `it->value` read through null, and
+// with a deleted one it did not compile.
+void ring_iterator_arrow() {
+  metl::fixed_deque<hijacked, 4> deque;
+  deque.push_back(hijacked(7));
+  deque.push_front(hijacked(6));
+  CHECK_EQ(deque.begin()->value, 6);
+  CHECK_EQ((deque.begin() + 1)->value, 7);
+  const auto& const_deque = deque;
+  CHECK_EQ(const_deque.begin()->value, 6);
+
+  metl::ring_buffer<hijacked, 2> ring;
+  CHECK(ring.try_push_back(hijacked(1)));
+  CHECK(ring.try_push_back(hijacked(2)));
+  ring.push_overwrite(hijacked(3));  // wraps
+  CHECK_EQ(ring.begin()->value, 2);
+
+  metl::fixed_deque<no_address, 2> sealed;
+  sealed.push_back(no_address(5));
+  CHECK_EQ(sealed.begin()->value, 5u);
+}
+
 int main() {
   address_hijack();
   deleted_operator_new();
+  ring_iterator_arrow();
   return metl_test::exit_code();
 }
