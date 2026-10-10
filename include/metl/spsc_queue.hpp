@@ -75,7 +75,12 @@ class spsc_queue {
   using value_type = T;
   using size_type = std::size_t;
 
-  spsc_queue() noexcept : head_(0), cached_tail_(0), tail_(0), cached_head_(0) {}
+  /// @note constexpr, so a namespace-scope queue is constant-initialized: it is
+  ///       valid before any dynamic initialization runs, and an interrupt that
+  ///       fires during start-up cannot have its pushes wiped by a constructor
+  ///       running later. The slot storage is zero-filled to allow it -- free for
+  ///       a global, which lives in .bss, and one memset for a local.
+  constexpr spsc_queue() noexcept : head_(0), cached_tail_(0), tail_(0), cached_head_(0), slots_{} {}
 
   ~spsc_queue() {
     // Single-threaded at destruction: drain any remaining elements.

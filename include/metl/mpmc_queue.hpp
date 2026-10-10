@@ -110,6 +110,12 @@ class mpmc_queue {
   using value_type = T;
   using size_type = std::size_t;
 
+  /// @note Not constexpr, unlike `spsc_queue`: each slot starts at its own
+  ///       sequence number, and writing those at compile time costs either code
+  ///       and a .data image proportional to `Capacity`, or an extra operation on
+  ///       every push and pop. A namespace-scope queue is therefore initialized at
+  ///       run time, in link order: construct it before enabling any interrupt
+  ///       that uses it, or share `spsc_queue` with the ISR instead.
   mpmc_queue() noexcept : enqueue_pos_(0), dequeue_pos_(0) {
     // Slot i starts "ready for the producer whose ticket is i".
     for (size_type i = 0; i < Capacity; ++i) {

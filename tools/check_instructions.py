@@ -87,7 +87,7 @@ BUDGETS = {
     "metl_bench_containers::static_unordered_map<256> find (hit)": 190_945,
     "metl_bench_containers::static_unordered_map<256> find (miss)": 208_495,
     "metl_bench_mpmc::mpmc_queue push + pop": 163_039,
-    "metl_bench_mpmc::spsc_queue push + pop": 120_245,
+    "metl_bench_mpmc::spsc_queue push + pop": 129_247,
     "metl_bench_pools::handle_pool<1024> alloc+free": 216_438,
     "metl_bench_pools::handle_pool<4>  alloc+free": 195_287,
     "metl_bench_pools::handle_pool<64> alloc+free": 182_195,
@@ -95,7 +95,7 @@ BUDGETS = {
     "metl_bench_pools::object_pool<1024> alloc+free": 4_777_935,
     "metl_bench_pools::object_pool<4>  alloc+free": 170_318,
     "metl_bench_pools::object_pool<64> alloc+free": 902_059,
-    "metl_bench_spsc::push + pop round trip": 120_154,
+    "metl_bench_spsc::push + pop round trip": 129_156,
 }
 
 # The budgets above are counts of work at ONE iteration count. Comparing them
