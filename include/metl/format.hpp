@@ -170,7 +170,7 @@ METL_NODISCARD constexpr span<char> try_format_uint(span<char> out, T value) noe
 ///       the right form: the precondition is then a compile-time-obvious fact
 ///       rather than a runtime check on every call.
 template <typename T>
-constexpr span<char> format_uint(span<char> out, T value) noexcept {
+METL_NODISCARD constexpr span<char> format_uint(span<char> out, T value) noexcept {
   const span<char> text = try_format_uint(out, value);
   METL_ASSERT(!text.empty());
   return text;
@@ -225,7 +225,7 @@ METL_NODISCARD constexpr span<char> try_format_int(span<char> out, T value) noex
 /// @pre It fits; too small a buffer asserts and aborts. A `char[20]` holds any
 ///      64-bit signed value including the sign.
 template <typename T>
-constexpr span<char> format_int(span<char> out, T value) noexcept {
+METL_NODISCARD constexpr span<char> format_int(span<char> out, T value) noexcept {
   const span<char> text = try_format_int(out, value);
   METL_ASSERT(!text.empty());
   return text;
@@ -280,10 +280,10 @@ METL_NODISCARD constexpr span<char> try_format_hex(span<char> out,
 /// @return The text written.
 /// @pre It fits and @p digits is wide enough; a violation asserts and aborts.
 template <typename T>
-constexpr span<char> format_hex(span<char> out,
-                                T value,
-                                std::size_t digits = 0,
-                                hex_case letters = hex_case::lower) noexcept {
+METL_NODISCARD constexpr span<char> format_hex(span<char> out,
+                                               T value,
+                                               std::size_t digits = 0,
+                                               hex_case letters = hex_case::lower) noexcept {
   const span<char> text = try_format_hex(out, value, digits, letters);
   METL_ASSERT(!text.empty());
   return text;
