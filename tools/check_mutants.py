@@ -847,6 +847,24 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
     assign_from(static_cast<variant&&>(other));""",
     },
     {
+        "name": "scheduler_duplicate_attach_harden_removed",
+        "file": "include/metl/coro/scheduler.hpp",
+        "why": "a task attached twice keeps an entry after detach() removes "
+               "one, so the scheduler polls an object the caller destroyed.",
+        "kills": "ctest:harden_floor_memory",
+        "old": "    METL_HARDEN(!is_attached(task));",
+        "new": "",
+    },
+    {
+        "name": "event_dispatcher_calls_mid_dispatch_subscriber",
+        "file": "include/metl/event_dispatcher.hpp",
+        "why": "a listener subscribed during dispatch hears the current event "
+               "or not depending on the slot it lands in.",
+        "kills": "ctest:event_dispatcher_reentrancy",
+        "old": "    const std::uint64_t first_unheard = next_id_;",
+        "new": "    const std::uint64_t first_unheard = ~std::uint64_t{0};",
+    },
+    {
         "name": "scope_exit_throwing_store_skips_cleanup",
         "file": "include/metl/scope_exit.hpp",
         "why": "when storing the callable throws, the cleanup it was meant to "

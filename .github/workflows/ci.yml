@@ -1221,6 +1221,18 @@ jobs:
           # runs every host test. Tests that need exceptions report a skip.
           - name: no-exceptions
             cmake_args: '"-DCMAKE_CXX_FLAGS=-fno-exceptions -fno-rtti"'
+          # The two legs above again under GCC. consumer-warnings compiles GCC
+          # C++20 with -fsyntax-only, which instantiates nothing it is not
+          # shown and runs nothing; libstdc++'s C++20 headers and GCC's
+          # -fno-exceptions arms were never built and run here.
+          - name: cxx20-gcc
+            cc: gcc
+            cxx: g++
+            cmake_args: -DCMAKE_CXX_STANDARD=20 -DCMAKE_CXX_STANDARD_REQUIRED=ON
+          - name: no-exceptions-gcc
+            cc: gcc
+            cxx: g++
+            cmake_args: '"-DCMAKE_CXX_FLAGS=-fno-exceptions -fno-rtti"'
 
     steps:
       - name: Checkout
@@ -1240,8 +1252,8 @@ jobs:
 
       - name: Configure with ${{ matrix.cmake_args }}
         env:
-          CC: clang
-          CXX: clang++
+          CC: ${{ matrix.cc || 'clang' }}
+          CXX: ${{ matrix.cxx || 'clang++' }}
         run: |
           cmake -B build-config -S . \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
@@ -2148,6 +2160,16 @@ jobs:
           name: metl-api-docs
           path: build/docs/html
           if-no-files-found: warn
+
+      # The Pages copy shares hawk90.github.io with the blog, so keep the
+      # generated API pages out of search indexes; they would otherwise count
+      # against the blog's site-quality review. Only the Pages copy is marked.
+      - name: Mark Pages docs noindex
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          find build/docs/html -name '*.html' -exec \
+            sed -i 's|<head>|<head><meta name="robots" content="noindex, follow">|' {} +
+          test "$(grep -L 'name="robots"' build/docs/html/*.html | wc -l)" -eq 0
 
       # On main, also stage the HTML as a Pages artifact for the deploy-docs job.
       - name: Upload docs as a Pages artifact

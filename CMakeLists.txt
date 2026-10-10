@@ -43,71 +43,11 @@ option(METL_ENABLE_COVERAGE "Instrument the tests for source-based coverage (Cla
 # ---------------------------------------------------------------------------
 # Public library  (umbrella header-only target)
 # ---------------------------------------------------------------------------
-set(_metl_headers
-  include/metl/arena_allocator.hpp
-  include/metl/assert.hpp
-  include/metl/atomic_handle.hpp
-  include/metl/atomic_ref.hpp
-  include/metl/attributes.hpp
-  include/metl/bit.hpp
-  include/metl/bitfield.hpp
-  include/metl/compiler.hpp
-  include/metl/config.hpp
-  include/metl/coro/deadline_scheduler.hpp
-  include/metl/coro/protothread.hpp
-  include/metl/coro/scheduler.hpp
-  include/metl/coro/stepper.hpp
-  include/metl/crc16.hpp
-  include/metl/crc32.hpp
-  include/metl/crc8.hpp
-  include/metl/delegate.hpp
-  include/metl/detail/construct.hpp
-  include/metl/detail/crc.hpp
-  include/metl/detail/transparent.hpp
-  include/metl/detail/ring_core.hpp
-  include/metl/endian.hpp
-  include/metl/event_dispatcher.hpp
-  include/metl/expected.hpp
-  include/metl/fixed_deque.hpp
-  include/metl/fixed_function.hpp
-  include/metl/fixed_queue.hpp
-  include/metl/fixed_stack.hpp
-  include/metl/fixed_string.hpp
-  include/metl/fixed_vector.hpp
-  include/metl/flat_map.hpp
-  include/metl/flat_set.hpp
-  include/metl/format.hpp
-  include/metl/fsm.hpp
-  include/metl/function_ref.hpp
-  include/metl/handle_pool.hpp
-  include/metl/hash.hpp
-  include/metl/in_place.hpp
-  include/metl/intrusive_ptr.hpp
-  include/metl/lock.hpp
-  include/metl/lookup_table.hpp
-  include/metl/metl.hpp
-  include/metl/mmio.hpp
-  include/metl/monotonic_buffer.hpp
-  include/metl/mpmc_queue.hpp
-  include/metl/object_pool.hpp
-  include/metl/optimization.hpp
-  include/metl/optional.hpp
-  include/metl/register_access.hpp
-  include/metl/ring_buffer.hpp
-  include/metl/scope_exit.hpp
-  include/metl/span.hpp
-  include/metl/spsc_byte_ring.hpp
-  include/metl/spsc_queue.hpp
-  include/metl/static_allocator.hpp
-  include/metl/static_message_queue.hpp
-  include/metl/static_unordered_map.hpp
-  include/metl/static_unordered_set.hpp
-  include/metl/type_traits.hpp
-  include/metl/variant.hpp
-  include/metl/wait.hpp
-  include/metl/version.hpp
-  include/metl/versioned_handle.hpp
-)
+# GLOBbed, not listed: a hand-kept copy of the tree had drifted nine headers
+# behind it. The list only feeds IDEs (INTERFACE_SOURCES); consumers get the
+# include directory either way.
+file(GLOB_RECURSE _metl_headers CONFIGURE_DEPENDS
+     ${CMAKE_CURRENT_SOURCE_DIR}/include/metl/*.hpp)
 
 metl_cc_library(
   NAME metl
@@ -217,7 +157,7 @@ if(METL_BUILD_TESTS)
     bits/hash_unique_repr bits/hash_by_value bits/endian bits/mmio bits/mmio_regression bits/register_access
     bits/crc_table_equivalence bits/format bits/parse
     # control/
-    control/fsm control/fsm_reentrancy control/event_dispatcher
+    control/fsm control/fsm_reentrancy control/event_dispatcher control/event_dispatcher_reentrancy
     control/coro_protothread control/coro_protothread_nested_switch control/coro_scheduler control/coro_scheduler_reentrancy
     control/coro_stepper control/coro_deadline_scheduler control/control_contracts
     # core/  (assert/compiler + the METL_HARDENING level checks + smoke)

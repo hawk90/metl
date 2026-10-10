@@ -138,9 +138,20 @@ class event_dispatcher<R(Args...), Capacity> {
 
   /// @brief Invokes every active listener with the given arguments.
   /// @note Listeners are called in slot order; any return values are discarded.
+  /// @note A listener may subscribe and unsubscribe, on this dispatcher too.
+  ///       The event goes to the listeners subscribed when `dispatch` began
+  ///       that are still subscribed when their turn comes: one subscribed
+  ///       during the dispatch hears the next event, whichever slot it takes,
+  ///       and one unsubscribed before its turn is not called. A `dispatch`
+  ///       from inside a listener is a new event, with its own such set.
   void dispatch(Args... args) const {
+    // Ids only grow, so "subscribed before this event began" is "id below the
+    // next id at entry". It costs no RAM per slot, and holds short of 2^64
+    // subscriptions, the bound the id scheme already rests on.
+    const std::uint64_t first_unheard = next_id_;
     for (size_type i = 0; i < Capacity; ++i) {
-      if (slots_[i].id.value != 0) {
+      const std::uint64_t id = slots_[i].id.value;
+      if (id != 0 && id < first_unheard) {
         slots_[i].listener(args...);
       }
     }

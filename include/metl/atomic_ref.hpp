@@ -48,8 +48,8 @@ inline std::atomic<T>* atomic_ref_cast(T* ptr) noexcept {
   // The pre-C++20 backport: reinterpret an aligned trivially-copyable
   // object as a std::atomic<T>. The standard does not formally bless
   // this, but it is the technique std::atomic_ref is specified to be
-  // equivalent to on every implementation that ships it. Caller checks
-  // alignment via METL_ASSERT in the constructor.
+  // equivalent to on every implementation that ships it. The caller checks
+  // alignment with METL_HARDEN in the constructor, at every hardening level.
   return reinterpret_cast<std::atomic<T>*>(ptr);
 }
 
