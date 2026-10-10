@@ -14,6 +14,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The header already said a zero generation makes the null handle. Construction
   and `from_packed` now give every zero-generation handle the single null
   representation, so `==` and an `atomic_handle` compare-exchange agree.
+- `coro::scheduler` accepted the same task twice. Each `run_once` then polled
+  it twice, and because `detach` and completion each remove one entry, the
+  scheduler went on polling a task the caller had detached or destroyed.
+  Attaching a task that is already attached is now a precondition violation
+  checked by `METL_HARDEN`, at every hardening level. `try_attach*` still
+  returns `false` only when the scheduler is full.
+- `event_dispatcher::dispatch` called a listener subscribed from inside
+  another listener for the current event when it landed in a later slot, and
+  not when it reused an earlier free one. `dispatch` now calls the listeners
+  subscribed when the event began and still subscribed at their turn, so a
+  listener subscribed mid-dispatch hears the next event wherever it lands. The
+  header states the rule, including that a `dispatch` raised from a listener
+  is a new event.
 - `parse_uint`, `parse_int`, `parse_hex`, `format_uint`, `format_int` and
   `format_hex` are now `METL_NODISCARD`, as their `try_` forms already were.
   Each one's return value is its only output: the parsed value, or the span
