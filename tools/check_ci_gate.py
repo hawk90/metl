@@ -435,9 +435,12 @@ def main():
     root = pathlib.Path(args.repo_root)
     jobs = _workflow_jobs((root / WORKFLOW_DIR / CI_WORKFLOW).read_text())
     wired = len(_needs(jobs[GATE_JOB]))
+    # Count only jobs that exist: an EXEMPT entry may name a job this workflow
+    # does not have (deploy-docs is kept for the self-test's G5 fixture).
+    gated = sum(1 for job_id in jobs if job_id not in EXEMPT)
     contexts = _required_contexts(root)
     print(f"merge boundary OK: `{GATE_JOB}` fans in {wired} of "
-          f"{len(jobs) - len(EXEMPT)} ci.yml jobs with `if: always()`, and all "
+          f"{gated} ci.yml jobs with `if: always()`, and all "
           f"{len(contexts)} required context(s) report on every pull request")
     return 0
 
