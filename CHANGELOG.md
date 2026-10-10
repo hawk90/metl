@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The header already said a zero generation makes the null handle. Construction
   and `from_packed` now give every zero-generation handle the single null
   representation, so `==` and an `atomic_handle` compare-exchange agree.
+- Five constructors were `noexcept` while running code the user supplies, so an
+  exception from that code called `std::terminate` instead of reaching the
+  caller. Each is now `noexcept` exactly when what it constructs is:
+  `static_unordered_map` and `static_unordered_set` (default-constructing
+  `Hash` and `KeyEqual`), `lookup_table` (value-initialising its entries),
+  `scoped_lock` (`Lock::lock()`), and `scope_exit` with `make_scope_exit` and
+  `METL_SCOPE_EXIT` (storing the callable). `scope_exit` now also follows
+  P0052: when storing the callable throws, it calls the callable before the
+  exception propagates, so the cleanup still happens.
 
 ## [1.2.0] - 2026-10-10
 
