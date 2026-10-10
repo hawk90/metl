@@ -270,11 +270,12 @@ class static_unordered_set {
 
   /// @brief Move-construct, moving elements out of @p other and leaving it empty.
   //
-  // The elements are re-inserted, which runs the hasher and key comparison, so
-  // the move is noexcept only when those are too (a throw from one used to end
-  // in std::terminate).
+  // The elements are re-inserted, which runs the hasher and key comparison, and
+  // the Hash and KeyEqual are moved first, so the move is noexcept only when all
+  // of those are (a throw from one used to end in std::terminate).
   static_unordered_set(static_unordered_set&& other) noexcept(
-      std::is_nothrow_move_constructible_v<value_type> && lookup_cannot_throw<key_type>)
+      std::is_nothrow_move_constructible_v<value_type> && lookup_cannot_throw<key_type> &&
+      std::is_nothrow_move_constructible_v<Hash> && std::is_nothrow_move_constructible_v<KeyEqual>)
       : static_unordered_set(
             empty_with{}, static_cast<Hash&&>(other.hasher_), static_cast<KeyEqual&&>(other.key_equal_)) {
     for (auto& item : other) {

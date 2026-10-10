@@ -32,6 +32,25 @@ void maybe_throw() {
   }
 }
 
+// Default construction is fine; only the move can throw (#275).
+struct move_throwing_hash {
+  move_throwing_hash() = default;
+  move_throwing_hash(const move_throwing_hash&) = default;
+  move_throwing_hash(move_throwing_hash&&) { maybe_throw(); }
+  move_throwing_hash& operator=(const move_throwing_hash&) = default;
+  move_throwing_hash& operator=(move_throwing_hash&&) = default;
+  std::size_t operator()(int key) const noexcept { return static_cast<std::size_t>(key); }
+};
+
+struct move_throwing_equal {
+  move_throwing_equal() = default;
+  move_throwing_equal(const move_throwing_equal&) = default;
+  move_throwing_equal(move_throwing_equal&&) { maybe_throw(); }
+  move_throwing_equal& operator=(const move_throwing_equal&) = default;
+  move_throwing_equal& operator=(move_throwing_equal&&) = default;
+  bool operator()(int lhs, int rhs) const noexcept { return lhs == rhs; }
+};
+
 struct throwing_hash {
   throwing_hash() { maybe_throw(); }
   std::size_t operator()(int key) const noexcept { return static_cast<std::size_t>(key); }
@@ -85,6 +104,17 @@ static_assert(std::is_nothrow_default_constructible_v<map_plain>, "and the ordin
 static_assert(!std::is_nothrow_default_constructible_v<set_hash>, "set: throwing Hash");
 static_assert(!std::is_nothrow_default_constructible_v<set_equal>, "set: throwing KeyEqual");
 static_assert(std::is_nothrow_default_constructible_v<set_plain>, "set: ordinary");
+// The move constructors move the Hash and KeyEqual too (#275).
+using map_move_hash = metl::static_unordered_map<int, int, 4, move_throwing_hash>;
+using map_move_equal = metl::static_unordered_map<int, int, 4, std::hash<int>, move_throwing_equal>;
+using set_move_hash = metl::static_unordered_set<int, 4, move_throwing_hash>;
+using set_move_equal = metl::static_unordered_set<int, 4, std::hash<int>, move_throwing_equal>;
+static_assert(!std::is_nothrow_move_constructible_v<map_move_hash>, "map: Hash whose move can throw");
+static_assert(!std::is_nothrow_move_constructible_v<map_move_equal>, "map: KeyEqual whose move can throw");
+static_assert(!std::is_nothrow_move_constructible_v<set_move_hash>, "set: Hash whose move can throw");
+static_assert(!std::is_nothrow_move_constructible_v<set_move_equal>, "set: KeyEqual whose move can throw");
+static_assert(std::is_nothrow_move_constructible_v<map_plain>, "the ordinary map's move stays noexcept");
+static_assert(std::is_nothrow_move_constructible_v<set_plain>, "the ordinary set's move stays noexcept");
 static_assert(!std::is_nothrow_default_constructible_v<table_throwing>,
               "value-initialising a throwing entry");
 static_assert(std::is_nothrow_default_constructible_v<table_plain>, "lookup_table of ints stays noexcept");
@@ -127,6 +157,14 @@ int main() {
   CHECK(propagates([] { set_equal set; }));
   CHECK(propagates([] { table_throwing table; }));
   CHECK(propagates([] { metl::scoped_lock<throwing_lock> guard; }));
+  {
+    map_move_hash map_source;
+    (void)map_source.try_emplace(1, 1);
+    CHECK(propagates([&] { map_move_hash moved(static_cast<map_move_hash&&>(map_source)); }));
+    set_move_equal set_source;
+    (void)set_source.try_emplace(1);
+    CHECK(propagates([&] { set_move_equal moved(static_cast<set_move_equal&&>(set_source)); }));
+  }
 
   // P0052: if storing the callable throws, the guard calls the callable it was
   // given -- the cleanup still happens -- and the exception propagates.

@@ -88,6 +88,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exactly the attachments it snapshotted; anything attached mid-round, at
   whatever address and with whatever poll function, waits for the next round.
   Each slot grows by one `std::size_t`.
+- `static_unordered_map` and `static_unordered_set` move constructors were
+  `noexcept` whenever moving the elements and looking up keys could not throw,
+  but they also move the `Hash` and `KeyEqual`. With one whose move can throw,
+  moving the container called `std::terminate`. Those moves are now part of
+  the condition, as they already were for the move assignment.
 
 ## [1.2.0] - 2026-10-10
 
