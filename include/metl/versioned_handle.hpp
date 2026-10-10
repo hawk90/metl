@@ -1,6 +1,7 @@
 #pragma once
 
 #include "metl/attributes.hpp"
+#include "metl/config.hpp"
 #include "metl/detail/low_bits.hpp"
 
 #include <cstddef>
@@ -52,6 +53,14 @@ struct handle_packed_type {
                                   std::uint16_t,
                                   std::conditional_t<(Bits <= 32), std::uint32_t, std::uint64_t>>;
 };
+
+/// Selects the constructor an issuer uses for a handle it is issuing:
+/// `handle_pool` never issues generation 0, so the handle is already in its
+/// one representation and the canonicalising step can be skipped.
+struct issued_handle_t {
+  explicit issued_handle_t() = default;
+};
+inline constexpr issued_handle_t issued_handle{};
 
 }  // namespace detail
 
@@ -113,18 +122,29 @@ class versioned_handle {
   constexpr versioned_handle() noexcept : value_(0) {}
 
   /// Constructs a handle for `index` at `generation`.
-  /// @note A `generation` of 0 produces a null handle by construction; that
-  ///       value is reserved and `handle_pool` never issues it.
+  /// @note A `generation` of 0 produces THE null handle, equal to `versioned_handle{}`
+  ///       whatever `index` was: there is one null value, so `==` and an atomic
+  ///       compare-exchange on `packed()` agree about it. Generation 0 is reserved
+  ///       and `handle_pool` never issues it.
   constexpr versioned_handle(index_type index, generation_type generation) noexcept
-      : value_(static_cast<packed_type>(static_cast<packed_type>(index) |
-                                        (static_cast<packed_type>(generation) << index_bits))) {}
+      : value_(canonical(pack(index, generation))) {}
+
+  /// For an issuer, which never issues generation 0: the handle is already
+  /// canonical, so this packs without the step that makes it so. `handle_pool`
+  /// issues through it on every allocation.
+  /// @pre `generation != 0`.
+  constexpr versioned_handle(detail::issued_handle_t, index_type index, generation_type generation) noexcept
+      : value_(pack(index, generation)) {
+    METL_DASSERT(generation != 0);
+  }
 
   /// Rebuilds a handle from its packed representation (e.g. after an atomic load).
   /// @note Bits outside `value_mask` are not part of the handle and are dropped,
-  ///       so equality stays a function of index and generation alone.
+  ///       and a zero generation yields the null handle, so equality stays a
+  ///       function of index and generation alone.
   METL_NODISCARD static constexpr versioned_handle from_packed(packed_type packed) noexcept {
     versioned_handle handle;
-    handle.value_ = static_cast<packed_type>(packed & value_mask);
+    handle.value_ = canonical(packed);
     return handle;
   }
 
@@ -160,6 +180,21 @@ class versioned_handle {
   }
 
  private:
+  static constexpr packed_type pack(index_type index, generation_type generation) noexcept {
+    return static_cast<packed_type>(static_cast<packed_type>(index) |
+                                    (static_cast<packed_type>(generation) << index_bits));
+  }
+
+  // The one representation of each value: bits outside the fields dropped, and
+  // the whole word zero when the generation is. Without a branch, as the
+  // progress guarantee above promises: `keep` is all ones or all zeros.
+  static constexpr packed_type canonical(packed_type raw) noexcept {
+    const auto value = static_cast<packed_type>(raw & value_mask);
+    const auto keep =
+        static_cast<packed_type>(packed_type{0} - static_cast<packed_type>((value >> index_bits) != 0u));
+    return static_cast<packed_type>(value & keep);
+  }
+
   packed_type value_;
 };
 

@@ -49,6 +49,24 @@ int main() {
   // which is what keeps handle_pool's wraparound skip honest.
   const handle zero_generation{5, 0};
   CHECK(!zero_generation.valid());
+  // And it IS the null handle, not a second invalid value beside it: a check
+  // written `h == handle{}` must agree with `!h.valid()`.
+  CHECK_EQ(zero_generation, null);
+  CHECK_EQ(zero_generation.packed(), std::uint32_t{0});
+  CHECK_EQ(zero_generation.index(), handle::index_type{0});
+  CHECK_EQ(handle::from_packed(0x00000005u), null);
+  CHECK(!(zero_generation < null) && !(null < zero_generation));
+  // The same at both other widths: a 16-bit packed word promotes to int inside
+  // the arithmetic, a 64-bit one does not.
+  CHECK_EQ(narrow_handle(0x12u, 0u), narrow_handle{});
+  CHECK_EQ(wide_handle(0x12345678u, 0u), wide_handle{});
+  CHECK_EQ(narrow_handle(0x12u, 1u).index(), std::uint8_t{0x12u});
+  CHECK_EQ(wide_handle(0x12345678u, 1u).index(), std::uint32_t{0x12345678u});
+  // The constructor handle_pool issues through skips canonicalising; for any
+  // generation it is allowed (non-zero) it must build the same value.
+  CHECK_EQ(handle(metl::detail::issued_handle, 0x1234u, 0xABCDu), handle(0x1234u, 0xABCDu));
+  CHECK_EQ(handle(metl::detail::issued_handle, handle::max_index, 1u), handle(handle::max_index, 1u));
+  CHECK_EQ(narrow_handle(metl::detail::issued_handle, 0x12u, 0x34u), narrow_handle(0x12u, 0x34u));
 
   // Field independence at the extremes.
   const handle extremes{handle::max_index, handle::max_generation};

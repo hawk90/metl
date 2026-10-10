@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `versioned_handle{index, 0}` was not valid, yet compared unequal to the null
+  handle `versioned_handle{}`, so `h == handle{}` and `!h.valid()` disagreed.
+  The header already said a zero generation makes the null handle. Construction
+  and `from_packed` now give every zero-generation handle the single null
+  representation, so `==` and an `atomic_handle` compare-exchange agree.
 - `coro::scheduler` accepted the same task twice. Each `run_once` then polled
   it twice, and because `detach` and completion each remove one entry, the
   scheduler went on polling a task the caller had detached or destroyed.

@@ -27,12 +27,17 @@ int value_of(std::byte byte) noexcept {
 }
 
 /// Fill `count` bytes through the span protocol, numbering them from `first`.
-/// Loops because one span stops at the wrap.
+/// Loops because one span stops at the wrap. An empty span ends the loop: CHECK
+/// records the failure and carries on, and a zero-byte chunk would spin forever,
+/// turning a failing test into one that never reports.
 void fill(ring8& ring, int first, std::size_t count) {
   std::size_t written = 0;
   while (written < count) {
     const metl::span<std::byte> out = ring.writable_span();
     CHECK(!out.empty());
+    if (out.empty()) {
+      return;
+    }
     const std::size_t chunk = (count - written) < out.size() ? (count - written) : out.size();
     for (std::size_t i = 0; i < chunk; ++i) {
       out[i] = b(first + static_cast<int>(written + i));
@@ -43,12 +48,16 @@ void fill(ring8& ring, int first, std::size_t count) {
 }
 
 /// Drain `count` bytes through the span protocol, checking they are the numbers
-/// `first`, `first + 1`, ... Loops for the same reason.
+/// `first`, `first + 1`, ... Loops, and stops on an empty span, for the same
+/// reasons.
 void drain_and_check(ring8& ring, int first, std::size_t count) {
   std::size_t read = 0;
   while (read < count) {
     const metl::span<const std::byte> in = ring.readable_span();
     CHECK(!in.empty());
+    if (in.empty()) {
+      return;
+    }
     const std::size_t chunk = (count - read) < in.size() ? (count - read) : in.size();
     for (std::size_t i = 0; i < chunk; ++i) {
       CHECK_EQ(value_of(in[i]), first + static_cast<int>(read + i));

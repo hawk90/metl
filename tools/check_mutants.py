@@ -57,6 +57,9 @@ import time
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
+# Per-test ceiling while a mutant is applied; see run_gate.
+CTEST_TIMEOUT_SECONDS = 120
+
 
 # Each mutant is a single, minimal edit that changes BEHAVIOUR and keeps the code
 # compiling. `kills` names the gate that must reject it.
@@ -900,7 +903,12 @@ def run_gate(spec, build_dir):
             errors = [line for line in (build.stdout + build.stderr).splitlines() if "error" in line]
             first = errors[0].strip() if errors else "(no error line in the build output)"
             return None, f"the mutated tree did not build: {first}"
-        result = subprocess.run(["ctest", "--test-dir", build_dir, "-R", rest, "-j"],
+        # A mutant can make a test loop forever. ctest's default timeout is 1500 s,
+        # so one such mutant cost 25 minutes and stalled pre_push.py; a timed-out
+        # test fails, which is a kill, but a gate should not need half an hour to
+        # say so. The slowest target here runs in seconds.
+        result = subprocess.run(["ctest", "--test-dir", build_dir, "-R", rest, "-j",
+                                 "--timeout", str(CTEST_TIMEOUT_SECONDS)],
                                 capture_output=True, text=True, cwd=REPO)
         return result.returncode != 0, result.stdout[-800:]
     if kind == "tool":

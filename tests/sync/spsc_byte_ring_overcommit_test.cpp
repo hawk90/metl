@@ -33,6 +33,10 @@ void rotate_to(metl::spsc_byte_ring<8>& ring, std::size_t offset) {
   std::size_t moved = 0;
   while (moved < offset) {
     const metl::span<std::byte> out = ring.writable_span();
+    CHECK(!out.empty());
+    if (out.empty()) {
+      return;  // a zero-byte chunk would spin forever instead of failing
+    }
     const std::size_t chunk = (offset - moved) < out.size() ? (offset - moved) : out.size();
     ring.commit_write(chunk);
     ring.consume(chunk);
