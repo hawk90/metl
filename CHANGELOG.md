@@ -32,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Each one's return value is its only output: the parsed value, or the span
   written, which is the only record of the text's length. A call that drops
   it now warns. SCOPE.md R3 and `tools/check_api_contract.py` cover them.
+- Five constructors were `noexcept` while running code the user supplies, so an
+  exception from that code called `std::terminate` instead of reaching the
+  caller. Each is now `noexcept` exactly when what it constructs is:
+  `static_unordered_map` and `static_unordered_set` (default-constructing
+  `Hash` and `KeyEqual`), `lookup_table` (value-initialising its entries),
+  `scoped_lock` (`Lock::lock()`), and `scope_exit` with `make_scope_exit` and
+  `METL_SCOPE_EXIT` (storing the callable). `scope_exit` now also follows
+  P0052: when storing the callable throws, it calls the callable before the
+  exception propagates, so the cleanup still happens.
 - `fsm::dispatch` was `METL_NODISCARD`, so `machine.dispatch(event);` warned.
   Its bool answers whether a transition fired; it does not report a failure,
   and SCOPE.md R4 keeps such answers discardable, as `erase`'s is.
