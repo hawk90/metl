@@ -67,6 +67,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mpmc_queue` stays run-time initialized: its slots start at different
   sequence numbers, and doing that at compile time cost either flash or an
   extra operation on every push and pop. Its constructor documents this.
+- `flat_map` and `flat_set` with an element that cannot be move-assigned: if
+  the last move of an insert -- the new element into the gap -- threw, the
+  container kept a dead slot inside its size. Its destructor then destroyed
+  that slot again and never destroyed the last element. The container is now
+  emptied on that throw, as it already was when the shift itself threw.
 
 ## [1.2.0] - 2026-10-10
 

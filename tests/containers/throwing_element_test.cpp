@@ -316,33 +316,46 @@ int main() {
   }
 
   // ---- flat_map / flat_set with a non-move-assignable element ---------
+  // Every element move of the insert in turn: building the entry, each step of
+  // the shift, and the final move of the entry into the gap. Only throwing at
+  // one of them left the last one, whose failure destroyed a dead slot and
+  // leaked a live one, untested (#258).
   for (int which = 0; which < 2; ++which) {
-    g_live = 0;
-    g_double_destroys = 0;
-    {
-      metl::flat_map<int, pinned_armed, 8> map;
-      metl::flat_set<pinned_armed, 8> set;
-      for (int i = 1; i <= 5; ++i) {
-        map.emplace(i * 10, pinned_armed(i));
-        set.emplace(pinned_armed(i * 10));
-      }
-      g_countdown = 3;
+    for (int countdown = 0;; ++countdown) {
+      g_live = 0;
+      g_double_destroys = 0;
       bool threw = false;
-      try {
-        if (which == 0) {
-          map.emplace(0, pinned_armed(0));
-        } else {
-          set.emplace(pinned_armed(0));
+      {
+        metl::flat_map<int, pinned_armed, 8> map;
+        metl::flat_set<pinned_armed, 8> set;
+        for (int i = 1; i <= 5; ++i) {
+          map.emplace(i * 10, pinned_armed(i));
+          set.emplace(pinned_armed(i * 10));
         }
-      } catch (int) {
-        threw = true;
+        g_countdown = countdown;
+        try {
+          if (which == 0) {
+            map.emplace(0, pinned_armed(0));
+          } else {
+            set.emplace(pinned_armed(0));
+          }
+        } catch (int) {
+          threw = true;
+        }
+        g_countdown = -1;
+        if (threw) {
+          // Cleared, or untouched when the throw came before anything moved.
+          const std::size_t size = which == 0 ? map.size() : set.size();
+          CHECK(size == 0 || size == 5);
+        }
       }
-      g_countdown = -1;
-      CHECK(threw);
-      CHECK(which == 0 ? map.empty() : set.empty());
+      CHECK_EQ(g_live, 0);
+      CHECK_EQ(g_double_destroys, 0);
+      if (!threw) {
+        CHECK(countdown > 3);  // the insert performs at least the moves above
+        break;
+      }
     }
-    CHECK_EQ(g_live, 0);
-    CHECK_EQ(g_double_destroys, 0);
   }
 
   // ---- fixed_priority_queue keeps its heap order or empties ----------

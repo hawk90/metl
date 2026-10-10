@@ -607,7 +607,25 @@ class flat_map {
     } else {
       // A non-assignable element can only be relocated by construct+destroy.
       shift_right_from(index);
-      ::new (storage_.slot(index)) value_type(static_cast<value_type&&>(entry));
+      // The shift left slot `index` dead and [0, index) and (index, size_]
+      // live. If moving the entry in throws, clean up exactly those, as
+      // shift_right_from does, rather than leave a dead slot inside size_.
+#if !METL_NO_EXCEPTIONS
+      try {
+#endif
+        ::new (storage_.slot(index)) value_type(static_cast<value_type&&>(entry));
+#if !METL_NO_EXCEPTIONS
+      } catch (...) {
+        for (size_type j = 0; j < index; ++j) {
+          data()[j].~value_type();
+        }
+        for (size_type j = index + 1; j <= size_; ++j) {
+          data()[j].~value_type();
+        }
+        size_ = 0;
+        throw;
+      }
+#endif
       ++size_;
     }
   }
