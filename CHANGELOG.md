@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `coro::scheduler` accepted the same task twice. Each `run_once` then polled
+  it twice, and because `detach` and completion each remove one entry, the
+  scheduler went on polling a task the caller had detached or destroyed.
+  Attaching a task that is already attached is now a precondition violation
+  checked by `METL_HARDEN`, at every hardening level. `try_attach*` still
+  returns `false` only when the scheduler is full.
+
 ## [1.2.0] - 2026-10-10
 
 **Highlights.** A correctness release. An audit of every header against its
