@@ -72,6 +72,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   container kept a dead slot inside its size. Its destructor then destroyed
   that slot again and never destroyed the last element. The container is now
   emptied on that throw, as it already was when the shift itself threw.
+- `flat_map::clear()` and `flat_set::clear()` -- and so their destructors and
+  copy assignment -- moved every element into a temporary before destroying
+  it. With an element whose move can throw, that called `std::terminate`
+  inside the `noexcept` `clear()`, and in every case it cost one move per
+  element. They now destroy from the back in place, moving nothing.
 
 ## [1.2.0] - 2026-10-10
 
