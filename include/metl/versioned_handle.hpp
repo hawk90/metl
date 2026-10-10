@@ -113,18 +113,21 @@ class versioned_handle {
   constexpr versioned_handle() noexcept : value_(0) {}
 
   /// Constructs a handle for `index` at `generation`.
-  /// @note A `generation` of 0 produces a null handle by construction; that
-  ///       value is reserved and `handle_pool` never issues it.
+  /// @note A `generation` of 0 produces THE null handle, equal to `versioned_handle{}`
+  ///       whatever `index` was: there is one null value, so `==` and an atomic
+  ///       compare-exchange on `packed()` agree about it. Generation 0 is reserved
+  ///       and `handle_pool` never issues it.
   constexpr versioned_handle(index_type index, generation_type generation) noexcept
-      : value_(static_cast<packed_type>(static_cast<packed_type>(index) |
-                                        (static_cast<packed_type>(generation) << index_bits))) {}
+      : value_(canonical(static_cast<packed_type>(static_cast<packed_type>(index) |
+                                                  (static_cast<packed_type>(generation) << index_bits)))) {}
 
   /// Rebuilds a handle from its packed representation (e.g. after an atomic load).
   /// @note Bits outside `value_mask` are not part of the handle and are dropped,
-  ///       so equality stays a function of index and generation alone.
+  ///       and a zero generation yields the null handle, so equality stays a
+  ///       function of index and generation alone.
   METL_NODISCARD static constexpr versioned_handle from_packed(packed_type packed) noexcept {
     versioned_handle handle;
-    handle.value_ = static_cast<packed_type>(packed & value_mask);
+    handle.value_ = canonical(packed);
     return handle;
   }
 
@@ -160,6 +163,16 @@ class versioned_handle {
   }
 
  private:
+  // The one representation of each value: bits outside the fields dropped, and
+  // the whole word zero when the generation is. Without a branch, as the
+  // progress guarantee above promises: `keep` is all ones or all zeros.
+  static constexpr packed_type canonical(packed_type raw) noexcept {
+    const packed_type value = static_cast<packed_type>(raw & value_mask);
+    const packed_type keep =
+        static_cast<packed_type>(packed_type{0} - static_cast<packed_type>((value >> index_bits) != 0u));
+    return static_cast<packed_type>(value & keep);
+  }
+
   packed_type value_;
 };
 
