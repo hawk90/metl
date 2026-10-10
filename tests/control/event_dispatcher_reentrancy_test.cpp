@@ -64,7 +64,9 @@ void reset(dispatcher_t& dispatcher) {
 }  // namespace
 
 int main() {
-  dispatcher_t dispatcher;
+  // Static, not automatic: the listeners reach it through g_dispatcher, and a
+  // global pointing at a local is what GCC's -Wdangling-pointer reports.
+  static dispatcher_t dispatcher;
 
   // The newcomer lands in a LATER slot than the listener that subscribed it.
   // It used to be called for the current event; now it is not.
