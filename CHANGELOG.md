@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The header already said a zero generation makes the null handle. Construction
   and `from_packed` now give every zero-generation handle the single null
   representation, so `==` and an `atomic_handle` compare-exchange agree.
+- `event_dispatcher::dispatch` called a listener subscribed from inside
+  another listener for the current event when it landed in a later slot, and
+  not when it reused an earlier free one. `dispatch` now calls the listeners
+  subscribed when the event began and still subscribed at their turn, so a
+  listener subscribed mid-dispatch hears the next event wherever it lands. The
+  header states the rule, including that a `dispatch` raised from a listener
+  is a new event.
 
 ## [1.2.0] - 2026-10-10
 
