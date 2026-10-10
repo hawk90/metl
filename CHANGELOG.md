@@ -32,6 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Each one's return value is its only output: the parsed value, or the span
   written, which is the only record of the text's length. A call that drops
   it now warns. SCOPE.md R3 and `tools/check_api_contract.py` cover them.
+- `spsc_queue`, `spsc_byte_ring`, `mpmc_queue` and `atomic_handle` can now be
+  constant-initialized, and `METL_CONST_INIT` accepts them. Their constructors
+  were not `constexpr`, so a namespace-scope instance was initialized at run
+  time, in link order. An interrupt that fired during start-up -- enabled by
+  another file's global constructor -- could push into the queue before that
+  constructor ran, and the constructor then wiped what was pushed. A
+  stack-allocated `spsc_queue` now zero-fills its slot storage on construction.
 
 ## [1.2.0] - 2026-10-10
 

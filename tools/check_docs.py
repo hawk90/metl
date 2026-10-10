@@ -165,7 +165,10 @@ def registered_tests(cmake_path):
         return None
     names = set(match.group(1).split())
     # A variable (`tests/${_t}_test.cpp`, the loop over the list) is not a file.
-    names |= set(re.findall(r"SRCS\s+tests/([\w/]+)_test\.cpp", uncommented))
+    # Every *_test.cpp in a SRCS list, not only the first: a multi-TU test names
+    # its translation units in link order, and the one with main() need not lead.
+    for sources in re.findall(r"SRCS((?:\s+[^\s()]+)+)", uncommented):
+        names |= set(re.findall(r"tests/([\w/]+)_test\.cpp", sources))
     return names
 
 

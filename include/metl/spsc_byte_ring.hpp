@@ -72,7 +72,10 @@ class spsc_byte_ring {
   using value_type = std::byte;
   using size_type = std::size_t;
 
-  spsc_byte_ring() noexcept : head_(0), tail_(0) {}
+  /// @note constexpr, so a namespace-scope ring is constant-initialized and an
+  ///       interrupt that fires during start-up cannot have its bytes wiped by a
+  ///       constructor running later (see `spsc_queue`).
+  constexpr spsc_byte_ring() noexcept : head_(0), tail_(0) {}
   ~spsc_byte_ring() = default;
 
   spsc_byte_ring(const spsc_byte_ring&) = delete;

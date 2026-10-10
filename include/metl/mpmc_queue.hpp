@@ -110,12 +110,10 @@ class mpmc_queue {
   using value_type = T;
   using size_type = std::size_t;
 
-  mpmc_queue() noexcept : enqueue_pos_(0), dequeue_pos_(0) {
-    // Slot i starts "ready for the producer whose ticket is i".
-    for (size_type i = 0; i < Capacity; ++i) {
-      cells_[i].sequence.store(i, std::memory_order_relaxed);
-    }
-  }
+  /// @note constexpr, so a namespace-scope queue is constant-initialized and an
+  ///       interrupt that fires during start-up cannot have its pushes wiped by a
+  ///       constructor running later (see `spsc_queue`).
+  constexpr mpmc_queue() noexcept : mpmc_queue(std::make_index_sequence<Capacity>{}) {}
 
   /// @note Not thread-safe: destroys whatever is left and assumes no concurrent
   ///       access, exactly like `spsc_queue`'s destructor.
@@ -258,6 +256,12 @@ class mpmc_queue {
     return true;
   }
   static constexpr size_type mask = Capacity - 1;
+
+  // Slot i starts "ready for the producer whose ticket is i". Written as an
+  // initializer rather than a loop of stores so the constructor is constexpr.
+  template <size_type... Index>
+  constexpr explicit mpmc_queue(std::index_sequence<Index...>) noexcept
+      : cells_{cell{{Index}, {}}...}, enqueue_pos_(0), dequeue_pos_(0) {}
 
   // The sequence number shares a line with the slot it describes on purpose: a
   // producer that claims a slot touches both, so splitting them would double the
