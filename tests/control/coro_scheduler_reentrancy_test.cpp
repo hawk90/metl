@@ -44,7 +44,10 @@ bool poll_task(void* p) noexcept {
 // SAME object with a different poll function mid-round, so a scheduler that
 // re-validates by address alone calls a poll function the task no longer has --
 // with a different object at that address, a call through the wrong type.
+// A task that may re-attach itself carries its scheduler, so no poll function
+// reaches a test's local through a global.
 struct counted {
+  sched_t* sched = nullptr;
   int polls_a = 0;
   int polls_b = 0;
 };
@@ -57,23 +60,28 @@ bool poll_b(void* p) noexcept {
   return true;
 }
 
-sched_t* g_sched = nullptr;
-counted* g_victim = nullptr;
+// A task whose poll re-attaches another task, `victim`, once.
+struct swapper_t {
+  sched_t* sched;
+  counted* victim;
+};
 
-// Swaps g_victim's poll function from poll_a to poll_b, once.
-bool swap_victim_poll(void*) noexcept {
-  if (g_victim != nullptr) {
-    CHECK(g_sched->detach(g_victim));
-    CHECK(g_sched->try_attach(g_victim, &poll_b));
-    g_victim = nullptr;
+// Swaps the victim's poll function from poll_a to poll_b, once.
+bool swap_victim_poll(void* p) noexcept {
+  auto* s = static_cast<swapper_t*>(p);
+  if (s->victim != nullptr) {
+    CHECK(s->sched->detach(s->victim));
+    CHECK(s->sched->try_attach(s->victim, &poll_b));
+    s->victim = nullptr;
   }
   return true;
 }
 
 // Completes, but first re-attaches itself under poll_b: a task that restarts.
 bool restart_as_b(void* p) noexcept {
-  CHECK(g_sched->detach(p));
-  CHECK(g_sched->try_attach(p, &poll_b));
+  sched_t* sched = static_cast<counted*>(p)->sched;
+  CHECK(sched->detach(p));
+  CHECK(sched->try_attach(p, &poll_b));
   return false;
 }
 
@@ -82,19 +90,20 @@ bool restart_as_b(void* p) noexcept {
 bool rearm_once(void* p) noexcept {
   auto* c = static_cast<counted*>(p);
   if (++c->polls_a == 1) {
-    CHECK(g_sched->detach(p));
-    CHECK(g_sched->try_attach(p, &rearm_once));
+    CHECK(c->sched->detach(p));
+    CHECK(c->sched->try_attach(p, &rearm_once));
   }
   return false;
 }
 
-// Detaches g_victim and attaches it again under the same poll_a, once: an
+// Detaches the victim and attaches it again under the same poll_a, once: an
 // attachment indistinguishable from the old one by (task, poll).
-bool reattach_victim_same_poll(void*) noexcept {
-  if (g_victim != nullptr) {
-    CHECK(g_sched->detach(g_victim));
-    CHECK(g_sched->try_attach(g_victim, &poll_a));
-    g_victim = nullptr;
+bool reattach_victim_same_poll(void* p) noexcept {
+  auto* s = static_cast<swapper_t*>(p);
+  if (s->victim != nullptr) {
+    CHECK(s->sched->detach(s->victim));
+    CHECK(s->sched->try_attach(s->victim, &poll_a));
+    s->victim = nullptr;
   }
   return true;
 }
@@ -205,10 +214,8 @@ int main() {
   // ---- #260: a mid-round re-attach under another poll function --------------
   {
     sched_t sched;
-    g_sched = &sched;
     counted victim;
-    g_victim = &victim;
-    int swapper = 0;
+    swapper_t swapper{&sched, &victim};
     CHECK(sched.try_attach(&swapper, &swap_victim_poll));
     CHECK(sched.try_attach(&victim, &poll_a));
     (void)sched.run_once();
@@ -222,8 +229,8 @@ int main() {
   }
   {
     sched_t sched;
-    g_sched = &sched;
     counted task_b;
+    task_b.sched = &sched;
     CHECK(sched.try_attach(&task_b, &restart_as_b));
     (void)sched.run_once();
     // Completion removes the attachment that completed, not the one the task
@@ -237,8 +244,8 @@ int main() {
   // ---- #286: identity is the attachment, not the (task, poll) pair -----------
   {
     sched_t sched;
-    g_sched = &sched;
     counted job;
+    job.sched = &sched;
     CHECK(sched.try_attach(&job, &rearm_once));
     (void)sched.run_once();
     // The run that completed is removed; the re-arm it made of itself is not.
@@ -250,10 +257,8 @@ int main() {
   }
   {
     sched_t sched;
-    g_sched = &sched;
     counted victim;
-    g_victim = &victim;
-    int swapper = 0;
+    swapper_t swapper{&sched, &victim};
     CHECK(sched.try_attach(&swapper, &reattach_victim_same_poll));
     CHECK(sched.try_attach(&victim, &poll_a));
     (void)sched.run_once();
@@ -262,9 +267,7 @@ int main() {
     CHECK_EQ(victim.polls_a, 0);
     (void)sched.run_once();
     CHECK_EQ(victim.polls_a, 1);
-    g_victim = nullptr;
   }
-  g_sched = nullptr;  // every scheduler above was a local of its own block
 
   return metl_test::exit_code();
 }
