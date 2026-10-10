@@ -906,6 +906,104 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
         "new": """  catch (...) {
   }""",
     },
+    {
+        "name": "flat_set_final_move_throw_skips_cleanup",
+        "file": "include/metl/flat_set.hpp",
+        "why": "a throw moving the entry into the gap leaves a dead slot inside "
+               "size_: the destructor destroys it and leaks the last element.",
+        "kills": "ctest:throwing_element",
+        "old": """      } catch (...) {
+        for (size_type j = 0; j < index; ++j) {
+          data()[j].~value_type();
+        }
+        for (size_type j = index + 1; j <= size_; ++j) {
+          data()[j].~value_type();
+        }
+        size_ = 0;
+        throw;
+      }""",
+        "new": """      } catch (...) {
+        throw;
+      }""",
+    },
+    {
+        "name": "flat_map_final_move_throw_skips_cleanup",
+        "file": "include/metl/flat_map.hpp",
+        "why": "a throw moving the entry into the gap leaves a dead slot inside "
+               "size_: the destructor destroys it and leaks the last element.",
+        "kills": "ctest:throwing_element",
+        "old": """      } catch (...) {
+        for (size_type j = 0; j < index; ++j) {
+          data()[j].~value_type();
+        }
+        for (size_type j = index + 1; j <= size_; ++j) {
+          data()[j].~value_type();
+        }
+        size_ = 0;
+        throw;
+      }""",
+        "new": """      } catch (...) {
+        throw;
+      }""",
+    },
+    {
+        "name": "flat_map_clear_relocates",
+        "file": "include/metl/flat_map.hpp",
+        "why": "clear() moves each element into a temporary before destroying it: "
+               "N needless moves, and std::terminate when the move throws.",
+        "kills": "ctest:throwing_element",
+        "old": """    while (size_ > 0) {
+      --size_;
+      data()[size_].~value_type();
+    }""",
+        "new": """    while (size_ > 0) {
+      erase_at(size_ - 1);
+    }""",
+    },
+    {
+        "name": "flat_set_clear_relocates",
+        "file": "include/metl/flat_set.hpp",
+        "why": "clear() moves each element into a temporary before destroying it: "
+               "N needless moves, and std::terminate when the move throws.",
+        "kills": "ctest:throwing_element",
+        "old": """    while (size_ > 0) {
+      --size_;
+      data()[size_].~value_type();
+    }""",
+        "new": """    while (size_ > 0) {
+      erase_at(size_ - 1);
+    }""",
+    },
+    {
+        "name": "scheduler_snapshot_checks_address_only",
+        "file": "include/metl/coro/scheduler.hpp",
+        "why": "a task re-attached under another poll function mid-round gets the "
+               "snapshot's old poll function -- a call through the wrong type when "
+               "the storage holds a different object.",
+        "kills": "ctest:coro_scheduler_reentrancy",
+        "old": "    if (!holds(e.attachment)) {",
+        "new": "    if (!is_attached(e.slot.task)) {",
+    },
+    {
+        "name": "scheduler_completion_removes_by_address",
+        "file": "include/metl/coro/scheduler.hpp",
+        "why": "completion removes whatever entry has the task's address, so a "
+               "task that re-attached itself from the poll in which it completed "
+               "loses the new attachment.",
+        "kills": "ctest:coro_scheduler_reentrancy",
+        "old": "      remove(e.attachment);",
+        "new": "      (void)detach(e.slot.task);",
+    },
+    {
+        "name": "scheduler_attachments_share_a_number",
+        "file": "include/metl/coro/scheduler.hpp",
+        "why": "every attachment gets the same number, so a mid-round attachment "
+               "passes for the snapshot's entry and is polled in the round it was "
+               "attached.",
+        "kills": "ctest:coro_scheduler_reentrancy",
+        "old": "entry{task_slot{task, fn}, next_attachment_++}",
+        "new": "entry{task_slot{task, fn}, next_attachment_}",
+    },
 ]
 
 

@@ -70,10 +70,12 @@ METL_NODISCARD constexpr std::uint8_t crc8(span<const std::uint8_t> bytes, crc8_
 /// @param data Pointer to the first byte.
 /// @param size Number of bytes to checksum.
 /// @param params Initial and final-XOR values (default: both 0x00).
-/// @return The CRC-8 checksum. constexpr and heap-free.
-METL_NODISCARD constexpr std::uint8_t crc8(const void* data,
-                                           std::size_t size,
-                                           crc8_params params = {}) noexcept {
+/// @return The CRC-8 checksum. Heap-free. Not constexpr: a `const void*` cannot be cast
+///         to bytes in a constant expression. For a compile-time CRC, pass a
+///         `span<const std::uint8_t>`.
+METL_NODISCARD inline std::uint8_t crc8(const void* data,
+                                        std::size_t size,
+                                        crc8_params params = {}) noexcept {
   return crc8(span<const std::uint8_t>(static_cast<const std::uint8_t*>(data), size), params);
 }
 
