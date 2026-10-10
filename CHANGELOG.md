@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Attaching a task that is already attached is now a precondition violation
   checked by `METL_HARDEN`, at every hardening level. `try_attach*` still
   returns `false` only when the scheduler is full.
+- `event_dispatcher::dispatch` called a listener subscribed from inside
+  another listener for the current event when it landed in a later slot, and
+  not when it reused an earlier free one. `dispatch` now calls the listeners
+  subscribed when the event began and still subscribed at their turn, so a
+  listener subscribed mid-dispatch hears the next event wherever it lands. The
+  header states the rule, including that a `dispatch` raised from a listener
+  is a new event.
 
 ## [1.2.0] - 2026-10-10
 
