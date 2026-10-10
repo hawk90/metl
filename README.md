@@ -13,7 +13,6 @@
   <a href="https://github.com/hawk90/metl/actions/workflows/ci.yml"><img src="https://github.com/hawk90/metl/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/hawk90/metl/releases/latest"><img src="https://img.shields.io/github/v/release/hawk90/metl" alt="Release"></a>
   <img src="https://img.shields.io/badge/C%2B%2B-17-blue.svg" alt="C++17">
-  <a href="https://hawk90.github.io/metl/"><img src="https://img.shields.io/badge/docs-API-blue.svg" alt="API docs"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
 </p>
 

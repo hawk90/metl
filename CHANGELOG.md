@@ -41,6 +41,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `METL_SCOPE_EXIT` (storing the callable). `scope_exit` now also follows
   P0052: when storing the callable throws, it calls the callable before the
   exception propagates, so the cleanup still happens.
+- `fsm::dispatch` was `METL_NODISCARD`, so `machine.dispatch(event);` warned.
+  Its bool answers whether a transition fired; it does not report a failure,
+  and SCOPE.md R4 keeps such answers discardable, as `erase`'s is.
+  `tools/check_api_contract.py` now enforces R4 for these names.
+- `arena_allocator::allocate(0, alignment)` returned `nullptr` for a
+  non-power-of-two alignment instead of stopping at the `METL_HARDEN` check,
+  because the empty request returned first. `monotonic_buffer` already checked
+  the alignment whatever the size; both now do.
 - The iterator of `fixed_deque`, `ring_buffer` and `fixed_queue` took the
   element's address for `->` with a raw `&`. For an element type that
   overloads unary `operator&`, `it->member` went through whatever that

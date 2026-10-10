@@ -371,6 +371,23 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
         "new": "",
     },
     {
+        "name": "arena_zero_bytes_skips_alignment_check",
+        "file": "include/metl/arena_allocator.hpp",
+        "why": "an empty request returns null before the alignment is checked, "
+               "hiding a caller bug monotonic_buffer reports.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """    METL_HARDEN(alignment != 0 && (alignment & (alignment - 1)) == 0);
+    if (bytes == 0) {
+      return nullptr;
+    }
+""",
+        "new": """    if (bytes == 0) {
+      return nullptr;
+    }
+    METL_HARDEN(alignment != 0 && (alignment & (alignment - 1)) == 0);
+""",
+    },
+    {
         "name": "flat_map_emplace_full_harden_removed",
         "file": "include/metl/flat_map.hpp",
         "why": "emplace of a new key into a full flat_map returns a one-past- "
