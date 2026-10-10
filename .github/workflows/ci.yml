@@ -2159,6 +2159,16 @@ jobs:
           path: build/docs/html
           if-no-files-found: warn
 
+      # The Pages copy shares hawk90.github.io with the blog, so keep the
+      # generated API pages out of search indexes; they would otherwise count
+      # against the blog's site-quality review. Only the Pages copy is marked.
+      - name: Mark Pages docs noindex
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          find build/docs/html -name '*.html' -exec \
+            sed -i 's|<head>|<head><meta name="robots" content="noindex, follow">|' {} +
+          test "$(grep -L 'name="robots"' build/docs/html/*.html | wc -l)" -eq 0
+
       # On main, also stage the HTML as a Pages artifact for the deploy-docs job.
       - name: Upload docs as a Pages artifact
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
