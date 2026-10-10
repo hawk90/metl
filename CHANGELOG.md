@@ -54,8 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   were not `constexpr`, so a namespace-scope instance was initialized at run
   time, in link order. An interrupt that fired during start-up -- enabled by
   another file's global constructor -- could push into the queue before that
-  constructor ran, and the constructor then wiped what was pushed. A
-  stack-allocated `spsc_queue` now zero-fills its slot storage on construction.
+  constructor ran, and the constructor then wiped what was pushed. An empty
+  queue of each type is all zero bytes, so a global one still lands in .bss;
+  `mpmc_queue` stores each cell's sequence number relative to the cell's index
+  to make that so. A stack-allocated `spsc_queue` or `mpmc_queue` zero-fills its
+  storage on construction.
 
 ## [1.2.0] - 2026-10-10
 
