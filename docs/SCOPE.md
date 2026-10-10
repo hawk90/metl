@@ -327,7 +327,7 @@ claim about a **gate** going stale, and nothing was checking those.
 | [`check_instructions.py`](../tools/check_instructions.py) | instructions executed per benchmark, via cachegrind | `--self-test` |
 | [`check_api_contract.py`](../tools/check_api_contract.py) | §9 R2/R3 across every public header | `--self-test` |
 | [`check_progress_guarantee.py`](../tools/check_progress_guarantee.py) | I3: every public header states a progress guarantee | `--self-test` |
-| [`check_source_rules.py`](../tools/check_source_rules.py) | S1: placement new is `::new`; S2: a check shaped like a memory-safety guard is `METL_HARDEN` or carries its reason | `--self-test` |
+| [`check_source_rules.py`](../tools/check_source_rules.py) | S1: placement new is `::new`; S2: a check shaped like a memory-safety guard is `METL_HARDEN` or carries its reason; S3: no `constexpr` function that can never be constant-evaluated | `--self-test` |
 | [`check_amalgamation.py`](../tools/check_amalgamation.py) | the shipped single header builds and runs the whole suite | `--self-test` |
 | [`check_docs.py`](../tools/check_docs.py) | D1–D7: the documentation claims a machine can settle | `--self-test` |
 | [`check_compile_fail.py`](../tools/check_compile_fail.py) | that the public `static_assert`s actually fire, and that the gap between how many there are and how many are pinned only shrinks | `--self-test` |
@@ -346,7 +346,8 @@ required (editing the matrix would leave the branch pending forever), and a
 *skipped* required check counts as **passing**, which is why G3 insists on
 `if: always()` and G5 refuses to require anything that skips on a pull request.
 
-Not in the table because they are not `tools/check_*.py` gates: the `sizeof` ratchet
+Not in the table because they are not `tools/check_*.py` gates: `metl_header_odr_link`
+(two TUs that each include every public header, linked into one program), the `sizeof` ratchet
 (`tests/core/ram_footprint_test.cpp`), the comparison-count bound
 (`tests/containers/operation_count_test.cpp`), the coverage floor
 (`tools/coverage.py`), the clang-tidy finding ratchet
