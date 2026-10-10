@@ -864,6 +864,46 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
         "old": "    const std::uint64_t first_unheard = next_id_;",
         "new": "    const std::uint64_t first_unheard = ~std::uint64_t{0};",
     },
+    {
+        "name": "flat_set_final_move_throw_skips_cleanup",
+        "file": "include/metl/flat_set.hpp",
+        "why": "a throw moving the entry into the gap leaves a dead slot inside "
+               "size_: the destructor destroys it and leaks the last element.",
+        "kills": "ctest:throwing_element",
+        "old": """      } catch (...) {
+        for (size_type j = 0; j < index; ++j) {
+          data()[j].~value_type();
+        }
+        for (size_type j = index + 1; j <= size_; ++j) {
+          data()[j].~value_type();
+        }
+        size_ = 0;
+        throw;
+      }""",
+        "new": """      } catch (...) {
+        throw;
+      }""",
+    },
+    {
+        "name": "flat_map_final_move_throw_skips_cleanup",
+        "file": "include/metl/flat_map.hpp",
+        "why": "a throw moving the entry into the gap leaves a dead slot inside "
+               "size_: the destructor destroys it and leaks the last element.",
+        "kills": "ctest:throwing_element",
+        "old": """      } catch (...) {
+        for (size_type j = 0; j < index; ++j) {
+          data()[j].~value_type();
+        }
+        for (size_type j = index + 1; j <= size_; ++j) {
+          data()[j].~value_type();
+        }
+        size_ = 0;
+        throw;
+      }""",
+        "new": """      } catch (...) {
+        throw;
+      }""",
+    },
 ]
 
 

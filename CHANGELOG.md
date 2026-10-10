@@ -32,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Each one's return value is its only output: the parsed value, or the span
   written, which is the only record of the text's length. A call that drops
   it now warns. SCOPE.md R3 and `tools/check_api_contract.py` cover them.
+- `flat_map` and `flat_set` with an element that cannot be move-assigned: if
+  the last move of an insert -- the new element into the gap -- threw, the
+  container kept a dead slot inside its size. Its destructor then destroyed
+  that slot again and never destroyed the last element. The container is now
+  emptied on that throw, as it already was when the shift itself threw.
 
 ## [1.2.0] - 2026-10-10
 
