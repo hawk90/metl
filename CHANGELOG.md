@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Each one's return value is its only output: the parsed value, or the span
   written, which is the only record of the text's length. A call that drops
   it now warns. SCOPE.md R3 and `tools/check_api_contract.py` cover them.
+- `coro::scheduler::run_once` re-checked each task of its snapshot by address
+  only. A task detached and re-attached under another poll function during the
+  round -- or a different object attached in its storage -- was then polled
+  through the snapshot's old poll function, a call through the wrong type in
+  the second case. Completion likewise removed whatever was attached at that
+  address. Both now match the exact (task, poll function) pair.
 
 ## [1.2.0] - 2026-10-10
 

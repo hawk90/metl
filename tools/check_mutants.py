@@ -864,6 +864,16 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
         "old": "    const std::uint64_t first_unheard = next_id_;",
         "new": "    const std::uint64_t first_unheard = ~std::uint64_t{0};",
     },
+    {
+        "name": "scheduler_snapshot_checks_address_only",
+        "file": "include/metl/coro/scheduler.hpp",
+        "why": "a task re-attached under another poll function mid-round gets the "
+               "snapshot's old poll function -- a call through the wrong type when "
+               "the storage holds a different object.",
+        "kills": "ctest:coro_scheduler_reentrancy",
+        "old": "    if (!holds(s)) {",
+        "new": "    if (!is_attached(s.task)) {",
+    },
 ]
 
 

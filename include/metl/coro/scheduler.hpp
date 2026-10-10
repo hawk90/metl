@@ -119,6 +119,12 @@ class scheduler {
   /// @brief Poll every attached task once in attachment order.
   /// @return The number of tasks that yielded (still want to run). Completed
   ///         tasks are removed in place. Task polls may attach/detach reentrantly.
+  /// @note An entry is the pair (task, poll function). A task attached during
+  ///       the round waits for the next one, and so does a task detached and
+  ///       re-attached under another poll function, or a different object
+  ///       attached at a detached task's address. One case is not told apart:
+  ///       a new object of the same type in the same storage, attached with the
+  ///       same poll function, is polled in the round it was attached.
   size_type run_once() noexcept;
 
   /// @brief Repeatedly `run_once()` until no task yields or `max_rounds` hit.
@@ -155,6 +161,27 @@ class scheduler {
     return tasks_.try_push_back(task_slot{task, fn});
   }
 
+  // Whether the exact (task, poll) pair is attached.
+  bool holds(task_slot entry) const noexcept {
+    for (size_type i = 0; i < tasks_.size(); ++i) {
+      if (tasks_[i].task == entry.task && tasks_[i].poll == entry.poll) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Removes the exact (task, poll) pair, if attached.
+  bool remove(task_slot entry) noexcept {
+    for (size_type i = 0; i < tasks_.size(); ++i) {
+      if (tasks_[i].task == entry.task && tasks_[i].poll == entry.poll) {
+        tasks_.erase(tasks_.begin() + static_cast<std::ptrdiff_t>(i));
+        return true;
+      }
+    }
+    return false;
+  }
+
   metl::fixed_vector<task_slot, Capacity> tasks_;
 };
 
@@ -175,18 +202,24 @@ typename scheduler<Capacity>::size_type scheduler<Capacity>::run_once() noexcept
   size_type still_running = 0;
   for (size_type i = 0; i < n; ++i) {
     const task_slot s = snapshot[i];
-    // A previous poll in this round may already have detached this task; if so,
-    // skip it (do not poll a task the caller has removed).
-    if (!is_attached(s.task)) {
+    // A previous poll in this round may have detached this task, and may have
+    // attached something at the same address since -- the same task under
+    // another poll function, or a different object in reused storage. Only the
+    // exact (task, poll) pair from the snapshot is still this entry; anything
+    // else is a mid-round attachment, which waits for the next round. Checking
+    // the address alone would call the snapshot's poll function on whatever
+    // now lives there.
+    if (!holds(s)) {
       continue;
     }
     const bool more = s.poll(s.task);
     if (more) {
       ++still_running;
     } else {
-      // Completed: remove it. The task may already be gone if its own poll
-      // detached itself; detach() tolerates a missing task.
-      detach(s.task);
+      // Completed: remove this entry. Its poll may have detached it already, or
+      // re-attached the task under another poll function; only the pair that
+      // completed is removed.
+      (void)remove(s);
     }
   }
   return still_running;
