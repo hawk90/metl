@@ -62,6 +62,11 @@ int main() {
   CHECK_EQ(wide_handle(0x12345678u, 0u), wide_handle{});
   CHECK_EQ(narrow_handle(0x12u, 1u).index(), std::uint8_t{0x12u});
   CHECK_EQ(wide_handle(0x12345678u, 1u).index(), std::uint32_t{0x12345678u});
+  // The constructor handle_pool issues through skips canonicalising; for any
+  // generation it is allowed (non-zero) it must build the same value.
+  CHECK_EQ(handle(metl::detail::issued_handle, 0x1234u, 0xABCDu), handle(0x1234u, 0xABCDu));
+  CHECK_EQ(handle(metl::detail::issued_handle, handle::max_index, 1u), handle(handle::max_index, 1u));
+  CHECK_EQ(narrow_handle(metl::detail::issued_handle, 0x12u, 0x34u), narrow_handle(0x12u, 0x34u));
 
   // Field independence at the extremes.
   const handle extremes{handle::max_index, handle::max_generation};
