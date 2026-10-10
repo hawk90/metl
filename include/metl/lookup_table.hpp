@@ -66,7 +66,7 @@ class lookup_table {
 
  public:
   /// Constructs a table with value-initialized entries.
-  constexpr lookup_table() noexcept : entries_{} {}
+  constexpr lookup_table() noexcept(std::is_nothrow_default_constructible_v<value_type>) : entries_{} {}
 
   /// Constructs a table from an array of `Size` entries.
   constexpr lookup_table(const std::array<value_type, Size>& entries) noexcept(nothrow_copy_entries)

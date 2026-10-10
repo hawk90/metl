@@ -10,6 +10,10 @@ Three rules, two of which are mechanical:
       the asserting/recoverable pair exists to prevent. So is every function in
       RESULT_ONLY: an asserting form whose return value is its only output.
 
+  R4  a bool that answers "was it there" or "did it fire" for an operation
+      the caller runs for its effect -- DISCARDABLE below -- is NOT
+      METL_NODISCARD. `m.erase(k);` is a legitimate statement and must not warn.
+
 R1 (every capacity-failing operation has both forms) needs a human and stays on
 the PR checklist.
 
@@ -110,8 +114,14 @@ DECL_RESULT_ONLY = re.compile(
     r"(?P<name>" + "|".join(RESULT_ONLY) + r")\s*\("
 )
 
+# R4: the subset of BOOL_ALLOWLIST whose bool reports on an operation the caller
+# runs for its effect. Discarding it is the normal call, so these must not be
+# METL_NODISCARD. The queries in BOOL_ALLOWLIST (empty, contains, ...) do
+# nothing else and stay nodiscard.
+DISCARDABLE = {"erase", "destroy", "unsubscribe", "detach", "cancel", "dispatch"}
+
 DECL_BOOL = re.compile(
-    r"^\s*(?:METL_NODISCARD\s+)?"
+    r"^\s*(?P<nodiscard>METL_NODISCARD\s+)?"
     r"(?:(?:constexpr|static|inline|friend|explicit)\s+)*"
     r"bool\s+(?P<name>[A-Za-z_][A-Za-z_0-9]*)\s*\("
 )
@@ -158,6 +168,14 @@ def check_text(text, path="<memory>"):
                 ))
 
         match = DECL_BOOL.match(line)
+        if match and match.group("name") in DISCARDABLE and match.group("nodiscard"):
+            violations.append((
+                path, number, "R4",
+                f"`{match.group('name')}` is METL_NODISCARD, but its bool "
+                f"answers a question about an operation the caller runs for its "
+                f"effect ({BOOL_ALLOWLIST[match.group('name')]}). Calling it as "
+                f"a statement is correct and must not warn",
+            ))
         if match:
             name = match.group("name")
             if not name.startswith("try_") and name not in BOOL_ALLOWLIST:
@@ -185,6 +203,13 @@ template <typename T>
 constexpr parsed<T> parse_uint(span<const char> text) noexcept { return {}; }
 """
 
+CANARY_R4 = """
+class widget {
+ public:
+  METL_NODISCARD bool erase(int key) { return key == 0; }
+};
+"""
+
 CANARY_R2 = """
 class widget {
  public:
@@ -197,7 +222,7 @@ class widget {
  public:
   METL_NODISCARD bool try_push_back(int value) { return value != 0; }
   METL_NODISCARD bool empty() const { return true; }
-  METL_NODISCARD bool erase(int key) { return key == 0; }
+  bool erase(int key) { return key == 0; }
   METL_NODISCARD constexpr span<char> format_uint(span<char> out, unsigned value) noexcept;
   void log(unsigned value) {
     const auto text = format_uint(buffer, value);
@@ -223,6 +248,10 @@ def self_test():
     if "R3" not in caught:
         failures.append("R3 RESULT_ONLY canary was NOT reported -- the parse_/format_ check is dead")
 
+    caught = {rule for _, _, rule, _ in check_text(CANARY_R4, "<canary-R4>")}
+    if "R4" not in caught:
+        failures.append("R4 canary was NOT reported -- the discardable-answer check is dead")
+
     caught = {rule for _, _, rule, _ in check_text(CANARY_R2, "<canary-R2>")}
     if "R2" not in caught:
         failures.append("R2 canary was NOT reported -- the naming check is dead")
@@ -235,7 +264,7 @@ def self_test():
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
         return 1
-    print("self-test passed: both rules bite, and clean code is not flagged")
+    print("self-test passed: R2, R3 and R4 bite, and clean code is not flagged")
     return 0
 
 
@@ -273,7 +302,7 @@ def main():
         )
         return 1
 
-    print(f"API contract OK: {len(headers)} headers, rules R2 and R3 hold")
+    print(f"API contract OK: {len(headers)} headers, rules R2, R3 and R4 hold")
     return 0
 
 

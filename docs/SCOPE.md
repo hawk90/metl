@@ -325,7 +325,7 @@ claim about a **gate** going stale, and nothing was checking those.
 | [`check_size.py`](../tools/check_size.py) | `.text`, `.rodata`, and `.bss`+`.data` against per-target budgets | `--self-test` |
 | [`check_stack.py`](../tools/check_stack.py) | deepest stack frame; rejects any `dynamic` frame outright | `--self-test` |
 | [`check_instructions.py`](../tools/check_instructions.py) | instructions executed per benchmark, via cachegrind | `--self-test` |
-| [`check_api_contract.py`](../tools/check_api_contract.py) | §9 R2/R3 across every public header | `--self-test` |
+| [`check_api_contract.py`](../tools/check_api_contract.py) | §9 R2/R3/R4 across every public header | `--self-test` |
 | [`check_progress_guarantee.py`](../tools/check_progress_guarantee.py) | I3: every public header states a progress guarantee | `--self-test` |
 | [`check_source_rules.py`](../tools/check_source_rules.py) | S1: placement new is `::new`; S2: a check shaped like a memory-safety guard is `METL_HARDEN` or carries its reason | `--self-test` |
 | [`check_amalgamation.py`](../tools/check_amalgamation.py) | the shipped single header builds and runs the whole suite | `--self-test` |
@@ -489,7 +489,9 @@ its plain name: `erase(key)` ("was it present") and
 
 The full list lives in `tools/check_api_contract.py` as `BOOL_ALLOWLIST`, one
 entry per name **with its reason**, so a future reader sees a decision rather
-than an omission.
+than an omission. Its `DISCARDABLE` subset -- the answers about an operation the
+caller runs for its effect, such as `erase` and `fsm::dispatch` -- must not be
+`METL_NODISCARD`, and the checker enforces that too.
 
 ### R5 — where `try_pop` belongs
 

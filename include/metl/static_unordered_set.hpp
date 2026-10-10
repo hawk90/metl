@@ -249,7 +249,12 @@ class static_unordered_set {
   };
 
   /// @brief Construct an empty set with all slots marked empty.
-  static_unordered_set() noexcept : size_(0), hasher_(), key_equal_() { initialize_states(); }
+  /// @note noexcept exactly when default-constructing `Hash` and `KeyEqual` is.
+  static_unordered_set() noexcept(std::is_nothrow_default_constructible_v<Hash> &&
+                                  std::is_nothrow_default_constructible_v<KeyEqual>)
+      : size_(0), hasher_(), key_equal_() {
+    initialize_states();
+  }
 
   /// @brief Copy-construct, re-inserting every element from @p other.
   // Element-inserting constructors delegate to an empty constructor first.

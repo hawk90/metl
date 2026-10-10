@@ -14,6 +14,7 @@
 /// `noexcept`, and a `static_assert` enforces that.
 
 #include "metl/compiler.hpp"
+#include "metl/config.hpp"
 
 #include <type_traits>
 #include <utility>
@@ -36,8 +37,23 @@ class scope_exit {
  public:
   /// @brief Construct an armed guard owning a copy/move of the callable.
   /// @param func Callable to invoke at scope exit.
+  /// @note As P0052's `scope_exit`: `func` is moved in only when that cannot
+  ///       throw, and otherwise copied, so it is still intact if storing it
+  ///       throws. Then `func()` runs -- the cleanup the guard was built for
+  ///       still happens -- and the exception propagates. noexcept exactly
+  ///       when storing the callable is.
   template <typename G, typename = std::enable_if_t<!std::is_same_v<std::decay_t<G>, scope_exit>>>
-  explicit scope_exit(G&& func) noexcept : func_(std::forward<G>(func)), active_(true) {}
+  explicit scope_exit(G&& func) noexcept(nothrow_store<G>)
+#if !METL_NO_EXCEPTIONS
+      try
+#endif
+      : func_(std::forward<store_as<G>>(func)), active_(true) {
+  }
+#if !METL_NO_EXCEPTIONS
+  catch (...) {
+    func();
+  }
+#endif
 
   /// @brief Move constructor; transfers the armed state and disarms the source.
   scope_exit(scope_exit&& other) noexcept(std::is_nothrow_move_constructible_v<F>)
@@ -64,6 +80,15 @@ class scope_exit {
   METL_NODISCARD bool active() const noexcept { return active_; }
 
  private:
+  template <typename G>
+  static constexpr bool nothrow_store =
+      std::is_nothrow_constructible_v<F, G> || std::is_nothrow_constructible_v<F, G&>;
+
+  // What func_ is built from: the forwarded callable when that cannot throw,
+  // else an lvalue, so a throwing construction leaves `func` usable.
+  template <typename G>
+  using store_as = std::conditional_t<std::is_nothrow_constructible_v<F, G>, G, std::remove_reference_t<G>&>;
+
   F func_;
   bool active_;
 };
@@ -76,7 +101,8 @@ scope_exit(F) -> scope_exit<F>;
 /// @param func Callable to invoke at scope exit.
 /// @return An armed scope_exit owning a decayed copy of `func`.
 template <typename F>
-METL_NODISCARD auto make_scope_exit(F&& func) noexcept -> scope_exit<std::decay_t<F>> {
+METL_NODISCARD auto make_scope_exit(F&& func) noexcept(
+    std::is_nothrow_constructible_v<scope_exit<std::decay_t<F>>, F>) -> scope_exit<std::decay_t<F>> {
   return scope_exit<std::decay_t<F>>(std::forward<F>(func));
 }
 
@@ -86,7 +112,9 @@ namespace detail {
 struct scope_exit_tag {};
 
 template <typename F>
-auto operator+(scope_exit_tag, F&& func) noexcept -> scope_exit<std::decay_t<F>> {
+auto operator+(scope_exit_tag,
+               F&& func) noexcept(std::is_nothrow_constructible_v<scope_exit<std::decay_t<F>>, F>)
+    -> scope_exit<std::decay_t<F>> {
   return scope_exit<std::decay_t<F>>(std::forward<F>(func));
 }
 
