@@ -90,10 +90,13 @@ class atomic_handle {
   static constexpr bool is_always_lock_free = true;
 
   /// Constructs a cell holding the null handle.
-  atomic_handle() noexcept : value_(packed_type{0}) {}
+  /// @note constexpr, so a namespace-scope cell is constant-initialized: an
+  ///       interrupt that stores to it during start-up is not undone by a
+  ///       constructor running later.
+  constexpr atomic_handle() noexcept : value_(packed_type{0}) {}
 
   /// Constructs a cell holding `handle`.
-  explicit atomic_handle(Handle handle) noexcept : value_(handle.packed()) {}
+  constexpr explicit atomic_handle(Handle handle) noexcept : value_(handle.packed()) {}
 
   atomic_handle(const atomic_handle&) = delete;
   atomic_handle& operator=(const atomic_handle&) = delete;

@@ -56,6 +56,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   at compile time, as is one whose result would only convert to the reference
   through a temporary (`int&` for `const long&`). C++23 makes the same rule
   part of `std::function`.
+- `spsc_queue`, `spsc_byte_ring` and `atomic_handle` can now be
+  constant-initialized, and `METL_CONST_INIT` accepts them. Their constructors
+  were not `constexpr`, so a namespace-scope instance was initialized at run
+  time, in link order. An interrupt that fired during start-up -- enabled by
+  another file's global constructor -- could push into the queue before that
+  constructor ran, and the constructor then wiped what was pushed. An empty
+  queue is all zero bytes, so a global one still lands in .bss; a
+  stack-allocated `spsc_queue` zero-fills its slot storage on construction.
+  `mpmc_queue` stays run-time initialized: its slots start at different
+  sequence numbers, and doing that at compile time cost either flash or an
+  extra operation on every push and pop. Its constructor documents this.
+- `flat_map` and `flat_set` with an element that cannot be move-assigned: if
+  the last move of an insert -- the new element into the gap -- threw, the
+  container kept a dead slot inside its size. Its destructor then destroyed
+  that slot again and never destroyed the last element. The container is now
+  emptied on that throw, as it already was when the shift itself threw.
+- `flat_map::clear()` and `flat_set::clear()` -- and so their destructors and
+  copy assignment -- moved every element into a temporary before destroying
+  it. With an element whose move can throw, that called `std::terminate`
+  inside the `noexcept` `clear()`, and in every case it cost one move per
+  element. They now destroy from the back in place, moving nothing.
+- `coro::scheduler::run_once` re-checked each task of its snapshot by address
+  only. A task detached and re-attached under another poll function during the
+  round -- or a different object attached in its storage -- was then polled
+  through the snapshot's old poll function, a call through the wrong type in
+  the second case. Completion likewise removed whatever was attached at that
+  address, so a task that re-attached itself from the poll in which it
+  completed -- even with the same poll function -- was dropped. Each
+  attachment now carries its own number, and `run_once` polls and removes
+  exactly the attachments it snapshotted; anything attached mid-round, at
+  whatever address and with whatever poll function, waits for the next round.
+  Each slot grows by one `std::size_t`.
+- `static_unordered_map` and `static_unordered_set` move constructors were
+  `noexcept` whenever moving the elements and looking up keys could not throw,
+  but they also move the `Hash` and `KeyEqual`. With one whose move can throw,
+  moving the container called `std::terminate`. Those moves are now part of
+  the condition, as they already were for the move assignment.
 - The iterator of `fixed_deque`, `ring_buffer` and `fixed_queue` took the
   element's address for `->` with a raw `&`. For an element type that
   overloads unary `operator&`, `it->member` went through whatever that
