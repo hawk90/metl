@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The header already said a zero generation makes the null handle. Construction
   and `from_packed` now give every zero-generation handle the single null
   representation, so `==` and an `atomic_handle` compare-exchange agree.
+- `arena_allocator::allocate(0, alignment)` returned `nullptr` for a
+  non-power-of-two alignment instead of stopping at the `METL_HARDEN` check,
+  because the empty request returned first. `monotonic_buffer` already checked
+  the alignment whatever the size; both now do.
 
 ## [1.2.0] - 2026-10-10
 
