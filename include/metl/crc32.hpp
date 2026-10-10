@@ -71,10 +71,12 @@ METL_NODISCARD constexpr std::uint32_t crc32(span<const std::uint8_t> bytes,
 /// @param data Pointer to the first byte.
 /// @param size Number of bytes to checksum.
 /// @param params Initial and final-XOR values (default: both 0xFFFFFFFF).
-/// @return The CRC-32 checksum. constexpr and heap-free.
-METL_NODISCARD constexpr std::uint32_t crc32(const void* data,
-                                             std::size_t size,
-                                             crc32_params params = {}) noexcept {
+/// @return The CRC-32 checksum. Heap-free. Not constexpr: a `const void*` cannot be cast
+///         to bytes in a constant expression. For a compile-time CRC, pass a
+///         `span<const std::uint8_t>`.
+METL_NODISCARD inline std::uint32_t crc32(const void* data,
+                                          std::size_t size,
+                                          crc32_params params = {}) noexcept {
   return crc32(span<const std::uint8_t>(static_cast<const std::uint8_t*>(data), size), params);
 }
 

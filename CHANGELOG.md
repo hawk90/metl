@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   listener subscribed mid-dispatch hears the next event wherever it lands. The
   header states the rule, including that a `dispatch` raised from a listener
   is a new event.
+- `crc8`, `crc16` and `crc32` over a `const void*`, and `fnv1a` over a
+  `const T*`, were `constexpr` but could never be constant-evaluated: they cast
+  a `void*`, or `reinterpret_cast`, to reach the bytes. In C++17 that makes
+  the program ill-formed, no diagnostic required. They are no longer
+  `constexpr` (the CRC overloads are `inline`); the `span` and
+  `const unsigned char*` overloads remain `constexpr` for compile-time use.
 
 ## [1.2.0] - 2026-10-10
 

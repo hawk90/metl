@@ -139,11 +139,11 @@ METL_NODISCARD constexpr std::size_t fnv1a(const unsigned char* data, std::size_
 /// @param data Pointer to the first element; its object representation is hashed.
 /// @param len Number of `T` elements to hash, i.e. `len * sizeof(T)` bytes.
 /// @return The FNV-1a hash of the underlying bytes.
-/// @note Never constant-evaluable, whatever `T` is: it reinterpret_casts to bytes. For a hash in a
-///       constant expression, call the `fnv1a(const unsigned char*, std::size_t)` overload, which is.
-///       Heap-free.
+/// @note Not constexpr: it reinterpret_casts to bytes, which no constant expression may do. For a
+///       hash in a constant expression, call the `fnv1a(const unsigned char*, std::size_t)`
+///       overload, which is. Heap-free.
 template <typename T>
-METL_NODISCARD constexpr std::size_t fnv1a(const T* data, std::size_t len) noexcept {
+METL_NODISCARD std::size_t fnv1a(const T* data, std::size_t len) noexcept {
   std::size_t hash = detail::active_fnv::offset;
   const unsigned char* bytes = reinterpret_cast<const unsigned char*>(data);
   // `len` counts elements: hashing only `len` bytes would ignore all

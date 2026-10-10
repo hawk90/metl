@@ -361,6 +361,40 @@ if(METL_BUILD_TESTS)
               --target metl_header_self_contained --config $<CONFIG>)
     set_tests_properties(metl_header_self_contained PROPERTIES LABELS "metl" TIMEOUT 300)
 
+    # (c) One-definition linkage. The TUs in (a) are compiled, never linked, so
+    # a non-template function DEFINED in a header without `inline` -- a strong
+    # symbol in every TU that includes it -- passed. Two TUs that each include
+    # every public header, linked into one program, fail with a duplicate
+    # symbol instead. Building the target is the check.
+    set(_odr_includes "")
+    foreach(_h IN LISTS _metl_public_headers)
+      string(APPEND _odr_includes "#include <${_h}>\n")
+    endforeach()
+    foreach(_tu IN ITEMS a b)
+      set(_content "${_odr_includes}")
+      if(_tu STREQUAL "b")
+        string(APPEND _content "int main() { return 0; }\n")
+      endif()
+      set(_gen ${_selfcontain_dir}/odr_link_${_tu}.cpp)
+      set(_existing "")
+      if(EXISTS ${_gen})
+        file(READ ${_gen} _existing)
+      endif()
+      if(NOT _existing STREQUAL _content)
+        file(WRITE ${_gen} "${_content}")
+      endif()
+    endforeach()
+    add_executable(metl_header_odr_link
+                   ${_selfcontain_dir}/odr_link_a.cpp ${_selfcontain_dir}/odr_link_b.cpp)
+    target_link_libraries(metl_header_odr_link PRIVATE metl::metl)
+    target_compile_features(metl_header_odr_link PRIVATE cxx_std_17)
+    set_target_properties(metl_header_odr_link PROPERTIES METL_KIND header_check)
+    add_test(
+      NAME metl_header_odr_link
+      COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
+              --target metl_header_odr_link --config $<CONFIG>)
+    set_tests_properties(metl_header_odr_link PROPERTIES LABELS "metl" TIMEOUT 300)
+
     # (b) Umbrella completeness.
     add_test(
       NAME metl_umbrella_complete
