@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `versioned_handle{index, 0}` was not valid, yet compared unequal to the null
+  handle `versioned_handle{}`, so `h == handle{}` and `!h.valid()` disagreed.
+  The header already said a zero generation makes the null handle. Construction
+  and `from_packed` now give every zero-generation handle the single null
+  representation, so `==` and an `atomic_handle` compare-exchange agree.
+
 ## [1.2.0] - 2026-10-10
 
 **Highlights.** A correctness release. An audit of every header against its
