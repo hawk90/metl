@@ -262,7 +262,9 @@ int main() {
     CHECK_EQ(victim.polls_a, 0);
     (void)sched.run_once();
     CHECK_EQ(victim.polls_a, 1);
+    g_victim = nullptr;
   }
+  g_sched = nullptr;  // every scheduler above was a local of its own block
 
   return metl_test::exit_code();
 }
