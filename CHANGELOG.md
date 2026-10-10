@@ -77,6 +77,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it. With an element whose move can throw, that called `std::terminate`
   inside the `noexcept` `clear()`, and in every case it cost one move per
   element. They now destroy from the back in place, moving nothing.
+- `coro::scheduler::run_once` re-checked each task of its snapshot by address
+  only. A task detached and re-attached under another poll function during the
+  round -- or a different object attached in its storage -- was then polled
+  through the snapshot's old poll function, a call through the wrong type in
+  the second case. Completion likewise removed whatever was attached at that
+  address, so a task that re-attached itself from the poll in which it
+  completed -- even with the same poll function -- was dropped. Each
+  attachment now carries its own number, and `run_once` polls and removes
+  exactly the attachments it snapshotted; anything attached mid-round, at
+  whatever address and with whatever poll function, waits for the next round.
+  Each slot grows by one `std::size_t`.
 
 ## [1.2.0] - 2026-10-10
 
