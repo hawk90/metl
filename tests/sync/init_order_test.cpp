@@ -15,9 +15,6 @@ int main() {
   CHECK(g_spsc.try_pop(value));
   CHECK_EQ(value, 42);
   CHECK_EQ(g_ring.readable_size(), std::size_t{3});
-  value = 0;
-  CHECK(g_mpmc.try_pop(value));
-  CHECK_EQ(value, 7);
   CHECK(g_handle.load() == init_order_handle(3, 5));
   return metl_test::exit_code();
 }

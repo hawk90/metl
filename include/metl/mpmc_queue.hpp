@@ -110,12 +110,18 @@ class mpmc_queue {
   using value_type = T;
   using size_type = std::size_t;
 
-  /// @note constexpr, so a namespace-scope queue is constant-initialized and an
-  ///       interrupt that fires during start-up cannot have its pushes wiped by a
-  ///       constructor running later (see `spsc_queue`). The empty queue is all
-  ///       zero bytes, so a global one lands in .bss rather than in a .data image
-  ///       the size of the queue.
-  constexpr mpmc_queue() noexcept : cells_{}, enqueue_pos_(0), dequeue_pos_(0) {}
+  /// @note Not constexpr, unlike `spsc_queue`: each slot starts at its own
+  ///       sequence number, and writing those at compile time costs either code
+  ///       and a .data image proportional to `Capacity`, or an extra operation on
+  ///       every push and pop. A namespace-scope queue is therefore initialized at
+  ///       run time, in link order: construct it before enabling any interrupt
+  ///       that uses it, or share `spsc_queue` with the ISR instead.
+  mpmc_queue() noexcept : enqueue_pos_(0), dequeue_pos_(0) {
+    // Slot i starts "ready for the producer whose ticket is i".
+    for (size_type i = 0; i < Capacity; ++i) {
+      cells_[i].sequence.store(i, std::memory_order_relaxed);
+    }
+  }
 
   /// @note Not thread-safe: destroys whatever is left and assumes no concurrent
   ///       access, exactly like `spsc_queue`'s destructor.
@@ -177,7 +183,7 @@ class mpmc_queue {
     for (;;) {
       target = &cells_[pos & mask];
       const size_type sequence = target->sequence.load(std::memory_order_acquire);
-      const int difference = detail::compare_tickets(sequence, lap(pos) + 1);
+      const int difference = detail::compare_tickets(sequence, pos + 1);
 
       if (difference == 0) {
         if (dequeue_pos_.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
@@ -195,7 +201,7 @@ class mpmc_queue {
     out = std::move(*element);
     element->~T();
     // Release: hands the slot back to the producer whose ticket is pos + Capacity.
-    target->sequence.store(lap(pos) + Capacity, std::memory_order_release);
+    target->sequence.store(pos + Capacity, std::memory_order_release);
     return true;
   }
 
@@ -234,7 +240,7 @@ class mpmc_queue {
       const size_type sequence = target->sequence.load(std::memory_order_acquire);
       // sequence and pos both wrap and only their distance is meaningful; see
       // detail::compare_tickets for why that is not a signed subtraction.
-      const int difference = detail::compare_tickets(sequence, lap(pos));
+      const int difference = detail::compare_tickets(sequence, pos);
 
       if (difference == 0) {
         // The slot is waiting for exactly this ticket; claim the ticket.
@@ -254,21 +260,10 @@ class mpmc_queue {
     ::new (target->storage.addr()) T(std::forward<Args>(args)...);
     // Release: publishes the element, and hands the slot to the consumer whose
     // ticket is pos + 1.
-    target->sequence.store(lap(pos) + 1, std::memory_order_release);
+    target->sequence.store(pos + 1, std::memory_order_release);
     return true;
   }
   static constexpr size_type mask = Capacity - 1;
-
-  // A cell stores its sequence number minus its own index, so every cell of an
-  // empty queue holds 0 ("ready for the producer whose ticket is my index") and
-  // the queue starts as zero bytes. For the cell of ticket `pos` the index is
-  // pos & mask, so sequence - pos == stored - (pos - index) == stored - lap(pos):
-  // the same modular distance compare_tickets sees, and the stores translate the
-  // same way (pos + 1 -> lap(pos) + 1, pos + Capacity -> lap(pos) + Capacity).
-  // Storing the sequence itself would need a different initial value per cell:
-  // a constexpr constructor writing one per cell is unrolled by GCC into code
-  // and a .data image proportional to Capacity.
-  static constexpr size_type lap(size_type pos) noexcept { return pos & ~mask; }
 
   // The sequence number shares a line with the slot it describes on purpose: a
   // producer that claims a slot touches both, so splitting them would double the

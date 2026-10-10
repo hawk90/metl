@@ -265,41 +265,6 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
         "new": "    const size_type next_offset = previous_offset + total_bytes + 1;",
     },
     {
-        "name": "mpmc_lap_keeps_index",
-        "file": "include/metl/mpmc_queue.hpp",
-        "why": "A cell stores its sequence minus its index, so tickets are compared "
-               "against pos's lap. Comparing against pos itself reads every cell "
-               "but the first as still full on an empty queue.",
-        "kills": "ctest:mpmc_queue_test",
-        "old": """  static constexpr size_type lap(size_type pos) noexcept { return pos & ~mask; }
-""",
-        "new": """  static constexpr size_type lap(size_type pos) noexcept { return pos; }
-""",
-    },
-    {
-        "name": "mpmc_publish_absolute_sequence",
-        "file": "include/metl/mpmc_queue.hpp",
-        "why": "The producer publishes an absolute sequence into a cell that "
-               "stores it relative to its index; a consumer of any cell but the "
-               "first never sees its ticket and the queue reads empty.",
-        "kills": "ctest:mpmc_queue_test",
-        "old": """    target->sequence.store(lap(pos) + 1, std::memory_order_release);
-""",
-        "new": """    target->sequence.store(pos + 1, std::memory_order_release);
-""",
-    },
-    {
-        "name": "mpmc_release_absolute_sequence",
-        "file": "include/metl/mpmc_queue.hpp",
-        "why": "The consumer hands the slot back with an absolute sequence; the "
-               "next lap's producer of any cell but the first finds it full.",
-        "kills": "ctest:mpmc_queue_test",
-        "old": """    target->sequence.store(lap(pos) + Capacity, std::memory_order_release);
-""",
-        "new": """    target->sequence.store(pos + Capacity, std::memory_order_release);
-""",
-    },
-    {
         "name": "spsc_byte_ring_clear_keeps_head",
         "file": "include/metl/spsc_byte_ring.hpp",
         "why": "clear() resets only the write index; after any consume the "

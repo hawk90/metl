@@ -8,11 +8,9 @@
 #include <metl/atomic_handle.hpp>
 #include <metl/attributes.hpp>
 #include <metl/handle_pool.hpp>
-#include <metl/mpmc_queue.hpp>
 #include <metl/spsc_byte_ring.hpp>
 #include <metl/spsc_queue.hpp>
 
 METL_CONST_INIT metl::spsc_queue<int, 8> g_spsc;
 METL_CONST_INIT metl::spsc_byte_ring<16> g_ring;
-METL_CONST_INIT metl::mpmc_queue<int, 8> g_mpmc;
 METL_CONST_INIT metl::atomic_handle<init_order_handle> g_handle;
