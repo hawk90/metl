@@ -47,7 +47,7 @@ class scope_exit {
 #if !METL_NO_EXCEPTIONS
       try
 #endif
-      : func_(store_argument<G>(func)), active_(true) {
+      : func_(std::forward<store_as<G>>(func)), active_(true) {
   }
 #if !METL_NO_EXCEPTIONS
   catch (...) {
@@ -84,16 +84,10 @@ class scope_exit {
   static constexpr bool nothrow_store =
       std::is_nothrow_constructible_v<F, G> || std::is_nothrow_constructible_v<F, G&>;
 
-  // The argument to build func_ from: the forwarded callable when that cannot
-  // throw, else an lvalue, so a throwing construction leaves `func` usable.
+  // What func_ is built from: the forwarded callable when that cannot throw,
+  // else an lvalue, so a throwing construction leaves `func` usable.
   template <typename G>
-  static constexpr decltype(auto) store_argument(std::remove_reference_t<G>& func) noexcept {
-    if constexpr (std::is_nothrow_constructible_v<F, G>) {
-      return static_cast<G&&>(func);
-    } else {
-      return static_cast<std::remove_reference_t<G>&>(func);
-    }
-  }
+  using store_as = std::conditional_t<std::is_nothrow_constructible_v<F, G>, G, std::remove_reference_t<G>&>;
 
   F func_;
   bool active_;
