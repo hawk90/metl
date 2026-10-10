@@ -213,7 +213,8 @@ struct irq_lock {
 template <typename Lock>
 class scoped_lock {
  public:
-  scoped_lock() noexcept : state_(Lock::lock()) {}
+  /// @note noexcept exactly when `Lock::lock()` is.
+  scoped_lock() noexcept(noexcept(Lock::lock())) : state_(Lock::lock()) {}
   ~scoped_lock() { Lock::unlock(state_); }
 
   scoped_lock(const scoped_lock&) = delete;
