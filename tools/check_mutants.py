@@ -417,6 +417,230 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
       METL_HARDEN(index < bucket_count);""",
         "new": """      // hardening levels; without this, slot_value(npos) would be a wild read.""",
     },
+    # ---- the rest of the METL_HARDEN floor (#241) ------------------------------
+    {
+        "name": "atomic_ref_alignment_harden_removed",
+        "file": "include/metl/atomic_ref.hpp",
+        "why": "an object aligned for T but not for std::atomic<T> is accessed "
+               "by a misaligned atomic instruction.",
+        "kills": "ctest:harden_floor_memory",
+        "old": "    METL_HARDEN((reinterpret_cast<std::uintptr_t>(ptr_) % required_alignment) == 0u);",
+        "new": "",
+    },
+    {
+        "name": "fixed_function_noexcept_call_empty_harden_removed",
+        "file": "include/metl/fixed_function.hpp",
+        "why": "calling an empty noexcept fixed_function jumps through a null "
+               "ops table.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """  fixed_function& operator=(F&& function) {
+    assign(std::forward<F>(function));
+    return *this;
+  }
+
+  /// @brief Invokes the stored callable.
+  /// @pre A target must be stored (has_value() is true); else asserts.
+  R operator()(Args... args) const noexcept {
+    METL_HARDEN(this->ops_ != nullptr);""",
+        "new": """  fixed_function& operator=(F&& function) {
+    assign(std::forward<F>(function));
+    return *this;
+  }
+
+  /// @brief Invokes the stored callable.
+  /// @pre A target must be stored (has_value() is true); else asserts.
+  R operator()(Args... args) const noexcept {""",
+    },
+    {
+        "name": "fixed_any_invocable_noexcept_call_empty_harden_removed",
+        "file": "include/metl/fixed_function.hpp",
+        "why": "calling an empty noexcept fixed_any_invocable jumps through a "
+               "null ops table.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """  fixed_any_invocable& operator=(F&& function) {
+    assign(std::forward<F>(function));
+    return *this;
+  }
+
+  /// @brief Invokes the stored callable.
+  /// @pre A target must be stored (has_value() is true); else asserts.
+  R operator()(Args... args) const noexcept {
+    METL_HARDEN(this->ops_ != nullptr);""",
+        "new": """  fixed_any_invocable& operator=(F&& function) {
+    assign(std::forward<F>(function));
+    return *this;
+  }
+
+  /// @brief Invokes the stored callable.
+  /// @pre A target must be stored (has_value() is true); else asserts.
+  R operator()(Args... args) const noexcept {""",
+    },
+    {
+        "name": "function_ref_call_empty_harden_removed",
+        "file": "include/metl/function_ref.hpp",
+        "why": "calling an empty function_ref jumps to address 0.",
+        "kills": "ctest:harden_floor_memory",
+        "old": "    METL_HARDEN(callback_ != nullptr);",
+        "new": "",
+    },
+    {
+        "name": "parse_int_harden_removed",
+        "file": "include/metl/parse.hpp",
+        "why": "the asserting parse_int returns a result built from the error.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """  const expected<parsed<T>, parse_error> result = try_parse_int<T>(text);
+  METL_HARDEN(result.has_value());""",
+        "new": "  const expected<parsed<T>, parse_error> result = try_parse_int<T>(text);",
+    },
+    {
+        "name": "parse_hex_harden_removed",
+        "file": "include/metl/parse.hpp",
+        "why": "the asserting parse_hex returns a result built from the error.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """  const expected<parsed<T>, parse_error> result = try_parse_hex<T>(text);
+  METL_HARDEN(result.has_value());""",
+        "new": "  const expected<parsed<T>, parse_error> result = try_parse_hex<T>(text);",
+    },
+    {
+        "name": "span_pointer_pair_reversed_harden_removed",
+        "file": "include/metl/span.hpp",
+        "why": "a reversed pointer pair makes a span whose size() wraps to "
+               "nearly SIZE_MAX.",
+        "kills": "ctest:harden_floor_memory",
+        "old": "    METL_HARDEN(last >= first);",
+        "new": "",
+    },
+    {
+        "name": "span_pointer_pair_extent_harden_removed",
+        "file": "include/metl/span.hpp",
+        "why": "a fixed extent over a shorter pointer pair reports more "
+               "elements than exist.",
+        "kills": "ctest:harden_floor_memory",
+        "old": "    METL_HARDEN(Extent == dynamic_extent || static_cast<size_type>(last - first) == Extent);",
+        "new": "",
+    },
+    {
+        "name": "span_container_extent_harden_removed",
+        "file": "include/metl/span.hpp",
+        "why": "a fixed extent over a smaller container reports more elements "
+               "than exist.",
+        "kills": "ctest:harden_floor_memory",
+        "old": "    METL_HARDEN(Extent == dynamic_extent || container.size() == Extent);",
+        "new": "",
+    },
+    {
+        "name": "span_converting_extent_harden_removed",
+        "file": "include/metl/span.hpp",
+        "why": "a fixed extent over a shorter span reports more elements than "
+               "exist.",
+        "kills": "ctest:harden_floor_memory",
+        "old": "    METL_HARDEN(Extent == dynamic_extent || other.size() == Extent);",
+        "new": "",
+    },
+    {
+        "name": "span_subspan_offset_harden_removed",
+        "file": "include/metl/span.hpp",
+        "why": "subspan<Offset>() past the end views memory beyond the "
+               "storage.",
+        "kills": "ctest:harden_floor_memory",
+        "old": "    METL_HARDEN(Offset <= size());",
+        "new": "",
+    },
+    {
+        "name": "span_subspan_count_harden_removed",
+        "file": "include/metl/span.hpp",
+        "why": "subspan<Offset, Count>() longer than what remains views memory "
+               "beyond the storage.",
+        "kills": "ctest:harden_floor_memory",
+        "old": "    METL_HARDEN(actual_count <= (size() - Offset));",
+        "new": "",
+    },
+    {
+        "name": "span_last_count_harden_removed",
+        "file": "include/metl/span.hpp",
+        "why": "last<Count>() longer than the span starts before the storage.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """"last<Count>(): Count must not exceed Extent");
+    METL_HARDEN(Count <= size());""",
+        "new": "\"last<Count>(): Count must not exceed Extent\");",
+    },
+    {
+        "name": "fixed_vector_try_emplace_pos_harden_removed",
+        "file": "include/metl/fixed_vector.hpp",
+        "why": "try_emplace at a position past end() on a full vector returns "
+               "end() instead of reporting the bad position.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """  METL_NODISCARD iterator try_emplace(const_iterator pos, Args&&... args) {
+    METL_HARDEN(pos >= begin() && pos <= end());""",
+        "new": "  METL_NODISCARD iterator try_emplace(const_iterator pos, Args&&... args) {",
+    },
+    {
+        "name": "fixed_vector_try_insert_count_pos_harden_removed",
+        "file": "include/metl/fixed_vector.hpp",
+        "why": "the same for try_insert(pos, n, value).",
+        "kills": "ctest:harden_floor_memory",
+        "old": """  METL_NODISCARD iterator try_insert(const_iterator pos, size_type n, const T& value) {
+    METL_HARDEN(pos >= begin() && pos <= end());""",
+        "new": "  METL_NODISCARD iterator try_insert(const_iterator pos, size_type n, const T& value) {",
+    },
+    {
+        "name": "fixed_vector_try_insert_range_pos_harden_removed",
+        "file": "include/metl/fixed_vector.hpp",
+        "why": "the same for try_insert(pos, first, last).",
+        "kills": "ctest:harden_floor_memory",
+        "old": """        "before anything is written, so that a failure leaves contents unchanged");
+    METL_HARDEN(pos >= begin() && pos <= end());""",
+        "new": "        \"before anything is written, so that a failure leaves contents unchanged\");",
+    },
+    {
+        "name": "fixed_vector_insert_count_pos_harden_removed",
+        "file": "include/metl/fixed_vector.hpp",
+        "why": "insert(pos, 0, value) past end() returns an iterator outside "
+               "the vector.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """  iterator insert(const_iterator pos, size_type n, const T& value) {
+    METL_HARDEN(pos >= begin() && pos <= end());""",
+        "new": "  iterator insert(const_iterator pos, size_type n, const T& value) {",
+    },
+    {
+        "name": "fixed_vector_insert_range_pos_harden_removed",
+        "file": "include/metl/fixed_vector.hpp",
+        "why": "insert(pos, first, first) past end() returns an iterator "
+               "outside the vector.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """  iterator insert(const_iterator pos, It first, It last) {
+    METL_HARDEN(pos >= begin() && pos <= end());""",
+        "new": "  iterator insert(const_iterator pos, It first, It last) {",
+    },
+    {
+        "name": "fixed_priority_queue_pop_empty_harden_removed",
+        "file": "include/metl/fixed_priority_queue.hpp",
+        "why": "pop on an empty queue moves from index SIZE_MAX into slot 0 "
+               "before the vector's own check fires.",
+        "kills": "ctest:harden_floor_memory",
+        "old": "    METL_HARDEN(!storage_.empty());",
+        "new": "",
+    },
+    {
+        "name": "unordered_map_place_full_harden_removed",
+        "file": "include/metl/static_unordered_map.hpp",
+        "why": "a new key into a table with every bucket taken is constructed "
+               "at slot npos.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """    // wild out-of-bounds construct_at(npos, ...).
+    METL_HARDEN(index < bucket_count);""",
+        "new": "    // wild out-of-bounds construct_at(npos, ...).",
+    },
+    {
+        "name": "unordered_set_place_full_harden_removed",
+        "file": "include/metl/static_unordered_set.hpp",
+        "why": "a new key into a table with every bucket taken is constructed "
+               "at slot npos.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """    // a user-disabled METL_ASSERT.
+    METL_HARDEN(index < bucket_count);""",
+        "new": "    // a user-disabled METL_ASSERT.",
+    },
     # ---- metl::expected (#202) ------------------------------------------------
     {
         "name": "expected_move_assign_self_check_inverted",

@@ -22,11 +22,15 @@
 
 #include "metl_check.hpp"
 
+#include <atomic>
 #include <csetjmp>
 #include <cstddef>
+#include <cstdint>
+#include <new>
 
 #include <metl/arena_allocator.hpp>
 #include <metl/assert.hpp>
+#include <metl/atomic_ref.hpp>
 #include <metl/delegate.hpp>
 #include <metl/fixed_deque.hpp>
 #include <metl/fixed_function.hpp>
@@ -47,6 +51,7 @@
 #include <metl/spsc_byte_ring.hpp>
 #include <metl/static_message_queue.hpp>
 #include <metl/static_unordered_map.hpp>
+#include <metl/static_unordered_set.hpp>
 
 namespace {
 
@@ -76,6 +81,31 @@ int widen(long x) {
 }
 
 struct counted final : metl::intrusive_ref_counter<counted> {};
+
+// Counts move assignments, so a test can see one that should never have run.
+struct counts_assignments {
+  static int assignments;
+  int value = 0;
+
+  counts_assignments() = default;
+  counts_assignments(int v) : value(v) {}
+  counts_assignments(const counts_assignments&) = default;
+  counts_assignments(counts_assignments&&) noexcept = default;
+  counts_assignments& operator=(const counts_assignments&) = default;
+  counts_assignments& operator=(counts_assignments&& other) noexcept {
+    ++assignments;
+    value = other.value;
+    return *this;
+  }
+  bool operator<(const counts_assignments& other) const noexcept { return value < other.value; }
+};
+int counts_assignments::assignments = 0;
+
+// Aligned for itself, but std::atomic of it wants 8 on the hosts this runs on.
+struct two_words {
+  std::uint32_t low;
+  std::uint32_t high;
+};
 
 }  // namespace
 
@@ -200,6 +230,21 @@ int main() {
     CHECK(guarded_against([&] { v.insert(v.begin() + 2, 1u, 9); }));
     CHECK(guarded_against([&] { v.insert(v.begin() + 2, source, source + 2); }));
     CHECK_EQ(v.size(), 1u);
+
+    // Neither delegates to emplace for nothing to insert, so only their own
+    // check sees the position.
+    CHECK(guarded_against([&] { (void)v.insert(v.begin() + 2, 0u, 9); }));
+    CHECK(guarded_against([&] { (void)v.insert(v.begin() + 2, source, source); }));
+
+    // On a full vector the try_ forms return end() before reaching emplace, so
+    // only their own check sees the position.
+    metl::fixed_vector<int, 2> full;
+    full.push_back(1);
+    full.push_back(2);
+    CHECK(guarded_against([&] { (void)full.try_emplace(full.begin() + 3, 9); }));
+    CHECK(guarded_against([&] { (void)full.try_insert(full.begin() + 3, 1u, 9); }));
+    CHECK(guarded_against([&] { (void)full.try_insert(full.begin() + 3, source, source + 2); }));
+    CHECK_EQ(full.size(), 2u);
   }
 
   // fixed_priority_queue: pop on an empty queue underflows the last index.
@@ -209,6 +254,13 @@ int main() {
     metl::fixed_priority_queue<int, 4> queue;
     CHECK(guarded_against([&] { queue.pop(); }));
     CHECK(queue.empty());
+
+    // The vector's check firing late is not enough: by then the move from
+    // index SIZE_MAX into slot 0 has run. Count it.
+    metl::fixed_priority_queue<counts_assignments, 4> counted_queue;
+    counts_assignments::assignments = 0;
+    CHECK(guarded_against([&] { counted_queue.pop(); }));
+    CHECK_EQ(counts_assignments::assignments, 0);
   }
 
   // static_unordered_map: insert_or_assign of a new key into a full map would
@@ -219,6 +271,27 @@ int main() {
     map.emplace(2, 20);
     CHECK(guarded_against([&] { (void)map.insert_or_assign(3, 30); }));
     CHECK_EQ(map.size(), 2u);
+  }
+
+  // static_unordered_map / static_unordered_set: at this level nothing stops
+  // an insert past Capacity, which is safe while an empty bucket remains. Once
+  // every bucket is taken, the next new key has nowhere to go: npos.
+  {
+    using map_type = metl::static_unordered_map<int, int, 2>;
+    map_type map;
+    for (int key = 0; key < static_cast<int>(map_type::bucket_count); ++key) {
+      CHECK(!guarded_against([&] { (void)map.emplace(key, key); }));
+    }
+    CHECK(guarded_against([&] { (void)map.emplace(-1, 0); }));
+    CHECK_EQ(map.size(), map_type::bucket_count);
+
+    using set_type = metl::static_unordered_set<int, 2>;
+    set_type set;
+    for (int key = 0; key < static_cast<int>(set_type::bucket_count); ++key) {
+      CHECK(!guarded_against([&] { (void)set.emplace(key); }));
+    }
+    CHECK(guarded_against([&] { (void)set.emplace(-1); }));
+    CHECK_EQ(set.size(), set_type::bucket_count);
   }
 
   // flat_map / flat_set: a duplicate key would be stored twice.
@@ -287,6 +360,22 @@ int main() {
     CHECK(guarded_against([&] { (void)all.first(9); }));
     CHECK(guarded_against([&] { (void)all.last(9); }));
     CHECK(guarded_against([&] { (void)all.first<9>(); }));
+    CHECK(guarded_against([&] { (void)all.last<9>(); }));
+    CHECK(guarded_against([&] { (void)all.subspan<9>(); }));
+    CHECK(guarded_against([&] { (void)all.subspan<1, 9>(); }));
+
+    // Pointer pairs: reversed, and a fixed extent over the wrong length.
+    CHECK(guarded_against([&] { (void)metl::span<int>(data + 2, data); }));
+    CHECK(guarded_against([&] { (void)metl::span<int, 4>(data, data + 2); }));
+    CHECK(!guarded_against([&] { (void)metl::span<int, 4>(data, data + 4); }));
+
+    // A fixed extent over a container, or a span, of the wrong size.
+    metl::fixed_vector<int, 4> two;
+    two.push_back(1);
+    two.push_back(2);
+    CHECK(guarded_against([&] { (void)metl::span<int, 4>(two); }));
+    CHECK(guarded_against([&] { (void)metl::span<int, 4>(metl::span<int>(data, 2)); }));
+    CHECK(!guarded_against([&] { (void)metl::span<int, 4>(all); }));
   }
 
   // fixed_string: strlen of a null pointer.
@@ -313,6 +402,20 @@ int main() {
     CHECK(guarded_against([&] { (void)empty_invocable(1); }));
     metl::delegate<int(long)> empty_delegate;
     CHECK(guarded_against([&] { (void)empty_delegate(1); }));
+    metl::fixed_function<int(long) noexcept> empty_noexcept_function;
+    CHECK(guarded_against([&] { (void)empty_noexcept_function(1); }));
+    metl::fixed_any_invocable<int(long) noexcept> empty_noexcept_invocable;
+    CHECK(guarded_against([&] { (void)empty_noexcept_invocable(1); }));
+    metl::function_ref<int(long)> empty_ref;
+    CHECK(guarded_against([&] { (void)empty_ref(1); }));
+
+    // try_assign of a null pointer of the exact signature.
+    metl::fixed_function<int(int)> assigned;
+    CHECK(guarded_against([&] { (void)assigned.try_assign(null_exact); }));
+    CHECK(!assigned);
+    metl::fixed_any_invocable<int(int)> assigned_invocable;
+    CHECK(guarded_against([&] { (void)assigned_invocable.try_assign(null_exact); }));
+    CHECK(!assigned_invocable);
 
     metl::fixed_function<int(long)> bound(&widen);
     CHECK(!guarded_against([&] { (void)bound(1); }));
@@ -328,6 +431,20 @@ int main() {
   {
     const char text[] = "x";
     CHECK(guarded_against([&] { (void)metl::parse_uint<unsigned>(metl::span<const char>(text, 1)); }));
+    CHECK(guarded_against([&] { (void)metl::parse_int<int>(metl::span<const char>(text, 1)); }));
+    CHECK(guarded_against([&] { (void)metl::parse_hex<unsigned>(metl::span<const char>(text, 1)); }));
+  }
+
+  // atomic_ref: an object aligned for T but not for std::atomic<T> would be
+  // accessed by a misaligned atomic instruction -- a fault, or a torn access.
+  {
+    if constexpr (alignof(std::atomic<two_words>) > alignof(two_words)) {
+      alignas(std::atomic<two_words>) unsigned char buffer[2 * sizeof(two_words)];
+      two_words* misaligned = ::new (static_cast<void*>(buffer + alignof(two_words))) two_words{};
+      CHECK(guarded_against([&] { metl::atomic_ref<two_words> ref(*misaligned); }));
+      two_words* aligned = ::new (static_cast<void*>(buffer)) two_words{};
+      CHECK(!guarded_against([&] { metl::atomic_ref<two_words> ref(*aligned); }));
+    }
   }
 
   // mmio: a misaligned register address hard-faults on Cortex-M0.

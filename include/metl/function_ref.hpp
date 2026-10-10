@@ -118,8 +118,9 @@ class function_ref<R(Args...)> {
 
   using callback_type = R (*)(storage, Args&&...);
 
+  // No null check: the pointer constructor, the only one that installs this
+  // thunk, refuses a null pointer.
   static R invoke_function(storage bound, Args&&... args) {
-    METL_HARDEN(bound.function != nullptr);
     return bound.function(std::forward<Args>(args)...);
   }
 
