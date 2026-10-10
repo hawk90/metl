@@ -93,6 +93,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   but they also move the `Hash` and `KeyEqual`. With one whose move can throw,
   moving the container called `std::terminate`. Those moves are now part of
   the condition, as they already were for the move assignment.
+- The iterator of `fixed_deque`, `ring_buffer` and `fixed_queue` took the
+  element's address for `->` with a raw `&`. For an element type that
+  overloads unary `operator&`, `it->member` went through whatever that
+  returned; with a deleted `operator&` it did not compile. It now uses
+  `addressof`, as every other container does.
 
 ## [1.2.0] - 2026-10-10
 
