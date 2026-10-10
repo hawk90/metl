@@ -54,8 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   value (with libc++; libstdc++ already refused it). The call then returned a
   reference to a temporary that died inside it. Such a callable is now refused
   at compile time, as is one whose result would only convert to the reference
-  through a temporary (`int&` for `const long&`). C++23 makes the same rule
-  part of `std::function`.
+  through a temporary (`int&` for `const long&`). A result that converts to
+  the reference without one -- `std::reference_wrapper<T>` for `T&`, or a
+  class whose conversion function returns `T&` -- stays accepted. C++23 makes
+  the same rule part of `std::function`; where the compiler provides it
+  (GCC 13+, Clang), its own answer is used.
 - `spsc_queue`, `spsc_byte_ring` and `atomic_handle` can now be
   constant-initialized, and `METL_CONST_INIT` accepts them. Their constructors
   were not `constexpr`, so a namespace-scope instance was initialized at run

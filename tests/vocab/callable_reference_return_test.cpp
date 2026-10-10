@@ -6,8 +6,10 @@
 // other; C++23 settles it with reference_converts_from_temporary.
 #include "metl_check.hpp"
 
+#include <functional>
 #include <type_traits>
 
+#include <metl/compiler.hpp>
 #include <metl/fixed_function.hpp>
 #include <metl/function_ref.hpp>
 
@@ -38,6 +40,30 @@ struct by_rvalue_reference_t {
   base&& operator()() const { return static_cast<base&&>(g_base); }
 };
 
+// A class result whose conversion function returns an lvalue reference binds
+// the returned reference to that lvalue: no temporary (#284).
+struct int_handle {
+  operator int&() const { return g_int; }
+};
+struct const_int_handle {
+  operator const int&() const { return g_int; }
+};
+struct by_reference_wrapper_t {
+  std::reference_wrapper<int> operator()() const { return std::ref(g_int); }
+};
+struct by_handle_t {
+  int_handle operator()() const { return {}; }
+};
+struct by_const_handle_t {
+  const_int_handle operator()() const { return {}; }
+};
+struct by_value_handle_t {
+  struct to_long {
+    operator long() const { return 1; }
+  };
+  to_long operator()() const { return {}; }
+};
+
 template <typename Wrapper, typename Callable>
 constexpr bool accepts = std::is_constructible_v<Wrapper, Callable&>;
 
@@ -55,6 +81,22 @@ static_assert(accepts<metl::function_ref<const base&()>, by_derived_reference_t>
 static_assert(accepts<metl::fixed_function<base&()>, by_reference_t>, "lvalue result");
 static_assert(accepts<metl::fixed_any_invocable<const base&()>, by_derived_reference_t>, "derived to base");
 static_assert(accepts<metl::function_ref<base && ()>, by_rvalue_reference_t>, "xvalue result");
+static_assert(accepts<metl::function_ref<int&()>, by_reference_wrapper_t>, "reference_wrapper to T&");
+static_assert(accepts<metl::fixed_function<int&()>, by_reference_wrapper_t>, "reference_wrapper to T&");
+static_assert(accepts<metl::fixed_any_invocable<const int&()>, by_reference_wrapper_t>, "reference_wrapper");
+static_assert(accepts<metl::function_ref<int&()>, by_handle_t>, "operator int& to int&");
+static_assert(accepts<metl::fixed_function<const int&()>, by_handle_t>, "operator int& to const int&");
+#if METL_HAS_BUILTIN(__reference_converts_from_temporary) ||   \
+    METL_HAS_BUILTIN(__reference_constructs_from_temporary) || \
+    METL_HAS_BUILTIN(__reference_binds_to_temporary)
+// Only the compiler can see that `operator const int&` yields an lvalue; the
+// portable fallback cannot tell it from `operator int`, and refuses both.
+static_assert(accepts<metl::function_ref<const int&()>, by_const_handle_t>, "operator const int&");
+#endif
+// A conversion that yields a value still needs a temporary.
+static_assert(!accepts<metl::function_ref<const long&()>, by_value_handle_t>, "operator long to const long&");
+static_assert(!accepts<metl::fixed_function<const long&()>, by_reference_wrapper_t>, "int& to const long&");
+
 // A non-reference return type is unaffected: the callable's prvalue is the result.
 static_assert(accepts<metl::function_ref<base()>, by_value_t>, "by value stays accepted");
 static_assert(accepts<metl::fixed_function<base()>, by_value_t>, "by value stays accepted");
@@ -70,5 +112,10 @@ int main() {
   CHECK(&stored() == &g_base);
   metl::fixed_any_invocable<const base&()> owned = by_derived_reference_t{};
   CHECK(&owned() == static_cast<const base*>(&g_derived));
+  by_reference_wrapper_t wrapper;
+  metl::function_ref<int&()> wrapped = wrapper;
+  CHECK(&wrapped() == &g_int);
+  metl::fixed_function<const int&()> handled = by_handle_t{};
+  CHECK(&handled() == &g_int);
   return metl_test::exit_code();
 }
