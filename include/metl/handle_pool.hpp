@@ -135,7 +135,7 @@ class handle_pool {
     return_on_unwind claim{this, index};
     ::new (storage_[index].addr()) T(std::forward<Args>(args)...);
     claim.dismiss();
-    return handle_type{static_cast<index_type>(index), generation_[index]};
+    return handle_type{detail::issued_handle, static_cast<index_type>(index), generation_[index]};
   }
 
   /// Constructs an object in a free slot and returns its handle.

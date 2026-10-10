@@ -1,6 +1,7 @@
 #pragma once
 
 #include "metl/attributes.hpp"
+#include "metl/config.hpp"
 #include "metl/detail/low_bits.hpp"
 
 #include <cstddef>
@@ -52,6 +53,14 @@ struct handle_packed_type {
                                   std::uint16_t,
                                   std::conditional_t<(Bits <= 32), std::uint32_t, std::uint64_t>>;
 };
+
+/// Selects the constructor an issuer uses for a handle it is issuing:
+/// `handle_pool` never issues generation 0, so the handle is already in its
+/// one representation and the canonicalising step can be skipped.
+struct issued_handle_t {
+  explicit issued_handle_t() = default;
+};
+inline constexpr issued_handle_t issued_handle{};
 
 }  // namespace detail
 
@@ -118,8 +127,16 @@ class versioned_handle {
   ///       compare-exchange on `packed()` agree about it. Generation 0 is reserved
   ///       and `handle_pool` never issues it.
   constexpr versioned_handle(index_type index, generation_type generation) noexcept
-      : value_(canonical(static_cast<packed_type>(static_cast<packed_type>(index) |
-                                                  (static_cast<packed_type>(generation) << index_bits)))) {}
+      : value_(canonical(pack(index, generation))) {}
+
+  /// For an issuer, which never issues generation 0: the handle is already
+  /// canonical, so this packs without the step that makes it so. `handle_pool`
+  /// issues through it on every allocation.
+  /// @pre `generation != 0`.
+  constexpr versioned_handle(detail::issued_handle_t, index_type index, generation_type generation) noexcept
+      : value_(pack(index, generation)) {
+    METL_DASSERT(generation != 0);
+  }
 
   /// Rebuilds a handle from its packed representation (e.g. after an atomic load).
   /// @note Bits outside `value_mask` are not part of the handle and are dropped,
@@ -163,6 +180,11 @@ class versioned_handle {
   }
 
  private:
+  static constexpr packed_type pack(index_type index, generation_type generation) noexcept {
+    return static_cast<packed_type>(static_cast<packed_type>(index) |
+                                    (static_cast<packed_type>(generation) << index_bits));
+  }
+
   // The one representation of each value: bits outside the fields dropped, and
   // the whole word zero when the generation is. Without a branch, as the
   // progress guarantee above promises: `keep` is all ones or all zeros.
