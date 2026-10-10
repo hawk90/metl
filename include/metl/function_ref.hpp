@@ -14,6 +14,7 @@
 
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
+#include "metl/detail/invocable.hpp"
 
 #include <cstddef>
 #include <type_traits>
@@ -57,7 +58,7 @@ class function_ref<R(Args...)> {
             typename = std::enable_if_t<!std::is_same_v<Decayed, function_ref>>,
             typename = std::enable_if_t<!std::is_pointer_v<Decayed>>,
             typename = std::enable_if_t<!std::is_member_pointer_v<Decayed>>,
-            typename = std::enable_if_t<std::is_invocable_r_v<R, Referenced&, Args...>>>
+            typename = std::enable_if_t<detail::is_invocable_r_without_temporary_v<R, Referenced&, Args...>>>
   /// @brief Binds an lvalue callable (const or non-const), preserving cv-qualification.
   /// @param function Lvalue callable to reference; must outlive this function_ref.
   /// @warning Only lvalues bind here; rvalues select the deleted overload below.
