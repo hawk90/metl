@@ -283,10 +283,9 @@ class fixed_function_impl {
                   "callable alignment exceeds fixed_function storage alignment");
 
     if constexpr (std::is_pointer_v<decayed_type>) {
-      // A null pointer whose signature only CONVERTS to this one (`int (*)(long)`
-      // into `R(int)`) arrives here, not at the exact-signature overload, and
-      // was stored as an engaged target that jumps to 0. Hold it to the same
-      // non-null precondition.
+      // Every function pointer arrives here, of the exact signature or of one
+      // that only CONVERTS to it (`int (*)(long)` into `R(int)`). A null one
+      // would be stored as an engaged target that jumps to 0.
       METL_HARDEN(function != nullptr);
     }
 
@@ -421,10 +420,9 @@ class fixed_any_invocable_impl {
                   "callable alignment exceeds fixed_any_invocable storage alignment");
 
     if constexpr (std::is_pointer_v<decayed_type>) {
-      // A null pointer whose signature only CONVERTS to this one (`int (*)(long)`
-      // into `R(int)`) arrives here, not at the exact-signature overload, and
-      // was stored as an engaged target that jumps to 0. Hold it to the same
-      // non-null precondition.
+      // Every function pointer arrives here, of the exact signature or of one
+      // that only CONVERTS to it (`int (*)(long)` into `R(int)`). A null one
+      // would be stored as an engaged target that jumps to 0.
       METL_HARDEN(function != nullptr);
     }
 
@@ -543,10 +541,7 @@ class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<
 
   /// @brief Stores a function pointer if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
-  METL_NODISCARD bool try_assign(R (*function)(Args...)) {
-    METL_HARDEN(function != nullptr);
-    return this->try_assign_callable(function);
-  }
+  METL_NODISCARD bool try_assign(R (*function)(Args...)) { return this->try_assign_callable(function); }
 
   /// @brief Stores any compatible callable if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
@@ -655,7 +650,6 @@ class fixed_function<R(Args...) noexcept, Capacity>
   /// @brief Stores a noexcept function pointer if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
   METL_NODISCARD bool try_assign(R (*function)(Args...) noexcept) {
-    METL_HARDEN(function != nullptr);
     return this->try_assign_callable(function);
   }
 
@@ -810,10 +804,7 @@ class fixed_any_invocable<R(Args...), Capacity>
 
   /// @brief Stores a function pointer if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
-  METL_NODISCARD bool try_assign(R (*function)(Args...)) {
-    METL_HARDEN(function != nullptr);
-    return this->try_assign_callable(function);
-  }
+  METL_NODISCARD bool try_assign(R (*function)(Args...)) { return this->try_assign_callable(function); }
 
   /// @brief Stores any compatible callable if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
@@ -922,7 +913,6 @@ class fixed_any_invocable<R(Args...) noexcept, Capacity>
   /// @brief Stores a noexcept function pointer if it fits.
   /// @return true on success; false if the callable exceeds `Capacity`.
   METL_NODISCARD bool try_assign(R (*function)(Args...) noexcept) {
-    METL_HARDEN(function != nullptr);
     return this->try_assign_callable(function);
   }
 

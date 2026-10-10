@@ -664,16 +664,18 @@ class static_unordered_set {
   /// on erase.
   template <typename K>
   METL_NODISCARD size_type construct_at(size_type index, K&& key) {
-    METL_HARDEN(index < bucket_count);
     // Tombstones past ~1/8 of the table: rebuild before placing the new key, so
     // negative lookups keep stopping early at an empty slot.
     if (rebuild_cannot_throw && tombstones_ > bucket_count / 8) {
       value_type entry(std::forward<K>(key));
       rehash_in_place();
-      // After a rebuild there are no tombstones and the load factor is at most
-      // 1/2, so an empty slot always exists. `index` is reset so that a failed
-      // locate leaves npos and trips the same guard as the ordinary path -- one
-      // shared expression string, not a new one in .rodata.
+      // The tombstones that triggered the rebuild are empty slots after it,
+      // so a slot always exists and no input reaches this guard: it is
+      // defence in depth against a rebuild bug, and no test can cover it.
+      // `index` is reset so that a failed locate leaves npos; the expression
+      // string is shared with place_at's, not a new one in .rodata.
+      // (index == npos cannot get this far: locate fails only when there are no
+      // tombstones, and then this branch is not taken. place_at guards that.)
       index = npos;
       (void)locate_insert_index(entry, &index);
       METL_HARDEN(index < bucket_count);
