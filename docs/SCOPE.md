@@ -474,6 +474,11 @@ what its result means is the "silent surprise" the design principles forbid.
 Every `try_X` is `METL_NODISCARD`. Dropping the result is the exact bug the pair
 exists to prevent: `v.try_push_back(x);` as a statement is a silent overflow.
 
+So is an asserting form whose return value is its only output: `parse_uint`
+returns the value it parsed, and `format_uint` the span it wrote, which is the
+only record of the text's length. `tools/check_api_contract.py` lists them as
+`RESULT_ONLY`, each with its reason.
+
 ### R4 — the exception, and only this one
 
 A `bool` that is **an answer to a question** rather than a failure report keeps

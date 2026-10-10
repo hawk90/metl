@@ -5,13 +5,14 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `try_attach`, `try_attach_protothread`, `try_attach_stepper` | wait-free, bounded |
+///   | `try_attach`, `try_attach_protothread`, `try_attach_stepper` | wait-free, bounded by `Capacity` |
 ///   | `detach`, `is_attached` | wait-free, bounded by `Capacity` |
 ///   | `run_once` | bounded by the attached tasks and their own poll cost |
 ///   | `run_until_idle` | bounded by its `max_rounds` argument |
 ///
-/// The task table is a flat array searched linearly, so detaching and lookup are
-/// `Capacity`-bounded rather than constant (attaching appends) -- the array is small and fixed, which is
+/// The task table is a flat array searched linearly, so attaching, detaching and
+/// lookup are `Capacity`-bounded rather than constant -- attaching searches first,
+/// because a task is attached at most once. The array is small and fixed, which is
 /// the trade this type makes for having no free list to corrupt.
 ///
 /// `run_once` visits each attached task once; its bound is therefore the sum of the
@@ -33,6 +34,7 @@
 // `run_once()` until either nothing yields or `max_rounds` is reached.
 
 #include "metl/compiler.hpp"
+#include "metl/config.hpp"
 #include "metl/coro/stepper.hpp"
 #include "metl/detail/addressof.hpp"
 #include "metl/fixed_vector.hpp"
@@ -69,6 +71,7 @@ class scheduler {
 
   /// @brief Attach a protothread-derived task exposing `bool run() noexcept`.
   /// @param t The task; must outlive its attachment.
+  /// @pre The task is not already attached; attaching it twice aborts.
   /// @return true if attached, false if the scheduler is full.
   template <typename Protothread>
   METL_NODISCARD bool try_attach_protothread(Protothread& t) noexcept {
@@ -77,6 +80,7 @@ class scheduler {
 
   /// @brief Attach a `stepper`-derived task.
   /// @param s The task; must outlive its attachment.
+  /// @pre The task is not already attached; attaching it twice aborts.
   /// @return true if attached, false if the scheduler is full.
   METL_NODISCARD bool try_attach_stepper(stepper& s) noexcept {
     return try_attach_impl(static_cast<void*>(&s), &stepper_poll);
@@ -84,6 +88,7 @@ class scheduler {
 
   /// @brief Generic attach for any `bool(*)(void*) noexcept` poll function.
   /// @param task Task pointer passed back to `fn`. @param fn The poll trampoline.
+  /// @pre The task is not already attached; attaching it twice aborts.
   /// @return true if attached, false if the scheduler is full.
   METL_NODISCARD bool try_attach(void* task, poll_fn fn) noexcept { return try_attach_impl(task, fn); }
 
@@ -140,6 +145,10 @@ class scheduler {
   static bool stepper_poll(void* p) noexcept { return static_cast<stepper*>(p)->poll(); }
 
   METL_NODISCARD bool try_attach_impl(void* task, poll_fn fn) noexcept {
+    // A second entry for the same task outlives detach() and completion, which
+    // each remove one, so the scheduler would poll an object the caller has
+    // destroyed. A precondition, not "full": checked first, and never stripped.
+    METL_HARDEN(!is_attached(task));
     if (tasks_.full()) {
       return false;
     }

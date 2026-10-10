@@ -157,13 +157,14 @@ if(METL_BUILD_TESTS)
     bits/hash_unique_repr bits/hash_by_value bits/endian bits/mmio bits/mmio_regression bits/register_access
     bits/crc_table_equivalence bits/format bits/parse
     # control/
-    control/fsm control/fsm_reentrancy control/event_dispatcher
+    control/fsm control/fsm_reentrancy control/event_dispatcher control/event_dispatcher_reentrancy
     control/coro_protothread control/coro_protothread_nested_switch control/coro_scheduler control/coro_scheduler_reentrancy
     control/coro_stepper control/coro_deadline_scheduler control/control_contracts
     # core/  (assert/compiler + the METL_HARDENING level checks + smoke)
     core/assert core/compiler core/smoke core/ram_footprint core/version
     core/hardening_none core/hardening_fast core/hardening_debug core/hostile_types
     core/harden_floor_none core/harden_floor_memory core/low_findings core/audit_g6
+    core/conditional_noexcept
   )
 
   foreach(_t IN LISTS _metl_tests)

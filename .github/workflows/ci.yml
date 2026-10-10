@@ -1664,7 +1664,9 @@ jobs:
       # mutant after the first reports SURVIVED. That was observed, not
       # theorised.
       - name: Break the library on purpose; the gates must notice
-        # 68 mutants, each a rebuild and a ctest run. 47 took 13 minutes on CI.
+        # One rebuild and ctest run per mutant; `check_mutants.py --list` counts
+        # them. Not written here: a count in a comment went stale (#245 said 68
+        # for 65). 47 took 13 minutes on CI.
         timeout-minutes: 45
         run: tools/check_mutants.py --build-dir build-mutants
 
@@ -2158,6 +2160,16 @@ jobs:
           name: metl-api-docs
           path: build/docs/html
           if-no-files-found: warn
+
+      # The Pages copy shares hawk90.github.io with the blog, so keep the
+      # generated API pages out of search indexes; they would otherwise count
+      # against the blog's site-quality review. Only the Pages copy is marked.
+      - name: Mark Pages docs noindex
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          find build/docs/html -name '*.html' -exec \
+            sed -i 's|<head>|<head><meta name="robots" content="noindex, follow">|' {} +
+          test "$(grep -L 'name="robots"' build/docs/html/*.html | wc -l)" -eq 0
 
       # On main, also stage the HTML as a Pages artifact for the deploy-docs job.
       - name: Upload docs as a Pages artifact

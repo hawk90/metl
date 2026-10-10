@@ -31,6 +31,7 @@
 #include <metl/arena_allocator.hpp>
 #include <metl/assert.hpp>
 #include <metl/atomic_ref.hpp>
+#include <metl/coro/scheduler.hpp>
 #include <metl/delegate.hpp>
 #include <metl/fixed_deque.hpp>
 #include <metl/fixed_function.hpp>
@@ -462,6 +463,24 @@ int main() {
   // mmio: a misaligned register address hard-faults on Cortex-M0.
   {
     CHECK(guarded_against([&] { metl::mmio_ptr<std::uint32_t> reg(std::uintptr_t{0x1002}); }));
+  }
+
+  // coro::scheduler: a task attached twice keeps a second entry after detach()
+  // or completion removes the first, so the scheduler polls an object the
+  // caller has destroyed. A task is attached or it is not.
+  {
+    metl::coro::scheduler<4> scheduler;
+    int task = 0;
+    int other = 0;
+    const metl::coro::poll_fn poll = [](void*) noexcept { return true; };
+    CHECK(!guarded_against([&] { CHECK(scheduler.try_attach(&task, poll)); }));
+    CHECK(guarded_against([&] { (void)scheduler.try_attach(&task, poll); }));
+    CHECK_EQ(scheduler.task_count(), std::size_t{1});
+    CHECK(!guarded_against([&] { CHECK(scheduler.try_attach(&other, poll)); }));
+    // Once detached it may be attached again.
+    CHECK(scheduler.detach(&task));
+    CHECK(!guarded_against([&] { CHECK(scheduler.try_attach(&task, poll)); }));
+    CHECK_EQ(scheduler.task_count(), std::size_t{2});
   }
 
   return metl_test::exit_code();
