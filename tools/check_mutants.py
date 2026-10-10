@@ -900,8 +900,28 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
                "snapshot's old poll function -- a call through the wrong type when "
                "the storage holds a different object.",
         "kills": "ctest:coro_scheduler_reentrancy",
-        "old": "    if (!holds(s)) {",
-        "new": "    if (!is_attached(s.task)) {",
+        "old": "    if (!holds(e.attachment)) {",
+        "new": "    if (!is_attached(e.slot.task)) {",
+    },
+    {
+        "name": "scheduler_completion_removes_by_address",
+        "file": "include/metl/coro/scheduler.hpp",
+        "why": "completion removes whatever entry has the task's address, so a "
+               "task that re-attached itself from the poll in which it completed "
+               "loses the new attachment.",
+        "kills": "ctest:coro_scheduler_reentrancy",
+        "old": "      remove(e.attachment);",
+        "new": "      (void)detach(e.slot.task);",
+    },
+    {
+        "name": "scheduler_attachments_share_a_number",
+        "file": "include/metl/coro/scheduler.hpp",
+        "why": "every attachment gets the same number, so a mid-round attachment "
+               "passes for the snapshot's entry and is polled in the round it was "
+               "attached.",
+        "kills": "ctest:coro_scheduler_reentrancy",
+        "old": "entry{task_slot{task, fn}, next_attachment_++}",
+        "new": "entry{task_slot{task, fn}, next_attachment_}",
     },
 ]
 

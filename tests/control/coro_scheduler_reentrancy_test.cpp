@@ -76,6 +76,28 @@ bool restart_as_b(void* p) noexcept {
   CHECK(g_sched->try_attach(p, &poll_b));
   return false;
 }
+
+// Completes its first run, but first re-arms itself under the SAME poll
+// function for another run (#286); completes for good on the second.
+bool rearm_once(void* p) noexcept {
+  auto* c = static_cast<counted*>(p);
+  if (++c->polls_a == 1) {
+    CHECK(g_sched->detach(p));
+    CHECK(g_sched->try_attach(p, &rearm_once));
+  }
+  return false;
+}
+
+// Detaches g_victim and attaches it again under the same poll_a, once: an
+// attachment indistinguishable from the old one by (task, poll).
+bool reattach_victim_same_poll(void*) noexcept {
+  if (g_victim != nullptr) {
+    CHECK(g_sched->detach(g_victim));
+    CHECK(g_sched->try_attach(g_victim, &poll_a));
+    g_victim = nullptr;
+  }
+  return true;
+}
 }  // namespace
 
 int main() {
@@ -210,6 +232,36 @@ int main() {
     CHECK_EQ(sched.task_count(), std::size_t{1});
     (void)sched.run_once();
     CHECK_EQ(task_b.polls_b, 1);
+  }
+
+  // ---- #286: identity is the attachment, not the (task, poll) pair -----------
+  {
+    sched_t sched;
+    g_sched = &sched;
+    counted job;
+    CHECK(sched.try_attach(&job, &rearm_once));
+    (void)sched.run_once();
+    // The run that completed is removed; the re-arm it made of itself is not.
+    CHECK(sched.is_attached(&job));
+    CHECK_EQ(job.polls_a, 1);
+    (void)sched.run_once();
+    CHECK_EQ(job.polls_a, 2);
+    CHECK(!sched.is_attached(&job));
+  }
+  {
+    sched_t sched;
+    g_sched = &sched;
+    counted victim;
+    g_victim = &victim;
+    int swapper = 0;
+    CHECK(sched.try_attach(&swapper, &reattach_victim_same_poll));
+    CHECK(sched.try_attach(&victim, &poll_a));
+    (void)sched.run_once();
+    // Re-attached mid-round with the same poll function: still a new
+    // attachment, so it waits for the next round like any other.
+    CHECK_EQ(victim.polls_a, 0);
+    (void)sched.run_once();
+    CHECK_EQ(victim.polls_a, 1);
   }
 
   return metl_test::exit_code();
