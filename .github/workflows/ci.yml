@@ -2161,23 +2161,6 @@ jobs:
           path: build/docs/html
           if-no-files-found: warn
 
-      # The Pages copy shares hawk90.github.io with the blog, so keep the
-      # generated API pages out of search indexes; they would otherwise count
-      # against the blog's site-quality review. Only the Pages copy is marked.
-      - name: Mark Pages docs noindex
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: |
-          find build/docs/html -name '*.html' -exec \
-            sed -i 's|<head>|<head><meta name="robots" content="noindex, follow">|' {} +
-          test "$(grep -L 'name="robots"' build/docs/html/*.html | wc -l)" -eq 0
-
-      # On main, also stage the HTML as a Pages artifact for the deploy-docs job.
-      - name: Upload docs as a Pages artifact
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5
-        with:
-          path: build/docs/html
-
   # ---------------------------------------------------------------------------
   # Install check — build, install, consume via find_package(metl)
   # ---------------------------------------------------------------------------
@@ -2536,34 +2519,3 @@ jobs:
               sys.exit(f"{len(bad)} of {len(results)} job(s) did not succeed")
           print(f"all {len(results)} jobs succeeded")
           PY
-
-  # ---------------------------------------------------------------------------
-  # Deploy the Doxygen API docs to GitHub Pages.
-  # Runs only on push to main, and only AFTER the docs build and the core
-  # validation (host matrix + sanitizers) pass — so we never publish docs for a
-  # broken build. A dependency, not a parallel fan-out.
-  # ---------------------------------------------------------------------------
-  deploy-docs:
-    name: deploy-docs
-    # ci-gate fans in every job, so this waits for all of main's CI, and the
-    # explicit result check matters: ci-gate runs with `if: always()`, so
-    # `needs` alone would not stop a deploy after a red gate.
-    needs: [docs, ci-gate]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.ci-gate.result == 'success'
-    runs-on: ubuntu-26.04
-    timeout-minutes: 10
-    # Main pushes each get their own CI concurrency group, so two can overlap;
-    # Pages deployments themselves stay strictly sequential.
-    concurrency:
-      group: pages
-      cancel-in-progress: false
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5
