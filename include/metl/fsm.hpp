@@ -104,6 +104,8 @@ class fsm {
   /// runs the transition action, then runs the entry hook for the new state.
   /// @param event The event to process.
   /// @return true if a transition fired, false if no rule matched (state unchanged).
+  ///         Discardable, as `erase` is (SCOPE.md R4): it answers a question, it
+  ///         does not report a failure.
   /// @note The new state is committed BEFORE the transition action runs, so a
   ///       reentrant `dispatch()` from within the action observes the updated
   ///       state and cannot re-fire this same transition. Such a dispatch
@@ -118,7 +120,7 @@ class fsm {
   ///       later dispatch out of it skips its exit hook.
   /// @pre Not called from an exit hook. The state being left is still current
   ///      there, so a dispatch would exit it twice; an entry hook may dispatch.
-  METL_NODISCARD bool dispatch(Event event) {
+  bool dispatch(Event event) {
     const transition_type* transition = find_transition(current_state_, event);
     if (transition == nullptr) {
       return false;
