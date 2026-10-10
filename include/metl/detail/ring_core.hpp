@@ -18,6 +18,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/addressof.hpp"
 #include "metl/scope_exit.hpp"
 #include "metl/type_traits.hpp"
 
@@ -68,7 +69,7 @@ class ring_iterator {
       : container_(other.container()), index_(other.index()) {}
 
   METL_NODISCARD reference operator*() const noexcept { return container_->at(index_); }
-  METL_NODISCARD pointer operator->() const noexcept { return &container_->at(index_); }
+  METL_NODISCARD pointer operator->() const noexcept { return detail::addressof(container_->at(index_)); }
   METL_NODISCARD reference operator[](difference_type n) const noexcept {
     return container_->at(index_ + static_cast<std::size_t>(n));
   }

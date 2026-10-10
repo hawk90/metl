@@ -41,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `METL_SCOPE_EXIT` (storing the callable). `scope_exit` now also follows
   P0052: when storing the callable throws, it calls the callable before the
   exception propagates, so the cleanup still happens.
+- The iterator of `fixed_deque`, `ring_buffer` and `fixed_queue` took the
+  element's address for `->` with a raw `&`. For an element type that
+  overloads unary `operator&`, `it->member` went through whatever that
+  returned; with a deleted `operator&` it did not compile. It now uses
+  `addressof`, as every other container does.
 
 ## [1.2.0] - 2026-10-10
 
