@@ -485,8 +485,9 @@ regression that only an older compiler would catch is not gated — report it if
 you hit one.
 
 **Language standard: C++17 is the baseline and is what these minimums are for.**
-Building as C++20 is also verified in CI (`config-matrix / cxx20`) and is
-supported, but not required — deliberately. Requiring it would raise the GCC
+Building as C++20 is also verified in CI, under Clang and GCC
+(`config-matrix / cxx20`, `cxx20-gcc`), and is supported, but not required —
+deliberately. Requiring it would raise the GCC
 floor and drop IAR EWARM (listed below) and older vendor SDKs, and there is
 currently no METL feature that needs it: the one place C++20 buys something,
 `optional`'s constant evaluation, already works through a dual-mode path keyed on
@@ -528,7 +529,7 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | Zephyr RTOS | qemu_cortex_m3 module build + run | `west build` + twister **run** (QEMU) | `zephyr` |
 | No heap / no exceptions / no RTTI | Cortex-M0/M3/M4/M7, newlib-nano | link + **audit the image's symbol table**; a deliberate canary must fail it | `invariants` |
 | Lock-free capability | Cortex-M0/M3/M4/M7 | the trait must match the target **and** the opposite expectation must not compile | `handle-atomics` |
-| Non-default configs | `METL_CRC_TABLE=0`, **`-std=c++20`**, `-fno-exceptions` | build + `ctest` for each (`#if` arms nothing else compiles) | `config-matrix` |
+| Non-default configs | `METL_CRC_TABLE=0`, **`-std=c++20`**, `-fno-exceptions` | build + `ctest` for each, the C++20 and `-fno-exceptions` legs under Clang and GCC (`#if` arms nothing else compiles) | `config-matrix` |
 | Coverage | host, Clang source-based | `include/metl` line + branch coverage against a floor | `coverage` |
 | Benchmarks | host | build + run each suite (`--quick`); instructions executed per benchmark, counted under cachegrind, against a budget (`tools/check_instructions.py`); wall-clock numbers are informational only | `bench-smoke` |
 | Code size and RAM | Cortex-M0/M3/M4/M7, `-Os` | `.text`, `.rodata`, `.bss`+`.data` and deepest stack frame of the **linked** probe against per-target budgets (`tools/check_size.py`, `tools/check_stack.py`) | `invariants` |
