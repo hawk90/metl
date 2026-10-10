@@ -270,7 +270,7 @@ METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_uint(span<co
 ///          packet into a reset is not error handling. That case is what
 ///          `try_parse_uint` is for.
 template <typename T>
-constexpr parsed<T> parse_uint(span<const char> text) noexcept {
+METL_NODISCARD constexpr parsed<T> parse_uint(span<const char> text) noexcept {
   const expected<parsed<T>, parse_error> result = try_parse_uint<T>(text);
   METL_HARDEN(result.has_value());
   return result.value();
@@ -346,7 +346,7 @@ METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_int(span<con
 /// @warning Same warning as `parse_uint`: for text you control only. Untrusted
 ///          input goes through `try_parse_int`.
 template <typename T>
-constexpr parsed<T> parse_int(span<const char> text) noexcept {
+METL_NODISCARD constexpr parsed<T> parse_int(span<const char> text) noexcept {
   const expected<parsed<T>, parse_error> result = try_parse_int<T>(text);
   METL_HARDEN(result.has_value());
   return result.value();
@@ -401,7 +401,7 @@ METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_hex(span<con
 /// @warning Same warning as `parse_uint`: for text you control only. Untrusted
 ///          input goes through `try_parse_hex`.
 template <typename T>
-constexpr parsed<T> parse_hex(span<const char> text) noexcept {
+METL_NODISCARD constexpr parsed<T> parse_hex(span<const char> text) noexcept {
   const expected<parsed<T>, parse_error> result = try_parse_hex<T>(text);
   METL_HARDEN(result.has_value());
   return result.value();
