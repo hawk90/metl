@@ -416,8 +416,13 @@ class flat_set {
 
   /// @brief Remove all elements (destroys each; size becomes 0).
   void clear() noexcept {
+    // From the back, in place, as fixed_vector::pop_back: the last element never
+    // needs relocating, so nothing is moved and nothing here can throw. size_
+    // drops before each destructor runs, so a destructor that erases its own
+    // element from this container finds it already gone.
     while (size_ > 0) {
-      erase_at(size_ - 1);
+      --size_;
+      data()[size_].~value_type();
     }
   }
 

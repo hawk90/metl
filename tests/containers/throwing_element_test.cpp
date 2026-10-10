@@ -315,6 +315,49 @@ int main() {
     CHECK_EQ(g_double_destroys, 0);
   }
 
+  // ---- flat_map / flat_set: clear() and destruction relocate nothing --------
+  // clear() is noexcept and removes from the back, so no element needs to move.
+  // It used to move each one into a temporary first: N needless moves, and with
+  // an element whose move can throw, std::terminate (#273).
+  {
+    const auto check_clear = [](auto& container, auto fill) {
+      g_live = 0;
+      g_double_destroys = 0;
+      fill(container);
+      const int before = g_moves;
+      g_countdown = 0;  // the next copy, move or assignment of `armed` throws
+      container.clear();
+      g_countdown = -1;
+      CHECK(container.empty());
+      CHECK_EQ(g_moves - before, 0);
+      CHECK_EQ(g_live, 0);
+      CHECK_EQ(g_double_destroys, 0);
+      fill(container);
+      g_countdown = 0;  // and again through the destructor, at scope exit
+    };
+    {
+      metl::flat_map<int, armed, 8> map;
+      check_clear(map, [](auto& c) {
+        for (int i = 1; i <= 5; ++i) {
+          c.emplace(i, armed(i));
+        }
+      });
+    }
+    g_countdown = -1;
+    CHECK_EQ(g_live, 0);
+    {
+      metl::flat_set<armed, 8> set;
+      check_clear(set, [](auto& c) {
+        for (int i = 1; i <= 5; ++i) {
+          c.emplace(armed(i));
+        }
+      });
+    }
+    g_countdown = -1;
+    CHECK_EQ(g_live, 0);
+    CHECK_EQ(g_double_destroys, 0);
+  }
+
   // ---- flat_map / flat_set with a non-move-assignable element ---------
   for (int which = 0; which < 2; ++which) {
     g_live = 0;

@@ -32,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Each one's return value is its only output: the parsed value, or the span
   written, which is the only record of the text's length. A call that drops
   it now warns. SCOPE.md R3 and `tools/check_api_contract.py` cover them.
+- `flat_map::clear()` and `flat_set::clear()` -- and so their destructors and
+  copy assignment -- moved every element into a temporary before destroying
+  it. With an element whose move can throw, that called `std::terminate`
+  inside the `noexcept` `clear()`, and in every case it cost one move per
+  element. They now destroy from the back in place, moving nothing.
 
 ## [1.2.0] - 2026-10-10
 

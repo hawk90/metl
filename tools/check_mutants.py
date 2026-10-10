@@ -864,6 +864,34 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
         "old": "    const std::uint64_t first_unheard = next_id_;",
         "new": "    const std::uint64_t first_unheard = ~std::uint64_t{0};",
     },
+    {
+        "name": "flat_map_clear_relocates",
+        "file": "include/metl/flat_map.hpp",
+        "why": "clear() moves each element into a temporary before destroying it: "
+               "N needless moves, and std::terminate when the move throws.",
+        "kills": "ctest:throwing_element",
+        "old": """    while (size_ > 0) {
+      --size_;
+      data()[size_].~value_type();
+    }""",
+        "new": """    while (size_ > 0) {
+      erase_at(size_ - 1);
+    }""",
+    },
+    {
+        "name": "flat_set_clear_relocates",
+        "file": "include/metl/flat_set.hpp",
+        "why": "clear() moves each element into a temporary before destroying it: "
+               "N needless moves, and std::terminate when the move throws.",
+        "kills": "ctest:throwing_element",
+        "old": """    while (size_ > 0) {
+      --size_;
+      data()[size_].~value_type();
+    }""",
+        "new": """    while (size_ > 0) {
+      erase_at(size_ - 1);
+    }""",
+    },
 ]
 
 
