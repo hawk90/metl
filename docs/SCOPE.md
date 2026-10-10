@@ -325,7 +325,7 @@ claim about a **gate** going stale, and nothing was checking those.
 | [`check_size.py`](../tools/check_size.py) | `.text`, `.rodata`, and `.bss`+`.data` against per-target budgets | `--self-test` |
 | [`check_stack.py`](../tools/check_stack.py) | deepest stack frame; rejects any `dynamic` frame outright | `--self-test` |
 | [`check_instructions.py`](../tools/check_instructions.py) | instructions executed per benchmark, via cachegrind | `--self-test` |
-| [`check_api_contract.py`](../tools/check_api_contract.py) | §9 R2/R3 across every public header | `--self-test` |
+| [`check_api_contract.py`](../tools/check_api_contract.py) | §9 R2/R3/R4 across every public header | `--self-test` |
 | [`check_progress_guarantee.py`](../tools/check_progress_guarantee.py) | I3: every public header states a progress guarantee | `--self-test` |
 | [`check_source_rules.py`](../tools/check_source_rules.py) | S1: placement new is `::new`; S2: a check shaped like a memory-safety guard is `METL_HARDEN` or carries its reason; S3: no `constexpr` function that can never be constant-evaluated | `--self-test` |
 | [`check_amalgamation.py`](../tools/check_amalgamation.py) | the shipped single header builds and runs the whole suite | `--self-test` |
@@ -475,6 +475,11 @@ what its result means is the "silent surprise" the design principles forbid.
 Every `try_X` is `METL_NODISCARD`. Dropping the result is the exact bug the pair
 exists to prevent: `v.try_push_back(x);` as a statement is a silent overflow.
 
+So is an asserting form whose return value is its only output: `parse_uint`
+returns the value it parsed, and `format_uint` the span it wrote, which is the
+only record of the text's length. `tools/check_api_contract.py` lists them as
+`RESULT_ONLY`, each with its reason.
+
 ### R4 — the exception, and only this one
 
 A `bool` that is **an answer to a question** rather than a failure report keeps
@@ -485,7 +490,9 @@ its plain name: `erase(key)` ("was it present") and
 
 The full list lives in `tools/check_api_contract.py` as `BOOL_ALLOWLIST`, one
 entry per name **with its reason**, so a future reader sees a decision rather
-than an omission.
+than an omission. Its `DISCARDABLE` subset -- the answers about an operation the
+caller runs for its effect, such as `erase` and `fsm::dispatch` -- must not be
+`METL_NODISCARD`, and the checker enforces that too.
 
 ### R5 — where `try_pop` belongs
 

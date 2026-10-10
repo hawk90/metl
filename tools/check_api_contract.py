@@ -7,7 +7,12 @@ Three rules, two of which are mechanical:
       that can fail on capacity. No other public function returns a bare
       `bool` meaning "the operation did not happen".
   R3  every `try_X` is METL_NODISCARD. Discarding the result is the exact bug
-      the asserting/recoverable pair exists to prevent.
+      the asserting/recoverable pair exists to prevent. So is every function in
+      RESULT_ONLY: an asserting form whose return value is its only output.
+
+  R4  a bool that answers "was it there" or "did it fire" for an operation
+      the caller runs for its effect -- DISCARDABLE below -- is NOT
+      METL_NODISCARD. `m.erase(k);` is a legitimate statement and must not warn.
 
 R1 (every capacity-failing operation has both forms) needs a human and stays on
 the PR checklist.
@@ -77,6 +82,18 @@ BOOL_ALLOWLIST = {
     "is_decimal_digit": "private helper predicate: is this character a digit?",
 }
 
+# R3 beyond `try_`: asserting forms whose return value is their only output, so
+# a call whose result is dropped did nothing anyone can observe. Each carries
+# its reason, as BOOL_ALLOWLIST's entries do.
+RESULT_ONLY = {
+    "parse_uint": "the parsed value and the text consumed; there is no other output",
+    "parse_int": "the parsed value and the text consumed; there is no other output",
+    "parse_hex": "the parsed value and the text consumed; there is no other output",
+    "format_uint": "the span written: the text is not NUL-terminated, so it is the only record of its length",
+    "format_int": "the span written: the text is not NUL-terminated, so it is the only record of its length",
+    "format_hex": "the span written: the text is not NUL-terminated, so it is the only record of its length",
+}
+
 # A `try_` name preceded by something that is not a return type -- i.e. a call,
 # not a declaration.
 NOT_A_RETURN_TYPE = {
@@ -90,8 +107,20 @@ DECL_TRY = re.compile(
     r"(?P<name>try_[A-Za-z_0-9]+)\s*\("
 )
 
+DECL_RESULT_ONLY = re.compile(
+    r"^\s*(?P<nodiscard>METL_NODISCARD\s+)?"
+    r"(?P<prefix>[A-Za-z_][A-Za-z_0-9:<>,&*\s]*\s)?"
+    r"(?P<name>" + "|".join(RESULT_ONLY) + r")\s*\("
+)
+
+# R4: the subset of BOOL_ALLOWLIST whose bool reports on an operation the caller
+# runs for its effect. Discarding it is the normal call, so these must not be
+# METL_NODISCARD. The queries in BOOL_ALLOWLIST (empty, contains, ...) do
+# nothing else and stay nodiscard.
+DISCARDABLE = {"erase", "destroy", "unsubscribe", "detach", "cancel", "dispatch"}
+
 DECL_BOOL = re.compile(
-    r"^\s*(?:METL_NODISCARD\s+)?"
+    r"^\s*(?P<nodiscard>METL_NODISCARD\s+)?"
     r"(?:(?:constexpr|static|inline|friend|explicit)\s+)*"
     r"bool\s+(?P<name>[A-Za-z_][A-Za-z_0-9]*)\s*\("
 )
@@ -125,7 +154,27 @@ def check_text(text, path="<memory>"):
                     f"dropping its result is the bug the try_/asserting pair prevents",
                 ))
 
+        match = DECL_RESULT_ONLY.match(line)
+        if match:
+            prefix = (match.group("prefix") or "").strip()
+            first = prefix.split()[0] if prefix else ""
+            if prefix and first not in NOT_A_RETURN_TYPE and not match.group("nodiscard"):
+                name = match.group("name")
+                violations.append((
+                    path, number, "R3",
+                    f"`{name}` is missing METL_NODISCARD -- its result is "
+                    f"{RESULT_ONLY[name]}",
+                ))
+
         match = DECL_BOOL.match(line)
+        if match and match.group("name") in DISCARDABLE and match.group("nodiscard"):
+            violations.append((
+                path, number, "R4",
+                f"`{match.group('name')}` is METL_NODISCARD, but its bool "
+                f"answers a question about an operation the caller runs for its "
+                f"effect ({BOOL_ALLOWLIST[match.group('name')]}). Calling it as "
+                f"a statement is correct and must not warn",
+            ))
         if match:
             name = match.group("name")
             if not name.startswith("try_") and name not in BOOL_ALLOWLIST:
@@ -148,6 +197,18 @@ class widget {
 };
 """
 
+CANARY_R3_RESULT_ONLY = """
+template <typename T>
+constexpr parsed<T> parse_uint(span<const char> text) noexcept { return {}; }
+"""
+
+CANARY_R4 = """
+class widget {
+ public:
+  METL_NODISCARD bool erase(int key) { return key == 0; }
+};
+"""
+
 CANARY_R2 = """
 class widget {
  public:
@@ -160,7 +221,12 @@ class widget {
  public:
   METL_NODISCARD bool try_push_back(int value) { return value != 0; }
   METL_NODISCARD bool empty() const { return true; }
-  METL_NODISCARD bool erase(int key) { return key == 0; }
+  bool erase(int key) { return key == 0; }
+  METL_NODISCARD constexpr span<char> format_uint(span<char> out, unsigned value) noexcept;
+  void log(unsigned value) {
+    const auto text = format_uint(buffer, value);
+    (void)text;
+  }
   /// A doc comment naming try_push_back must not be mistaken for a declaration.
   void push_back(int value) {
     const bool pushed = try_push_back(value);
@@ -177,6 +243,14 @@ def self_test():
     if "R3" not in caught:
         failures.append("R3 canary was NOT reported -- the METL_NODISCARD check is dead")
 
+    caught = {rule for _, _, rule, _ in check_text(CANARY_R3_RESULT_ONLY, "<canary-R3-result-only>")}
+    if "R3" not in caught:
+        failures.append("R3 RESULT_ONLY canary was NOT reported -- the parse_/format_ check is dead")
+
+    caught = {rule for _, _, rule, _ in check_text(CANARY_R4, "<canary-R4>")}
+    if "R4" not in caught:
+        failures.append("R4 canary was NOT reported -- the discardable-answer check is dead")
+
     caught = {rule for _, _, rule, _ in check_text(CANARY_R2, "<canary-R2>")}
     if "R2" not in caught:
         failures.append("R2 canary was NOT reported -- the naming check is dead")
@@ -189,7 +263,7 @@ def self_test():
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
         return 1
-    print("self-test passed: both rules bite, and clean code is not flagged")
+    print("self-test passed: R2, R3 and R4 bite, and clean code is not flagged")
     return 0
 
 
@@ -227,7 +301,7 @@ def main():
         )
         return 1
 
-    print(f"API contract OK: {len(headers)} headers, rules R2 and R3 hold")
+    print(f"API contract OK: {len(headers)} headers, rules R2, R3 and R4 hold")
     return 0
 
 
