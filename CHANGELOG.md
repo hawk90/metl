@@ -56,6 +56,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   at compile time, as is one whose result would only convert to the reference
   through a temporary (`int&` for `const long&`). C++23 makes the same rule
   part of `std::function`.
+- `spsc_queue`, `spsc_byte_ring` and `atomic_handle` can now be
+  constant-initialized, and `METL_CONST_INIT` accepts them. Their constructors
+  were not `constexpr`, so a namespace-scope instance was initialized at run
+  time, in link order. An interrupt that fired during start-up -- enabled by
+  another file's global constructor -- could push into the queue before that
+  constructor ran, and the constructor then wiped what was pushed. An empty
+  queue is all zero bytes, so a global one still lands in .bss; a
+  stack-allocated `spsc_queue` zero-fills its slot storage on construction.
+  `mpmc_queue` stays run-time initialized: its slots start at different
+  sequence numbers, and doing that at compile time cost either flash or an
+  extra operation on every push and pop. Its constructor documents this.
 
 ## [1.2.0] - 2026-10-10
 
