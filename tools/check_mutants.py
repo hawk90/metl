@@ -371,6 +371,23 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
         "new": "",
     },
     {
+        "name": "arena_zero_bytes_skips_alignment_check",
+        "file": "include/metl/arena_allocator.hpp",
+        "why": "an empty request returns null before the alignment is checked, "
+               "hiding a caller bug monotonic_buffer reports.",
+        "kills": "ctest:harden_floor_memory",
+        "old": """    METL_HARDEN(alignment != 0 && (alignment & (alignment - 1)) == 0);
+    if (bytes == 0) {
+      return nullptr;
+    }
+""",
+        "new": """    if (bytes == 0) {
+      return nullptr;
+    }
+    METL_HARDEN(alignment != 0 && (alignment & (alignment - 1)) == 0);
+""",
+    },
+    {
         "name": "flat_map_emplace_full_harden_removed",
         "file": "include/metl/flat_map.hpp",
         "why": "emplace of a new key into a full flat_map returns a one-past- "
@@ -863,6 +880,18 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
         "kills": "ctest:event_dispatcher_reentrancy",
         "old": "    const std::uint64_t first_unheard = next_id_;",
         "new": "    const std::uint64_t first_unheard = ~std::uint64_t{0};",
+    },
+    {
+        "name": "scope_exit_throwing_store_skips_cleanup",
+        "file": "include/metl/scope_exit.hpp",
+        "why": "when storing the callable throws, the cleanup it was meant to "
+               "guarantee never runs.",
+        "kills": "ctest:conditional_noexcept",
+        "old": """  catch (...) {
+    func();
+  }""",
+        "new": """  catch (...) {
+  }""",
     },
     {
         "name": "flat_set_final_move_throw_skips_cleanup",
