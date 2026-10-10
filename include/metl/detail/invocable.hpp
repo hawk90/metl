@@ -12,10 +12,14 @@ namespace detail {
 // referenced value, or a reference to a type that only converts to `R`'s (an
 // `int&` read as `const long&`). The thunk that performs that conversion returns
 // a reference into its own frame. This is C++23's
-// std::reference_converts_from_temporary, which GCC 13+ and Clang 19+ expose as
-// a builtin in every language mode, and older Clang as the direct-initialization
-// form (the same answer here: is_invocable_r already requires the implicit
-// conversion). Without either, it is spelled out:
+// std::reference_converts_from_temporary, which GCC 13+ and newer Clang expose
+// as a builtin in every language mode. Failing that, the direct-initialization
+// form gives the same answer here, since is_invocable_r already requires the
+// implicit conversion: __reference_constructs_from_temporary, or on older Clang
+// __reference_binds_to_temporary. The newer name is tried first because Clang
+// deprecates the older one in its favour, so a compiler that warns about
+// __reference_binds_to_temporary never reaches it. Without any, it is spelled
+// out:
 //   - a reference to a type whose pointer converts to a pointer to `R`'s binds
 //     directly (the same type, or a derived one);
 //   - a class result that converts to a NON-const lvalue reference to `R`'s type
@@ -28,6 +32,9 @@ namespace detail {
 #if METL_HAS_BUILTIN(__reference_converts_from_temporary)
 template <typename R, typename U>
 struct binds_temporary : std::bool_constant<__reference_converts_from_temporary(R, U)> {};
+#elif METL_HAS_BUILTIN(__reference_constructs_from_temporary)
+template <typename R, typename U>
+struct binds_temporary : std::bool_constant<__reference_constructs_from_temporary(R, U)> {};
 #elif METL_HAS_BUILTIN(__reference_binds_to_temporary)
 template <typename R, typename U>
 struct binds_temporary : std::bool_constant<__reference_binds_to_temporary(R, U)> {};

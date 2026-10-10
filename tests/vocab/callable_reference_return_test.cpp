@@ -86,7 +86,9 @@ static_assert(accepts<metl::fixed_function<int&()>, by_reference_wrapper_t>, "re
 static_assert(accepts<metl::fixed_any_invocable<const int&()>, by_reference_wrapper_t>, "reference_wrapper");
 static_assert(accepts<metl::function_ref<int&()>, by_handle_t>, "operator int& to int&");
 static_assert(accepts<metl::fixed_function<const int&()>, by_handle_t>, "operator int& to const int&");
-#if METL_HAS_BUILTIN(__reference_converts_from_temporary) || METL_HAS_BUILTIN(__reference_binds_to_temporary)
+#if METL_HAS_BUILTIN(__reference_converts_from_temporary) ||   \
+    METL_HAS_BUILTIN(__reference_constructs_from_temporary) || \
+    METL_HAS_BUILTIN(__reference_binds_to_temporary)
 // Only the compiler can see that `operator const int&` yields an lvalue; the
 // portable fallback cannot tell it from `operator int`, and refuses both.
 static_assert(accepts<metl::function_ref<const int&()>, by_const_handle_t>, "operator const int&");
