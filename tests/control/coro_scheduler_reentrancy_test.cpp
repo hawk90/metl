@@ -40,6 +40,73 @@ bool poll_task(void* p) noexcept {
   return t->keep_running;
 }
 
+// #260: identity is the (task, poll) pair, not the address. These re-attach the
+// SAME object with a different poll function mid-round, so a scheduler that
+// re-validates by address alone calls a poll function the task no longer has --
+// with a different object at that address, a call through the wrong type.
+// A task that may re-attach itself carries its scheduler, so no poll function
+// reaches a test's local through a global.
+struct counted {
+  sched_t* sched = nullptr;
+  int polls_a = 0;
+  int polls_b = 0;
+};
+bool poll_a(void* p) noexcept {
+  ++static_cast<counted*>(p)->polls_a;
+  return true;
+}
+bool poll_b(void* p) noexcept {
+  ++static_cast<counted*>(p)->polls_b;
+  return true;
+}
+
+// A task whose poll re-attaches another task, `victim`, once.
+struct swapper_t {
+  sched_t* sched;
+  counted* victim;
+};
+
+// Swaps the victim's poll function from poll_a to poll_b, once.
+bool swap_victim_poll(void* p) noexcept {
+  auto* s = static_cast<swapper_t*>(p);
+  if (s->victim != nullptr) {
+    CHECK(s->sched->detach(s->victim));
+    CHECK(s->sched->try_attach(s->victim, &poll_b));
+    s->victim = nullptr;
+  }
+  return true;
+}
+
+// Completes, but first re-attaches itself under poll_b: a task that restarts.
+bool restart_as_b(void* p) noexcept {
+  sched_t* sched = static_cast<counted*>(p)->sched;
+  CHECK(sched->detach(p));
+  CHECK(sched->try_attach(p, &poll_b));
+  return false;
+}
+
+// Completes its first run, but first re-arms itself under the SAME poll
+// function for another run (#286); completes for good on the second.
+bool rearm_once(void* p) noexcept {
+  auto* c = static_cast<counted*>(p);
+  if (++c->polls_a == 1) {
+    CHECK(c->sched->detach(p));
+    CHECK(c->sched->try_attach(p, &rearm_once));
+  }
+  return false;
+}
+
+// Detaches the victim and attaches it again under the same poll_a, once: an
+// attachment indistinguishable from the old one by (task, poll).
+bool reattach_victim_same_poll(void* p) noexcept {
+  auto* s = static_cast<swapper_t*>(p);
+  if (s->victim != nullptr) {
+    CHECK(s->sched->detach(s->victim));
+    CHECK(s->sched->try_attach(s->victim, &poll_a));
+    s->victim = nullptr;
+  }
+  return true;
+}
 }  // namespace
 
 int main() {
@@ -142,6 +209,64 @@ int main() {
     // Next round polls both.
     sched.run_once();
     CHECK_EQ(late.polls, 1);
+  }
+
+  // ---- #260: a mid-round re-attach under another poll function --------------
+  {
+    sched_t sched;
+    counted victim;
+    swapper_t swapper{&sched, &victim};
+    CHECK(sched.try_attach(&swapper, &swap_victim_poll));
+    CHECK(sched.try_attach(&victim, &poll_a));
+    (void)sched.run_once();
+    // The snapshot's poll_a must not run on a task now attached under poll_b,
+    // and an attachment made mid-round waits for the next round.
+    CHECK_EQ(victim.polls_a, 0);
+    CHECK_EQ(victim.polls_b, 0);
+    (void)sched.run_once();
+    CHECK_EQ(victim.polls_a, 0);
+    CHECK_EQ(victim.polls_b, 1);
+  }
+  {
+    sched_t sched;
+    counted task_b;
+    task_b.sched = &sched;
+    CHECK(sched.try_attach(&task_b, &restart_as_b));
+    (void)sched.run_once();
+    // Completion removes the attachment that completed, not the one the task
+    // made of itself during that poll.
+    CHECK(sched.is_attached(&task_b));
+    CHECK_EQ(sched.task_count(), std::size_t{1});
+    (void)sched.run_once();
+    CHECK_EQ(task_b.polls_b, 1);
+  }
+
+  // ---- #286: identity is the attachment, not the (task, poll) pair -----------
+  {
+    sched_t sched;
+    counted job;
+    job.sched = &sched;
+    CHECK(sched.try_attach(&job, &rearm_once));
+    (void)sched.run_once();
+    // The run that completed is removed; the re-arm it made of itself is not.
+    CHECK(sched.is_attached(&job));
+    CHECK_EQ(job.polls_a, 1);
+    (void)sched.run_once();
+    CHECK_EQ(job.polls_a, 2);
+    CHECK(!sched.is_attached(&job));
+  }
+  {
+    sched_t sched;
+    counted victim;
+    swapper_t swapper{&sched, &victim};
+    CHECK(sched.try_attach(&swapper, &reattach_victim_same_poll));
+    CHECK(sched.try_attach(&victim, &poll_a));
+    (void)sched.run_once();
+    // Re-attached mid-round with the same poll function: still a new
+    // attachment, so it waits for the next round like any other.
+    CHECK_EQ(victim.polls_a, 0);
+    (void)sched.run_once();
+    CHECK_EQ(victim.polls_a, 1);
   }
 
   return metl_test::exit_code();

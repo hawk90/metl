@@ -97,7 +97,7 @@ class scheduler {
   /// @note Safe to call from within a task's own poll (see `run_once`).
   bool detach(void* task) noexcept {
     for (size_type i = 0; i < tasks_.size(); ++i) {
-      if (tasks_[i].task == task) {
+      if (tasks_[i].slot.task == task) {
         tasks_.erase(tasks_.begin() + static_cast<std::ptrdiff_t>(i));
         return true;
       }
@@ -109,7 +109,7 @@ class scheduler {
   /// @param task The task to look up. @return true if attached.
   METL_NODISCARD bool is_attached(void* task) const noexcept {
     for (size_type i = 0; i < tasks_.size(); ++i) {
-      if (tasks_[i].task == task) {
+      if (tasks_[i].slot.task == task) {
         return true;
       }
     }
@@ -119,6 +119,12 @@ class scheduler {
   /// @brief Poll every attached task once in attachment order.
   /// @return The number of tasks that yielded (still want to run). Completed
   ///         tasks are removed in place. Task polls may attach/detach reentrantly.
+  /// @note An entry is one attachment, not a task address or a (task, poll)
+  ///       pair: a task attached during the round waits for the next one, even
+  ///       when it is the same object, with the same poll function, as one
+  ///       detached earlier in the round. A completed attachment is the one
+  ///       removed, so a task that re-attaches itself from the poll in which it
+  ///       completes stays attached.
   size_type run_once() noexcept;
 
   /// @brief Repeatedly `run_once()` until no task yields or `max_rounds` hit.
@@ -152,10 +158,41 @@ class scheduler {
     if (tasks_.full()) {
       return false;
     }
-    return tasks_.try_push_back(task_slot{task, fn});
+    return tasks_.try_push_back(entry{task_slot{task, fn}, next_attachment_++});
   }
 
-  metl::fixed_vector<task_slot, Capacity> tasks_;
+  // One attachment. The number tells attachments apart where the task address
+  // and poll function cannot: a task detached and attached again, even with
+  // the same poll function, is a new entry. It wraps after 2^N attaches; only
+  // attachments alive in the same round are compared, and there are at most
+  // Capacity of those.
+  struct entry {
+    task_slot slot;
+    size_type attachment;
+  };
+
+  // Whether the attachment is still attached.
+  bool holds(size_type attachment) const noexcept {
+    for (size_type i = 0; i < tasks_.size(); ++i) {
+      if (tasks_[i].attachment == attachment) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Removes the attachment, if still attached.
+  void remove(size_type attachment) noexcept {
+    for (size_type i = 0; i < tasks_.size(); ++i) {
+      if (tasks_[i].attachment == attachment) {
+        tasks_.erase(tasks_.begin() + static_cast<std::ptrdiff_t>(i));
+        return;
+      }
+    }
+  }
+
+  metl::fixed_vector<entry, Capacity> tasks_;
+  size_type next_attachment_ = 0;
 };
 
 template <std::size_t Capacity>
@@ -166,7 +203,7 @@ typename scheduler<Capacity>::size_type scheduler<Capacity>::run_once() noexcept
   // the live vector by cached index/size is unsafe: a detach() shifts elements
   // and shrinks the vector, so a cached index would read a stale or
   // out-of-bounds slot.
-  task_slot snapshot[Capacity == 0 ? 1 : Capacity];
+  entry snapshot[Capacity == 0 ? 1 : Capacity];
   const size_type n = tasks_.size();
   for (size_type i = 0; i < n; ++i) {
     snapshot[i] = tasks_[i];
@@ -174,19 +211,21 @@ typename scheduler<Capacity>::size_type scheduler<Capacity>::run_once() noexcept
 
   size_type still_running = 0;
   for (size_type i = 0; i < n; ++i) {
-    const task_slot s = snapshot[i];
-    // A previous poll in this round may already have detached this task; if so,
-    // skip it (do not poll a task the caller has removed).
-    if (!is_attached(s.task)) {
+    const entry e = snapshot[i];
+    // A previous poll in this round may have detached this entry, and may have
+    // attached something since -- at the same address, even with the same poll
+    // function. Only the snapshot's own attachment is still this entry; anything
+    // else is a mid-round attachment, which waits for the next round.
+    if (!holds(e.attachment)) {
       continue;
     }
-    const bool more = s.poll(s.task);
+    const bool more = e.slot.poll(e.slot.task);
     if (more) {
       ++still_running;
     } else {
-      // Completed: remove it. The task may already be gone if its own poll
-      // detached itself; detach() tolerates a missing task.
-      detach(s.task);
+      // Completed: remove this attachment. Its poll may have detached it
+      // already, or attached the task again; only the one that completed goes.
+      remove(e.attachment);
     }
   }
   return still_running;
