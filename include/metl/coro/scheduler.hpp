@@ -172,14 +172,13 @@ class scheduler {
   }
 
   // Removes the exact (task, poll) pair, if attached.
-  bool remove(task_slot entry) noexcept {
+  void remove(task_slot entry) noexcept {
     for (size_type i = 0; i < tasks_.size(); ++i) {
       if (tasks_[i].task == entry.task && tasks_[i].poll == entry.poll) {
         tasks_.erase(tasks_.begin() + static_cast<std::ptrdiff_t>(i));
-        return true;
+        return;
       }
     }
-    return false;
   }
 
   metl::fixed_vector<task_slot, Capacity> tasks_;
@@ -219,7 +218,7 @@ typename scheduler<Capacity>::size_type scheduler<Capacity>::run_once() noexcept
       // Completed: remove this entry. Its poll may have detached it already, or
       // re-attached the task under another poll function; only the pair that
       // completed is removed.
-      (void)remove(s);
+      remove(s);
     }
   }
   return still_running;
