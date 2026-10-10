@@ -5,7 +5,11 @@ The release ships one file, metl-X.Y.Z-single.hpp. Every public header gets a
 shim that includes it, so each test's `#include <metl/x.hpp>` resolves to the
 amalgamation instead of include/, and the whole suite runs against what users
 download. A test that exits with 77 (metl_test::skip_code) had nothing to check
-in this build and is reported as skipped, not passed.
+in this build and is reported as skipped, not passed. A test that CMakeLists.txt
+builds from several translation units (a metl_cc_test whose SRCS lists more than
+one file) is built from all of them, in the order listed, so a property that
+only shows across translation units -- link order, ODR -- is checked against
+the amalgamation too.
 
 This loop used to be written out twice in bash, in ci.yml and release.yml, and
 a change to the suite's exit codes had to find both copies. CI, the release
@@ -19,6 +23,7 @@ Usage:
 import argparse
 import concurrent.futures
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -40,12 +45,34 @@ def make_shims(header, shim_root):
         shim.write_text('#pragma once\n#include "metl_amalgamated.hpp"\n', encoding="utf-8")
 
 
-def run_test(cxx, shim_root, out_dir, test):
+def multi_tu_sources(cmake_text):
+    """{test file: [every source, in link order]} for each metl_cc_test whose
+    SRCS names more than one file. CMakeLists.txt is the one place the list is
+    written; a copy here would drift."""
+    uncommented = re.sub(r"#[^\n]*", "", cmake_text)
+    tests = {}
+    for sources in re.findall(r"SRCS((?:\s+[^\s()]+)+)", uncommented):
+        files = []
+        for word in sources.split():
+            if re.fullmatch(r"[A-Z_]+", word):  # the next keyword: DEPS, INCLUDES, ...
+                break
+            files.append(word)
+        if len(files) < 2 or any("$" in f for f in files):
+            continue
+        for f in files:
+            if f.endswith("_test.cpp"):
+                tests[REPO / f] = [REPO / g for g in files]
+    return tests
+
+
+def run_test(cxx, shim_root, out_dir, test, sources=None):
     """Returns ("pass" | "skip" | "build" | "fail", detail)."""
     name = test.relative_to(REPO).as_posix() if test.is_relative_to(REPO) else test.name
     binary = out_dir / (name.replace("/", "_") + ".bin")
+    sources = sources or [test]
     build = subprocess.run([cxx, *FLAGS, "-I", str(shim_root), "-I", str(REPO / "tests"),
-                            str(test), "-o", str(binary)], capture_output=True, text=True)
+                            *(str(s) for s in sources), "-o", str(binary)],
+                           capture_output=True, text=True)
     if build.returncode != 0:
         return "build", (build.stdout + build.stderr).strip()
     try:
@@ -59,7 +86,7 @@ def run_test(cxx, shim_root, out_dir, test):
     return "fail", f"exit {run.returncode}\n{(run.stdout + run.stderr).strip()}"
 
 
-def check(header, cxx, jobs, tests):
+def check(header, cxx, jobs, tests, multi_tu):
     with tempfile.TemporaryDirectory(prefix="metl-amalgamation-") as scratch:
         scratch = Path(scratch)
         shim_root = scratch / "shim"
@@ -67,7 +94,8 @@ def check(header, cxx, jobs, tests):
         make_shims(header, shim_root)
         results = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
-            futures = {pool.submit(run_test, cxx, shim_root, scratch, t): t for t in tests}
+            futures = {pool.submit(run_test, cxx, shim_root, scratch, t, multi_tu.get(t)): t
+                       for t in tests}
             for future in concurrent.futures.as_completed(futures):
                 results[futures[future]] = future.result()
     return results
@@ -112,11 +140,31 @@ def self_test(cxx):
             got, _ = run_test(cxx, shim_root, scratch, test)
             if got != expected:
                 failures.append(f"a test that should {expected!r} was classified {got!r}")
+        # A test whose main() uses a symbol defined in a second translation unit
+        # links only if both are built, and the source list is read from SRCS.
+        main_tu = scratch / "two_tu_test.cpp"
+        main_tu.write_text("int other();\nint main() { return other(); }\n", encoding="utf-8")
+        other_tu = scratch / "two_tu_other.cpp"
+        other_tu.write_text("int other() { return 0; }\n", encoding="utf-8")
+        listed = multi_tu_sources("metl_cc_test(NAME t\n  SRCS tests/a/one_test.cpp\n)\n"
+                                  "metl_cc_test(NAME u # two\n"
+                                  "  SRCS tests/b/x.cpp tests/b/y_test.cpp\n"
+                                  "  INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/tests\n)\n")
+        if listed != {REPO / "tests/b/y_test.cpp": [REPO / "tests/b/x.cpp",
+                                                    REPO / "tests/b/y_test.cpp"]}:
+            failures.append(f"SRCS lists were read as {listed}")
+        got, _ = run_test(cxx, shim_root, scratch, main_tu, [other_tu, main_tu])
+        if got != "pass":
+            failures.append(f"a two-TU test built from both sources was classified {got!r}")
+        got, _ = run_test(cxx, shim_root, scratch, main_tu)
+        if got != "build":
+            failures.append(f"a two-TU test built alone was classified {got!r}")
     for failure in failures:
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
         return 1
-    print("self-test passed: pass, skip (77), failure and build failure are told apart")
+    print("self-test passed: pass, skip (77), failure and build failure are told apart, "
+          "and a multi-TU test is built from its SRCS list")
     return 0
 
 
@@ -140,13 +188,14 @@ def main():
         print("error: no tests found", file=sys.stderr)
         return 2
 
+    multi_tu = multi_tu_sources((REPO / "CMakeLists.txt").read_text(encoding="utf-8"))
     if args.header is not None:
-        return report(check(args.header.resolve(), args.cxx, args.jobs, tests))
+        return report(check(args.header.resolve(), args.cxx, args.jobs, tests, multi_tu))
     with tempfile.TemporaryDirectory(prefix="metl-amalgamate-") as scratch:
         header = Path(scratch) / "metl-single.hpp"
         subprocess.run([sys.executable, str(REPO / "tools" / "amalgamate.py"), "-o", str(header)],
                        check=True, cwd=REPO, stdout=subprocess.DEVNULL)
-        return report(check(header, args.cxx, args.jobs, tests))
+        return report(check(header, args.cxx, args.jobs, tests, multi_tu))
 
 
 if __name__ == "__main__":
