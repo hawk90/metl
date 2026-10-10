@@ -67,6 +67,11 @@ inline panic_handler_t& panic_handler_storage() noexcept {
 ///          (or if it tries to return) the library calls `std::abort()`. Control
 ///          can NEVER continue past a failed assert. This is a deliberate
 ///          UB-safety guarantee.
+/// @pre Called while nothing else can assert: at start-up, before other
+///      threads run and before interrupts whose handlers use METL are
+///      enabled. The handler is a plain pointer, read on every failed
+///      assert; replacing it while another context may read it is a data
+///      race.
 inline assert_handler_t set_assert_handler(assert_handler_t handler) noexcept {
   assert_handler_t previous = detail::assert_handler_storage();
   detail::assert_handler_storage() = handler != nullptr ? handler : &detail::default_assert_handler;
@@ -78,6 +83,7 @@ inline assert_handler_t set_assert_handler(assert_handler_t handler) noexcept {
 /// @return The previously installed handler.
 /// @warning As with asserts, the panic path always aborts: a returning handler
 ///          does not resume control flow.
+/// @pre As for `set_assert_handler`: called while nothing else can panic.
 inline panic_handler_t set_panic_handler(panic_handler_t handler) noexcept {
   panic_handler_t previous = detail::panic_handler_storage();
   detail::panic_handler_storage() = handler != nullptr ? handler : &detail::default_panic_handler;
