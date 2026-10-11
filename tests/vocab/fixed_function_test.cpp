@@ -65,6 +65,9 @@ struct move_only_adder {
 // throw -- is not a viable conversion. The constructors used to accept it in
 // their signature and fail a static_assert in the body, so traits said yes and
 // overload resolution picked the wrapper over a caller's fallback.
+#if defined(_MSC_VER)
+#pragma warning(disable : 4324)  // padded due to alignas: the over-alignment is the point
+#endif
 struct alignas(2 * alignof(std::max_align_t)) over_aligned {
   int operator()(int value) const { return value; }
 };
