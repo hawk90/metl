@@ -107,6 +107,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the program ill-formed, no diagnostic required. They are no longer
   `constexpr` (the CRC overloads are `inline`); the `span` and
   `const unsigned char*` overloads remain `constexpr` for compile-time use.
+- `atomic_ref<T>::compare_exchange_strong` on a `T` with padding bits
+  compared the padding too, through `std::atomic<T>`, so on an object whose
+  padding held stale bytes it failed although every member was equal
+  (libc++ at any level; libstdc++ at -O0). Where the compiler provides
+  `__builtin_clear_padding`, it now compares value bits only, as
+  `std::atomic_ref` does, and `store`, `exchange` and both compare-exchanges
+  store values with their padding cleared. Without the builtin (Apple clang
+  21, MSVC) the header documents the old behaviour.
 
 ## [1.2.0] - 2026-10-10
 

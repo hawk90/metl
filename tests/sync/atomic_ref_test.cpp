@@ -2,6 +2,9 @@
 
 #include <atomic>
 #include <cstdint>
+#include <cstring>
+#include <new>
+#include <type_traits>
 
 #include <metl/atomic_ref.hpp>
 
@@ -108,6 +111,45 @@ void test_traits() {
                 "atomic_ref must be copy-constructible");
 }
 
+// A T with a padding byte. compare_exchange_strong compared it byte-wise, so it
+// failed although every member was equal; std::atomic_ref compares value bits.
+struct padded {
+  char a;
+  short b;
+};
+
+void test_strong_ignores_padding() {
+  static_assert(!std::has_unique_object_representations_v<padded>, "padded has a padding byte");
+  alignas(metl::atomic_ref<padded>::required_alignment) unsigned char raw[sizeof(padded)];
+  std::memset(raw, 0xAB, sizeof raw);
+  padded* object = new (raw) padded;  // default-initialised: the padding keeps 0xAB
+  object->a = 1;
+  object->b = 2;
+  metl::atomic_ref<padded> ref(*object);
+
+  padded expected;
+  std::memset(&expected, 0, sizeof expected);
+  expected.a = 1;
+  expected.b = 2;
+  const padded desired{9, 9};
+  const bool exchanged = ref.compare_exchange_strong(expected, desired);
+  if (metl::detail::atomic_ref_ignores_padding_v<padded>) {
+    CHECK(exchanged);
+    CHECK_EQ(ref.load().a, 9);
+    CHECK_EQ(ref.load().b, 9);
+  } else {
+    // No __builtin_clear_padding: documented to fail as weak may.
+    CHECK_EQ(expected.a, 1);
+    CHECK_EQ(expected.b, 2);
+  }
+
+  // A real mismatch still fails and reports the held value.
+  padded wrong{1, 3};
+  CHECK(!ref.compare_exchange_strong(wrong, padded{7, 7}));
+  CHECK_EQ(wrong.a, ref.load().a);
+  CHECK_EQ(wrong.b, ref.load().b);
+}
+
 }  // namespace
 
 int main() {
@@ -119,5 +161,6 @@ int main() {
   test_fetch_add_sub();
   test_fetch_bitwise();
   test_u8_u16_u64();
+  test_strong_ignores_padding();
   return metl_test::exit_code();
 }
