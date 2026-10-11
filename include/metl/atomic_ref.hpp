@@ -115,7 +115,7 @@ METL_NODISCARD inline bool try_atomic_ref_exchange_bytes(T* object,
       success = __ATOMIC_ACQ_REL;
       failure = __ATOMIC_ACQUIRE;
       break;
-    default:
+    case std::memory_order_seq_cst:
       break;
   }
   word held;
