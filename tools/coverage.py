@@ -32,7 +32,10 @@ for identical code. So a local run will not match CI, and the CI number is the
 one the floor is set against. Do not chase a local figure.
 
 Usage:
-    tools/coverage.py [--min-lines 90] [--min-branches 72]
+    tools/coverage.py [--min-lines 90] [--min-branches 72] [--lcov PATH]
+
+--lcov also writes the same measurement, include/metl only, as an lcov file
+for Codecov. The floors here stay the gate; Codecov only displays.
 """
 
 import argparse
@@ -59,11 +62,35 @@ def pct(total, missed):
     return 100.0 * (total - missed) / total if total else 0.0
 
 
+def lcov_filtered(text, marker):
+    """The lcov records whose source file path contains `marker`, paths made
+    repo-relative so Codecov matches them to the tree without a path fix."""
+    out, record, keep = [], [], False
+    for line in text.splitlines():
+        if line.startswith("SF:"):
+            path = line[3:]
+            keep = marker in path
+            if keep and path.startswith(str(REPO) + os.sep):
+                line = "SF:" + os.path.relpath(path, REPO)
+        record.append(line)
+        if line == "end_of_record":
+            if keep:
+                out.extend(record)
+            record, keep = [], False
+    return "\n".join(out) + "\n" if out else ""
+
+
+def lcov_records_under(text, marker):
+    return sum(1 for line in text.splitlines() if line.startswith("SF:") and marker in line)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--min-lines", type=float, default=90)
     parser.add_argument("--min-branches", type=float, default=72)
+    parser.add_argument("--lcov", type=Path,
+                        help="also write include/metl coverage as an lcov file here")
     args = parser.parse_args()
     sys.stdout.reconfigure(line_buffering=True)
 
@@ -108,6 +135,20 @@ def main():
     report = subprocess.run([cov, "report", *objects, f"-instr-profile={profile}"],
                             capture_output=True, text=True).stdout
     (BUILD_DIR / "report.txt").write_text(report)
+
+    if args.lcov is not None:
+        exported = subprocess.run([cov, "export", "-format=lcov", *objects,
+                                   f"-instr-profile={profile}"],
+                                  capture_output=True, text=True)
+        if exported.returncode:
+            print(exported.stderr, file=sys.stderr)
+            return 1
+        kept = lcov_records_under(exported.stdout, "include/metl/")
+        if kept == 0:
+            print("error: the lcov export has no include/metl record", file=sys.stderr)
+            return 1
+        args.lcov.write_text(lcov_filtered(exported.stdout, "include/metl/"))
+        print(f"lcov: {kept} include/metl file(s) written to {args.lcov}")
 
     # Columns: file, regions, missed, cover, functions, missed, executed,
     # lines, missed, cover, branches, missed, cover.

@@ -12,7 +12,8 @@
 <p align="center">
   <a href="https://github.com/hawk90/metl/actions/workflows/ci.yml"><img src="https://github.com/hawk90/metl/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/hawk90/metl/releases/latest"><img src="https://img.shields.io/github/v/release/hawk90/metl" alt="Release"></a>
-  <img src="https://img.shields.io/badge/C%2B%2B-17-blue.svg" alt="C++17">
+  <a href="https://codecov.io/gh/hawk90/metl"><img src="https://codecov.io/gh/hawk90/metl/graph/badge.svg" alt="Coverage"></a>
+  <img src="https://img.shields.io/badge/C%2B%2B-17%20%7C%2020%20%7C%2023%20%7C%2026-blue.svg" alt="C++17 | 20 | 23 | 26">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
 </p>
 
@@ -35,8 +36,8 @@ fully usable on host platforms for development and testing.
 ## Highlights
 
 - Header-only; drop the `include/` directory into any project.
-- **C++17 baseline**, with no compiler extensions required. C++20 is verified in
-  CI as well, and on a C++20 toolchain `optional` becomes genuinely
+- **C++17 baseline**, with no compiler extensions required. C++20, C++23 and
+  C++26 are built and tested in CI as well, and on a C++20 toolchain `optional` becomes genuinely
   constant-evaluable — the library detects that through
   `__cpp_lib_constexpr_dynamic_alloc` rather than the language version, so it
   degrades correctly on a C++20 compiler with an older standard library.
@@ -528,8 +529,8 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | Zephyr RTOS | qemu_cortex_m3 module build + run | `west build` + twister **run** (QEMU) | `zephyr` |
 | No heap / no exceptions / no RTTI | Cortex-M0/M3/M4/M7, newlib-nano | link + **audit the image's symbol table**; a deliberate canary must fail it | `invariants` |
 | Lock-free capability | Cortex-M0/M3/M4/M7 | the trait must match the target **and** the opposite expectation must not compile | `handle-atomics` |
-| Non-default configs | `METL_CRC_TABLE=0`, **`-std=c++20`**, `-fno-exceptions` | build + `ctest` for each, the C++20 and `-fno-exceptions` legs under Clang and GCC (`#if` arms nothing else compiles) | `config-matrix` |
-| Coverage | host, Clang source-based | `include/metl` line + branch coverage against a floor | `coverage` |
+| Non-default configs | `METL_CRC_TABLE=0`, **`-std=c++20`**, **`c++23`**, **`c++26`**, `-fno-exceptions` | build + `ctest` for each, the C++20/23/26 and `-fno-exceptions` legs under Clang and GCC (`#if` arms nothing else compiles) | `config-matrix` |
+| Coverage | host, Clang source-based | `include/metl` line + branch coverage against a floor; the same report is shown on [Codecov](https://codecov.io/gh/hawk90/metl), display only. Code evaluated only at compile time reads as uncovered lines | `coverage` |
 | Benchmarks | host | build + run each suite (`--quick`); instructions executed per benchmark, counted under cachegrind, against a budget (`tools/check_instructions.py`); wall-clock numbers are informational only | `bench-smoke` |
 | Code size and RAM | Cortex-M0/M3/M4/M7, `-Os` | `.text`, `.rodata`, `.bss`+`.data` and deepest stack frame of the **linked** probe against per-target budgets (`tools/check_size.py`, `tools/check_stack.py`) | `invariants` |
 | Header hygiene | per-header self-containment + umbrella completeness | `-fsyntax-only` per header + `ctest` | `header-checks` |
