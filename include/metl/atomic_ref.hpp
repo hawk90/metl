@@ -92,10 +92,10 @@ struct atomic_ref_word<8> {
 };
 
 template <typename T>
-inline bool atomic_ref_exchange_bytes(T* object,
-                                      T& expected,
-                                      const T& desired,
-                                      std::memory_order order) noexcept {
+METL_NODISCARD inline bool try_atomic_ref_exchange_bytes(T* object,
+                                                         T& expected,
+                                                         const T& desired,
+                                                         std::memory_order order) noexcept {
   using word = typename atomic_ref_word<sizeof(T)>::type;
   int success = __ATOMIC_SEQ_CST;
   int failure = __ATOMIC_SEQ_CST;
@@ -135,10 +135,10 @@ template <typename T>
 inline void atomic_ref_clear_padding(T& /*value*/) noexcept {}
 
 template <typename T>
-inline bool atomic_ref_exchange_bytes(T* object,
-                                      T& expected,
-                                      const T& desired,
-                                      std::memory_order order) noexcept {
+METL_NODISCARD inline bool try_atomic_ref_exchange_bytes(T* object,
+                                                         T& expected,
+                                                         const T& desired,
+                                                         std::memory_order order) noexcept {
   return atomic_ref_cast(object)->compare_exchange_strong(expected, desired, order);
 }
 #endif
@@ -244,7 +244,7 @@ class atomic_ref {
       detail::atomic_ref_clear_padding(held);
       const T wanted = held;
       for (;;) {
-        if (detail::atomic_ref_exchange_bytes(ptr_, held, desired, order)) {
+        if (detail::try_atomic_ref_exchange_bytes(ptr_, held, desired, order)) {
           return true;
         }
         T found = held;
