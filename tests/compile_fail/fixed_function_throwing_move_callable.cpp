@@ -26,8 +26,11 @@ int control() {
 }
 
 #ifdef METL_COMPILE_FAIL
-int offender() {
-  metl::fixed_function<int(int)> f(throwing_move_callable{});
-  return f(1);
+// The converting constructor is constrained on the same condition, so the
+// message is reached through try_assign; tests/vocab/fixed_function_test.cpp
+// checks that the constructor is not viable.
+bool offender() {
+  metl::fixed_function<int(int)> f;
+  return f.try_assign(throwing_move_callable{});
 }
 #endif
