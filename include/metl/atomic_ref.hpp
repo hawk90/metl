@@ -84,7 +84,7 @@ inline void atomic_ref_clear_padding(T& /*value*/) noexcept {}
 //   on bare metal.
 // The bytes go through an unsigned integer of the same size, which the
 // constructor's alignment check makes a valid, lock-free atomic access.
-#if defined(__GNUC__)
+#ifdef __GNUC__
 template <std::size_t Size>
 struct atomic_ref_word;
 template <>
