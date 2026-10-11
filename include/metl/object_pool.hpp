@@ -156,7 +156,7 @@ class object_pool {
     // Capacity elements would leave the one T it points to.
     const auto addr = reinterpret_cast<std::uintptr_t>(object);
     const auto lo = reinterpret_cast<std::uintptr_t>(storage_[0].addr());
-    const auto hi = lo + sizeof(storage_type) * Capacity;
+    const auto hi = lo + (sizeof(storage_type) * Capacity);
     if (addr < lo || addr >= hi) {
       return Capacity;
     }

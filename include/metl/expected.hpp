@@ -729,13 +729,13 @@ class expected {
   }
 
  private:
-  void* storage_addr() noexcept { return &storage_[0]; }
+  void* storage_addr() noexcept { return &storage_.bytes[0]; }
 
-  T* value_ptr() noexcept { return std::launder(reinterpret_cast<T*>(&storage_[0])); }
-  const T* value_ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&storage_[0])); }
+  T* value_ptr() noexcept { return std::launder(reinterpret_cast<T*>(&storage_.bytes[0])); }
+  const T* value_ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&storage_.bytes[0])); }
 
-  E* error_ptr() noexcept { return std::launder(reinterpret_cast<E*>(&storage_[0])); }
-  const E* error_ptr() const noexcept { return std::launder(reinterpret_cast<const E*>(&storage_[0])); }
+  E* error_ptr() noexcept { return std::launder(reinterpret_cast<E*>(&storage_.bytes[0])); }
+  const E* error_ptr() const noexcept { return std::launder(reinterpret_cast<const E*>(&storage_.bytes[0])); }
 
   // Unchecked accessors used internally where active-member state is known.
   T& value_unchecked() noexcept { return *value_ptr(); }
@@ -964,7 +964,14 @@ class expected {
   // member of that union was ever made active, so every access to one was a
   // member call on an object outside its lifetime ([basic.life]/7). Bytes
   // provide storage for the T or E built in them, as in metl::variant.
-  alignas(T) alignas(E) unsigned char storage_[sizeof(T) > sizeof(E) ? sizeof(T) : sizeof(E)];
+  // The size is rounded up to the alignment, so the alignment specifier adds no
+  // padding of its own (which MSVC reports as C4324).
+  static constexpr std::size_t storage_align = alignof(T) > alignof(E) ? alignof(T) : alignof(E);
+  static constexpr std::size_t storage_size =
+      ((sizeof(T) > sizeof(E) ? sizeof(T) : sizeof(E)) + storage_align - 1) / storage_align * storage_align;
+  struct storage_type {
+    alignas(storage_align) unsigned char bytes[storage_size];
+  } storage_;
 
   bool has_value_;
 };
