@@ -77,9 +77,12 @@ struct moveonly_ops {
   void (*destroy)(void*) noexcept;
 };
 
+// The storage pointer points at the buffer's first byte, not at the F built
+// there, so each access goes through std::launder ([basic.life]/8): an F with
+// a const or reference member, such as most capturing lambdas, needs it.
 template <typename F, typename R, typename... Args>
 R invoke_object(void* storage, Args&&... args) {
-  auto* function = static_cast<F*>(storage);
+  auto* function = std::launder(static_cast<F*>(storage));
   if constexpr (std::is_void_v<R>) {
     // A value-returning callable in a `void` signature: discard the result, as
     // std::function does (the constraint already accepts it).
@@ -93,7 +96,7 @@ template <typename F, typename R, typename... Args>
 R invoke_object_nx(void* storage, Args&&... args) noexcept {
   static_assert(noexcept((*static_cast<F*>(storage))(std::forward<Args>(args)...)),
                 "callable must be noexcept to satisfy noexcept signature");
-  auto* function = static_cast<F*>(storage);
+  auto* function = std::launder(static_cast<F*>(storage));
   if constexpr (std::is_void_v<R>) {
     (void)(*function)(std::forward<Args>(args)...);
   } else {
@@ -103,17 +106,17 @@ R invoke_object_nx(void* storage, Args&&... args) noexcept {
 
 template <typename F>
 void copy_object(void* destination, const void* source) {
-  ::new (destination) F(*static_cast<const F*>(source));
+  ::new (destination) F(*std::launder(static_cast<const F*>(source)));
 }
 
 template <typename F>
 void move_object(void* destination, void* source) noexcept {
-  ::new (destination) F(static_cast<F&&>(*static_cast<F*>(source)));
+  ::new (destination) F(static_cast<F&&>(*std::launder(static_cast<F*>(source))));
 }
 
 template <typename F>
 void destroy_object(void* storage) noexcept {
-  static_cast<F*>(storage)->~F();
+  std::launder(static_cast<F*>(storage))->~F();
 }
 
 // Per-callable ops tables, specialized on noexcept-ness because a function

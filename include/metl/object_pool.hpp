@@ -151,10 +151,12 @@ class object_pool {
     // different objects are UB, so compare on integer addresses instead — on the
     // flat-memory targets this library serves that is exactly the intended
     // containment test, with no <functional>/std::less dependency.
-    const_pointer begin = slot_ptr(0);
+    // The bounds come from the slots' addresses, not from slot_ptr(0): that
+    // launders a pointer to slot 0, which needs a live T there, and stepping it
+    // Capacity elements would leave the one T it points to.
     const auto addr = reinterpret_cast<std::uintptr_t>(object);
-    const auto lo = reinterpret_cast<std::uintptr_t>(begin);
-    const auto hi = reinterpret_cast<std::uintptr_t>(begin + Capacity);
+    const auto lo = reinterpret_cast<std::uintptr_t>(storage_[0].addr());
+    const auto hi = lo + sizeof(storage_type) * Capacity;
     if (addr < lo || addr >= hi) {
       return Capacity;
     }

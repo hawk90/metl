@@ -729,11 +729,13 @@ class expected {
   }
 
  private:
-  T* value_ptr() noexcept { return storage_.value_storage.ptr(); }
-  const T* value_ptr() const noexcept { return storage_.value_storage.ptr(); }
+  void* storage_addr() noexcept { return &storage_[0]; }
 
-  E* error_ptr() noexcept { return storage_.error_storage.ptr(); }
-  const E* error_ptr() const noexcept { return storage_.error_storage.ptr(); }
+  T* value_ptr() noexcept { return std::launder(reinterpret_cast<T*>(&storage_[0])); }
+  const T* value_ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&storage_[0])); }
+
+  E* error_ptr() noexcept { return std::launder(reinterpret_cast<E*>(&storage_[0])); }
+  const E* error_ptr() const noexcept { return std::launder(reinterpret_cast<const E*>(&storage_[0])); }
 
   // Unchecked accessors used internally where active-member state is known.
   T& value_unchecked() noexcept { return *value_ptr(); }
@@ -743,12 +745,12 @@ class expected {
 
   template <typename... Args>
   void construct_value(Args&&... args) {
-    ::new (storage_.value_storage.addr()) T(std::forward<Args>(args)...);
+    ::new (storage_addr()) T(std::forward<Args>(args)...);
   }
 
   template <typename... Args>
   void construct_error(Args&&... args) {
-    ::new (storage_.error_storage.addr()) E(std::forward<Args>(args)...);
+    ::new (storage_addr()) E(std::forward<Args>(args)...);
   }
 
   void destroy_active() noexcept {
@@ -917,36 +919,36 @@ class expected {
       // so with `if constexpr` compiles the handler only where it can run,
       // which is what the code already meant.
 #if METL_NO_EXCEPTIONS
-      ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(*v.value_ptr()));
+      ::new (e.storage_addr()) T(static_cast<T&&>(*v.value_ptr()));
 #else
       if constexpr (std::is_nothrow_move_constructible_v<T>) {
-        ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(*v.value_ptr()));
+        ::new (e.storage_addr()) T(static_cast<T&&>(*v.value_ptr()));
       } else {
         try {
-          ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(*v.value_ptr()));
+          ::new (e.storage_addr()) T(static_cast<T&&>(*v.value_ptr()));
         } catch (...) {
-          ::new (e.storage_.error_storage.addr()) E(static_cast<E&&>(tmp));  // restore e
+          ::new (e.storage_addr()) E(static_cast<E&&>(tmp));  // restore e
           throw;
         }
       }
 #endif
       v.value_ptr()->~T();
-      ::new (v.storage_.error_storage.addr()) E(static_cast<E&&>(tmp));
+      ::new (v.storage_addr()) E(static_cast<E&&>(tmp));
     } else {
       T tmp(static_cast<T&&>(*v.value_ptr()));
       v.value_ptr()->~T();
 #if !METL_NO_EXCEPTIONS
       try {
 #endif
-        ::new (v.storage_.error_storage.addr()) E(static_cast<E&&>(*e.error_ptr()));
+        ::new (v.storage_addr()) E(static_cast<E&&>(*e.error_ptr()));
 #if !METL_NO_EXCEPTIONS
       } catch (...) {
-        ::new (v.storage_.value_storage.addr()) T(static_cast<T&&>(tmp));  // restore v
+        ::new (v.storage_addr()) T(static_cast<T&&>(tmp));  // restore v
         throw;
       }
 #endif
       e.error_ptr()->~E();
-      ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(tmp));
+      ::new (e.storage_addr()) T(static_cast<T&&>(tmp));
     }
     v.has_value_ = false;
     e.has_value_ = true;
@@ -957,13 +959,12 @@ class expected {
   // constant evaluation. Genuine constexpr (cf. metl::optional via
   // metl/detail/construct.hpp) would require a union-of-{T,E} rewrite that also
   // preserves the exception-safe reinit/swap paths; deferred.
-  union storage_union {
-    storage_union() {}
-    ~storage_union() {}
-
-    storage_for<T> value_storage;
-    storage_for<E> error_storage;
-  } storage_;
+  //
+  // One byte buffer, not a union of storage_for<T> and storage_for<E>: no
+  // member of that union was ever made active, so every access to one was a
+  // member call on an object outside its lifetime ([basic.life]/7). Bytes
+  // provide storage for the T or E built in them, as in metl::variant.
+  alignas(T) alignas(E) unsigned char storage_[sizeof(T) > sizeof(E) ? sizeof(T) : sizeof(E)];
 
   bool has_value_;
 };
