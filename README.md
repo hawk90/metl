@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/metl-logo-dark.svg">
-    <img src="docs/assets/metl-logo-light.svg" alt="METL — Modern Embedded Template Library" width="360">
+    <img src="docs/assets/metl-logo-light.svg" alt="METL — Modern Embedded Template Library" width="310">
   </picture>
 </p>
 
