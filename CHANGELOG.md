@@ -107,6 +107,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the program ill-formed, no diagnostic required. They are no longer
   `constexpr` (the CRC overloads are `inline`); the `span` and
   `const unsigned char*` overloads remain `constexpr` for compile-time use.
+- `crc8`, `crc16` and `crc32` built with GCC at -O2 or -O3 copied their
+  nibble table onto the stack for every byte: a 64-byte frame and four
+  vector stores per byte for CRC-32, 32 bytes for CRC-16 and 16 for CRC-8.
+  The tables now live at namespace scope, so GCC reads them from `.rodata`
+  as Clang already did, and a test fails if a CRC frame at -O2 reaches the
+  size of the CRC-16 table.
 
 ## [1.2.0] - 2026-10-10
 

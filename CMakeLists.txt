@@ -416,6 +416,33 @@ if(METL_BUILD_TESTS)
               -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckUmbrella.cmake)
     set_tests_properties(metl_umbrella_complete PROPERTIES LABELS "metl" TIMEOUT 300)
   endif()
+
+  # -------------------------------------------------------------------------
+  # Stack frames at -O2 (GCC and Clang)
+  #   The ARM stack probe is built at -Os. GCC copied the CRC nibble tables onto
+  #   the stack only at -O2 and -O3, so this TU is built at -O2, with no
+  #   sanitizer or coverage flags, and every frame must stay under the 32 bytes
+  #   the CRC-16 table would add. See tests/embedded/crc_stack_probe.cpp.
+  # -------------------------------------------------------------------------
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT MSVC)
+    add_library(metl_crc_stack_probe OBJECT tests/embedded/crc_stack_probe.cpp)
+    target_link_libraries(metl_crc_stack_probe PRIVATE metl::metl)
+    target_compile_features(metl_crc_stack_probe PRIVATE cxx_std_17)
+    # No LTO: under -flto the object holds IR, and the frames, with their .su
+    # file, are only produced at link time, which this object never reaches.
+    target_compile_options(metl_crc_stack_probe PRIVATE -O2 -fno-lto -fstack-usage)
+    set_target_properties(metl_crc_stack_probe PROPERTIES METL_KIND stack_probe INTERPROCEDURAL_OPTIMIZATION OFF)
+    add_test(
+      NAME metl_crc_stack_frame
+      COMMAND ${CMAKE_COMMAND}
+              -D BUILD_DIR=${CMAKE_BINARY_DIR}
+              -D TARGET=metl_crc_stack_probe
+              -D CONFIG=$<CONFIG>
+              -D SU_DIR=${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/metl_crc_stack_probe.dir
+              -D MAX_BYTES=31
+              -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckStackFrames.cmake)
+    set_tests_properties(metl_crc_stack_frame PROPERTIES LABELS "metl" TIMEOUT 300)
+  endif()
 endif()
 
 # ---------------------------------------------------------------------------
