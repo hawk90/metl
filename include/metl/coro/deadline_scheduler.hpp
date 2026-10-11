@@ -52,7 +52,12 @@ using deadline_poll_fn = optional<Tick> (*)(void* task, Tick now) noexcept;
 /// forever.
 ///
 /// @tparam Capacity Maximum number of simultaneously scheduled tasks.
-/// @tparam Tick Monotonic, non-wrapping time unit. See the header note.
+/// @tparam Tick Monotonic, non-wrapping time unit. See the header note. The
+///         default, `std::uint32_t`, suits only an uptime under 2^32 ticks
+///         (49.7 days at 1 kHz): after that a deadline wraps to a small value,
+///         is due at once, and a periodic task is polled `max_dispatches`
+///         times in one `run_due`. For longer uptimes use the 64-bit tick of a
+///         `metl::tick_extender`.
 template <std::size_t Capacity, typename Tick = std::uint32_t>
 class deadline_scheduler {
  public:

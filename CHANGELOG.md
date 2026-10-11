@@ -88,6 +88,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it. With an element whose move can throw, that called `std::terminate`
   inside the `noexcept` `clear()`, and in every case it cost one move per
   element. They now destroy from the back in place, moving nothing.
+- Documentation: `atomic_handle` claimed a compare-exchange "cannot be
+  fooled" by a recycled slot; with the default 16-bit generation it can,
+  after 65535 recycles of that slot, and the header now says so.
+  `deadline_scheduler`'s default `Tick` of `std::uint32_t` wraps after
+  2^32 ticks, which its own header forbids; the template parameter now
+  states the limit and points to `tick_extender`. `flat_map::clear()` and
+  `flat_set::clear()` now state that an element's destructor may erase
+  from the container but not insert into it.
 - `coro::scheduler::run_once` re-checked each task of its snapshot by address
   only. A task detached and re-attached under another poll function during the
   round -- or a different object attached in its storage -- was then polled
