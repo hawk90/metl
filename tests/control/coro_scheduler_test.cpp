@@ -35,6 +35,24 @@ class n_step_task : public metl::coro::stepper {
   }
 };
 
+// A task that, in its final poll, attaches the next step and completes: a
+// pipeline hand-off. run_once polls the successor in the next round, not this
+// one, so that round reports nothing yielded although a task is attached.
+struct hand_off {
+  metl::coro::scheduler<4>* sched = nullptr;
+  hand_off* next = nullptr;
+  int polls = 0;
+};
+
+bool poll_hand_off(void* p) noexcept {
+  auto* step = static_cast<hand_off*>(p);
+  ++step->polls;
+  if (step->next != nullptr) {
+    (void)step->sched->try_attach(step->next, &poll_hand_off);
+  }
+  return false;
+}
+
 }  // namespace
 
 int main() {
@@ -238,6 +256,44 @@ int main() {
     }
     if (forever.hits != 7) {
       return 53;
+    }
+  }
+
+  // ---- run_until_idle runs tasks attached in a round that yielded nothing.
+  // It used to stop after the first hand-off: that round yielded nothing, so
+  // it returned with the next step attached and never polled.
+  {
+    metl::coro::scheduler<4> sched;
+    hand_off c{&sched, nullptr};
+    hand_off b{&sched, &c};
+    hand_off a{&sched, &b};
+    if (!sched.try_attach(&a, &poll_hand_off)) {
+      return 60;
+    }
+    const auto rounds = sched.run_until_idle();
+    if (rounds != 3 || !sched.empty()) {
+      return 61;
+    }
+    if (a.polls != 1 || b.polls != 1 || c.polls != 1) {
+      return 62;
+    }
+  }
+
+  // ---- ... and is still bounded by max_rounds for a hand-off that never ends.
+  {
+    metl::coro::scheduler<4> sched;
+    hand_off a{&sched, nullptr};
+    hand_off b{&sched, &a};
+    a.next = &b;
+    if (!sched.try_attach(&a, &poll_hand_off)) {
+      return 63;
+    }
+    const auto rounds = sched.run_until_idle(9);
+    if (rounds != 9 || sched.task_count() != 1) {
+      return 64;
+    }
+    if (a.polls + b.polls != 9) {
+      return 65;
     }
   }
 

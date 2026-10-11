@@ -31,7 +31,7 @@
 // Polling policy: each `run_once()` polls every attached task exactly once
 // in attachment order. Tasks that report completion (their poll function
 // returns `false`) are removed in place. `run_until_idle()` repeatedly calls
-// `run_once()` until either nothing yields or `max_rounds` is reached.
+// `run_once()` until no task is attached or `max_rounds` is reached.
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
@@ -127,7 +127,10 @@ class scheduler {
   ///       completes stays attached.
   size_type run_once() noexcept;
 
-  /// @brief Repeatedly `run_once()` until no task yields or `max_rounds` hit.
+  /// @brief Repeatedly `run_once()` until no task is attached or `max_rounds`
+  ///        rounds have run.
+  /// @note A task attached during a round, such as the next step a completing
+  ///       task hands off to, is polled in a later round of the same call.
   /// @param max_rounds Upper bound on rounds, guaranteeing termination.
   /// @return The total number of rounds executed.
   size_type run_until_idle(size_type max_rounds = 1024) noexcept;
@@ -233,13 +236,14 @@ typename scheduler<Capacity>::size_type scheduler<Capacity>::run_once() noexcept
 
 template <std::size_t Capacity>
 typename scheduler<Capacity>::size_type scheduler<Capacity>::run_until_idle(size_type max_rounds) noexcept {
+  // Not "until a round yields nothing": a task that completes after attaching
+  // a successor makes a round that yields nothing and leaves the successor
+  // attached, unpolled. Every task still attached after a round is one that
+  // wants to run, so the loop ends when none is.
   size_type rounds = 0;
   while (rounds < max_rounds && task_count() > 0) {
-    const size_type running = run_once();
+    (void)run_once();
     ++rounds;
-    if (running == 0) {
-      break;
-    }
   }
   return rounds;
 }
