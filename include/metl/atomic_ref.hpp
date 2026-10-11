@@ -260,11 +260,11 @@ class atomic_ref {
         // Only the padding differed. Retry with the bytes actually held: that
         // attempt fails only if another thread stored in between.
       }
-    }
-    if constexpr (!std::has_unique_object_representations_v<T>) {
+    } else if constexpr (!std::has_unique_object_representations_v<T>) {
       return detail::try_atomic_ref_exchange_bytes(ptr_, expected, desired, order, false);
+    } else {
+      return detail::atomic_ref_cast(ptr_)->compare_exchange_strong(expected, desired, order);
     }
-    return detail::atomic_ref_cast(ptr_)->compare_exchange_strong(expected, desired, order);
   }
 
   /// @brief Atomic weak compare-and-exchange (may fail spuriously).
@@ -278,8 +278,9 @@ class atomic_ref {
     detail::atomic_ref_clear_padding(desired);
     if constexpr (!std::has_unique_object_representations_v<T>) {
       return detail::try_atomic_ref_exchange_bytes(ptr_, expected, desired, order, true);
+    } else {
+      return detail::atomic_ref_cast(ptr_)->compare_exchange_weak(expected, desired, order);
     }
-    return detail::atomic_ref_cast(ptr_)->compare_exchange_weak(expected, desired, order);
   }
 
   // Integral-only fetch operations. SFINAE on a defaulted dependent
