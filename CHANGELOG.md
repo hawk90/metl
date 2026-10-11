@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-11
+
+**Highlights.** A correctness patch from a second review of 1.2.0, each finding
+reproduced by a failing test before it was fixed. A scheduler task could be
+polled through a stale function after its address was reused, and
+`run_until_idle` could return with work attached. A `fixed_function` returning
+a reference could dangle, and an empty one converted to another capacity
+claimed a target. A namespace-scope queue or container could lose what an
+interrupt pushed before `main()`. Since C++20 the zero-empty containers are
+constant-initialized, and CI now builds and tests C++23 and C++26 too.
+
+### Upgrading from 1.2.0
+
+Correct code keeps compiling. Each change below was silently wrong before;
+check these against your code, and rebuild everything that shares a
+`coro::scheduler` across a library boundary, as its size changes:
+
+- `coro::scheduler`: attaching a task that is already attached is a
+  `METL_HARDEN` precondition violation, at every level. Each slot is one
+  `std::size_t` larger, and `run_until_idle` now also runs tasks attached
+  during a round.
+- `fixed_function` and `fixed_any_invocable`: a reference-returning signature
+  rejects a callable whose result would bind it to a temporary; an over-aligned
+  callable, or one whose move may throw, is no longer a viable conversion, so
+  `std::is_constructible` says no and overload resolution can pick another
+  candidate.
+- Constructors that run user code are `noexcept` only when that code is:
+  `static_unordered_map`/`_set` (default and move), `lookup_table`,
+  `scoped_lock` and `scope_exit`.
+- `ring_buffer<T, 0>::push_overwrite` is a compile error; it always aborted.
+- The `crc8`/`crc16`/`crc32` overloads over `const void*`, and `fnv1a` over
+  `const T*`, are no longer `constexpr`: they could never be constant-evaluated.
+- `parse_*` and `format_*` are `METL_NODISCARD`; `fsm::dispatch` no longer is.
+
 ### Fixed
 
 - `versioned_handle{index, 0}` was not valid, yet compared unequal to the null
