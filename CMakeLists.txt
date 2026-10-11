@@ -428,8 +428,10 @@ if(METL_BUILD_TESTS)
     add_library(metl_crc_stack_probe OBJECT tests/embedded/crc_stack_probe.cpp)
     target_link_libraries(metl_crc_stack_probe PRIVATE metl::metl)
     target_compile_features(metl_crc_stack_probe PRIVATE cxx_std_17)
-    target_compile_options(metl_crc_stack_probe PRIVATE -O2 -fstack-usage)
-    set_target_properties(metl_crc_stack_probe PROPERTIES METL_KIND stack_probe)
+    # No LTO: under -flto the object holds IR, and the frames, with their .su
+    # file, are only produced at link time, which this object never reaches.
+    target_compile_options(metl_crc_stack_probe PRIVATE -O2 -fno-lto -fstack-usage)
+    set_target_properties(metl_crc_stack_probe PROPERTIES METL_KIND stack_probe INTERPROCEDURAL_OPTIMIZATION OFF)
     add_test(
       NAME metl_crc_stack_frame
       COMMAND ${CMAKE_COMMAND}
