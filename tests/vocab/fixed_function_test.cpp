@@ -93,7 +93,7 @@ static_assert(!any_viable<over_aligned>, "an over-aligned callable is not a viab
 static_assert(!any_viable<throwing_move>, "a callable whose move may throw is not a viable conversion");
 static_assert(viable<metl::fixed_function<int(int), 64>, int (*)(int)>, "the control still converts");
 
-int registered(metl::fixed_function<int(int), 64>) {
+int registered(const metl::fixed_function<int(int), 64>& /*function*/) {
   return 1;
 }
 template <typename T,
