@@ -415,6 +415,10 @@ class flat_set {
   }
 
   /// @brief Remove all elements (destroys each; size becomes 0).
+  /// @note An element's destructor may erase from this container, but must not
+  ///       insert into it: clear() and the destructor destroy each element in
+  ///       place, and an insert would build into the slot being destroyed.
+  ///       `erase` does allow it (see erase_at).
   void clear() noexcept {
     // From the back, in place, as fixed_vector::pop_back: the last element never
     // needs relocating, so nothing is moved and nothing here can throw. size_
@@ -613,6 +617,8 @@ class flat_set {
   // (a self-unregistering handle) then finds it gone instead of erasing a
   // second time. Its moved-from shell is destroyed during the shift, as every
   // relocated source is.
+  // clear() does not relocate first, so there a destructor may erase but not
+  // insert; its doc says so.
   void erase_at(size_type index) noexcept(relocate_cannot_throw) {
     value_type leaving(static_cast<value_type&&>(data()[index]));
     data()[index].~value_type();
