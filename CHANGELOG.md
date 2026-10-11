@@ -101,12 +101,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   overloads unary `operator&`, `it->member` went through whatever that
   returned; with a deleted `operator&` it did not compile. It now uses
   `addressof`, as every other container does.
-- `crc8`, `crc16` and `crc32` over a `const void*`, and `fnv1a` over a
-  `const T*`, were `constexpr` but could never be constant-evaluated: they cast
-  a `void*`, or `reinterpret_cast`, to reach the bytes. In C++17 that makes
-  the program ill-formed, no diagnostic required. They are no longer
-  `constexpr` (the CRC overloads are `inline`); the `span` and
-  `const unsigned char*` overloads remain `constexpr` for compile-time use.
 - Zero-capacity `ring_buffer`, `fixed_deque` and `fixed_queue`: emplacing
   into one, which is always full, returned `back()` or `front()` at
   `METL_HARDENING_NONE`, a reference to no object. That fallback is now
@@ -114,6 +108,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ring_buffer::push_overwrite`, documented never to assert, aborted on a
   zero-capacity buffer at every level; calling it there is now a compile
   error.
+- `crc8`, `crc16` and `crc32` over a `const void*`, and `fnv1a` over a
+  `const T*`, were `constexpr` but could never be constant-evaluated: they cast
+  a `void*`, or `reinterpret_cast`, to reach the bytes. In C++17 that makes
+  the program ill-formed, no diagnostic required. They are no longer
+  `constexpr` (the CRC overloads are `inline`); the `span` and
+  `const unsigned char*` overloads remain `constexpr` for compile-time use.
+- `crc8`, `crc16` and `crc32` built with GCC at -O2 or -O3 copied their
+  nibble table onto the stack for every byte: a 64-byte frame and four
+  vector stores per byte for CRC-32, 32 bytes for CRC-16 and 16 for CRC-8.
+  The tables now live at namespace scope, so GCC reads them from `.rodata`
+  as Clang already did, and a test fails if a CRC frame at -O2 reaches the
+  size of the CRC-16 table.
 
 ## [1.2.0] - 2026-10-10
 
