@@ -225,6 +225,19 @@ int main() {
     metl::fixed_vector<int, 0> none;
     CHECK(guarded_against([&] { (void)none.emplace_back(1); }));
 
+    // The ring containers had no such guard: emplacing into a full zero-capacity
+    // ring or deque returned back()/front(), a reference to no object.
+    metl::ring_buffer<int, 0> no_ring;
+    CHECK(guarded_against([&] { (void)no_ring.emplace_back(1); }));
+    CHECK_EQ(no_ring.size(), 0u);
+    metl::fixed_deque<int, 0> no_deque;
+    CHECK(guarded_against([&] { (void)no_deque.emplace_back(1); }));
+    CHECK(guarded_against([&] { (void)no_deque.emplace_front(1); }));
+    CHECK_EQ(no_deque.size(), 0u);
+    metl::fixed_queue<int, 0> no_queue;
+    CHECK(guarded_against([&] { (void)no_queue.push(1); }));
+    CHECK_EQ(no_queue.size(), 0u);
+
     // Count and range inserts outside [begin, end] are refused too: by their
     // own check, or by the emplace each delegates to before anything moves.
     const int source[2] = {7, 8};

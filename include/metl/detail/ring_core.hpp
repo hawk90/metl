@@ -309,7 +309,13 @@ class ring_core {
     const size_type slot = physical_index(size_);
     const bool inserted = try_emplace_back(std::forward<Args>(args)...);
     METL_ASSERT(inserted);
-    return inserted ? storage_at(slot) : back();
+    if (!inserted) {
+      // With METL_ASSERT stripped, a full ring returns its newest element -- an
+      // object, unless Capacity is 0 and there is none to return.
+      METL_HARDEN(size_ > 0);
+      return back();
+    }
+    return storage_at(slot);
   }
 
   /// Appends a copy of `value` at the back if there is room; false when full.
@@ -346,16 +352,33 @@ class ring_core {
  protected:
   using storage_type = storage_for<T>;
 
+  // `if constexpr`, not `?:`: a zero-capacity ring must not even instantiate
+  // the `% Capacity`, or MSVC warns of a possible division by zero (C4724).
   constexpr size_type advance(size_type index) const noexcept {
-    return Capacity == 0 ? 0 : (index + 1) % Capacity;
+    if constexpr (Capacity == 0) {
+      (void)index;
+      return 0;
+    } else {
+      return (index + 1) % Capacity;
+    }
   }
 
   constexpr size_type retreat(size_type index) const noexcept {
-    return Capacity == 0 ? 0 : (index == 0 ? Capacity - 1 : index - 1);
+    if constexpr (Capacity == 0) {
+      (void)index;
+      return 0;
+    } else {
+      return index == 0 ? Capacity - 1 : index - 1;
+    }
   }
 
   constexpr size_type physical_index(size_type logical_index) const noexcept {
-    return Capacity == 0 ? 0 : (head_ + logical_index) % Capacity;
+    if constexpr (Capacity == 0) {
+      (void)logical_index;
+      return 0;
+    } else {
+      return (head_ + logical_index) % Capacity;
+    }
   }
 
   T& storage_at(size_type index) noexcept { return storage_[index].ref(); }

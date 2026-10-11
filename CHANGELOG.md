@@ -106,6 +106,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   overloads unary `operator&`, `it->member` went through whatever that
   returned; with a deleted `operator&` it did not compile. It now uses
   `addressof`, as every other container does.
+- Zero-capacity `ring_buffer`, `fixed_deque` and `fixed_queue`: emplacing
+  into one, which is always full, returned `back()` or `front()` at
+  `METL_HARDENING_NONE`, a reference to no object. That fallback is now
+  guarded by `METL_HARDEN`, as `fixed_vector`'s already was.
+  `ring_buffer::push_overwrite`, documented never to assert, aborted on a
+  zero-capacity buffer at every level; calling it there is now a compile
+  error.
 - `crc8`, `crc16` and `crc32` over a `const void*`, and `fnv1a` over a
   `const T*`, were `constexpr` but could never be constant-evaluated: they cast
   a `void*`, or `reinterpret_cast`, to reach the bytes. In C++17 that makes
