@@ -59,6 +59,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   class whose conversion function returns `T&` -- stays accepted. C++23 makes
   the same rule part of `std::function`; where the compiler provides it
   (GCC 13+, Clang), its own answer is used.
+- The converting constructors and assignments of `fixed_function` and
+  `fixed_any_invocable` accepted, in their signature, a callable that is
+  over-aligned or whose move may throw, then rejected it with a
+  `static_assert` in the body. `std::is_constructible` and
+  `std::is_convertible` said yes, and overload resolution chose the wrapper
+  over a caller's fallback overload, so the build failed inside METL. Both
+  conditions are now part of the constraints; `try_assign` keeps the
+  `static_assert`s that name the failing condition.
 - `spsc_queue`, `spsc_byte_ring` and `atomic_handle` can now be
   constant-initialized, and `METL_CONST_INIT` accepts them. Their constructors
   were not `constexpr`, so a namespace-scope instance was initialized at run
@@ -107,14 +115,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the program ill-formed, no diagnostic required. They are no longer
   `constexpr` (the CRC overloads are `inline`); the `span` and
   `const unsigned char*` overloads remain `constexpr` for compile-time use.
-- The converting constructors and assignments of `fixed_function` and
-  `fixed_any_invocable` accepted, in their signature, a callable that is
-  over-aligned or whose move may throw, then rejected it with a
-  `static_assert` in the body. `std::is_constructible` and
-  `std::is_convertible` said yes, and overload resolution chose the wrapper
-  over a caller's fallback overload, so the build failed inside METL. Both
-  conditions are now part of the constraints; `try_assign` keeps the
-  `static_assert`s that name the failing condition.
+- `crc8`, `crc16` and `crc32` built with GCC at -O2 or -O3 copied their
+  nibble table onto the stack for every byte: a 64-byte frame and four
+  vector stores per byte for CRC-32, 32 bytes for CRC-16 and 16 for CRC-8.
+  The tables now live at namespace scope, so GCC reads them from `.rodata`
+  as Clang already did, and a test fails if a CRC frame at -O2 reaches the
+  size of the CRC-16 table.
 
 ## [1.2.0] - 2026-10-10
 
