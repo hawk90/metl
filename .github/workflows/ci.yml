@@ -1233,6 +1233,21 @@ jobs:
             cc: gcc
             cxx: g++
             cmake_args: '"-DCMAKE_CXX_FLAGS=-fno-exceptions -fno-rtti"'
+          # The later standards, under both compilers: every test built with
+          # -Werror and run. These are what the C++23 and C++26 badges in
+          # README.md claim; the baseline stays C++17.
+          - name: cxx23
+            cmake_args: -DCMAKE_CXX_STANDARD=23 -DCMAKE_CXX_STANDARD_REQUIRED=ON
+          - name: cxx23-gcc
+            cc: gcc
+            cxx: g++
+            cmake_args: -DCMAKE_CXX_STANDARD=23 -DCMAKE_CXX_STANDARD_REQUIRED=ON
+          - name: cxx26
+            cmake_args: -DCMAKE_CXX_STANDARD=26 -DCMAKE_CXX_STANDARD_REQUIRED=ON
+          - name: cxx26-gcc
+            cc: gcc
+            cxx: g++
+            cmake_args: -DCMAKE_CXX_STANDARD=26 -DCMAKE_CXX_STANDARD_REQUIRED=ON
 
     steps:
       - name: Checkout
@@ -1310,6 +1325,11 @@ jobs:
     runs-on: ubuntu-26.04
     needs: preflight
     timeout-minutes: 20
+    # id-token: the Codecov upload authenticates with this run's OIDC token, so
+    # no upload secret is stored anywhere. Nothing else here writes.
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout
@@ -1333,7 +1353,19 @@ jobs:
           CXX: clang++
           CMAKE_C_COMPILER_LAUNCHER: ccache
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
-        run: tools/coverage.py --min-lines 90 --min-branches 72
+        run: tools/coverage.py --min-lines 90 --min-branches 72 --lcov build-coverage/metl.lcov
+
+      # Display only: the floors above are the gate, and codecov.yml makes
+      # Codecov's own statuses informational. A fork's pull request gets no OIDC
+      # token, so its upload fails, and that must not fail this job.
+      - name: Upload to Codecov
+        if: always() && hashFiles('build-coverage/metl.lcov') != ''
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5  # v7.1.1
+        with:
+          use_oidc: true
+          files: build-coverage/metl.lcov
+          disable_search: true
+          fail_ci_if_error: false
 
       - name: Upload the report on failure
         if: failure() || cancelled()
