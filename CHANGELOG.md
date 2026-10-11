@@ -89,6 +89,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mpmc_queue` stays run-time initialized: its slots start at different
   sequence numbers, and doing that at compile time cost either flash or an
   extra operation on every push and pop. Its constructor documents this.
+- `atomic_ref<T>::compare_exchange_strong` on a `T` with padding bits
+  compared the padding too, through `std::atomic<T>`, so on an object whose
+  padding held stale bytes it failed although every member was equal
+  (libc++ at any level; libstdc++ at -O0). Where the compiler provides
+  `__builtin_clear_padding`, it now compares value bits only, as
+  `std::atomic_ref` does, and `store`, `exchange` and both compare-exchanges
+  store values with their padding cleared. Without the builtin (Apple clang
+  21, MSVC) the header documents the old behaviour.
 - `flat_map` and `flat_set` with an element that cannot be move-assigned: if
   the last move of an insert -- the new element into the gap -- threw, the
   container kept a dead slot inside its size. Its destructor then destroyed

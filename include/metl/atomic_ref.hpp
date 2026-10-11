@@ -31,12 +31,14 @@
 /// claiming one it cannot keep. Check `is_always_lock_free` before using
 /// `atomic_ref` on any path with a deadline.
 
+#include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
 
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <type_traits>
 
 namespace metl {
@@ -52,6 +54,98 @@ inline std::atomic<T>* atomic_ref_cast(T* ptr) noexcept {
   // alignment with METL_HARDEN in the constructor, at every hardening level.
   return reinterpret_cast<std::atomic<T>*>(ptr);
 }
+
+// Padding bits take part in std::atomic<T>'s byte-wise compare-exchange, so two
+// objects with equal members can compare unequal. std::atomic_ref compares
+// value bits only; clearing padding with the compiler's builtin gets the same.
+#if METL_HAS_BUILTIN(__builtin_clear_padding)
+template <typename T>
+inline constexpr bool atomic_ref_ignores_padding_v = !std::has_unique_object_representations_v<T>;
+
+template <typename T>
+inline void atomic_ref_clear_padding(T& value) noexcept {
+  __builtin_clear_padding(metl::detail::addressof(value));
+}
+#else
+template <typename T>
+inline constexpr bool atomic_ref_ignores_padding_v = false;
+
+template <typename T>
+inline void atomic_ref_clear_padding(T& /*value*/) noexcept {}
+#endif
+
+// A compare-exchange on the object's bytes, used for every T whose bytes are
+// not all value bits. Not std::atomic's:
+// - libstdc++ clears the padding of `expected` but compares it with the
+//   object's bytes as they are, so on an object whose padding was never
+//   cleared it can never succeed;
+// - for a T aligned below its size (`struct { char; short; }`) it calls the
+//   generic __atomic_compare_exchange, which Clang leaves to libatomic, absent
+//   on bare metal.
+// The bytes go through an unsigned integer of the same size, which the
+// constructor's alignment check makes a valid, lock-free atomic access.
+#ifdef __GNUC__
+template <std::size_t Size>
+struct atomic_ref_word;
+template <>
+struct atomic_ref_word<1> {
+  using type __attribute__((__may_alias__)) = std::uint8_t;
+};
+template <>
+struct atomic_ref_word<2> {
+  using type __attribute__((__may_alias__)) = std::uint16_t;
+};
+template <>
+struct atomic_ref_word<4> {
+  using type __attribute__((__may_alias__)) = std::uint32_t;
+};
+template <>
+struct atomic_ref_word<8> {
+  using type __attribute__((__may_alias__)) = std::uint64_t;
+};
+
+template <typename T>
+METL_NODISCARD inline bool try_atomic_ref_exchange_bytes(
+    T* object, T& expected, const T& desired, std::memory_order order, bool weak) noexcept {
+  using word = typename atomic_ref_word<sizeof(T)>::type;
+  int success = __ATOMIC_SEQ_CST;
+  int failure = __ATOMIC_SEQ_CST;
+  switch (order) {
+    case std::memory_order_relaxed:
+      success = failure = __ATOMIC_RELAXED;
+      break;
+    case std::memory_order_consume:
+    case std::memory_order_acquire:
+      success = failure = __ATOMIC_ACQUIRE;
+      break;
+    case std::memory_order_release:
+      success = __ATOMIC_RELEASE;
+      failure = __ATOMIC_RELAXED;
+      break;
+    case std::memory_order_acq_rel:
+      success = __ATOMIC_ACQ_REL;
+      failure = __ATOMIC_ACQUIRE;
+      break;
+    case std::memory_order_seq_cst:
+      break;
+  }
+  word held;
+  word wanted;
+  std::memcpy(&held, metl::detail::addressof(expected), sizeof(T));
+  std::memcpy(&wanted, metl::detail::addressof(desired), sizeof(T));
+  const bool exchanged =
+      __atomic_compare_exchange_n(reinterpret_cast<word*>(object), &held, wanted, weak, success, failure);
+  std::memcpy(metl::detail::addressof(expected), &held, sizeof(T));
+  return exchanged;
+}
+#else
+template <typename T>
+METL_NODISCARD inline bool try_atomic_ref_exchange_bytes(
+    T* object, T& expected, const T& desired, std::memory_order order, bool weak) noexcept {
+  return weak ? atomic_ref_cast(object)->compare_exchange_weak(expected, desired, order)
+              : atomic_ref_cast(object)->compare_exchange_strong(expected, desired, order);
+}
+#endif
 
 }  // namespace detail
 
@@ -122,6 +216,7 @@ class atomic_ref {
   /// @param desired New value to store.
   /// @param order Memory order for the store.
   void store(T desired, std::memory_order order = std::memory_order_seq_cst) const noexcept {
+    detail::atomic_ref_clear_padding(desired);
     detail::atomic_ref_cast(ptr_)->store(desired, order);
   }
 
@@ -130,6 +225,7 @@ class atomic_ref {
   /// @param order Memory order for the read-modify-write.
   /// @return The value held before the exchange.
   T exchange(T desired, std::memory_order order = std::memory_order_seq_cst) const noexcept {
+    detail::atomic_ref_clear_padding(desired);
     return detail::atomic_ref_cast(ptr_)->exchange(desired, order);
   }
 
@@ -138,10 +234,37 @@ class atomic_ref {
   /// @param desired Value stored if the comparison succeeds.
   /// @param order Memory order for the operation.
   /// @return True on success; false if the current value did not match @c expected.
+  /// @note For a `T` with padding bits, only the value bits are compared, as
+  ///       `std::atomic_ref` does, where the compiler provides
+  ///       `__builtin_clear_padding` (GCC 11 and later, recent Clang). Without
+  ///       it (Apple clang 21, MSVC) a padding-only difference makes the
+  ///       exchange fail and report the held value, as `weak` may at any time.
   bool compare_exchange_strong(T& expected,
                                T desired,
                                std::memory_order order = std::memory_order_seq_cst) const noexcept {
-    return detail::atomic_ref_cast(ptr_)->compare_exchange_strong(expected, desired, order);
+    if constexpr (detail::atomic_ref_ignores_padding_v<T>) {
+      detail::atomic_ref_clear_padding(desired);
+      T held = expected;
+      detail::atomic_ref_clear_padding(held);
+      const T wanted = held;
+      for (;;) {
+        if (detail::try_atomic_ref_exchange_bytes(ptr_, held, desired, order, false)) {
+          return true;
+        }
+        T found = held;
+        detail::atomic_ref_clear_padding(found);
+        if (std::memcmp(metl::detail::addressof(found), metl::detail::addressof(wanted), sizeof(T)) != 0) {
+          expected = held;
+          return false;
+        }
+        // Only the padding differed. Retry with the bytes actually held: that
+        // attempt fails only if another thread stored in between.
+      }
+    } else if constexpr (!std::has_unique_object_representations_v<T>) {
+      return detail::try_atomic_ref_exchange_bytes(ptr_, expected, desired, order, false);
+    } else {
+      return detail::atomic_ref_cast(ptr_)->compare_exchange_strong(expected, desired, order);
+    }
   }
 
   /// @brief Atomic weak compare-and-exchange (may fail spuriously).
@@ -152,7 +275,12 @@ class atomic_ref {
   bool compare_exchange_weak(T& expected,
                              T desired,
                              std::memory_order order = std::memory_order_seq_cst) const noexcept {
-    return detail::atomic_ref_cast(ptr_)->compare_exchange_weak(expected, desired, order);
+    detail::atomic_ref_clear_padding(desired);
+    if constexpr (!std::has_unique_object_representations_v<T>) {
+      return detail::try_atomic_ref_exchange_bytes(ptr_, expected, desired, order, true);
+    } else {
+      return detail::atomic_ref_cast(ptr_)->compare_exchange_weak(expected, desired, order);
+    }
   }
 
   // Integral-only fetch operations. SFINAE on a defaulted dependent
