@@ -116,6 +116,14 @@ void destroy_object(void* storage) noexcept {
   static_cast<F*>(storage)->~F();
 }
 
+// What the storage and the noexcept moves need from a callable. try_assign
+// static_asserts each condition with its own message; the converting
+// constructors and assignments also require it, so traits and overload
+// resolution see an unsupported callable instead of a hard error inside them.
+template <typename F>
+inline constexpr bool is_storable_callable_v =
+    alignof(F) <= alignof(std::max_align_t) && std::is_nothrow_move_constructible_v<F>;
+
 // Per-callable ops tables, specialized on noexcept-ness because a function
 // pointer of `R(...) noexcept` is not convertible to `R(...)` in initializer
 // lists.
@@ -542,10 +550,10 @@ class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<
   /// @pre The decayed callable fits within `Capacity` bytes (else asserts).
   template <typename F,
             typename Decayed = std::decay_t<F>,
-            typename = std::enable_if_t<!std::is_same_v<Decayed, fixed_function> &&
-                                        !std::is_member_pointer_v<Decayed> &&
-                                        std::is_copy_constructible_v<Decayed> &&
-                                        detail::is_invocable_r_without_temporary_v<R, Decayed&, Args...>>>
+            typename = std::enable_if_t<
+                !std::is_same_v<Decayed, fixed_function> && !std::is_member_pointer_v<Decayed> &&
+                std::is_copy_constructible_v<Decayed> && detail::is_storable_callable_v<Decayed> &&
+                detail::is_invocable_r_without_temporary_v<R, Decayed&, Args...>>>
   fixed_function(F&& function) : base() {
     assign(std::forward<F>(function));
   }
@@ -568,10 +576,10 @@ class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<
 
   template <typename F,
             typename Decayed = std::decay_t<F>,
-            typename = std::enable_if_t<!std::is_same_v<Decayed, fixed_function> &&
-                                        !std::is_member_pointer_v<Decayed> &&
-                                        std::is_copy_constructible_v<Decayed> &&
-                                        detail::is_invocable_r_without_temporary_v<R, Decayed&, Args...>>>
+            typename = std::enable_if_t<
+                !std::is_same_v<Decayed, fixed_function> && !std::is_member_pointer_v<Decayed> &&
+                std::is_copy_constructible_v<Decayed> && detail::is_storable_callable_v<Decayed> &&
+                detail::is_invocable_r_without_temporary_v<R, Decayed&, Args...>>>
   fixed_function& operator=(F&& function) {
     assign(std::forward<F>(function));
     return *this;
@@ -659,7 +667,7 @@ class fixed_function<R(Args...) noexcept, Capacity>
             typename Decayed = std::decay_t<F>,
             typename = std::enable_if_t<
                 !std::is_same_v<Decayed, fixed_function> && !std::is_member_pointer_v<Decayed> &&
-                std::is_copy_constructible_v<Decayed> &&
+                std::is_copy_constructible_v<Decayed> && detail::is_storable_callable_v<Decayed> &&
                 detail::is_nothrow_invocable_r_without_temporary_v<R, Decayed&, Args...>>>
   fixed_function(F&& function) : base() {
     assign(std::forward<F>(function));
@@ -685,7 +693,7 @@ class fixed_function<R(Args...) noexcept, Capacity>
             typename Decayed = std::decay_t<F>,
             typename = std::enable_if_t<
                 !std::is_same_v<Decayed, fixed_function> && !std::is_member_pointer_v<Decayed> &&
-                std::is_copy_constructible_v<Decayed> &&
+                std::is_copy_constructible_v<Decayed> && detail::is_storable_callable_v<Decayed> &&
                 detail::is_nothrow_invocable_r_without_temporary_v<R, Decayed&, Args...>>>
   fixed_function& operator=(F&& function) {
     assign(std::forward<F>(function));
@@ -822,10 +830,10 @@ class fixed_any_invocable<R(Args...), Capacity>
   /// @pre The decayed callable fits within `Capacity` bytes (else asserts).
   template <typename F,
             typename Decayed = std::decay_t<F>,
-            typename = std::enable_if_t<!std::is_same_v<Decayed, fixed_any_invocable> &&
-                                        !std::is_member_pointer_v<Decayed> &&
-                                        std::is_move_constructible_v<Decayed> &&
-                                        detail::is_invocable_r_without_temporary_v<R, Decayed&, Args...>>>
+            typename = std::enable_if_t<
+                !std::is_same_v<Decayed, fixed_any_invocable> && !std::is_member_pointer_v<Decayed> &&
+                std::is_move_constructible_v<Decayed> && detail::is_storable_callable_v<Decayed> &&
+                detail::is_invocable_r_without_temporary_v<R, Decayed&, Args...>>>
   fixed_any_invocable(F&& function) : base() {
     assign(std::forward<F>(function));
   }
@@ -848,10 +856,10 @@ class fixed_any_invocable<R(Args...), Capacity>
 
   template <typename F,
             typename Decayed = std::decay_t<F>,
-            typename = std::enable_if_t<!std::is_same_v<Decayed, fixed_any_invocable> &&
-                                        !std::is_member_pointer_v<Decayed> &&
-                                        std::is_move_constructible_v<Decayed> &&
-                                        detail::is_invocable_r_without_temporary_v<R, Decayed&, Args...>>>
+            typename = std::enable_if_t<
+                !std::is_same_v<Decayed, fixed_any_invocable> && !std::is_member_pointer_v<Decayed> &&
+                std::is_move_constructible_v<Decayed> && detail::is_storable_callable_v<Decayed> &&
+                detail::is_invocable_r_without_temporary_v<R, Decayed&, Args...>>>
   fixed_any_invocable& operator=(F&& function) {
     assign(std::forward<F>(function));
     return *this;
@@ -939,7 +947,7 @@ class fixed_any_invocable<R(Args...) noexcept, Capacity>
             typename Decayed = std::decay_t<F>,
             typename = std::enable_if_t<
                 !std::is_same_v<Decayed, fixed_any_invocable> && !std::is_member_pointer_v<Decayed> &&
-                std::is_move_constructible_v<Decayed> &&
+                std::is_move_constructible_v<Decayed> && detail::is_storable_callable_v<Decayed> &&
                 detail::is_nothrow_invocable_r_without_temporary_v<R, Decayed&, Args...>>>
   fixed_any_invocable(F&& function) : base() {
     assign(std::forward<F>(function));
@@ -965,7 +973,7 @@ class fixed_any_invocable<R(Args...) noexcept, Capacity>
             typename Decayed = std::decay_t<F>,
             typename = std::enable_if_t<
                 !std::is_same_v<Decayed, fixed_any_invocable> && !std::is_member_pointer_v<Decayed> &&
-                std::is_move_constructible_v<Decayed> &&
+                std::is_move_constructible_v<Decayed> && detail::is_storable_callable_v<Decayed> &&
                 detail::is_nothrow_invocable_r_without_temporary_v<R, Decayed&, Args...>>>
   fixed_any_invocable& operator=(F&& function) {
     assign(std::forward<F>(function));

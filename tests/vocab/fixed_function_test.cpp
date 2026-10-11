@@ -1,3 +1,5 @@
+#include <cstddef>
+#include <type_traits>
 #include <utility>
 
 #include <metl/fixed_function.hpp>
@@ -59,9 +61,55 @@ struct move_only_adder {
   int operator()(int value) const { return value + delta; }
 };
 
+// A callable the wrapper cannot hold -- over-aligned, or with a move that may
+// throw -- is not a viable conversion. The constructors used to accept it in
+// their signature and fail a static_assert in the body, so traits said yes and
+// overload resolution picked the wrapper over a caller's fallback.
+#if defined(_MSC_VER)
+#pragma warning(disable : 4324)  // padded due to alignas: the over-alignment is the point
+#endif
+struct alignas(2 * alignof(std::max_align_t)) over_aligned {
+  int operator()(int value) const { return value; }
+};
+
+struct throwing_move {
+  throwing_move() = default;
+  throwing_move(const throwing_move&) = default;
+  throwing_move(throwing_move&&) noexcept(false) {}
+  int operator()(int value) const noexcept { return value; }
+};
+
+template <typename Wrapper, typename Callable>
+constexpr bool viable = std::is_constructible_v<Wrapper, Callable> ||
+                        std::is_convertible_v<Callable, Wrapper> || std::is_assignable_v<Wrapper&, Callable>;
+
+template <typename Callable>
+constexpr bool any_viable = viable<metl::fixed_function<int(int), 64>, Callable> ||
+                            viable<metl::fixed_function<int(int) noexcept, 64>, Callable> ||
+                            viable<metl::fixed_any_invocable<int(int), 64>, Callable> ||
+                            viable<metl::fixed_any_invocable<int(int) noexcept, 64>, Callable>;
+
+static_assert(!any_viable<over_aligned>, "an over-aligned callable is not a viable conversion");
+static_assert(!any_viable<throwing_move>, "a callable whose move may throw is not a viable conversion");
+static_assert(viable<metl::fixed_function<int(int), 64>, int (*)(int)>, "the control still converts");
+
+int registered(const metl::fixed_function<int(int), 64>& /*function*/) {
+  return 1;
+}
+template <typename T,
+          typename = std::enable_if_t<!std::is_constructible_v<metl::fixed_function<int(int), 64>, T>>>
+int registered(T&&) {
+  return 2;
+}
+
 }  // namespace
 
 int main() {
+  // A registration API with a fallback for what fixed_function cannot hold.
+  if (registered(over_aligned{}) != 2 || registered(throwing_move{}) != 2 || registered(&add_one) != 1) {
+    return 1;
+  }
+
   // ---- baseline regression suite -------------------------------------------
   metl::fixed_function<int(int), 16> function;
   if (function.has_value()) {

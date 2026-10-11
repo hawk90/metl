@@ -59,6 +59,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   class whose conversion function returns `T&` -- stays accepted. C++23 makes
   the same rule part of `std::function`; where the compiler provides it
   (GCC 13+, Clang), its own answer is used.
+- The converting constructors and assignments of `fixed_function` and
+  `fixed_any_invocable` accepted, in their signature, a callable that is
+  over-aligned or whose move may throw, then rejected it with a
+  `static_assert` in the body. `std::is_constructible` and
+  `std::is_convertible` said yes, and overload resolution chose the wrapper
+  over a caller's fallback overload, so the build failed inside METL. Both
+  conditions are now part of the constraints; `try_assign` keeps the
+  `static_assert`s that name the failing condition.
 - `spsc_queue`, `spsc_byte_ring` and `atomic_handle` can now be
   constant-initialized, and `METL_CONST_INIT` accepts them. Their constructors
   were not `constexpr`, so a namespace-scope instance was initialized at run
