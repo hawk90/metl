@@ -789,8 +789,8 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
                "nothrow-movable: the old error is overwritten, not destroyed.",
         "kills": "ctest:expected_test",
         "old": """      e.error_ptr()->~E();
-      ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(tmp));""",
-        "new": """      ::new (e.storage_.value_storage.addr()) T(static_cast<T&&>(tmp));""",
+      ::new (e.storage_addr()) T(static_cast<T&&>(tmp));""",
+        "new": """      ::new (e.storage_addr()) T(static_cast<T&&>(tmp));""",
     },
     {
         "name": "expected_error_copy_assign_dropped",

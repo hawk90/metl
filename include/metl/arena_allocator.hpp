@@ -173,9 +173,10 @@ class arena_allocator {
     destroy_fn_t destroy;
   };
 
+  // `memory` points at the record's payload bytes, not at the T built there.
   template <typename T>
   static void destroy_object(void* memory) noexcept {
-    static_cast<T*>(memory)->~T();
+    std::launder(static_cast<T*>(memory))->~T();
   }
 
   static constexpr std::uintptr_t align_up(std::uintptr_t value, size_type alignment) noexcept {

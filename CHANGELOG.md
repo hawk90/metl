@@ -49,6 +49,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   non-power-of-two alignment instead of stopping at the `METL_HARDEN` check,
   because the empty request returned first. `monotonic_buffer` already checked
   the alignment whatever the size; both now do.
+- Object-lifetime rules no tool reports and no compiler is known to exploit:
+  `object_pool::index_of`, reached from every `destroy` and `contains`,
+  laundered a pointer to slot 0 whether or not a `T` lived there and
+  stepped it past that one object; it now computes its bounds as integers
+  from the slots' addresses. `fixed_function`, `fixed_any_invocable` and
+  `arena_allocator` reached the stored object from a pointer to its first
+  byte without `std::launder`; they now launder it. `expected<T, E>` kept
+  its value in a union whose members were never made active; it now uses
+  one aligned byte buffer, as `variant` does, with the same size and
+  alignment. `optional` documents the C++17-only rule it keeps for
+  constexpr.
 - `function_ref`, `fixed_function` and `fixed_any_invocable` with a
   signature that returns a reference accepted a callable that returns by
   value (with libc++; libstdc++ already refused it). The call then returned a
