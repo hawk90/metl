@@ -142,31 +142,28 @@ class object_pool {
   const_pointer slot_ptr(size_type index) const noexcept { return storage_[index].ptr(); }
 
   size_type index_of(const_pointer object) const noexcept {
-    if (object == nullptr) {
-      return Capacity;
-    }
-
     // `object` may be an arbitrary caller-supplied pointer that does not point
     // into `storage_`. Relational operators (`<`, `>=`) on pointers from
-    // different objects are UB, so compare on integer addresses instead — on the
+    // different objects are UB, so compare on integer addresses instead -- on the
     // flat-memory targets this library serves that is exactly the intended
     // containment test, with no <functional>/std::less dependency.
-    // The bounds come from the slots' addresses, not from slot_ptr(0): that
-    // launders a pointer to slot 0, which needs a live T there, and stepping it
-    // Capacity elements would leave the one T it points to.
-    const auto addr = reinterpret_cast<std::uintptr_t>(object);
-    const auto lo = reinterpret_cast<std::uintptr_t>(storage_[0].addr());
-    const auto hi = lo + (sizeof(storage_type) * Capacity);
-    if (addr < lo || addr >= hi) {
+    //
+    // The base is the slots' address, not slot_ptr(0): that launders a pointer
+    // to slot 0, which needs a live T there. One unsigned offset is the whole
+    // range test: an address below the storage, and nullptr, wrap to a value
+    // past its end.
+    const std::uintptr_t offset =
+        reinterpret_cast<std::uintptr_t>(object) - reinterpret_cast<std::uintptr_t>(storage_[0].addr());
+    if (offset >= sizeof(storage_type) * Capacity) {
       return Capacity;
     }
     // Inside the storage but not at the start of a slot (a pointer to a member
     // of a live object, say) is not one of this pool's pointers.
-    if ((addr - lo) % sizeof(storage_type) != 0) {
+    if (offset % sizeof(storage_type) != 0) {
       return Capacity;
     }
 
-    return static_cast<size_type>((addr - lo) / sizeof(storage_type));
+    return static_cast<size_type>(offset / sizeof(storage_type));
   }
 
   // Releases a claimed slot if T's constructor exits by an exception.
