@@ -116,6 +116,14 @@ void destroy_object(void* storage) noexcept {
   static_cast<F*>(storage)->~F();
 }
 
+// What the storage and the noexcept moves need from a callable. try_assign
+// static_asserts each condition with its own message; the converting
+// constructors and assignments also require it, so traits and overload
+// resolution see an unsupported callable instead of a hard error inside them.
+template <typename F>
+inline constexpr bool is_storable_callable_v =
+    alignof(F) <= alignof(std::max_align_t) && std::is_nothrow_move_constructible_v<F>;
+
 // Per-callable ops tables, specialized on noexcept-ness because a function
 // pointer of `R(...) noexcept` is not convertible to `R(...)` in initializer
 // lists.
@@ -162,14 +170,6 @@ struct moveonly_ops_for_t<F, false, R, Args...> {
       &destroy_object<F>,
   };
 };
-
-// What the storage and the noexcept moves need from a callable. try_assign
-// static_asserts each condition with its own message; the converting
-// constructors and assignments also require it, so traits and overload
-// resolution see an unsupported callable instead of a hard error inside them.
-template <typename F>
-inline constexpr bool is_storable_callable_v =
-    alignof(F) <= alignof(std::max_align_t) && std::is_nothrow_move_constructible_v<F>;
 
 // -------- fixed_function implementation core --------------------------------
 
