@@ -107,6 +107,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the program ill-formed, no diagnostic required. They are no longer
   `constexpr` (the CRC overloads are `inline`); the `span` and
   `const unsigned char*` overloads remain `constexpr` for compile-time use.
+- `coro::scheduler::run_until_idle` stopped after a round in which no task
+  yielded, even when a task attached during that round was still waiting:
+  a task that hands off to its next step and completes left the step
+  attached and unpolled, with `max_rounds` far from reached. It now runs
+  until no task is attached or `max_rounds` rounds have run.
 
 ## [1.2.0] - 2026-10-10
 
