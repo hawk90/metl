@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The header already said a zero generation makes the null handle. Construction
   and `from_packed` now give every zero-generation handle the single null
   representation, so `==` and an `atomic_handle` compare-exchange agree.
+- Since C++20, `fixed_vector`, `fixed_stack`, `fixed_priority_queue`,
+  `flat_map`, `flat_set`, `ring_buffer`, `fixed_queue`, `fixed_deque`,
+  `static_message_queue`, `fixed_function` and `fixed_any_invocable`, and
+  `guarded` over them, are constant-initialized at namespace scope, so an
+  interrupt that fires during start-up can no longer have its pushes wiped
+  by a constructor that runs later in link order. Their default
+  constructors zero the element buffer only during constant evaluation:
+  a local one stores nothing, as before. In C++17 they stay dynamically
+  initialized, as `std::vector` does; `lock.hpp` states the rule and which
+  types it does not cover.
 - `coro::scheduler` accepted the same task twice. Each `run_once` then polled
   it twice, and because `detach` and completion each remove one entry, the
   scheduler went on polling a task the caller had detached or destroyed.

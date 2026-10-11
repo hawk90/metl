@@ -14,3 +14,9 @@
 METL_CONST_INIT metl::spsc_queue<int, 8> g_spsc;
 METL_CONST_INIT metl::spsc_byte_ring<16> g_ring;
 METL_CONST_INIT metl::atomic_handle<init_order_handle> g_handle;
+
+#if INIT_ORDER_CONTAINERS
+constinit metl::fixed_vector<int, 8> g_vector;
+constinit metl::ring_buffer<int, 8> g_ring_buffer;
+constinit metl::guarded<metl::static_message_queue<int, 8>, metl::null_lock> g_messages;
+#endif

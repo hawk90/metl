@@ -13,6 +13,11 @@ void early_isr() {
   const std::byte bytes[3] = {std::byte{1}, std::byte{2}, std::byte{3}};
   (void)g_ring.try_write(metl::span<const std::byte>(bytes, 3));
   g_handle.store(init_order_handle(3, 5));
+#if INIT_ORDER_CONTAINERS
+  (void)g_vector.try_push_back(7);
+  (void)g_ring_buffer.try_push_back(8);
+  g_messages.with([](metl::static_message_queue<int, 8>& queue) { (void)queue.try_push(9); });
+#endif
 }
 
 struct early_driver {
