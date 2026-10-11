@@ -368,11 +368,15 @@ if(METL_BUILD_TESTS)
 
     # Register the self-containment build as a CTest test too, so `ctest` alone
     # (as CI runs it) fails if any header stops being self-contained.
+    #
+    # Every test that runs `cmake --build` on this tree holds the
+    # metl_cmake_build lock: under `ctest -j` two concurrent builds of one tree
+    # race on the generator's own files (MSBuild's ZERO_CHECK .tlog on MSVC).
     add_test(
       NAME metl_header_self_contained
       COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
               --target metl_header_self_contained --config $<CONFIG>)
-    set_tests_properties(metl_header_self_contained PROPERTIES LABELS "metl" TIMEOUT 300)
+    set_tests_properties(metl_header_self_contained PROPERTIES LABELS "metl" TIMEOUT 300 RESOURCE_LOCK metl_cmake_build)
 
     # (c) One-definition linkage. The TUs in (a) are compiled, never linked, so
     # a non-template function DEFINED in a header without `inline` -- a strong
@@ -406,7 +410,7 @@ if(METL_BUILD_TESTS)
       NAME metl_header_odr_link
       COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
               --target metl_header_odr_link --config $<CONFIG>)
-    set_tests_properties(metl_header_odr_link PROPERTIES LABELS "metl" TIMEOUT 300)
+    set_tests_properties(metl_header_odr_link PROPERTIES LABELS "metl" TIMEOUT 300 RESOURCE_LOCK metl_cmake_build)
 
     # (b) Umbrella completeness.
     add_test(
@@ -441,7 +445,7 @@ if(METL_BUILD_TESTS)
               -D SU_DIR=${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/metl_crc_stack_probe.dir
               -D MAX_BYTES=31
               -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckStackFrames.cmake)
-    set_tests_properties(metl_crc_stack_frame PROPERTIES LABELS "metl" TIMEOUT 300)
+    set_tests_properties(metl_crc_stack_frame PROPERTIES LABELS "metl" TIMEOUT 300 RESOURCE_LOCK metl_cmake_build)
   endif()
 endif()
 
