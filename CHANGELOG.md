@@ -80,6 +80,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it. With an element whose move can throw, that called `std::terminate`
   inside the `noexcept` `clear()`, and in every case it cost one move per
   element. They now destroy from the back in place, moving nothing.
+- Documentation: `atomic_handle` claimed a compare-exchange "cannot be
+  fooled" by a recycled slot; with the default 16-bit generation it can,
+  after 65535 recycles of that slot, and the header now says so.
+  `deadline_scheduler`'s default `Tick` of `std::uint32_t` wraps after
+  2^32 ticks, which its own header forbids; the template parameter now
+  states the limit and points to `tick_extender`. `flat_map::clear()` and
+  `flat_set::clear()` now state that an element's destructor may erase
+  from the container but not insert into it.
 - `coro::scheduler::run_once` re-checked each task of its snapshot by address
   only. A task detached and re-attached under another poll function during the
   round -- or a different object attached in its storage -- was then polled
@@ -107,14 +115,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the program ill-formed, no diagnostic required. They are no longer
   `constexpr` (the CRC overloads are `inline`); the `span` and
   `const unsigned char*` overloads remain `constexpr` for compile-time use.
-- Documentation: `atomic_handle` claimed a compare-exchange "cannot be
-  fooled" by a recycled slot; with the default 16-bit generation it can,
-  after 65535 recycles of that slot, and the header now says so.
-  `deadline_scheduler`'s default `Tick` of `std::uint32_t` wraps after
-  2^32 ticks, which its own header forbids; the template parameter now
-  states the limit and points to `tick_extender`. `flat_map::clear()` and
-  `flat_set::clear()` now state that an element's destructor may erase
-  from the container but not insert into it.
+- `crc8`, `crc16` and `crc32` built with GCC at -O2 or -O3 copied their
+  nibble table onto the stack for every byte: a 64-byte frame and four
+  vector stores per byte for CRC-32, 32 bytes for CRC-16 and 16 for CRC-8.
+  The tables now live at namespace scope, so GCC reads them from `.rodata`
+  as Clang already did, and a test fails if a CRC frame at -O2 reaches the
+  size of the CRC-16 table.
 
 ## [1.2.0] - 2026-10-10
 
