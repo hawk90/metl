@@ -70,6 +70,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mpmc_queue` stays run-time initialized: its slots start at different
   sequence numbers, and doing that at compile time cost either flash or an
   extra operation on every push and pop. Its constructor documents this.
+- `atomic_ref<T>::compare_exchange_strong` on a `T` with padding bits
+  compared the padding too, through `std::atomic<T>`, so on an object whose
+  padding held stale bytes it failed although every member was equal
+  (libc++ at any level; libstdc++ at -O0). Where the compiler provides
+  `__builtin_clear_padding`, it now compares value bits only, as
+  `std::atomic_ref` does, and `store`, `exchange` and both compare-exchanges
+  store values with their padding cleared. Without the builtin (Apple clang
+  21, MSVC) the header documents the old behaviour.
 - `flat_map` and `flat_set` with an element that cannot be move-assigned: if
   the last move of an insert -- the new element into the gap -- threw, the
   container kept a dead slot inside its size. Its destructor then destroyed
@@ -107,14 +115,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the program ill-formed, no diagnostic required. They are no longer
   `constexpr` (the CRC overloads are `inline`); the `span` and
   `const unsigned char*` overloads remain `constexpr` for compile-time use.
-- `atomic_ref<T>::compare_exchange_strong` on a `T` with padding bits
-  compared the padding too, through `std::atomic<T>`, so on an object whose
-  padding held stale bytes it failed although every member was equal
-  (libc++ at any level; libstdc++ at -O0). Where the compiler provides
-  `__builtin_clear_padding`, it now compares value bits only, as
-  `std::atomic_ref` does, and `store`, `exchange` and both compare-exchanges
-  store values with their padding cleared. Without the builtin (Apple clang
-  21, MSVC) the header documents the old behaviour.
+- `crc8`, `crc16` and `crc32` built with GCC at -O2 or -O3 copied their
+  nibble table onto the stack for every byte: a 64-byte frame and four
+  vector stores per byte for CRC-32, 32 bytes for CRC-16 and 16 for CRC-8.
+  The tables now live at namespace scope, so GCC reads them from `.rodata`
+  as Clang already did, and a test fails if a CRC frame at -O2 reaches the
+  size of the CRC-16 table.
 
 ## [1.2.0] - 2026-10-10
 
