@@ -28,6 +28,10 @@ int widen(long v) {
   return static_cast<int>(v) + 1;
 }
 
+int widen_int(int v) noexcept {
+  return v + 1;
+}
+
 }  // namespace
 
 int main() {
@@ -61,6 +65,57 @@ int main() {
     CHECK(!g_asserted);
     CHECK(f.has_value());
     CHECK_EQ(f(41), 42);
+  }
+
+  // An empty wrapper of another capacity, signature or kind converts to an
+  // empty one. It used to be wrapped as a callable: `if (f)` held, and the
+  // call asserted inside the empty inner wrapper.
+  {
+    const metl::fixed_function<int(int), 16> empty_small;
+    const metl::fixed_function<int(int) noexcept, 16> empty_noexcept;
+
+    metl::fixed_function<int(int), 64> copied(empty_small);
+    CHECK(!copied);
+    CHECK(copied == nullptr);
+    metl::fixed_function<int(int), 64> moved(metl::fixed_function<int(int), 16>{});
+    CHECK(!moved);
+    metl::fixed_function<int(int), 64> from_noexcept(empty_noexcept);
+    CHECK(!from_noexcept);
+    metl::fixed_any_invocable<int(int), 64> any(empty_small);
+    CHECK(!any);
+    CHECK(any == nullptr);
+    metl::fixed_any_invocable<int(int), 64> any_moved(metl::fixed_any_invocable<int(int), 16>{});
+    CHECK(!any_moved);
+
+    // Assignment replaces an engaged target with nothing, and try_assign
+    // reports success: there was nothing to store.
+    metl::fixed_function<int(int), 64> assigned(&widen_int);
+    CHECK(assigned.has_value());
+    assigned = empty_small;
+    CHECK(!assigned);
+    metl::fixed_any_invocable<int(int), 64> any_assigned(&widen_int);
+    CHECK(any_assigned.try_assign(metl::fixed_any_invocable<int(int), 16>{}));
+    CHECK(!any_assigned);
+    metl::fixed_function<int(int), 64> try_assigned(&widen_int);
+    CHECK(try_assigned.try_assign(empty_small));
+    CHECK(!try_assigned);
+
+    // A source too large to store still converts when it is empty.
+    const metl::fixed_function<int(int), 256> empty_large;
+    metl::fixed_function<int(int), 64> from_large;
+    CHECK(from_large.try_assign(empty_large));
+    CHECK(!from_large);
+  }
+
+  // An engaged one still converts to a wrapper that calls the original target.
+  {
+    const metl::fixed_function<int(int), 16> small(&widen_int);
+    metl::fixed_function<int(int), 64> big(small);
+    CHECK(big.has_value());
+    CHECK_EQ(big(41), 42);
+    metl::fixed_any_invocable<int(int), 64> any(small);
+    CHECK(any.has_value());
+    CHECK_EQ(any(1), 2);
   }
 
   return metl_test::exit_code();

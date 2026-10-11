@@ -113,6 +113,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The tables now live at namespace scope, so GCC reads them from `.rodata`
   as Clang already did, and a test fails if a CRC frame at -O2 reaches the
   size of the CRC-16 table.
+- Converting an empty `fixed_function` or `fixed_any_invocable` to one of
+  another capacity, another noexcept-ness, or to `fixed_any_invocable` gave
+  an engaged wrapper: `if (f)` and `f != nullptr` held, and the call
+  asserted inside the empty source. The result is now empty, as
+  `std::function`'s converting constructor gives.
 
 ## [1.2.0] - 2026-10-10
 
