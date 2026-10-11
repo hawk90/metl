@@ -73,10 +73,18 @@ constexpr crc_nibble_table<Crc, Polynomial, false> make_crc_nibble_table_forward
   return table;
 }
 
+// The tables live at namespace scope, not as `constexpr` locals: GCC at -O2
+// and -O3 copied a local table onto the stack for every byte.
+template <typename Crc, Crc Polynomial>
+inline constexpr auto crc_nibble_table_reflected_v = make_crc_nibble_table_reflected<Crc, Polynomial>();
+
+template <typename Crc, Crc Polynomial>
+inline constexpr auto crc_nibble_table_forward_v = make_crc_nibble_table_forward<Crc, Polynomial>();
+
 /// One byte through a reflected nibble table.
 template <typename Crc, Crc Polynomial>
 constexpr Crc crc_update_byte_reflected(Crc crc, std::uint8_t byte) noexcept {
-  constexpr auto table = make_crc_nibble_table_reflected<Crc, Polynomial>();
+  constexpr const auto& table = crc_nibble_table_reflected_v<Crc, Polynomial>;
   crc = static_cast<Crc>(crc ^ byte);
   crc = static_cast<Crc>((crc >> 4u) ^ table.entries[crc & Crc{0x0F}]);
   crc = static_cast<Crc>((crc >> 4u) ^ table.entries[crc & Crc{0x0F}]);
@@ -87,7 +95,7 @@ constexpr Crc crc_update_byte_reflected(Crc crc, std::uint8_t byte) noexcept {
 template <typename Crc, Crc Polynomial>
 constexpr Crc crc_update_byte_forward(Crc crc, std::uint8_t byte) noexcept {
   constexpr unsigned width = sizeof(Crc) * 8u;
-  constexpr auto table = make_crc_nibble_table_forward<Crc, Polynomial>();
+  constexpr const auto& table = crc_nibble_table_forward_v<Crc, Polynomial>;
 
   crc = static_cast<Crc>(crc ^ static_cast<Crc>(static_cast<Crc>(byte) << (width - 8u)));
   crc = static_cast<Crc>(static_cast<Crc>(crc << 4u) ^ table.entries[(crc >> (width - 4u)) & Crc{0x0F}]);

@@ -91,6 +91,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exactly the attachments it snapshotted; anything attached mid-round, at
   whatever address and with whatever poll function, waits for the next round.
   Each slot grows by one `std::size_t`.
+- `coro::scheduler::run_until_idle` stopped after a round in which no task
+  yielded, even when a task attached during that round was still waiting:
+  a task that hands off to its next step and completes left the step
+  attached and unpolled, with `max_rounds` far from reached. It now runs
+  until no task is attached or `max_rounds` rounds have run.
 - `static_unordered_map` and `static_unordered_set` move constructors were
   `noexcept` whenever moving the elements and looking up keys could not throw,
   but they also move the `Hash` and `KeyEqual`. With one whose move can throw,
@@ -107,11 +112,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the program ill-formed, no diagnostic required. They are no longer
   `constexpr` (the CRC overloads are `inline`); the `span` and
   `const unsigned char*` overloads remain `constexpr` for compile-time use.
-- `coro::scheduler::run_until_idle` stopped after a round in which no task
-  yielded, even when a task attached during that round was still waiting:
-  a task that hands off to its next step and completes left the step
-  attached and unpolled, with `max_rounds` far from reached. It now runs
-  until no task is attached or `max_rounds` rounds have run.
+- `crc8`, `crc16` and `crc32` built with GCC at -O2 or -O3 copied their
+  nibble table onto the stack for every byte: a 64-byte frame and four
+  vector stores per byte for CRC-32, 32 bytes for CRC-16 and 16 for CRC-8.
+  The tables now live at namespace scope, so GCC reads them from `.rodata`
+  as Clang already did, and a test fails if a CRC frame at -O2 reaches the
+  size of the CRC-16 table.
 
 ## [1.2.0] - 2026-10-10
 
