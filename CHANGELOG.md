@@ -107,6 +107,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the program ill-formed, no diagnostic required. They are no longer
   `constexpr` (the CRC overloads are `inline`); the `span` and
   `const unsigned char*` overloads remain `constexpr` for compile-time use.
+- Converting an empty `fixed_function` or `fixed_any_invocable` to one of
+  another capacity, another noexcept-ness, or to `fixed_any_invocable` gave
+  an engaged wrapper: `if (f)` and `f != nullptr` held, and the call
+  asserted inside the empty source. The result is now empty, as
+  `std::function`'s converting constructor gives.
 
 ## [1.2.0] - 2026-10-10
 

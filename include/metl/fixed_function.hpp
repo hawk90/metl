@@ -163,6 +163,25 @@ struct moveonly_ops_for_t<F, false, R, Args...> {
   };
 };
 
+// -------- empty wrapper sources --------------------------------------------
+
+template <bool IsNoexcept, std::size_t Capacity, typename R, typename... Args>
+class fixed_function_impl;
+template <bool IsNoexcept, std::size_t Capacity, typename R, typename... Args>
+class fixed_any_invocable_impl;
+
+template <bool IsNoexcept, std::size_t Capacity, typename R, typename... Args>
+std::true_type is_fixed_callable_test(const fixed_function_impl<IsNoexcept, Capacity, R, Args...>*);
+template <bool IsNoexcept, std::size_t Capacity, typename R, typename... Args>
+std::true_type is_fixed_callable_test(const fixed_any_invocable_impl<IsNoexcept, Capacity, R, Args...>*);
+std::false_type is_fixed_callable_test(const void*);
+
+// True for every fixed_function and fixed_any_invocable, whatever the
+// signature and capacity: the sources whose emptiness a conversion must keep.
+template <typename F>
+inline constexpr bool is_fixed_callable_v =
+    decltype(is_fixed_callable_test(static_cast<const F*>(nullptr)))::value;
+
 // -------- fixed_function implementation core --------------------------------
 
 template <bool IsNoexcept, std::size_t Capacity, typename R, typename... Args>
@@ -288,6 +307,16 @@ class fixed_function_impl {
       // that only CONVERTS to it (`int (*)(long)` into `R(int)`). A null one
       // would be stored as an engaged target that jumps to 0.
       METL_HARDEN(function != nullptr);
+    }
+
+    if constexpr (is_fixed_callable_v<decayed_type>) {
+      // An empty fixed_function or fixed_any_invocable of another signature or
+      // capacity gives an empty one, as std::function's converting constructor
+      // does. Wrapped, it would report a target and assert when called.
+      if (!function) {
+        reset();
+        return true;
+      }
     }
 
     if (sizeof(decayed_type) > Capacity) {
@@ -427,6 +456,16 @@ class fixed_any_invocable_impl {
       METL_HARDEN(function != nullptr);
     }
 
+    if constexpr (is_fixed_callable_v<decayed_type>) {
+      // An empty fixed_function or fixed_any_invocable of another signature or
+      // capacity gives an empty one, as std::function's converting constructor
+      // does. Wrapped, it would report a target and assert when called.
+      if (!function) {
+        reset();
+        return true;
+      }
+    }
+
     if (sizeof(decayed_type) > Capacity) {
       return false;
     }
@@ -467,6 +506,9 @@ class fixed_any_invocable_impl {
 /// @warning A callable larger than `Capacity` cannot be stored: `try_assign`
 ///          returns false, while the converting constructor / `assign` assert.
 ///          Alignment stricter than std::max_align_t fails a static_assert.
+/// @note Converting from an empty `fixed_function` or `fixed_any_invocable` of
+///       another signature or capacity gives an empty one, as `std::function`
+///       does; an engaged one is stored as a callable like any other.
 /// @note The stored callable must be nothrow move constructible (a
 ///       static_assert): moving, move-assigning and swapping the wrapper are
 ///       `noexcept` and relocate it. Every lambda whose
@@ -743,6 +785,9 @@ inline void swap(fixed_function<Sig, Cap>& lhs, fixed_function<Sig, Cap>& rhs) n
 /// @tparam Capacity Inline storage size in bytes (default 32).
 /// @warning A callable larger than `Capacity` cannot be stored: `try_assign`
 ///          returns false, while the converting constructor / `assign` assert.
+/// @note Converting from an empty `fixed_function` or `fixed_any_invocable` of
+///       another signature or capacity gives an empty one, as `std::function`
+///       does; an engaged one is stored as a callable like any other.
 /// @note The stored callable must be nothrow move constructible (a
 ///       static_assert): moving, move-assigning and swapping the wrapper are
 ///       `noexcept` and relocate it. Every lambda whose
