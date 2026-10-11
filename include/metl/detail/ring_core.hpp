@@ -19,6 +19,7 @@
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
+#include "metl/detail/constant_init.hpp"
 #include "metl/scope_exit.hpp"
 #include "metl/type_traits.hpp"
 
@@ -162,7 +163,15 @@ class ring_core {
   using const_reference = const T&;
 
   /// Constructs an empty core.
-  constexpr ring_core() noexcept : head_(0), size_(0) {}
+  // Constant-initialized at namespace scope since C++20 (see
+  // detail/constant_init.hpp); a local one stores nothing to the buffer.
+  constexpr ring_core() noexcept : head_(0), size_(0) {
+    if (in_constant_evaluation()) {
+      for (auto& slot : storage_) {
+        zero_for_constant_init(slot.bytes);
+      }
+    }
+  }
 
   ~ring_core() { clear(); }
 

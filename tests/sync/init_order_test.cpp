@@ -16,5 +16,14 @@ int main() {
   CHECK_EQ(value, 42);
   CHECK_EQ(g_ring.readable_size(), std::size_t{3});
   CHECK(g_handle.load() == init_order_handle(3, 5));
+#if INIT_ORDER_CONTAINERS
+  CHECK_EQ(g_vector.size(), std::size_t{1});
+  CHECK_EQ(g_ring_buffer.size(), std::size_t{1});
+  g_messages.with([](metl::static_message_queue<int, 8>& queue) {
+    int message = 0;
+    CHECK(queue.try_pop(message));
+    CHECK_EQ(message, 9);
+  });
+#endif
   return metl_test::exit_code();
 }

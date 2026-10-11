@@ -38,6 +38,16 @@ namespace metl {
 /// });
 /// @endcode
 ///
+/// A namespace-scope `guarded` an interrupt can reach before `main()` must be
+/// valid when that interrupt fires. Since C++20 `guarded` over `fixed_vector`,
+/// `static_message_queue`, the ring containers, `flat_map`/`flat_set` or
+/// `fixed_function` is constant-initialized (declare it `constinit` to have the
+/// compiler check). In C++17 those are initialized at run time, in link order,
+/// as `std::vector` is: construct the object before enabling the interrupt,
+/// or share an `spsc_queue`, which is constant-initialized in every standard.
+/// `object_pool`, `handle_pool`, `mpmc_queue` and the unordered containers
+/// are initialized at run time in every standard.
+///
 /// **On single-core MCUs, masking interrupts is the only correct lock between an
 /// ISR and the main loop.** A spinlock there deadlocks: the ISR preempts the
 /// holder and spins forever waiting for a thread that cannot run. `irq_lock` is

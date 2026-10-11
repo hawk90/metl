@@ -107,6 +107,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the program ill-formed, no diagnostic required. They are no longer
   `constexpr` (the CRC overloads are `inline`); the `span` and
   `const unsigned char*` overloads remain `constexpr` for compile-time use.
+- Since C++20, `fixed_vector`, `fixed_stack`, `fixed_priority_queue`,
+  `flat_map`, `flat_set`, `ring_buffer`, `fixed_queue`, `fixed_deque`,
+  `static_message_queue`, `fixed_function` and `fixed_any_invocable`, and
+  `guarded` over them, are constant-initialized at namespace scope, so an
+  interrupt that fires during start-up can no longer have its pushes wiped
+  by a constructor that runs later in link order. Their default
+  constructors zero the element buffer only during constant evaluation:
+  a local one stores nothing, as before. In C++17 they stay dynamically
+  initialized, as `std::vector` does; `lock.hpp` states the rule and which
+  types it does not cover.
 
 ## [1.2.0] - 2026-10-10
 

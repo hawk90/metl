@@ -58,6 +58,7 @@ BOOL_ALLOWLIST = {
     "can_append": "predicate: would the characters fit?",
     "has_single_bit": "numeric predicate, mirrors std::has_single_bit",
     "bit_is_constant_evaluated": "predicate: are we in a constant evaluation?",
+    "in_constant_evaluation": "predicate: are we in a constant evaluation?",
     "compare_alternative": "private helper predicate: are two alternatives equal?",
     # --- 'was it there?' answers: nothing failed, the key simply was not present ---
     "erase": "answers 'was an element present', mirrors std::map::erase's count",

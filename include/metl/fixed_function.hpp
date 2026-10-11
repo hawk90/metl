@@ -17,6 +17,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/constant_init.hpp"
 #include "metl/detail/invocable.hpp"
 
 #include <cstddef>
@@ -170,7 +171,7 @@ class fixed_function_impl {
  public:
   using ops_type = copyable_ops<IsNoexcept, R, Args...>;
 
-  constexpr fixed_function_impl() noexcept : ops_(nullptr) {}
+  constexpr fixed_function_impl() noexcept : ops_(nullptr) { zero_for_constant_init(storage_); }
   constexpr fixed_function_impl(std::nullptr_t) noexcept : ops_(nullptr) {}
 
   fixed_function_impl(const fixed_function_impl& other) : ops_(nullptr) {
@@ -326,7 +327,7 @@ class fixed_any_invocable_impl {
  public:
   using ops_type = moveonly_ops<IsNoexcept, R, Args...>;
 
-  constexpr fixed_any_invocable_impl() noexcept : ops_(nullptr) {}
+  constexpr fixed_any_invocable_impl() noexcept : ops_(nullptr) { zero_for_constant_init(storage_); }
   constexpr fixed_any_invocable_impl(std::nullptr_t) noexcept : ops_(nullptr) {}
 
   fixed_any_invocable_impl(const fixed_any_invocable_impl&) = delete;

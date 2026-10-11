@@ -26,6 +26,7 @@
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/array_storage.hpp"
+#include "metl/detail/constant_init.hpp"
 #include "metl/scope_exit.hpp"
 #include "metl/span.hpp"
 #include "metl/type_traits.hpp"
@@ -86,7 +87,15 @@ class fixed_vector {
   using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
   /// Constructs an empty vector.
-  constexpr fixed_vector() noexcept : size_(0) { asan_poison_tail_(); }
+  /// Constant-initialized at namespace scope since C++20 (see
+  /// detail/constant_init.hpp); a local one stores nothing to the buffer.
+  constexpr fixed_vector() noexcept : size_(0) {
+    if (detail::in_constant_evaluation()) {
+      detail::zero_for_constant_init(storage_.bytes);
+    } else {
+      asan_poison_tail_();
+    }
+  }
 
   // Element-inserting constructors delegate to the empty constructor first.
   // Once it returns the object is fully constructed, so if copying or moving

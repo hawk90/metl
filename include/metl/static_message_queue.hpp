@@ -20,6 +20,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/constant_init.hpp"
 #include "metl/scope_exit.hpp"
 #include "metl/type_traits.hpp"
 
@@ -68,7 +69,15 @@ class static_message_queue {
   using const_reference = const T&;
 
   /// @brief Construct an empty queue.
-  constexpr static_message_queue() noexcept : head_(0), tail_(0), size_(0) {}
+  /// Constant-initialized at namespace scope since C++20 (see
+  /// detail/constant_init.hpp); a local one stores nothing to the buffer.
+  constexpr static_message_queue() noexcept : head_(0), tail_(0), size_(0) {
+    if (detail::in_constant_evaluation()) {
+      for (auto& slot : storage_) {
+        detail::zero_for_constant_init(slot.bytes);
+      }
+    }
+  }
 
   /// @brief Destroy the queue, running the destructor of every remaining element.
   ~static_message_queue() { clear(); }

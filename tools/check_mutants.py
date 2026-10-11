@@ -375,6 +375,20 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
         "new": "",
     },
     {
+        "name": "constant_init_never_zeroes",
+        "file": "include/metl/detail/constant_init.hpp",
+        "why": "the containers' storage is left uninitialized during constant "
+               "evaluation, so no namespace-scope container is constant-"
+               "initialized and an early interrupt's pushes are wiped.",
+        # The C++20 build of init_order_test is the gate: its constinit
+        # declarations stop compiling.
+        "kills": "tool:clang++ -std=c++20 -fsyntax-only -Iinclude -Itests tests/sync/init_order_queues.cpp",
+        "old": """  if (in_constant_evaluation()) {
+    for (std::size_t i = 0; i < N; ++i) {""",
+        "new": """  if (false) {
+    for (std::size_t i = 0; i < N; ++i) {""",
+    },
+    {
         "name": "arena_alignment_harden_removed",
         "file": "include/metl/arena_allocator.hpp",
         "why": "a non-power-of-two alignment reaches align_up's bitmask at "

@@ -33,6 +33,7 @@
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
 #include "metl/detail/array_storage.hpp"
+#include "metl/detail/constant_init.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
 #include "metl/type_traits.hpp"
@@ -78,7 +79,11 @@ class flat_map {
   using const_iterator = const value_type*;
 
   /// @brief Construct an empty map with a default-constructed comparator.
-  constexpr flat_map() noexcept(std::is_nothrow_default_constructible_v<Compare>) : comp_(), size_(0) {}
+  /// Constant-initialized at namespace scope since C++20 (see
+  /// detail/constant_init.hpp); a local one stores nothing to the buffer.
+  constexpr flat_map() noexcept(std::is_nothrow_default_constructible_v<Compare>) : comp_(), size_(0) {
+    detail::zero_for_constant_init(storage_.bytes);
+  }
 
   /// @brief Construct an empty map using the given comparator.
   explicit flat_map(const Compare& comp) noexcept(std::is_nothrow_copy_constructible_v<Compare>)
