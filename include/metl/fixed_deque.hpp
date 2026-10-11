@@ -93,7 +93,13 @@ class fixed_deque : public detail::ring_core<T, Capacity> {
     const auto slot = this->retreat(this->head_);
     const bool inserted = try_emplace_front(std::forward<Args>(args)...);
     METL_ASSERT(inserted);
-    return inserted ? this->storage_at(slot) : this->front();
+    if (!inserted) {
+      // With METL_ASSERT stripped, a full deque returns its front element -- an
+      // object, unless Capacity is 0 and there is none to return.
+      METL_HARDEN(this->size_ > 0);
+      return this->front();
+    }
+    return this->storage_at(slot);
   }
 
   /// Prepends a copy of `value` at the front if there is room; false when full.

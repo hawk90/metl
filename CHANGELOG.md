@@ -107,6 +107,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the program ill-formed, no diagnostic required. They are no longer
   `constexpr` (the CRC overloads are `inline`); the `span` and
   `const unsigned char*` overloads remain `constexpr` for compile-time use.
+- Zero-capacity `ring_buffer`, `fixed_deque` and `fixed_queue`: emplacing
+  into one, which is always full, returned `back()` or `front()` at
+  `METL_HARDENING_NONE`, a reference to no object. That fallback is now
+  guarded by `METL_HARDEN`, as `fixed_vector`'s already was.
+  `ring_buffer::push_overwrite`, documented never to assert, aborted on a
+  zero-capacity buffer at every level; calling it there is now a compile
+  error.
 
 ## [1.2.0] - 2026-10-10
 

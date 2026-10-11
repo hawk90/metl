@@ -68,8 +68,13 @@ class ring_buffer : public detail::ring_core<T, Capacity> {
   ///      refer to `front()` or into it: the oldest element is destroyed before the
   ///      new one is constructed. A move-constructible `T` is built first, so it
   ///      has no such restriction.
+  /// A zero-capacity buffer has no element to evict or return, so calling it
+  /// there is a compile error.
   template <typename... Args>
   reference push_overwrite(Args&&... args) {
+    static_assert(Capacity > 0,
+                  "metl::ring_buffer::push_overwrite needs Capacity > 0: a zero-capacity buffer has no slot "
+                  "to overwrite and no element to return");
     if (full()) {
       if constexpr (std::is_move_constructible_v<T>) {
         // Build the value before evicting: `args` may refer to the element

@@ -309,7 +309,13 @@ class ring_core {
     const size_type slot = physical_index(size_);
     const bool inserted = try_emplace_back(std::forward<Args>(args)...);
     METL_ASSERT(inserted);
-    return inserted ? storage_at(slot) : back();
+    if (!inserted) {
+      // With METL_ASSERT stripped, a full ring returns its newest element -- an
+      // object, unless Capacity is 0 and there is none to return.
+      METL_HARDEN(size_ > 0);
+      return back();
+    }
+    return storage_at(slot);
   }
 
   /// Appends a copy of `value` at the back if there is room; false when full.
