@@ -24,6 +24,42 @@
 
 namespace metl {
 
+namespace detail {
+
+// The bit operations work on the register's bits: for an enum register type,
+// those of its underlying integer. A scoped enum has no `|`, `&` or `~`, so
+// set_bits on an `enum class E : uint32_t` register failed inside this header,
+// although the documentation lists enums as register types (#316).
+template <typename T>
+struct mmio_identity {
+  using type = T;
+};
+template <typename T>
+using mmio_bits_t =
+    typename std::conditional_t<std::is_enum_v<T>, std::underlying_type<T>, mmio_identity<T>>::type;
+
+template <typename T>
+constexpr T mmio_set(T current, T bits) noexcept {
+  using B = mmio_bits_t<T>;
+  return static_cast<T>(static_cast<B>(static_cast<B>(current) | static_cast<B>(bits)));
+}
+
+template <typename T>
+constexpr T mmio_clear(T current, T bits) noexcept {
+  using B = mmio_bits_t<T>;
+  return static_cast<T>(static_cast<B>(static_cast<B>(current) & static_cast<B>(~static_cast<B>(bits))));
+}
+
+template <typename T>
+constexpr T mmio_merge(T current, T mask, T value) noexcept {
+  using B = mmio_bits_t<T>;
+  const B cleared = static_cast<B>(static_cast<B>(current) & static_cast<B>(~static_cast<B>(mask)));
+  return static_cast<T>(
+      static_cast<B>(cleared | static_cast<B>(static_cast<B>(value) & static_cast<B>(mask))));
+}
+
+}  // namespace detail
+
 /// @brief Typed memory-mapped register at a fixed address known at compile time.
 ///
 /// All accesses route through `read_once` / `write_once` (volatile lvalues), so
@@ -58,19 +94,21 @@ struct mmio_register {
   static void modify(T mask, T value) noexcept {
     static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
                   "mmio bit operations need an unsigned integer T: on a bool, ~mask is always true");
-    const T current = read();
-    const T cleared = static_cast<T>(current & static_cast<T>(~mask));
-    write(static_cast<T>(cleared | static_cast<T>(value & mask)));
+    write(detail::mmio_merge(read(), mask, value));
   }
 
   /// @brief Set (OR-in) the given bits. @param bits Bits to set.
-  static void set_bits(T bits) noexcept { write(static_cast<T>(read() | bits)); }
+  static void set_bits(T bits) noexcept {
+    static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
+                  "mmio bit operations need an unsigned integer T: on a bool, ~mask is always true");
+    write(detail::mmio_set(read(), bits));
+  }
 
   /// @brief Clear the given bits. @param bits Bits to clear.
   static void clear_bits(T bits) noexcept {
     static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
                   "mmio bit operations need an unsigned integer T: on a bool, ~mask is always true");
-    write(static_cast<T>(read() & static_cast<T>(~bits)));
+    write(detail::mmio_clear(read(), bits));
   }
 };
 
@@ -113,19 +151,21 @@ class mmio_ptr {
   void modify(T mask, T value) const noexcept {
     static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
                   "mmio bit operations need an unsigned integer T: on a bool, ~mask is always true");
-    const T current = read();
-    const T cleared = static_cast<T>(current & static_cast<T>(~mask));
-    write(static_cast<T>(cleared | static_cast<T>(value & mask)));
+    write(detail::mmio_merge(read(), mask, value));
   }
 
   /// @brief Set (OR-in) the given bits. @param bits Bits to set.
-  void set_bits(T bits) const noexcept { write(static_cast<T>(read() | bits)); }
+  void set_bits(T bits) const noexcept {
+    static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
+                  "mmio bit operations need an unsigned integer T: on a bool, ~mask is always true");
+    write(detail::mmio_set(read(), bits));
+  }
 
   /// @brief Clear the given bits. @param bits Bits to clear.
   void clear_bits(T bits) const noexcept {
     static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
                   "mmio bit operations need an unsigned integer T: on a bool, ~mask is always true");
-    write(static_cast<T>(read() & static_cast<T>(~bits)));
+    write(detail::mmio_clear(read(), bits));
   }
 
   /// @brief The underlying volatile pointer. @return Volatile pointer to the register.

@@ -69,6 +69,13 @@ namespace metl {
 ///          generation tagging; use a wider `GenT` when handles are held for
 ///          unbounded periods.
 ///
+/// @warning **A handle names a slot, not a pool.** A handle from one
+///          `handle_pool<T, N>` is also accepted by every other pool of the same
+///          type, and resolves to whatever that pool holds in the same slot with
+///          the same generation (#316). Two pools of one type that hand out
+///          handles to the same code need a wrapper type, or a pool id kept
+///          beside the handle.
+///
 /// @note Not thread-safe. Concurrent use needs external synchronisation. No
 ///       lock-free variant is planned; `metl::atomic_handle` (atomic_handle.hpp)
 ///       is the capability-gated building block for one (it needs a single-word
