@@ -375,7 +375,7 @@ struct arena_allocator_adapter {
   static std::size_t held(const type& c) {
     std::size_t count = 0;
     for (std::size_t i = 0; i < given().count; ++i) {
-      count += c.used() > given().items[i].offset ? 1 : 0;
+      count += c.used() > given().items[i].offset ? std::size_t{1} : std::size_t{0};
     }
     return count;
   }
