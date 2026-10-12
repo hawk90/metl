@@ -193,7 +193,7 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
                "vacated tail, so those objects leak.",
         "kills": "ctest:fixed_vector_test|sequence_reentrancy",
         "old": """    for (size_type i = size_; i < old_size; ++i) {
-      data()[i].~T();
+      destroy_element(i);
     }""",
         "new": """    for (size_type i = size_; i < old_size; ++i) {
     }""",
@@ -380,6 +380,29 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
         "kills": "ctest:coro_scheduler_reentrancy_test",
         "old": """    for (const round_frame* frame = round_; frame != nullptr; frame = frame->outer) {""",
         "new": """    for (const round_frame* frame = nullptr; frame != nullptr; frame = frame->outer) {""",
+    },
+    {
+        "name": "hash_const_char_array_takes_pointer_overload",
+        "file": "include/metl/hash.hpp",
+        "why": "A non-template const char* overload wins over the template for a "
+               "const char[N], so an unterminated const buffer is read past its end.",
+        "kills": "ctest:hash_by_value_test",
+        "old": """      return fnv1a(reinterpret_cast<const unsigned char*>(detail::addressof(value)), sizeof(T));
+    }
+  }
+};""",
+        "new": """      return fnv1a(reinterpret_cast<const unsigned char*>(detail::addressof(value)), sizeof(T));
+    }
+  }
+
+  METL_NODISCARD std::size_t operator()(const char* str) const noexcept {
+    std::size_t len = 0;
+    while (str[len] != '\\0') {
+      ++len;
+    }
+    return fnv1a(str, len);
+  }
+};""",
     },
     {
         "name": "scheduler_until_idle_stops_on_quiet_round",
