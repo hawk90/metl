@@ -7,15 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- **`variant`: removed three range assertions that could never fire (#309).**
-  `emplace<I>` and both `get_if<I>` asserted `I < sizeof...(Ts)` in their
-  bodies. Their return type, `variant_alternative_t<I, ...>`, rejects an
-  out-of-range `I` first, so the body was never instantiated. The diagnostic a
-  caller gets is unchanged, and two compile-fail cases now pin it. The
-  compile-fail ratchet drops from 7 to 5.
-
 ## [1.2.1] - 2026-10-11
 
 **Highlights.** A correctness patch from a second review of 1.2.0, each finding
