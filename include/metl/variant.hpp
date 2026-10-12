@@ -37,6 +37,17 @@
 #define METL_DETAIL_VARIANT_NOINLINE
 #endif
 
+// An out-of-line switch instantiated for an alternative whose constructor
+// always throws has no reachable code after the construction, and MSVC /W4
+// reports that as C4702. It is the instantiation, not the code, that is dead.
+#if defined(_MSC_VER) && !defined(__clang__)
+#define METL_DETAIL_VARIANT_UNREACHABLE_OK_BEGIN __pragma(warning(push)) __pragma(warning(disable : 4702))
+#define METL_DETAIL_VARIANT_UNREACHABLE_OK_END __pragma(warning(pop))
+#else
+#define METL_DETAIL_VARIANT_UNREACHABLE_OK_BEGIN
+#define METL_DETAIL_VARIANT_UNREACHABLE_OK_END
+#endif
+
 namespace metl {
 
 /// @brief Sentinel index value for a valueless variant (largest size_t).
@@ -552,6 +563,7 @@ class variant {
     return ops;
   }
 
+  METL_DETAIL_VARIANT_UNREACHABLE_OK_BEGIN
   // The switch through a temporary, out of line: a function's stack frame is
   // sized for every path in it, so kept inline the temporary would cost its
   // stack even on the switches that construct in place (#315).
@@ -620,6 +632,7 @@ class variant {
       destroy_ops()[leaving](raw_addr());
     }
   }
+  METL_DETAIL_VARIANT_UNREACHABLE_OK_END
 
   template <typename T, typename... Args>
   T& construct(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>) {
