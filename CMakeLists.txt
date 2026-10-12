@@ -135,7 +135,7 @@ if(METL_BUILD_TESTS)
     containers/operation_count containers/alias_insert containers/unordered_erase_iteration
     containers/throwing_element containers/array_storage containers/self_range containers/sequence_reentrancy
     containers/recoverable_unchanged
-    containers/contract_edges
+    containers/contract_edges containers/associative_erase_iterator
     # conformance/  (one property, every registered type -- #320)
     conformance/conformance_removal conformance/conformance_capacity conformance/conformance_move
     # memory/
@@ -152,7 +152,7 @@ if(METL_BUILD_TESTS)
     vocab/optional vocab/optional_constexpr vocab/expected vocab/expected_regression
     vocab/variant vocab/variant_regression vocab/span vocab/function_ref
     vocab/fixed_function vocab/fixed_function_const vocab/fixed_function_null vocab/callable_reentrancy vocab/delegate
-    vocab/callable_reference_return
+    vocab/callable_reference_return vocab/vocab_std_parity
     vocab/intrusive_ptr vocab/intrusive_ptr_atomic vocab/intrusive_ptr_contract vocab/intrusive_ptr_alias vocab/scope_exit vocab/type_traits
     vocab/variant_selfassign vocab/emplace_self_alias vocab/vocab_assignment vocab/versioned_handle
     # bits/
@@ -448,6 +448,28 @@ if(METL_BUILD_TESTS)
               -D MAX_BYTES=31
               -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckStackFrames.cmake)
     set_tests_properties(metl_crc_stack_frame PROPERTIES LABELS "metl" TIMEOUT 300 RESOURCE_LOCK metl_cmake_build)
+
+    # Switching a variant between alternatives keeps no copy of a 1 KiB one on
+    # the stack (#315). The out-of-line paths that do hold one, for arguments
+    # that alias the storage, are excluded by name. GCC writes no name at all
+    # for a member template with a parameter pack (": ) [with ...]"), so those
+    # frames are skipped under GCC; Clang names them, and checks them.
+    add_library(metl_variant_stack_probe OBJECT tests/embedded/variant_stack_probe.cpp)
+    target_link_libraries(metl_variant_stack_probe PRIVATE metl::metl)
+    target_compile_features(metl_variant_stack_probe PRIVATE cxx_std_17)
+    target_compile_options(metl_variant_stack_probe PRIVATE -O2 -fno-lto -fstack-usage)
+    set_target_properties(metl_variant_stack_probe PROPERTIES METL_KIND stack_probe INTERPROCEDURAL_OPTIMIZATION OFF)
+    add_test(
+      NAME metl_variant_stack_frame
+      COMMAND ${CMAKE_COMMAND}
+              -D BUILD_DIR=${CMAKE_BINARY_DIR}
+              -D TARGET=metl_variant_stack_probe
+              -D CONFIG=$<CONFIG>
+              -D SU_DIR=${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/metl_variant_stack_probe.dir
+              -D MAX_BYTES=256
+              -D "IGNORE=emplace_through_temporary|assign_through_backup|:[0-9]+:[0-9]+:\\) \\[with"
+              -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckStackFrames.cmake)
+    set_tests_properties(metl_variant_stack_frame PROPERTIES LABELS "metl" TIMEOUT 300 RESOURCE_LOCK metl_cmake_build)
   endif()
 endif()
 

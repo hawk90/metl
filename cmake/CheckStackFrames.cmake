@@ -4,7 +4,11 @@
 # in its .su files exceeds MAX_BYTES. Run as a standalone script:
 #
 #   cmake -D BUILD_DIR=<build> -D TARGET=<target> -D SU_DIR=<dir> \
-#         -D MAX_BYTES=<n> [-D CONFIG=<cfg>] -P cmake/CheckStackFrames.cmake
+#         -D MAX_BYTES=<n> [-D CONFIG=<cfg>] [-D IGNORE=<regex>] \
+#         -P cmake/CheckStackFrames.cmake
+#
+# IGNORE names frames that are allowed to be large, such as an out-of-line
+# cold path whose job is to hold a temporary. They are still printed.
 #
 # Finding no .su file is a failure: a check that measured nothing would
 # otherwise pass.
@@ -34,7 +38,11 @@ endif()
 set(_frames 0)
 set(_over "")
 foreach(_su IN LISTS _su_files)
-  file(STRINGS "${_su}" _lines)
+  # Not file(STRINGS): GCC names a template frame "[with I = 1; Args = ...]",
+  # and a list split on those semicolons separates a frame's name from its size.
+  file(READ "${_su}" _text)
+  string(REPLACE ";" "," _text "${_text}")
+  string(REPLACE "\n" ";" _lines "${_text}")
   foreach(_line IN LISTS _lines)
     # file:line:column:function<TAB>bytes<TAB>qualifier
     if(_line MATCHES "^(.*)\t([0-9]+)\t([a-z,]+)$")
@@ -43,6 +51,9 @@ foreach(_su IN LISTS _su_files)
       set(_qualifier "${CMAKE_MATCH_3}")
       math(EXPR _frames "${_frames} + 1")
       message(STATUS "${_bytes}\t${_qualifier}\t${_where}")
+      if(DEFINED IGNORE AND NOT IGNORE STREQUAL "" AND _where MATCHES "${IGNORE}")
+        continue()
+      endif()
       if(_bytes GREATER MAX_BYTES OR NOT _qualifier STREQUAL "static")
         list(APPEND _over "${_where}: ${_bytes} bytes (${_qualifier})")
       endif()
