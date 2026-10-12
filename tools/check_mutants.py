@@ -213,11 +213,11 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
         "file": "include/metl/fixed_vector.hpp",
         "why": "try_assign(first, last) refuses a range of exactly Capacity.",
         "kills": "ctest:fixed_vector_test",
-        "old": """    if (static_cast<size_type>(std::distance(first, last)) > Capacity) {
+        "old": """    if (static_cast<size_type>(detail::iterator_distance(first, last)) > Capacity) {
       return false;
     }
     assign(first, last);""",
-        "new": """    if (static_cast<size_type>(std::distance(first, last)) >= Capacity) {
+        "new": """    if (static_cast<size_type>(detail::iterator_distance(first, last)) >= Capacity) {
       return false;
     }
     assign(first, last);""",
