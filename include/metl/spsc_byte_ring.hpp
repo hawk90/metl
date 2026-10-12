@@ -20,6 +20,7 @@
 
 #include "metl/config.hpp"
 #include "metl/detail/index_distance.hpp"
+#include "metl/detail/word_atomic.hpp"
 #include "metl/optimization.hpp"
 #include "metl/span.hpp"
 
@@ -286,8 +287,8 @@ class spsc_byte_ring {
   // index is reloaded once per ELEMENT, and here one `writable_span()` call is
   // amortised over as many bytes as the caller then writes. Adding it would be an
   // unmeasured complication.
-  METL_CACHELINE_ALIGNED std::atomic<size_type> head_;  ///< Consumer position (monotonic).
-  METL_CACHELINE_ALIGNED std::atomic<size_type> tail_;  ///< Producer position (monotonic).
+  METL_CACHELINE_ALIGNED detail::word_atomic<size_type> head_;  ///< Consumer position (monotonic).
+  METL_CACHELINE_ALIGNED detail::word_atomic<size_type> tail_;  ///< Producer position (monotonic).
   METL_CACHELINE_ALIGNED std::byte storage_[Capacity] = {};
 };
 METL_CACHELINE_PADDED_END
