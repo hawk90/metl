@@ -8,6 +8,8 @@
 ///   | `find`, `contains`, `find_iterator` | wait-free, bounded by `bucket_count` probes |
 ///   | new key, incl. `operator[]` | wait-free, `bucket_count` probes **plus, at times, a rebuild** |
 ///   | `erase` | wait-free, bounded by `bucket_count` probes; moves nothing |
+///   | `erase(iterator)` | wait-free, bounded by `bucket_count`; moves nothing |
+///   | `erase_if` | wait-free, bounded by `bucket_count`; moves nothing |
 ///   | `clear`, iteration, destructor | wait-free, bounded by `bucket_count` |
 ///   | copy, move (construct and assign) | wait-free, one insert of <= `bucket_count` probes per element |
 ///
@@ -446,7 +448,8 @@ class static_unordered_map {
 
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
-                                   !std::is_same_v<decay_t<K>, key_type>>>
+                                   !std::is_same_v<decay_t<K>, key_type> &&
+                                   !std::is_convertible_v<const K&, const_iterator>>>
   bool erase(const K& key) noexcept(lookup_cannot_throw<K>) {
     const size_type index = find_existing_index(key);
     if (index == npos) {
@@ -616,6 +619,22 @@ class static_unordered_map {
     destroy_at(index, slot_state::tombstone);
     return true;
   }
+
+  /// @brief Erase the element at @p pos (leaves a tombstone slot).
+  /// @return An iterator to the next element in iteration order, or `end()`.
+  ///         Other iterators stay valid: erasing never moves an element.
+  /// @pre @p pos is a dereferenceable iterator into this map; anything else
+  ///      aborts, at every hardening level.
+  /// @note Lets a loop erase while it iterates: `it = m.erase(it)` (#313).
+  iterator erase(const_iterator pos) noexcept {
+    METL_HARDEN(pos.map_ == this && pos.index_ < bucket_count && states_[pos.index_] == slot_state::occupied);
+    const size_type index = pos.index_;
+    destroy_at(index, slot_state::tombstone);
+    return iterator(this, index + 1);
+  }
+
+  /// @copydoc erase(const_iterator)
+  iterator erase(iterator pos) noexcept { return erase(const_iterator(pos)); }
 
   /// @brief Remove all elements and reset every slot to empty (size becomes 0).
   void clear() noexcept {
@@ -916,5 +935,23 @@ class static_unordered_map {
   Hash hasher_;
   KeyEqual key_equal_;
 };
+
+/// @brief Erases every element of @p map for which @p pred returns true.
+/// @return The number of elements erased.
+/// @note `pred` must not modify @p map.
+template <typename Key, typename T, std::size_t Capacity, typename Hash, typename KeyEqual, typename Pred>
+typename static_unordered_map<Key, T, Capacity, Hash, KeyEqual>::size_type erase_if(
+    static_unordered_map<Key, T, Capacity, Hash, KeyEqual>& map, Pred pred) {
+  typename static_unordered_map<Key, T, Capacity, Hash, KeyEqual>::size_type erased = 0;
+  for (auto it = map.begin(); it != map.end();) {
+    if (pred(*it)) {
+      it = map.erase(it);
+      ++erased;
+    } else {
+      ++it;
+    }
+  }
+  return erased;
+}
 
 }  // namespace metl
