@@ -107,6 +107,61 @@ bool reattach_victim_same_poll(void* p) noexcept {
   }
   return true;
 }
+
+// #310: attachment numbers are reused. A completing attachment must never
+// remove a different one that shares its number, and a number taken mid-round
+// must not revive a detached snapshot entry. The numbers cycle through
+// 2 * Capacity + 1 values, so these loops reuse each of them many times.
+using small_sched_t = metl::coro::scheduler<2>;
+
+struct one_shot {
+  int polls = 0;
+};
+bool poll_once(void* p) noexcept {
+  ++static_cast<one_shot*>(p)->polls;
+  return false;
+}
+bool poll_forever(void* p) noexcept {
+  ++static_cast<one_shot*>(p)->polls;
+  return true;
+}
+
+// Detaches `victim` (later in the round), attaches and detaches a filler
+// `cycles` times to advance the attachment numbers, then leaves the filler
+// attached. Across cycles = 0 .. 2 * Capacity, one of the runs offers the
+// filler the victim's number.
+struct churner {
+  small_sched_t* sched;
+  one_shot* victim;
+  int cycles;
+  one_shot filler;
+};
+bool churn(void* p) noexcept {
+  auto* c = static_cast<churner*>(p);
+  (void)c->sched->detach(c->victim);
+  for (int i = 0; i < c->cycles; ++i) {
+    if (c->sched->try_attach(&c->filler, &poll_forever)) {
+      (void)c->sched->detach(&c->filler);
+    }
+  }
+  (void)c->sched->try_attach(&c->filler, &poll_forever);
+  return true;
+}
+
+// Runs a nested round from inside its own poll.
+struct nester {
+  small_sched_t* sched;
+  int depth = 0;
+};
+bool nest(void* p) noexcept {
+  auto* n = static_cast<nester*>(p);
+  if (n->depth == 0) {
+    ++n->depth;
+    (void)n->sched->run_once();
+  }
+  return false;
+}
+
 }  // namespace
 
 int main() {
@@ -267,6 +322,50 @@ int main() {
     CHECK_EQ(victim.polls_a, 0);
     (void)sched.run_once();
     CHECK_EQ(victim.polls_a, 1);
+  }
+
+  // ---- #310: reused attachment numbers ---------------------------------------
+  {
+    small_sched_t sched;
+    one_shot steady;
+    one_shot burst;
+    CHECK(sched.try_attach(&steady, &poll_forever));
+    for (int i = 0; i < 100; ++i) {
+      CHECK(sched.try_attach(&burst, &poll_once));
+      (void)sched.run_once();
+      // Only the attachment that completed goes, whatever number it reused.
+      CHECK(sched.is_attached(&steady));
+      CHECK(!sched.is_attached(&burst));
+    }
+    CHECK_EQ(steady.polls, 100);
+    CHECK_EQ(burst.polls, 100);
+  }
+  for (int cycles = 0; cycles <= 2 * 2; ++cycles) {
+    small_sched_t sched;
+    one_shot victim;
+    churner c{&sched, &victim, cycles, {}};
+    CHECK(sched.try_attach(&c, &churn));
+    CHECK(sched.try_attach(&victim, &poll_forever));
+    (void)sched.run_once();
+    // Detached earlier in the round: its snapshot entry is not polled, and the
+    // filler attached mid-round waits for the next round, whichever number it
+    // was given.
+    CHECK_EQ(victim.polls, 0);
+    CHECK_EQ(c.filler.polls, 0);
+    CHECK(!sched.is_attached(&victim));
+    CHECK(sched.is_attached(&c.filler));
+  }
+  {
+    small_sched_t sched;
+    nester outer{&sched};
+    one_shot other;
+    CHECK(sched.try_attach(&outer, &nest));
+    CHECK(sched.try_attach(&other, &poll_forever));
+    (void)sched.run_once();
+    // The nested round polled `other` once and the outer round once more.
+    CHECK_EQ(other.polls, 2);
+    CHECK(!sched.is_attached(&outer));
+    CHECK(sched.is_attached(&other));
   }
 
   return metl_test::exit_code();

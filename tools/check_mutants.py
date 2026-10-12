@@ -361,6 +361,27 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
     }""",
     },
     {
+        "name": "scheduler_attachment_reuses_held_number",
+        "file": "include/metl/coro/scheduler.hpp",
+        "why": "A new attachment takes a number a live entry holds, so a completing "
+               "attachment removes the other one (#310).",
+        "kills": "ctest:coro_scheduler_reentrancy_test",
+        "old": """    if (holds(attachment)) {
+      return true;
+    }
+    for (const round_frame* frame""",
+        "new": """    for (const round_frame* frame""",
+    },
+    {
+        "name": "scheduler_attachment_reuses_round_number",
+        "file": "include/metl/coro/scheduler.hpp",
+        "why": "A number taken mid-round matches a detached snapshot entry, so the "
+               "round polls the detached task's stale slot (#310).",
+        "kills": "ctest:coro_scheduler_reentrancy_test",
+        "old": """    for (const round_frame* frame = round_; frame != nullptr; frame = frame->outer) {""",
+        "new": """    for (const round_frame* frame = nullptr; frame != nullptr; frame = frame->outer) {""",
+    },
+    {
         "name": "scheduler_until_idle_stops_on_quiet_round",
         "file": "include/metl/coro/scheduler.hpp",
         "why": "run_until_idle stops after a round in which nothing yielded, "

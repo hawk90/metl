@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`coro::scheduler` removed the wrong task once attachment numbers wrapped (#310).**
+  Each attachment took the next value of a `std::size_t` counter, and on a
+  32-bit target that counter wraps after 2^32 attaches: 49.7 days at one
+  re-attach per millisecond. After the wrap a new attachment could share its
+  number with a long-lived one. The first to complete then removed the other,
+  and the completed task stayed attached and kept being polled.
+
+  Numbers now cycle through `2 * Capacity + 1` values, skipping any that an
+  attached task or a running round holds. The reuse that took 49 days now
+  happens every few attaches, and the tests exercise it.
+
+  `try_attach*` is now bounded by `Capacity` squared. It can also return false
+  when rounds nested inside polls hold every number. `sizeof(scheduler)` grows
+  by one pointer.
+
 ## [1.2.1] - 2026-10-11
 
 **Highlights.** A correctness patch from a second review of 1.2.0, each finding
