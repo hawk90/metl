@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Three vocabulary types now accept what their std counterparts accept (#316).**
+  - `std::hash<metl::optional<T>>` was enabled for every `T` and always
+    `noexcept`. Detection such as `is_invocable` picked it for an unhashable
+    `T` and then failed inside it. It is now enabled exactly when
+    `std::hash<std::remove_const_t<T>>` is, and `noexcept` exactly when that
+    hash is.
+  - `scope_exit` rejected a `const` callable whose `operator()` is not `const`.
+    Its constructor's exception handler called the argument even when storing
+    it could not throw. The handler now calls it only where it can run.
+  - `function_ref` rejected a function pointer whose signature only converts,
+    such as `int (*)(long)` for `function_ref<int(int)>`, although a lambda
+    with that signature binds. It now binds.
+
 ## [1.2.1] - 2026-10-11
 
 **Highlights.** A correctness patch from a second review of 1.2.0, each finding

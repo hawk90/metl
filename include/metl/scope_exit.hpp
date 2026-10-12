@@ -51,7 +51,12 @@ class scope_exit {
   }
 #if !METL_NO_EXCEPTIONS
   catch (...) {
-    func();
+    // Only reachable when storing can throw. Compiled only then, too, so a
+    // const callable whose operator() is not const still binds when storing
+    // it cannot fail (#316).
+    if constexpr (!nothrow_store<G>) {
+      func();
+    }
   }
 #endif
 
