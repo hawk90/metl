@@ -25,6 +25,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/three_way.hpp"
 #include "metl/hash.hpp"
 #include "metl/span.hpp"
 
@@ -404,6 +405,25 @@ template <std::size_t N1, std::size_t N2>
 inline bool operator!=(const fixed_string<N1>& lhs, const fixed_string<N2>& rhs) noexcept {
   return !(lhs == rhs);
 }
+
+#if METL_DETAIL_HAS_THREE_WAY
+// clang-format off
+/// Three-way comparison by byte content (C++20), with the same unsigned-char
+/// order as operator<.
+template <std::size_t N1, std::size_t N2>
+constexpr std::strong_ordering operator<=>(const fixed_string<N1>& lhs, const fixed_string<N2>& rhs) noexcept {
+  const std::size_t n = (lhs.size() < rhs.size()) ? lhs.size() : rhs.size();
+  for (std::size_t i = 0; i < n; ++i) {
+    const auto l = static_cast<unsigned char>(lhs[i]);
+    const auto r = static_cast<unsigned char>(rhs[i]);
+    if (l != r) {
+      return l <=> r;
+    }
+  }
+  return lhs.size() <=> rhs.size();
+}
+// clang-format on
+#endif
 
 /// Lexicographically compares two strings by byte content (not capacity).
 template <std::size_t N1, std::size_t N2>

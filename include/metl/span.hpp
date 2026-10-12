@@ -156,6 +156,27 @@ class span {
     METL_HARDEN(Extent == dynamic_extent || container.size() == Extent);
   }
 
+  /// Constructs a span of const elements viewing an rvalue container, as
+  /// std::span does: `f(std::vector<int>{1, 2})` for a `span<const int>`
+  /// parameter. The container must outlive the span, which a temporary does
+  /// for the call it is an argument of (#316).
+  template <typename C,
+            typename E = T,
+            typename = std::enable_if_t<
+                std::is_const_v<E> && !std::is_lvalue_reference_v<C> &&
+                detail::has_data_size<const C&>::value && !std::is_same_v<detail::remove_cvref_t<C>, span> &&
+                detail::is_qualification_convertible<
+                    T,
+                    std::remove_pointer_t<decltype(std::declval<const C&>().data())>>::value>>
+  // Implicit, as the lvalue constructor above and std::span's; read through a
+  // const reference, never moved from, so it is not forwarded.
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor,cppcoreguidelines-missing-std-forward)
+  constexpr span(C&& container METL_LIFETIME_BOUND) noexcept(noexcept(std::declval<const C&>().data()) &&
+                                                             noexcept(std::declval<const C&>().size()))
+      : storage_(static_cast<const C&>(container).data(), static_cast<const C&>(container).size()) {
+    METL_HARDEN(Extent == dynamic_extent || static_cast<const C&>(container).size() == Extent);
+  }
+
   /// Converting constructor between compatible spans (extent/qualification).
   template <typename U,
             std::size_t N,
@@ -318,3 +339,19 @@ METL_NODISCARD inline span<std::byte, detail::bytes_extent<N, sizeof(T)>::value>
 }
 
 }  // namespace metl
+
+// A span views storage it does not own, so an iterator from a temporary span is
+// still valid, and copying one is cheap: it is a borrowed range and a view, as
+// std::span is. Without these, std::ranges::find(get_span(), x) returned
+// std::ranges::dangling and views could not take a span by value (#316).
+#if defined(__has_include) && (__cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L))
+#if __has_include(<ranges>)
+#include <ranges>
+#endif
+#endif
+#if defined(__cpp_lib_ranges) && __cpp_lib_ranges >= 201911L
+template <typename T, std::size_t Extent>
+inline constexpr bool std::ranges::enable_borrowed_range<metl::span<T, Extent>> = true;
+template <typename T, std::size_t Extent>
+inline constexpr bool std::ranges::enable_view<metl::span<T, Extent>> = true;
+#endif

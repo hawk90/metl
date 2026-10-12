@@ -1,14 +1,45 @@
 #include <cstddef>
+#include <cstdlib>
 #include <functional>
 #include <type_traits>
 #include <unordered_map>
 
 #include <metl/fixed_string.hpp>
 
+// #316: C++20 three-way comparison, so a struct that defaults its own <=>
+// can hold one of these.
+#if METL_DETAIL_HAS_THREE_WAY
+#include <compare>
+// clang-format off
+namespace {
+struct cmp_record {
+  int id;
+  metl::fixed_string<8> field;
+  auto operator<=>(const cmp_record&) const = default;
+};
+void three_way_comparison() {
+  const cmp_record a{1, metl::fixed_string<8>("abc")};
+  const cmp_record b{1, metl::fixed_string<8>("abd")};
+  if (!(a < b) || std::is_neq(a <=> a)) {
+    std::abort();
+  }
+  // Unsigned-char order, as operator<: "\xff" sorts after "a".
+  if (!std::is_gt(metl::fixed_string<4>("\xff") <=> metl::fixed_string<8>("a"))) {
+    std::abort();
+  }
+}
+}  // namespace
+// clang-format on
+#define METL_TEST_THREE_WAY 1
+#endif
+
 static_assert(std::is_same_v<metl::fixed_string<8>::difference_type, std::ptrdiff_t>,
               "fixed_string has a difference_type (#316)");
 
 int main() {
+#ifdef METL_TEST_THREE_WAY
+  three_way_comparison();
+#endif
   metl::fixed_string<8> text;
   if (!text.empty() || text.capacity() != 8 || text.c_str()[0] != '\0') {
     return 1;

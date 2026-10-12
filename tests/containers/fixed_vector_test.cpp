@@ -33,6 +33,36 @@ int tracker::destructions = 0;
 
 }  // namespace
 
+// #316: C++20 three-way comparison, so a struct that defaults its own <=>
+// can hold one of these.
+#if METL_DETAIL_HAS_THREE_WAY
+#include <compare>
+// clang-format off
+namespace {
+struct cmp_record {
+  int id;
+  metl::fixed_vector<int, 4> field;
+  auto operator<=>(const cmp_record&) const = default;
+};
+void three_way_comparison() {
+  cmp_record a{1, {}};
+  cmp_record b{1, {}};
+  CHECK(a.field.try_push_back(1));
+  CHECK(b.field.try_push_back(2));
+  CHECK(a < b);
+  CHECK(std::is_eq(a <=> a));
+  metl::fixed_vector<int, 4> shorter;
+  metl::fixed_vector<int, 8> longer;
+  CHECK(shorter.try_push_back(1));
+  CHECK(longer.try_push_back(1));
+  CHECK(longer.try_push_back(0));
+  CHECK(std::is_lt(shorter <=> longer));  // a prefix orders first, across capacities
+}
+}  // namespace
+// clang-format on
+#define METL_TEST_THREE_WAY 1
+#endif
+
 // #316: a C++20 iterator whose legacy category is input_iterator_tag (its
 // reference is a prvalue) is still a forward iterator, and the try_ range forms
 // accept it.
@@ -58,6 +88,9 @@ void try_range_forms_take_cxx20_iterators() {
 #endif
 
 int main() {
+#ifdef METL_TEST_THREE_WAY
+  three_way_comparison();
+#endif
 #ifdef METL_TEST_CXX20_RANGES
   try_range_forms_take_cxx20_iterators();
 #endif

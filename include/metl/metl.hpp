@@ -32,6 +32,7 @@
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/plain_integer.hpp"
 #include "metl/detail/ring_core.hpp"
+#include "metl/detail/three_way.hpp"
 #include "metl/detail/transparent.hpp"
 #include "metl/detail/word_atomic.hpp"
 #include "metl/endian.hpp"

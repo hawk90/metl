@@ -27,6 +27,7 @@
 #include "metl/config.hpp"
 #include "metl/detail/array_storage.hpp"
 #include "metl/detail/constant_init.hpp"
+#include "metl/detail/three_way.hpp"
 #include "metl/scope_exit.hpp"
 #include "metl/span.hpp"
 #include "metl/type_traits.hpp"
@@ -794,6 +795,24 @@ template <typename T, std::size_t N1, std::size_t N2>
 inline bool operator!=(const fixed_vector<T, N1>& lhs, const fixed_vector<T, N2>& rhs) {
   return !(lhs == rhs);
 }
+
+#if METL_DETAIL_HAS_THREE_WAY
+// clang-format off
+/// Three-way lexicographic comparison (C++20), as std::vector's: the elements'
+/// own <=>, or an ordering built from their <.
+template <typename T, std::size_t N1, std::size_t N2>
+constexpr detail::synth_three_way_result<T> operator<=>(const fixed_vector<T, N1>& lhs,
+                                                        const fixed_vector<T, N2>& rhs) {
+  const std::size_t n = (lhs.size() < rhs.size()) ? lhs.size() : rhs.size();
+  for (std::size_t i = 0; i < n; ++i) {
+    if (const auto order = detail::synth_three_way(lhs[i], rhs[i]); std::is_neq(order)) {
+      return order;
+    }
+  }
+  return lhs.size() <=> rhs.size();
+}
+// clang-format on
+#endif
 
 /// Lexicographically compares two vectors.
 template <typename T, std::size_t N1, std::size_t N2>
