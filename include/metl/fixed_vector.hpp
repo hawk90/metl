@@ -325,7 +325,7 @@ class fixed_vector {
     // vector (a handle that unregisters itself) must see the element gone,
     // not destroy it a second time.
     --size_;
-    data()[size_].~T();
+    destroy_element_(size_);
     asan_poison_tail_();
   }
 
@@ -491,7 +491,7 @@ class fixed_vector {
       data()[i] = static_cast<T&&>(data()[i + 1]);
     }
     --size_;  // shrink first, as in pop_back
-    data()[size_].~T();
+    destroy_element_(size_);
     asan_poison_tail_();
     return begin() + index;
   }
@@ -514,7 +514,7 @@ class fixed_vector {
     const size_type old_size = size_;
     size_ -= erase_count;  // shrink first, as in pop_back
     for (size_type i = size_; i < old_size; ++i) {
-      data()[i].~T();
+      destroy_element_(i);
     }
     asan_poison_tail_();
     return begin() + first_index;
@@ -655,7 +655,7 @@ class fixed_vector {
         ++shorter.size_;
       }
       for (size_type i = longer.size_; i > old_shorter; --i) {
-        longer.data()[i - 1].~T();
+        longer.destroy_element_(i - 1);
       }
       longer.size_ = old_shorter;
     }
@@ -697,10 +697,33 @@ class fixed_vector {
   }
 
 #if METL_FIXED_VECTOR_ASAN
+  // How many element destructors of this vector type are running on this
+  // thread. A destructor may re-enter its vector (#190), and a nested removal
+  // would poison the tail -- including the slot whose destructor is still on
+  // the stack, so a destructor that touched its own members after, say,
+  // clear() was reported as a use-after-poison (#321). While any is running,
+  // the tail is left for the outermost operation to poison once it returns.
+  // Shared by every vector of the type, so a nested operation on a sibling
+  // vector also leaves its tail unpoisoned until its next operation: a missed
+  // report at worst, never a false one.
+  static unsigned& asan_destroying_() noexcept {
+    static thread_local unsigned depth = 0;
+    return depth;
+  }
+
+  void destroy_element_(size_type index) noexcept {
+    ++asan_destroying_();
+    data()[index].~T();
+    --asan_destroying_();
+  }
+
   // Poison the unused-capacity tail [size_, Capacity). Rounding in the ASan
   // interface never poisons into the live range [0, size_), so element access
   // and iteration never false-positive.
   void asan_poison_tail_() noexcept {
+    if (asan_destroying_() != 0) {
+      return;
+    }
     if (size_ < Capacity) {
       ASAN_POISON_MEMORY_REGION(storage_.slot(size_), (Capacity - size_) * sizeof(T));
     }
@@ -713,6 +736,7 @@ class fixed_vector {
   }
 #else
   // No-ops. constexpr so the constexpr default constructor stays constexpr.
+  void destroy_element_(size_type index) noexcept { data()[index].~T(); }
   constexpr void asan_poison_tail_() noexcept {}
   constexpr void asan_unpoison_all_() noexcept {}
 #endif
