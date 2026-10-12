@@ -617,22 +617,24 @@ constexpr auto operator>=(const optional<T>& lhs, const optional<U>& rhs) -> dec
 
 /// @brief Compares an optional against nullopt (empty state check).
 #if METL_DETAIL_HAS_THREE_WAY
+// clang-format off
 /// Three-way comparison (C++20), as std::optional's: an empty optional orders
 /// before any engaged one, and two engaged ones by their values.
 template <typename T, typename U>
-    requires std::three_way_comparable_with<T, U> constexpr std::compare_three_way_result_t<T, U> operator<= >
-    (const optional<T>& lhs, const optional<U>& rhs) {
+  requires std::three_way_comparable_with<T, U>
+constexpr std::compare_three_way_result_t<T, U> operator<=>(const optional<T>& lhs, const optional<U>& rhs) {
   if (lhs.has_value() && rhs.has_value()) {
-    return *lhs <= > *rhs;
+    return *lhs <=> *rhs;
   }
-  return lhs.has_value() <= > rhs.has_value();
+  return lhs.has_value() <=> rhs.has_value();
 }
 
 /// An optional against nullopt (C++20): empty is equal, engaged is greater.
 template <typename T>
-    constexpr std::strong_ordering operator<= > (const optional<T>& lhs, nullopt_t) noexcept {
-  return lhs.has_value() <= > false;
+constexpr std::strong_ordering operator<=>(const optional<T>& lhs, nullopt_t) noexcept {
+  return lhs.has_value() <=> false;
 }
+// clang-format on
 #endif
 
 template <typename T>

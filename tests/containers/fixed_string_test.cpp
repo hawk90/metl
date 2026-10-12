@@ -1,3 +1,5 @@
+#include <cstddef>
+#include <cstdlib>
 #include <functional>
 #include <unordered_map>
 
@@ -7,24 +9,26 @@
 // can hold one of these.
 #if METL_DETAIL_HAS_THREE_WAY
 #include <compare>
+// clang-format off
 namespace {
 struct cmp_record {
   int id;
   metl::fixed_string<8> field;
-  auto operator<= > (const cmp_record&) const = default;
+  auto operator<=>(const cmp_record&) const = default;
 };
 void three_way_comparison() {
   const cmp_record a{1, metl::fixed_string<8>("abc")};
   const cmp_record b{1, metl::fixed_string<8>("abd")};
-  if (!(a < b) || (a <= > a) != 0) {
+  if (!(a < b) || (a <=> a) != 0) {
     std::abort();
   }
   // Unsigned-char order, as operator<: "\xff" sorts after "a".
-  if (!((metl::fixed_string<4>("\xff") <= > metl::fixed_string<8>("a")) > 0)) {
+  if (!((metl::fixed_string<4>("\xff") <=> metl::fixed_string<8>("a")) > 0)) {
     std::abort();
   }
 }
 }  // namespace
+// clang-format on
 #define METL_TEST_THREE_WAY 1
 #endif
 

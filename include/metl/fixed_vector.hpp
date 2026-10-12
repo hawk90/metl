@@ -748,19 +748,21 @@ inline bool operator!=(const fixed_vector<T, N1>& lhs, const fixed_vector<T, N2>
 }
 
 #if METL_DETAIL_HAS_THREE_WAY
+// clang-format off
 /// Three-way lexicographic comparison (C++20), as std::vector's: the elements'
 /// own <=>, or an ordering built from their <.
 template <typename T, std::size_t N1, std::size_t N2>
-    constexpr detail::synth_three_way_result<T> operator<= >
-    (const fixed_vector<T, N1>& lhs, const fixed_vector<T, N2>& rhs) {
+constexpr detail::synth_three_way_result<T> operator<=>(const fixed_vector<T, N1>& lhs,
+                                                        const fixed_vector<T, N2>& rhs) {
   const std::size_t n = (lhs.size() < rhs.size()) ? lhs.size() : rhs.size();
   for (std::size_t i = 0; i < n; ++i) {
     if (const auto order = detail::synth_three_way(lhs[i], rhs[i]); order != 0) {
       return order;
     }
   }
-  return lhs.size() <= > rhs.size();
+  return lhs.size() <=> rhs.size();
 }
+// clang-format on
 #endif
 
 /// Lexicographically compares two vectors.
