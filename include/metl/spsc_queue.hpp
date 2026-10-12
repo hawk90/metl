@@ -25,6 +25,7 @@
 
 #include "metl/config.hpp"
 #include "metl/detail/index_distance.hpp"
+#include "metl/detail/word_atomic.hpp"
 #include "metl/optimization.hpp"
 #include "metl/type_traits.hpp"
 
@@ -194,9 +195,9 @@ class spsc_queue {
   // with the index that side owns: cached_tail_ is read and written only by the
   // consumer, so it belongs next to head_. Putting it anywhere else would
   // reintroduce exactly the cross-line traffic the cache is there to avoid.
-  METL_CACHELINE_ALIGNED std::atomic<std::size_t> head_;
+  METL_CACHELINE_ALIGNED detail::word_atomic<std::size_t> head_;
   std::size_t cached_tail_;
-  METL_CACHELINE_ALIGNED std::atomic<std::size_t> tail_;
+  METL_CACHELINE_ALIGNED detail::word_atomic<std::size_t> tail_;
   std::size_t cached_head_;
   METL_CACHELINE_ALIGNED storage_for<T> slots_[Capacity];
 };
