@@ -7,17 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- **The coverage gate reads the same number as the Codecov badge (#308).**
-  `tools/coverage.py` now computes its gated line and branch figures from the
-  include/metl lcov file that CI uploads to Codecov, with Codecov's formula: a
-  line that ran but has a branch that never went one of its ways is partial,
-  not covered. llvm-cov's own line figure counted those lines as covered, so
-  the gate read 91.5% while the badge showed 87%. That figure is still
-  printed, for reference. The line floor moves to match. A `--self-test`
-  canary checks the arithmetic.
-
 ## [1.2.1] - 2026-10-11
 
 **Highlights.** A correctness patch from a second review of 1.2.0, each finding
