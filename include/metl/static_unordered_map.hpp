@@ -463,7 +463,10 @@ class static_unordered_map {
   /// @return @c true if inserted; @c false if the key already exists OR the map is at capacity.
   /// @note Unlike @c emplace, a full map or duplicate key is reported by the return value
   ///       rather than an assertion.
-  template <typename K, typename V>
+  template <typename K,
+            typename V,
+            typename = std::enable_if_t<std::is_constructible_v<key_type, K&&> &&
+                                        std::is_constructible_v<mapped_type, V&&>>>
   METL_NODISCARD bool try_emplace(K&& key, V&& value) {
     if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
       // Convert first, so the position, the duplicate check and the stored
@@ -498,7 +501,10 @@ class static_unordered_map {
   /// @return Reference to the inserted or pre-existing element (an existing value is NOT overwritten).
   /// @pre The map is not full when the key is absent; a violation asserts. Use @c try_emplace to
   ///      handle a full map without asserting.
-  template <typename K, typename V>
+  template <typename K,
+            typename V,
+            typename = std::enable_if_t<std::is_constructible_v<key_type, K&&> &&
+                                        std::is_constructible_v<mapped_type, V&&>>>
   reference emplace(K&& key, V&& value) {
     if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
       // Convert first, so the position, the duplicate check and the stored

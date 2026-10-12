@@ -73,6 +73,7 @@ class flat_map {
   using mapped_type = T;
   using key_compare = Compare;
   using size_type = std::size_t;
+  using difference_type = std::ptrdiff_t;
   using reference = value_type&;
   using const_reference = const value_type&;
   using iterator = value_type*;
@@ -368,7 +369,10 @@ class flat_map {
   /// @return @c true if inserted; @c false if the key already exists OR the map is full.
   /// @note Unlike @c emplace, a full map or duplicate key is reported by the return value
   ///       rather than an assertion.
-  template <typename K, typename V>
+  template <typename K,
+            typename V,
+            typename = std::enable_if_t<std::is_constructible_v<key_type, K&&> &&
+                                        std::is_constructible_v<mapped_type, V&&>>>
   METL_NODISCARD bool try_emplace(K&& key, V&& value) {
     if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
       // Convert first, so the position, the duplicate check and the stored
@@ -392,7 +396,10 @@ class flat_map {
   /// @return Reference to the inserted element.
   /// @pre The key is absent and the map is not full; violations assert. Use @c try_emplace to
   ///      handle a full map or duplicate key without asserting.
-  template <typename K, typename V>
+  template <typename K,
+            typename V,
+            typename = std::enable_if_t<std::is_constructible_v<key_type, K&&> &&
+                                        std::is_constructible_v<mapped_type, V&&>>>
   reference emplace(K&& key, V&& value) {
     if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
       // Convert first, so the position, the duplicate check and the stored
