@@ -193,7 +193,7 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
                "vacated tail, so those objects leak.",
         "kills": "ctest:fixed_vector_test|sequence_reentrancy",
         "old": """    for (size_type i = size_; i < old_size; ++i) {
-      data()[i].~T();
+      destroy_element(i);
     }""",
         "new": """    for (size_type i = size_; i < old_size; ++i) {
     }""",
