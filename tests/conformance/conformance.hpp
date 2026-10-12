@@ -54,9 +54,18 @@ namespace conformance {
 struct probe {
   int id = 0;
   bool armed = false;
+  // Set while the object is within its lifetime. A destructor that finds it
+  // cleared is running a second time on the same object.
+  int alive = alive_tag;
+  static constexpr int alive_tag = 0x5AFE;
 
   // How many armed probes exist.
   static int& live() {
+    static int count = 0;
+    return count;
+  }
+  // How many destructor calls ran on an object already destroyed.
+  static int& destroyed_twice() {
     static int count = 0;
     return count;
   }
@@ -95,8 +104,17 @@ struct probe {
     return *this;
   }
   ~probe() {
+    if (*static_cast<volatile int*>(&alive) != alive_tag) {
+      ++destroyed_twice();
+      return;
+    }
     const bool was_armed = armed;
     drop();
+    // Ends the lifetime before the hook re-enters the container. Touching a
+    // member after the hook would be equally valid, but fixed_vector's ASan
+    // annotations then report a false use-after-poison (#321). Volatile, so
+    // the store survives GCC's dead-store elimination of a dying object.
+    *static_cast<volatile int*>(&alive) = 0;
     if (was_armed && on_destroy() != nullptr) {
       on_destroy()(*this);
     }
@@ -138,7 +156,8 @@ struct probe_hash {
 //   remove_one(c)            remove exactly one probe, whichever the type picks
 //   clear(c)                 remove every probe
 //   movable                  move construction is part of the type's contract
-//   fixed_count              capacity is a number of elements, not of bytes
+//   fixed_count              held() is an exact element count and capacity a
+//                            number of elements, not of bytes
 //
 // and optionally `gap_<property>`, the issue that tracks a known failure.
 
@@ -347,8 +366,11 @@ struct handle_pool_adapter {
   }
 };
 
-// The arena counts no objects; one is held while the arena's offset is above
-// the mark taken just before it was allocated.
+// The arena counts bytes, not objects. held() approximates: an object is held
+// while the offset is above the mark taken just before it was allocated. The
+// storage can only be released after the destructor returns, so the arena
+// cannot meet removal_commits_first by that measure; what it must meet is
+// reentrant_clear_destroys_once.
 // conformance-header: arena_allocator.hpp
 struct arena_allocator_adapter {
   using type = metl::arena_allocator<256>;
@@ -356,7 +378,7 @@ struct arena_allocator_adapter {
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = false;
   static constexpr bool fixed_count = false;
-  static constexpr const char* gap_removal_commits_first = "#312";
+  static constexpr const char* gap_reentrant_clear_destroys_once = "#312";
   static handed_out<type::mark_type, 4>& given() {
     static handed_out<type::mark_type, 4> list;
     return list;

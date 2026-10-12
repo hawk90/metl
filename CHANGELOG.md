@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   once and checked against every type that holds user objects: the containers,
   the pools and the arena, 14 types in all. The first properties are:
   - removal commits before the destructor runs;
+  - a destructor that empties the container again destroys nothing twice;
   - a full `try_` changes nothing;
   - the full capacity is available again after `clear`;
   - a moved-from container is empty and usable.

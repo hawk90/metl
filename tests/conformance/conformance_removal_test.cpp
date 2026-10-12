@@ -9,6 +9,7 @@
 #include "conformance.hpp"
 
 METL_CONFORMANCE_DECLARE_GAP(removal_commits_first)
+METL_CONFORMANCE_DECLARE_GAP(reentrant_clear_destroys_once)
 
 namespace {
 
@@ -78,12 +79,66 @@ struct removal_commits_first {
   }
 };
 
+// Property: a destructor that empties the container again destroys nothing
+// twice. The first element destroyed by clear() calls clear() itself; every
+// element must still be destroyed exactly once (#190, #312).
+bool g_reentered = false;
+
+template <typename Adapter>
+void clear_again(const conformance::probe&) {
+  if (!g_reentered) {
+    g_reentered = true;
+    Adapter::clear(conformance::instance<Adapter>());
+  }
+}
+
+struct reentrant_clear_destroys_once {
+  template <typename Adapter>
+  bool operator()(Adapter) const {
+    auto& c = conformance::instance<Adapter>();
+    Adapter::clear(c);
+    bool met = true;
+    for (int id = 1; id <= 3; ++id) {
+      met = Adapter::try_add(c, id) && met;
+    }
+    conformance::probe::destroyed_twice() = 0;
+    g_reentered = false;
+    conformance::probe::on_destroy() = &clear_again<Adapter>;
+    Adapter::clear(c);
+    conformance::probe::on_destroy() = nullptr;
+
+    met = met && g_reentered && conformance::probe::destroyed_twice() == 0 &&
+          conformance::probe::live() == 0 && Adapter::held(c) == 0;
+    if (!met) {
+      std::fprintf(stderr,
+                   "  %s: reentered %d, destroyed twice %d, live %d, held %zu\n",
+                   Adapter::name,
+                   g_reentered,
+                   conformance::probe::destroyed_twice(),
+                   conformance::probe::live(),
+                   Adapter::held(c));
+    }
+    conformance::probe::live() = 0;
+    conformance::probe::destroyed_twice() = 0;
+    return met;
+  }
+};
+
+template <typename Adapter>
+void run_for() {
+  if constexpr (Adapter::fixed_count) {
+    conformance::run_one<Adapter>("removal_commits_first",
+                                  METL_CONFORMANCE_GAP(removal_commits_first, Adapter),
+                                  removal_commits_first{});
+  }
+  conformance::run_one<Adapter>("reentrant_clear_destroys_once",
+                                METL_CONFORMANCE_GAP(reentrant_clear_destroys_once, Adapter),
+                                reentrant_clear_destroys_once{});
+}
+
 template <typename... Adapters>
 void run_all(std::tuple<Adapters...>*) {
-  (conformance::run_one<Adapters>("removal_commits_first",
-                                  METL_CONFORMANCE_GAP(removal_commits_first, Adapters),
-                                  removal_commits_first{}),
-   ...);
+  (run_for<Adapters>(), ...);
 }
 
 }  // namespace
