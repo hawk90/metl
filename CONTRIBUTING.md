@@ -88,8 +88,8 @@ others your change touches:
 | `tools/check_progress_guarantee.py` | every public header states its progress guarantee | a new public header |
 | `tools/check_conformance.py` | every public header is in the conformance registry (`tests/conformance/`), or says why no property applies | a new public header; a new type that holds user objects gets an adapter |
 | `tools/check_compile_fail.py` | every user-facing `static_assert` is pinned by a case in `tests/compile_fail/` | a new `static_assert` outside `detail::` |
-| `tools/check_docs.py` | `metl::` names, links, examples and README test counts are real | docs edits; a new test changes the QEMU count -- take it from `tools/run_qemu_tests.py --plan --cpu <cpu>` |
-| `tools/check_mutants.py --build-dir <dir>` | the test suite still kills planted bugs | changing a function the mutants anchor on (e.g. a signature) |
+| `tools/check_docs.py` | `metl::` names, links and examples are real, and the README states no test count | docs edits; write the rule ("every test except the deny-list"), never a figure |
+| `tools/check_mutants.py --build-dir <dir>` | the test suite still kills planted bugs | changing a function the mutants anchor on (e.g. a signature); a new mutant is a new file, `tools/mutants/<name>.py` |
 | `tools/check_ci_gate.py` | `ci-gate` fans in every CI job | a new CI job |
 
 A new header under `include/metl/detail/` must also be added to
