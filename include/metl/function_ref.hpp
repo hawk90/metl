@@ -61,7 +61,8 @@ class function_ref<R(Args...)> {
   // and std::function_ref: binding at a call site is what function_ref is for.
   // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
   function_ref(Fp function) noexcept
-      : storage_(reinterpret_cast<generic_function>(function)), callback_(&invoke_converted<Fp>) {
+      : storage_(typename storage::converted_tag{}, reinterpret_cast<generic_function>(function)),
+        callback_(&invoke_converted<Fp>) {
     METL_HARDEN(function != nullptr);
   }
 
@@ -138,7 +139,10 @@ class function_ref<R(Args...)> {
     constexpr storage() noexcept : object(nullptr) {}
     constexpr explicit storage(void* obj) noexcept : object(obj) {}
     constexpr explicit storage(R (*fn)(Args...)) noexcept : function(fn) {}
-    constexpr explicit storage(generic_function fn) noexcept : converted(fn) {}
+    // Tagged: for function_ref<void()>, generic_function is the signature's own
+    // pointer type, and an untagged overload would collide with the one above.
+    struct converted_tag {};
+    constexpr storage(converted_tag, generic_function fn) noexcept : converted(fn) {}
   };
 
   using callback_type = R (*)(storage, Args&&...);
