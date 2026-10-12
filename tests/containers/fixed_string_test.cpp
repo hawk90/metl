@@ -19,11 +19,11 @@ struct cmp_record {
 void three_way_comparison() {
   const cmp_record a{1, metl::fixed_string<8>("abc")};
   const cmp_record b{1, metl::fixed_string<8>("abd")};
-  if (!(a < b) || (a <=> a) != 0) {
+  if (!(a < b) || std::is_neq(a <=> a)) {
     std::abort();
   }
   // Unsigned-char order, as operator<: "\xff" sorts after "a".
-  if (!((metl::fixed_string<4>("\xff") <=> metl::fixed_string<8>("a")) > 0)) {
+  if (!std::is_gt(metl::fixed_string<4>("\xff") <=> metl::fixed_string<8>("a"))) {
     std::abort();
   }
 }

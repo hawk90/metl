@@ -50,13 +50,13 @@ void three_way_comparison() {
   CHECK(a.field.try_push_back(1));
   CHECK(b.field.try_push_back(2));
   CHECK(a < b);
-  CHECK((a <=> a) == 0);
+  CHECK(std::is_eq(a <=> a));
   metl::fixed_vector<int, 4> shorter;
   metl::fixed_vector<int, 8> longer;
   CHECK(shorter.try_push_back(1));
   CHECK(longer.try_push_back(1));
   CHECK(longer.try_push_back(0));
-  CHECK((shorter <=> longer) < 0);  // a prefix orders first, across capacities
+  CHECK(std::is_lt(shorter <=> longer));  // a prefix orders first, across capacities
 }
 }  // namespace
 // clang-format on

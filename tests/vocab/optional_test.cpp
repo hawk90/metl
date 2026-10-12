@@ -52,10 +52,10 @@ void three_way_comparison() {
   const cmp_record empty{1, metl::nullopt};
   const cmp_record five{1, 5};
   CHECK(empty < five);
-  CHECK((five <=> five) == 0);
-  CHECK((metl::optional<int>(3) <=> metl::optional<int>(4)) < 0);
-  CHECK((metl::optional<int>() <=> metl::nullopt) == 0);
-  CHECK((metl::optional<int>(0) <=> metl::nullopt) > 0);
+  CHECK(std::is_eq(five <=> five));
+  CHECK(std::is_lt(metl::optional<int>(3) <=> metl::optional<int>(4)));
+  CHECK(std::is_eq(metl::optional<int>() <=> metl::nullopt));
+  CHECK(std::is_gt(metl::optional<int>(0) <=> metl::nullopt));
 }
 }  // namespace
 // clang-format on

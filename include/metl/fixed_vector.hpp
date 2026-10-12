@@ -780,7 +780,7 @@ constexpr detail::synth_three_way_result<T> operator<=>(const fixed_vector<T, N1
                                                         const fixed_vector<T, N2>& rhs) {
   const std::size_t n = (lhs.size() < rhs.size()) ? lhs.size() : rhs.size();
   for (std::size_t i = 0; i < n; ++i) {
-    if (const auto order = detail::synth_three_way(lhs[i], rhs[i]); order != 0) {
+    if (const auto order = detail::synth_three_way(lhs[i], rhs[i]); std::is_neq(order)) {
       return order;
     }
   }
