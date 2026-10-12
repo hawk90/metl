@@ -7,31 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **`variant` no longer copies a whole alternative onto the stack on every switch
-  (#315).** Changing the alternative built the new value in a local first, in
-  case an argument lived inside the alternative about to be destroyed:
-  - `emplace` built a temporary;
-  - assignment from another variant built a backup variant.
-
-  With a 1 KiB alternative every switch used more than 1 KiB of stack (1072 to
-  1104 bytes with GCC 16 and Clang), against 32 for `std::variant`, even under
-  `-fno-exceptions`, where the copy buys nothing.
-
-  The value is now constructed in place, the way `std::variant` does it,
-  under three conditions:
-  - nothing can alias: `emplace` has no arguments, or a single argument of the
-    target type, or an assignment copies or moves from another variant that
-    lies outside this one;
-  - the argument's address is outside the storage;
-  - the construction cannot throw, or exceptions are off.
-
-  Any other case keeps the temporary, in an out-of-line function so that it
-  costs stack only when it runs. `metl_variant_stack_frame` gates the frames.
-  `cmake/CheckStackFrames.cmake` now reads GCC's `.su` names correctly: they
-  contain semicolons, which CMake split into list elements.
-
 ## [1.2.1] - 2026-10-11
 
 **Highlights.** A correctness patch from a second review of 1.2.0, each finding
