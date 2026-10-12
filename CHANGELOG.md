@@ -7,6 +7,200 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-10-13
+
+**Highlights.** A correctness patch from a third review, each finding reproduced
+by a failing test before it was fixed. A long-running `coro::scheduler` could
+remove the wrong task once its attachment numbers wrapped. `arena_allocator`
+could destroy an object twice when a destructor re-entered it. `fnv1a_hash`
+could read past the end of a `const char[N]`. On Clang for Cortex-M0, the SPSC
+rings called the atomic library from interrupt context. `variant` no longer
+copies a whole alternative onto the stack on every switch. A new conformance
+suite checks each container property against every type that holds objects, so
+a bug class fixed in one type is checked in all of them.
+
+### Upgrading from 1.2.1
+
+Correct code keeps compiling, except in two narrow cases marked below. Check
+these against your code, and rebuild everything that shares a
+`coro::scheduler` across a library boundary, as its size changes:
+
+- `coro::scheduler` is one pointer larger. `try_attach*` can also return
+  `false` when rounds nested inside polls hold every attachment number.
+- `fnv1a_hash` has no non-template `operator()(const char*)` any more, so code
+  that takes its address no longer compiles (narrow case 1). A `const char*`
+  still hashes as before. A `const char[N]` is now hashed up to its first NUL
+  and never past N.
+- `flat_set<bool>::erase(s.begin())` now erases the first element, where it
+  erased the key `true`. A transparent comparator's `erase(const K&)` no longer
+  accepts an iterator.
+- Detection results change where they were wrong:
+  - `std::hash<metl::optional<T>>` is enabled only when `T` is hashable;
+  - `emplace` / `try_emplace` on `flat_map` and `static_unordered_map` are
+    constrained.
+- `spsc_queue` and `spsc_byte_ring` now `static_assert` that their indices'
+  `std::atomic` is lock-free, on every target but ARMv6-M. A target whose
+  word-sized atomic takes a lock no longer compiles them, where it used to
+  deadlock against an interrupt instead (narrow case 2).
+
+### Added
+
+- **Conformance suite, `tests/conformance/` (#320).** Each property is written
+  once and checked against every type that holds user objects: the containers,
+  the pools and the arena, 14 types in all. The first properties are:
+  - removal commits before the destructor runs;
+  - a destructor that empties the container again destroys nothing twice;
+  - a full `try_` changes nothing;
+  - the full capacity is available again after `clear`;
+  - a moved-from container is empty and usable.
+
+  `tools/check_conformance.py` fails when a public header is neither registered
+  nor listed with a reason. A type that misses a property names its issue as a
+  known gap, and the suite fails once that gap starts passing. It found the
+  arena re-entrancy bug below (#312).
+- **`erase(iterator)` and a free `erase_if`** for `flat_map`, `flat_set`,
+  `static_unordered_map` and `static_unordered_set` (#313).
+  - `erase(iterator)` returns the next position, so a loop can erase as it
+    iterates.
+  - The unordered containers never move an element on erase, so every other
+    iterator stays valid.
+- **C++20 three-way comparison and borrowed `span` (#316).**
+  - `fixed_vector`, `fixed_string` and `optional` gain `operator<=>` under
+    C++20, so a struct that defaults its own `<=>` can hold one of them.
+    - `fixed_vector` compares its elements with synth-three-way.
+    - `fixed_string` compares in the unsigned-char order its `<` uses.
+    - `optional` compares as `std::optional` does, including against
+      `nullopt`.
+  - `span` is a borrowed range and a view under C++20, and a `span<const T>`
+    can view an rvalue container for the duration of the call it is passed to.
+
+### Changed
+
+- **The coverage gate reads the same number as the Codecov badge (#308).**
+  `tools/coverage.py` now computes its gated line and branch figures from the
+  include/metl lcov file that CI uploads to Codecov, with Codecov's formula: a
+  line that ran but has a branch that never went one of its ways is partial,
+  not covered. llvm-cov's own line figure counted those lines as covered, so
+  the gate read 91.5% while the badge showed 87%. That figure is still
+  printed, for reference. The line floor moves to match. A `--self-test`
+  canary checks the arithmetic.
+- **`variant`: removed three range assertions that could never fire (#309).**
+  `emplace<I>` and both `get_if<I>` asserted `I < sizeof...(Ts)` in their
+  bodies. Their return type, `variant_alternative_t<I, ...>`, rejects an
+  out-of-range `I` first, so the body was never instantiated. The diagnostic a
+  caller gets is unchanged, and two compile-fail cases now pin it. The
+  compile-fail ratchet drops from 7 to 5.
+
+### Fixed
+
+- **`coro::scheduler` removed the wrong task once attachment numbers wrapped (#310).**
+  Each attachment took the next value of a `std::size_t` counter, and on a
+  32-bit target that counter wraps after 2^32 attaches: 49.7 days at one
+  re-attach per millisecond. After the wrap a new attachment could share its
+  number with a long-lived one. The first to complete then removed the other,
+  and the completed task stayed attached and kept being polled.
+
+  Numbers now cycle through `2 * Capacity + 1` values, skipping any that an
+  attached task or a running round holds. The reuse that took 49 days now
+  happens every few attaches, and the tests exercise it.
+
+  `try_attach*` is now bounded by `Capacity` squared. It can also return false
+  when rounds nested inside polls hold every number. `sizeof(scheduler)` grows
+  by one pointer.
+- **`fnv1a_hash` read past the end of a `const char[N]` (#311).** A const array,
+  such as a fixed-size name field read through a const object, bound the
+  non-template `const char*` overload instead of the bounded array branch, and
+  an unterminated one was read until a NUL turned up. Every `char` array, const
+  or not, is now hashed up to its first NUL and never past N. The `const char*`
+  overload is gone. A `const char*` argument takes the template, which hashes it
+  as before; the address of `fnv1a_hash::operator()(const char*)` can no longer
+  be taken.
+- **`arena_allocator::rewind` destroyed an object again when its destructor
+  re-entered the arena (#312).** `rewind` ran `~T()` while the object's record
+  was still armed. A destructor that rewound the arena, such as an RAII scope
+  guard allocated in it, destroyed the same object again; the review saw four
+  destructor calls on one address. An object that a destructor allocated was
+  released without its destructor running. The record is now disarmed before
+  the destructor runs, and the walk looks again afterwards, so it destroys
+  whatever the destructor allocated. The storage is released only once the
+  destructor returns.
+- **`flat_set<bool>::erase(s.begin())` erased the wrong element (#313).** Only
+  `erase(key)` existed, and a flat container's iterator is a pointer, which
+  converts to `bool`. So `erase(s.begin())` erased the key `true`, not the
+  first element. The new `erase(iterator)` overload takes precedence for an
+  iterator argument. A transparent comparator's `erase(const K&)` template no
+  longer accepts iterators either.
+- **`spsc_queue` and `spsc_byte_ring` called the atomic library on Clang ARMv6-M
+  (#314).** ARMv6-M (Cortex-M0, M0+, M1) has no exclusive loads or stores, so
+  Clang lowers every `std::atomic` access there to `__atomic_load_4` /
+  `__atomic_store_4` calls, even a relaxed word load. Depending on the runtime,
+  those are a missing symbol or compiler-rt's lock-based fallback, which an
+  interrupt can deadlock against; GCC inlines them, so only Clang builds were
+  affected. On ARMv6-M the indices are now volatile words with DMB barriers,
+  on every compiler. Everywhere else they stay `std::atomic` and must be
+  lock-free, checked by a `static_assert`. A CI row builds the index
+  operations with Clang for a Cortex-M0 and fails on any `__atomic_` reference.
+- **`variant` no longer copies a whole alternative onto the stack on every switch
+  (#315).** Changing the alternative built the new value in a local first, in
+  case an argument lived inside the alternative about to be destroyed:
+  - `emplace` built a temporary;
+  - assignment from another variant built a backup variant.
+
+  With a 1 KiB alternative every switch used more than 1 KiB of stack (1072 to
+  1104 bytes with GCC 16 and Clang), against 32 for `std::variant`, even under
+  `-fno-exceptions`, where the copy buys nothing.
+
+  The value is now constructed in place, the way `std::variant` does it,
+  under three conditions:
+  - nothing can alias: `emplace` has no arguments, or a single argument of the
+    target type, or an assignment copies or moves from another variant that
+    lies outside this one;
+  - the argument's address is outside the storage;
+  - the construction cannot throw, or exceptions are off.
+
+  Any other case keeps the temporary, in an out-of-line function so that it
+  costs stack only when it runs. `metl_variant_stack_frame` gates the frames.
+  `cmake/CheckStackFrames.cmake` now reads GCC's `.su` names correctly: they
+  contain semicolons, which CMake split into list elements.
+- **Three vocabulary types now accept what their std counterparts accept (#316).**
+  - `std::hash<metl::optional<T>>` was enabled for every `T` and always
+    `noexcept`. Detection such as `is_invocable` picked it for an unhashable
+    `T` and then failed inside it. It is now enabled exactly when
+    `std::hash<std::remove_const_t<T>>` is, and `noexcept` exactly when that
+    hash is.
+  - `scope_exit` rejected a `const` callable whose `operator()` is not `const`.
+    Its constructor's exception handler called the argument even when storing
+    it could not throw. The handler now calls it only where it can run.
+  - `function_ref` rejected a function pointer whose signature only converts,
+    such as `int (*)(long)` for `function_ref<int(int)>`, although a lambda
+    with that signature binds. It now binds.
+- **The containers now work with C++20 iterators and range adaptors (#316).**
+  - `fixed_vector::try_assign` and `try_insert` from an iterator pair rejected
+    C++20 forward iterators, such as `views::iota` and `views::transform`,
+    whose legacy iterator category is only input. From C++20 they check
+    `std::forward_iterator` and measure with `std::ranges::distance`.
+  - `emplace` / `try_emplace` on `flat_map` and `static_unordered_map` were
+    unconstrained. Detection, such as `ranges::to` probing
+    `emplace(end(), x)`, saw them as usable and then failed inside them. They
+    are now constrained on constructing the key and the value.
+  - `fixed_string`, `flat_map` and `flat_set` gain `difference_type`.
+- **Portability gaps (#316).**
+  - `wait.hpp` did not assemble on an ARMv6K core in Thumb-1 mode, such as an
+    ARM1176 built with `-mthumb`. That configuration now uses the
+    compiler-barrier fallback, and the `arm-hints` CI job covers it.
+  - The bit operations on `mmio_register` / `mmio_ptr` did not compile for an
+    `enum class` register type. They now work through its underlying integer.
+    `set_bits` gains the `bool` static_assert its siblings have.
+  - `handle_pool` now documents that a handle from one pool also resolves in
+    another pool of the same type. Nothing checks which pool issued it.
+- **`fixed_vector` under AddressSanitizer reported a false use-after-poison when
+  an element's destructor re-entered the vector (#321).** Removal shrinks before
+  it destroys, so a destructor may call `clear()` on its own vector. That nested
+  call poisoned the tail, including the slot whose destructor was still
+  running, and the destructor's next write to its own members was reported. The
+  tail is now poisoned only once the outermost element destructor has returned.
+  Builds without ASan are unchanged.
+
 ## [1.2.1] - 2026-10-11
 
 **Highlights.** A correctness patch from a second review of 1.2.0, each finding
