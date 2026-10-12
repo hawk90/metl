@@ -82,7 +82,7 @@ GUARD = "METL_COMPILE_FAIL"
 # new assertion a checker edit, and a gate that cries on correct work gets
 # raised until it stops meaning anything.
 #
-# IT DOES NOT GO TO ZERO, and the reason is worth reading before trying. Seven
+# IT DOES NOT GO TO ZERO, and the reason is worth reading before trying. Five
 # messages cannot be pinned by a case on a host compiler:
 #
 #   four are TARGET-DEPENDENT -- mpmc_queue, atomic_handle and the atomic
@@ -98,15 +98,14 @@ GUARD = "METL_COMPILE_FAIL"
 #   one is DERIVED -- static_unordered_map's bucket_count is bit_ceil(2 *
 #   Capacity), so no caller can make it a non-power-of-two.
 #
-#   two are UNREACHABLE, and that is a finding rather than a limitation:
-#   variant's `emplace<I> index out of range` and `get_if<I> index out of
-#   range` both sit in the body of a function whose RETURN TYPE is
-#   variant_alternative_t<I, ...>, which asserts `variant_alternative index out
-#   of range` first. The caller still gets a correct diagnostic, so nothing is
-#   broken -- but those two lines can never run.
+# Two more were UNREACHABLE until #309: variant's `emplace<I> index out of
+# range` and `get_if<I> index out of range` sat in the body of a function whose
+# RETURN TYPE is variant_alternative_t<I, ...>, which asserts `variant_alternative
+# index out of range` first. They were removed, and cases now pin that both
+# calls get that message.
 #
-# So the floor is 7. Lowering it means changing the library, not adding a case.
-MAX_UNCOVERED = 7
+# So the floor is 5. Lowering it means changing the library, not adding a case.
+MAX_UNCOVERED = 5
 
 # A message is user-facing if a caller can trigger it: a `static_assert` in a
 # public header, outside `namespace detail`. Those inside are invariants the
