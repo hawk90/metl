@@ -959,11 +959,11 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
         "why": "when storing the callable throws, the cleanup it was meant to "
                "guarantee never runs.",
         "kills": "ctest:conditional_noexcept",
-        "old": """  catch (...) {
-    func();
-  }""",
-        "new": """  catch (...) {
-  }""",
+        "old": """    if constexpr (!nothrow_store<G>) {
+      func();
+    }""",
+        "new": """    if constexpr (!nothrow_store<G>) {
+    }""",
     },
     {
         "name": "flat_set_final_move_throw_skips_cleanup",
