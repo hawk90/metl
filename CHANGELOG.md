@@ -7,24 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **`erase(iterator)` and a free `erase_if`** for `flat_map`, `flat_set`,
-  `static_unordered_map` and `static_unordered_set` (#313).
-  - `erase(iterator)` returns the next position, so a loop can erase as it
-    iterates.
-  - The unordered containers never move an element on erase, so every other
-    iterator stays valid.
-
-### Fixed
-
-- **`flat_set<bool>::erase(s.begin())` erased the wrong element (#313).** Only
-  `erase(key)` existed, and a flat container's iterator is a pointer, which
-  converts to `bool`. So `erase(s.begin())` erased the key `true`, not the
-  first element. The new `erase(iterator)` overload takes precedence for an
-  iterator argument. A transparent comparator's `erase(const K&)` template no
-  longer accepts iterators either.
-
 ## [1.2.1] - 2026-10-11
 
 **Highlights.** A correctness patch from a second review of 1.2.0, each finding
