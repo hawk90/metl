@@ -7,34 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **`arena_allocator::rewind` destroyed an object again when its destructor
-  re-entered the arena (#312).** `rewind` ran `~T()` while the object's record
-  was still armed. A destructor that rewound the arena, such as an RAII scope
-  guard allocated in it, destroyed the same object again; the review saw four
-  destructor calls on one address. An object that a destructor allocated was
-  released without its destructor running. The record is now disarmed before
-  the destructor runs, and the walk looks again afterwards, so it destroys
-  whatever the destructor allocated. The storage is released only once the
-  destructor returns. The conformance suite's known gap for the arena is closed.
-
-### Added
-
-- **Conformance suite, `tests/conformance/` (#320).** Each property is written
-  once and checked against every type that holds user objects: the containers,
-  the pools and the arena, 14 types in all. The first properties are:
-  - removal commits before the destructor runs;
-  - a destructor that empties the container again destroys nothing twice;
-  - a full `try_` changes nothing;
-  - the full capacity is available again after `clear`;
-  - a moved-from container is empty and usable.
-
-  `tools/check_conformance.py` fails when a public header is neither registered
-  nor listed with a reason. A type that misses a property names its issue as a
-  known gap, and the suite fails once that gap starts passing. The arena's
-  removal order is the first such gap (#312).
-
 ## [1.2.1] - 2026-10-11
 
 **Highlights.** A correctness patch from a second review of 1.2.0, each finding

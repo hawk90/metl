@@ -494,6 +494,10 @@ jobs:
   #     freestanding C++ stdlib of its own, so it reuses gcc-arm-none-eabi's
   #     freestanding libstdc++ headers (search paths queried from the GCC driver
   #     and handed to clang as -isystem).
+  #   * arm-cross-clang / cortex-m0 — Clang on ARMv6-M, which has no exclusive
+  #     loads or stores, so Clang turns every std::atomic access into an
+  #     __atomic_* library call that may take a lock. Builds the ISR-facing
+  #     index operations to an object and fails if it references any (#314).
   # ---------------------------------------------------------------------------
   cross-syntax:
     name: ${{ matrix.name }}
@@ -527,6 +531,24 @@ jobs:
                 -Wall -Wextra \
                 "${ISYS[@]}" -Iinclude \
                 -fsyntax-only "$METL_SMOKE_SRC"
+          - name: arm-cross-clang / cortex-m0
+            apt_pkgs: clang gcc-arm-none-eabi
+            compile_cmd: |
+              set -euo pipefail
+              arm_flags="-mcpu=cortex-m0 -mthumb -mfloat-abi=soft"
+              mapfile -t GXX_INCS < <(arm-none-eabi-g++ ${arm_flags} -E -x c++ -v /dev/null 2>&1 | awk '/#include <...> search starts here:/{f=1;next} /End of search list/{f=0} f{sub(/^[ \t]+/,"");print}')
+              ISYS=()
+              for d in "${GXX_INCS[@]}"; do ISYS+=(-isystem "$d"); done
+              clang++ --target=arm-none-eabi ${arm_flags} \
+                -std=c++17 -ffreestanding -fno-exceptions -fno-rtti -O2 \
+                -Wall -Wextra -Werror \
+                "${ISYS[@]}" -Iinclude \
+                -c tests/embedded/isr_index_probe.cpp -o isr_index_probe.o
+              arm-none-eabi-nm -u isr_index_probe.o
+              if arm-none-eabi-nm -u isr_index_probe.o | grep -q '__atomic_'; then
+                echo "::error::the ISR-facing index operations call the atomic library on ARMv6-M (see #314)"
+                exit 1
+              fi
 
     steps:
       - name: Checkout
@@ -1347,13 +1369,19 @@ jobs:
           packages: build-essential clang llvm
           cache-key: build-essential-clang-llvm
 
+      - name: The coverage arithmetic must still match Codecov's (canary)
+        run: tools/coverage.py --self-test
+
+      # Lines are Codecov's figure (a partly taken line is not covered), from
+      # the same lcov file the upload below sends, so the badge and this floor
+      # read the same number (#308).
       - name: Measure
         env:
           CC: clang
           CXX: clang++
           CMAKE_C_COMPILER_LAUNCHER: ccache
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
-        run: tools/coverage.py --min-lines 90 --min-branches 72 --lcov build-coverage/metl.lcov
+        run: tools/coverage.py --min-lines 86.5 --min-branches 76.5 --lcov build-coverage/metl.lcov
 
       # Display only: the floors above are the gate, and codecov.yml makes
       # Codecov's own statuses informational. A fork's pull request gets no OIDC
