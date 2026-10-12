@@ -327,6 +327,7 @@ claim about a **gate** going stale, and nothing was checking those.
 | [`check_instructions.py`](../tools/check_instructions.py) | instructions executed per benchmark, via cachegrind | `--self-test` |
 | [`check_api_contract.py`](../tools/check_api_contract.py) | §9 R2/R3/R4 across every public header | `--self-test` |
 | [`check_progress_guarantee.py`](../tools/check_progress_guarantee.py) | I3: every public header states a progress guarantee | `--self-test` |
+| [`check_conformance.py`](../tools/check_conformance.py) | that every type holding user objects runs the property suite in `tests/conformance/`, so a bug class fixed in one type is checked in all | `--self-test` |
 | [`check_source_rules.py`](../tools/check_source_rules.py) | S1: placement new is `::new`; S2: a check shaped like a memory-safety guard is `METL_HARDEN` or carries its reason; S3: no `constexpr` function that can never be constant-evaluated | `--self-test` |
 | [`check_amalgamation.py`](../tools/check_amalgamation.py) | the shipped single header builds and runs the whole suite | `--self-test` |
 | [`check_docs.py`](../tools/check_docs.py) | D1–D7: the documentation claims a machine can settle | `--self-test` |
