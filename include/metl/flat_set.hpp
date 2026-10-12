@@ -345,10 +345,10 @@ class flat_set {
     return nullptr;
   }
 
-  template <
-      typename K,
-      typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type> &&
-                             !std::is_convertible_v<const K&, const_iterator>>>
+  template <typename K,
+            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
+                                   !(std::is_same_v<decay_t<K>, key_type> ||
+                                     std::is_convertible_v<const K&, const_iterator>)>>
   bool erase(const K& key) noexcept(compare_cannot_throw<K> && relocate_cannot_throw) {
     const size_type index = lower_bound_index(key);
     if (index >= size_ || comp_(key, data()[index])) {
@@ -652,7 +652,8 @@ class flat_set {
   size_type position_index(const_iterator pos) const noexcept {
     const std::uintptr_t offset =
         reinterpret_cast<std::uintptr_t>(pos) - reinterpret_cast<std::uintptr_t>(data());
-    METL_HARDEN(offset < size_ * sizeof(value_type) && offset % sizeof(value_type) == 0);
+    METL_HARDEN(offset < size_ * sizeof(value_type));
+    METL_HARDEN(offset % sizeof(value_type) == 0);
     return static_cast<size_type>(offset / sizeof(value_type));
   }
 
