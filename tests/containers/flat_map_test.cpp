@@ -1,9 +1,14 @@
 #include "metl_check.hpp"
 
+#include <cstddef>
 #include <cstring>
 #include <functional>
+#include <type_traits>
+#include <utility>
 
 #include <metl/flat_map.hpp>
+#include <metl/flat_set.hpp>
+#include <metl/static_unordered_map.hpp>
 
 namespace {
 
@@ -54,6 +59,30 @@ struct int_greater {
 };
 
 }  // namespace
+
+// #316: emplace and try_emplace are constrained on the key and value they
+// build, so detection (and ranges::to) sees them as unusable instead of failing
+// inside them; and the map has a difference_type, as a container must.
+namespace emplace_constraints {
+template <typename M, typename K, typename V, typename = void>
+struct can_emplace : std::false_type {};
+template <typename M, typename K, typename V>
+struct can_emplace<M,
+                   K,
+                   V,
+                   std::void_t<decltype(std::declval<M&>().emplace(std::declval<K>(), std::declval<V>()))>>
+    : std::true_type {};
+using map = metl::flat_map<int, int, 4>;
+static_assert(can_emplace<map, int, int>::value, "a key and a value emplace");
+static_assert(!can_emplace<map, map::iterator, map::value_type>::value,
+              "an iterator is not a key, as ranges::to's emplace(end(), x) asks");
+static_assert(std::is_same_v<map::difference_type, std::ptrdiff_t>, "flat_map has a difference_type");
+static_assert(std::is_same_v<metl::flat_set<int, 4>::difference_type, std::ptrdiff_t>,
+              "flat_set has a difference_type");
+using umap = metl::static_unordered_map<int, int, 4>;
+static_assert(!can_emplace<umap, umap::iterator, umap::value_type>::value,
+              "the same constraint on static_unordered_map");
+}  // namespace emplace_constraints
 
 int main() {
   // --- Backward-compatibility tests with default std::less<int> ---

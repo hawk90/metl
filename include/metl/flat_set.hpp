@@ -62,6 +62,7 @@ class flat_set {
   using key_compare = Compare;
   using value_compare = Compare;
   using size_type = std::size_t;
+  using difference_type = std::ptrdiff_t;
   using reference = value_type&;
   using const_reference = const value_type&;
   using iterator = value_type*;
