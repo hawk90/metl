@@ -361,6 +361,19 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
     }""",
     },
     {
+        "name": "arena_rewind_destroys_while_armed",
+        "file": "include/metl/arena_allocator.hpp",
+        "why": "rewind runs ~T() while the record is still armed, so a destructor "
+               "that rewinds the arena destroys the same object again (#312).",
+        "kills": "ctest:pool_reentrancy_test",
+        "old": """        const destroy_fn_t destroy = record.destroy;
+        record.destroy = nullptr;
+        store_record(offset_, record);
+        destroy(&storage_[record.payload_offset]);
+        continue;""",
+        "new": """        record.destroy(&storage_[record.payload_offset]);""",
+    },
+    {
         "name": "scheduler_until_idle_stops_on_quiet_round",
         "file": "include/metl/coro/scheduler.hpp",
         "why": "run_until_idle stops after a round in which nothing yielded, "
