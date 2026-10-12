@@ -7,19 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **`spsc_queue` and `spsc_byte_ring` called the atomic library on Clang ARMv6-M
-  (#314).** ARMv6-M (Cortex-M0, M0+, M1) has no exclusive loads or stores, so
-  Clang lowers every `std::atomic` access there to `__atomic_load_4` /
-  `__atomic_store_4` calls, even a relaxed word load. Depending on the runtime,
-  those are a missing symbol or compiler-rt's lock-based fallback, which an
-  interrupt can deadlock against; GCC inlines them, so only Clang builds were
-  affected. On ARMv6-M the indices are now volatile words with DMB barriers,
-  on every compiler. Everywhere else they stay `std::atomic` and must be
-  lock-free, checked by a `static_assert`. A CI row builds the index
-  operations with Clang for a Cortex-M0 and fails on any `__atomic_` reference.
-
 ## [1.2.1] - 2026-10-11
 
 **Highlights.** A correctness patch from a second review of 1.2.0, each finding
