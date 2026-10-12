@@ -7,16 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **`fixed_vector` under AddressSanitizer reported a false use-after-poison when
-  an element's destructor re-entered the vector (#321).** Removal shrinks before
-  it destroys, so a destructor may call `clear()` on its own vector. That nested
-  call poisoned the tail, including the slot whose destructor was still
-  running, and the destructor's next write to its own members was reported. The
-  tail is now poisoned only once the outermost element destructor has returned.
-  Builds without ASan are unchanged.
-
 ## [1.2.1] - 2026-10-11
 
 **Highlights.** A correctness patch from a second review of 1.2.0, each finding
