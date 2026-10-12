@@ -56,6 +56,45 @@ void arena_constructor_allocates() {
   CHECK(g_outer_saw_own_tag);  // ~outer ran on the outer object, not the inner
 }
 
+// #312: rewind ran ~T() while the record was still armed. A destructor that
+// rewound the arena destroyed the same object again (the review saw four
+// destructor calls on one address before the stack ran out), and an object a
+// destructor allocated was released without its destructor running.
+int g_scope_destroyed = 0;
+int g_log_destroyed = 0;
+metl::arena_allocator<256>::mark_type g_scope_mark{};
+
+struct scope_guard {
+  ~scope_guard() {
+    ++g_scope_destroyed;
+    if (g_scope_destroyed < 4) {  // bounded, so the old code fails instead of recursing
+      g_arena.rewind(g_scope_mark);
+    }
+  }
+};
+
+struct log_entry {
+  ~log_entry() { ++g_log_destroyed; }
+};
+
+struct logs_on_destroy {
+  ~logs_on_destroy() { (void)g_arena.try_emplace<log_entry>(); }
+};
+
+void arena_destructor_reenters() {
+  g_arena.reset();
+  g_scope_mark = g_arena.mark();
+  CHECK(g_arena.try_emplace<scope_guard>() != nullptr);
+  g_arena.reset();
+  CHECK_EQ(g_scope_destroyed, 1);
+  CHECK(g_arena.empty());
+
+  CHECK(g_arena.try_emplace<logs_on_destroy>() != nullptr);
+  g_arena.reset();
+  CHECK_EQ(g_log_destroyed, 1);  // allocated during the reset, then destroyed by it
+  CHECK(g_arena.empty());
+}
+
 // --- object_pool ------------------------------------------------------------
 
 struct node;
@@ -273,6 +312,7 @@ void a_throwing_constructor_releases_the_claim() {
 
 int main() {
   arena_constructor_allocates();
+  arena_destructor_reenters();
   object_pool_constructor_emplaces();
   object_pool_destructor_reenters();
   object_pool_interior_pointer();

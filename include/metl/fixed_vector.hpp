@@ -52,6 +52,33 @@
 #endif
 
 namespace metl {
+
+namespace detail {
+
+// A C++20 iterator such as views::iota's or views::transform's is a forward
+// (even random-access) iterator while its legacy iterator_category says
+// input_iterator_tag, because its reference is not a real reference. Asking the
+// legacy tag rejected those ranges (#316); from C++20 the concept is asked.
+#if defined(__cpp_lib_ranges) && __cpp_lib_ranges >= 201911L
+template <typename It>
+inline constexpr bool is_forward_iterator_v = std::forward_iterator<It>;
+
+template <typename It>
+constexpr auto iterator_distance(It first, It last) {
+  return std::ranges::distance(first, last);
+}
+#else
+template <typename It>
+inline constexpr bool is_forward_iterator_v =
+    std::is_base_of_v<std::forward_iterator_tag, typename std::iterator_traits<It>::iterator_category>;
+
+template <typename It>
+constexpr auto iterator_distance(It first, It last) {
+  return std::distance(first, last);
+}
+#endif
+
+}  // namespace detail
 namespace detail {
 template <typename It>
 struct is_reverse_iterator_over_pointer : std::false_type {};
@@ -390,12 +417,11 @@ class fixed_vector {
   ///       stage into a `fixed_vector` first.
   template <typename It, typename = std::enable_if_t<!std::is_integral_v<It>>>
   METL_NODISCARD iterator try_insert(const_iterator pos, It first, It last) {
-    static_assert(
-        std::is_base_of_v<std::forward_iterator_tag, typename std::iterator_traits<It>::iterator_category>,
-        "try_insert requires a forward iterator: the range must be measurable "
-        "before anything is written, so that a failure leaves contents unchanged");
+    static_assert(detail::is_forward_iterator_v<It>,
+                  "try_insert requires a forward iterator: the range must be measurable "
+                  "before anything is written, so that a failure leaves contents unchanged");
     METL_HARDEN(pos >= begin() && pos <= end());
-    if (static_cast<size_type>(std::distance(first, last)) > Capacity - size_) {
+    if (static_cast<size_type>(detail::iterator_distance(first, last)) > Capacity - size_) {
       return end();
     }
     return insert(pos, first, last);
@@ -557,11 +583,10 @@ class fixed_vector {
   /// @note Forward iterators only, for the reason given on `try_insert`.
   template <typename It, typename = std::enable_if_t<!std::is_integral_v<It>>>
   METL_NODISCARD bool try_assign(It first, It last) {
-    static_assert(
-        std::is_base_of_v<std::forward_iterator_tag, typename std::iterator_traits<It>::iterator_category>,
-        "try_assign requires a forward iterator: the range must be measurable "
-        "before anything is written, so that a failure leaves contents unchanged");
-    if (static_cast<size_type>(std::distance(first, last)) > Capacity) {
+    static_assert(detail::is_forward_iterator_v<It>,
+                  "try_assign requires a forward iterator: the range must be measurable "
+                  "before anything is written, so that a failure leaves contents unchanged");
+    if (static_cast<size_type>(detail::iterator_distance(first, last)) > Capacity) {
       return false;
     }
     assign(first, last);

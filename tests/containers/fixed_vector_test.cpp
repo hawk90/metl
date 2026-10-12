@@ -63,9 +63,36 @@ void three_way_comparison() {
 #define METL_TEST_THREE_WAY 1
 #endif
 
+// #316: a C++20 iterator whose legacy category is input_iterator_tag (its
+// reference is a prvalue) is still a forward iterator, and the try_ range forms
+// accept it.
+#if defined(__cpp_lib_ranges) && __cpp_lib_ranges >= 201911L
+#include <ranges>
+namespace {
+void try_range_forms_take_cxx20_iterators() {
+  metl::fixed_vector<int, 8> v;
+  auto counted = std::views::iota(0, 3);
+  CHECK(v.try_assign(counted.begin(), counted.end()));
+  CHECK_EQ(v.size(), 3u);
+  const int source[] = {10, 20};
+  auto doubled = source | std::views::transform([](int x) { return x * 2; });
+  CHECK(v.try_insert(v.end(), doubled.begin(), doubled.end()) != v.end());
+  CHECK_EQ(v.size(), 5u);
+  CHECK_EQ(v[4], 40);
+  auto too_many = std::views::iota(0, 9);
+  CHECK(!v.try_assign(too_many.begin(), too_many.end()));
+  CHECK_EQ(v.size(), 5u);  // unchanged on failure
+}
+}  // namespace
+#define METL_TEST_CXX20_RANGES 1
+#endif
+
 int main() {
 #ifdef METL_TEST_THREE_WAY
   three_way_comparison();
+#endif
+#ifdef METL_TEST_CXX20_RANGES
+  try_range_forms_take_cxx20_iterators();
 #endif
   metl::fixed_vector<int, 3> numbers;
   CHECK(numbers.empty());

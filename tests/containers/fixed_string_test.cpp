@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <functional>
+#include <type_traits>
 #include <unordered_map>
 
 #include <metl/fixed_string.hpp>
@@ -31,6 +32,9 @@ void three_way_comparison() {
 // clang-format on
 #define METL_TEST_THREE_WAY 1
 #endif
+
+static_assert(std::is_same_v<metl::fixed_string<8>::difference_type, std::ptrdiff_t>,
+              "fixed_string has a difference_type (#316)");
 
 int main() {
 #ifdef METL_TEST_THREE_WAY
