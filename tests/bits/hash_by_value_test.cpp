@@ -84,6 +84,22 @@ int main() {
     char unterminated[3] = {'a', 'b', 'c'};
     CHECK_EQ(h(unterminated), h("abc"));  // bounded by N, not by a NUL
 
+    // The same bound for a const array, such as a fixed-size name field read
+    // through a const object. It used to bind the `const char*` overload and
+    // read past the end (#311); ASan reports that as a stack overflow.
+    const char const_unterminated[3] = {'a', 'b', 'c'};
+    CHECK_EQ(h(const_unterminated), h("abc"));
+    // Followed by a known byte, so an unbounded read changes the hash even
+    // without ASan.
+    struct record {
+      char name[3];
+      char after;
+    };
+    const record named = {{'a', 'b', 'c'}, 'x'};
+    CHECK_EQ(h(named.name), h("abc"));
+    const char const_padded[8] = "abc";
+    CHECK_EQ(h(const_padded), h("abc"));
+
     metl::static_unordered_map<metl::fixed_string<7>, int, 8, metl::fnv1a_hash, std::equal_to<>> map;
     map.emplace(metl::fixed_string<7>("abc"), 1);
     CHECK(map.find(mutable_ptr) != nullptr);
