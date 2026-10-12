@@ -589,6 +589,7 @@ class variant {
     move_ops()[backup.index_](raw_addr(), backup.raw_addr());
     index_ = backup.index_;
   }
+  METL_DETAIL_VARIANT_UNREACHABLE_OK_END
 
   // Whether emplace may construct the new alternative straight into the
   // storage once the old one is destroyed; see emplace.
@@ -623,6 +624,8 @@ class variant {
   void* raw_addr() noexcept { return static_cast<void*>(&storage_.bytes[0]); }
   const void* raw_addr() const noexcept { return static_cast<const void*>(&storage_.bytes[0]); }
 
+  // Inlined into the helpers above, so MSVC reports the same C4702 here.
+  METL_DETAIL_VARIANT_UNREACHABLE_OK_BEGIN
   void reset() noexcept(detail::all_nothrow_destructible<Ts...>::value) {
     if (index_ != variant_npos) {
       // Valueless first, then destroy: an alternative whose destructor calls
