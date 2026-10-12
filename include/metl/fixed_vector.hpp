@@ -325,7 +325,7 @@ class fixed_vector {
     // vector (a handle that unregisters itself) must see the element gone,
     // not destroy it a second time.
     --size_;
-    destroy_element_(size_);
+    destroy_element(size_);
     asan_poison_tail_();
   }
 
@@ -491,7 +491,7 @@ class fixed_vector {
       data()[i] = static_cast<T&&>(data()[i + 1]);
     }
     --size_;  // shrink first, as in pop_back
-    destroy_element_(size_);
+    destroy_element(size_);
     asan_poison_tail_();
     return begin() + index;
   }
@@ -514,7 +514,7 @@ class fixed_vector {
     const size_type old_size = size_;
     size_ -= erase_count;  // shrink first, as in pop_back
     for (size_type i = size_; i < old_size; ++i) {
-      destroy_element_(i);
+      destroy_element(i);
     }
     asan_poison_tail_();
     return begin() + first_index;
@@ -655,7 +655,7 @@ class fixed_vector {
         ++shorter.size_;
       }
       for (size_type i = longer.size_; i > old_shorter; --i) {
-        longer.destroy_element_(i - 1);
+        longer.destroy_element(i - 1);
       }
       longer.size_ = old_shorter;
     }
@@ -706,22 +706,22 @@ class fixed_vector {
   // Shared by every vector of the type, so a nested operation on a sibling
   // vector also leaves its tail unpoisoned until its next operation: a missed
   // report at worst, never a false one.
-  static unsigned& asan_destroying_() noexcept {
+  static unsigned& asan_destroying() noexcept {
     static thread_local unsigned depth = 0;
     return depth;
   }
 
-  void destroy_element_(size_type index) noexcept {
-    ++asan_destroying_();
+  void destroy_element(size_type index) noexcept {
+    ++asan_destroying();
     data()[index].~T();
-    --asan_destroying_();
+    --asan_destroying();
   }
 
   // Poison the unused-capacity tail [size_, Capacity). Rounding in the ASan
   // interface never poisons into the live range [0, size_), so element access
   // and iteration never false-positive.
   void asan_poison_tail_() noexcept {
-    if (asan_destroying_() != 0) {
+    if (asan_destroying() != 0) {
       return;
     }
     if (size_ < Capacity) {
@@ -736,7 +736,7 @@ class fixed_vector {
   }
 #else
   // No-ops. constexpr so the constexpr default constructor stays constexpr.
-  void destroy_element_(size_type index) noexcept { data()[index].~T(); }
+  void destroy_element(size_type index) noexcept { data()[index].~T(); }
   constexpr void asan_poison_tail_() noexcept {}
   constexpr void asan_unpoison_all_() noexcept {}
 #endif
