@@ -9,6 +9,8 @@
 ///   | `lower_bound`, `upper_bound` | wait-free, `floor(log2(Capacity)) + 1` comparisons |
 ///   | `equal_range` | wait-free, `2 * floor(log2(Capacity)) + 2` comparisons |
 ///   | `try_emplace`, `emplace`, `insert_or_assign`, `erase` | wait-free, bounded by `Capacity` moves |
+///   | `erase(iterator)` | wait-free, bounded by `Capacity` moves |
+///   | `erase_if` | wait-free, bounded by `Capacity` erases, each bounded by `Capacity` moves |
 ///   | `clear`, iteration, copy, destructor | wait-free, bounded by `size()` |
 ///
 /// Storage is one sorted array, so lookup is a binary search and modification
@@ -39,6 +41,7 @@
 #include "metl/type_traits.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <new>
 #include <type_traits>
@@ -351,9 +354,10 @@ class flat_map {
     return nullptr;
   }
 
-  template <
-      typename K,
-      typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
+  template <typename K,
+            typename = enable_if_t<detail::has_is_transparent_v<Compare> &&
+                                   !(std::is_same_v<decay_t<K>, key_type> ||
+                                     std::is_convertible_v<const K&, const_iterator>)>>
   bool erase(const K& key) noexcept(compare_cannot_throw<K> && relocate_cannot_throw) {
     const size_type index = lower_bound_index(key);
     if (index >= size_ || comp_(key, data()[index].key)) {
@@ -479,6 +483,23 @@ class flat_map {
     erase_at(index);
     return true;
   }
+
+  /// @brief Erase the element at @p pos.
+  /// @return An iterator to the element that followed it, or `end()`.
+  /// @pre @p pos is a dereferenceable iterator into this map; anything else
+  ///      aborts, at every hardening level.
+  /// @note Takes precedence over `erase(key)` for an iterator argument. Before
+  ///       this overload existed, `erase(begin())` on a map whose key converts
+  ///       from a pointer, such as `bool`, erased by the converted key (#313).
+  iterator erase(const_iterator pos) noexcept(relocate_cannot_throw) {
+    const size_type index = position_index(pos);
+    erase_at(index);
+    // A destructor run by the erase may have erased more; never past the end.
+    return data() + (index < size_ ? index : size_);
+  }
+
+  /// @copydoc erase(const_iterator)
+  iterator erase(iterator pos) noexcept(relocate_cannot_throw) { return erase(const_iterator(pos)); }
 
   /// @brief Remove all elements (destroys each; size becomes 0).
   /// @note An element's destructor may erase from this container, but must not
@@ -687,6 +708,18 @@ class flat_map {
   // relocated source is.
   // clear() does not relocate first, so there a destructor may erase but not
   // insert; its doc says so.
+  // The index of a dereferenceable iterator, checked: an iterator from another
+  // container, or end(), would make erase_at move and destroy outside the
+  // elements. Compared as addresses, as object_pool::index_of does, since
+  // comparing unrelated pointers is unspecified.
+  size_type position_index(const_iterator pos) const noexcept {
+    const std::uintptr_t offset =
+        reinterpret_cast<std::uintptr_t>(pos) - reinterpret_cast<std::uintptr_t>(data());
+    METL_HARDEN(offset < size_ * sizeof(value_type));
+    METL_HARDEN(offset % sizeof(value_type) == 0);
+    return static_cast<size_type>(offset / sizeof(value_type));
+  }
+
   void erase_at(size_type index) noexcept(relocate_cannot_throw) {
     value_type leaving(static_cast<value_type&&>(data()[index]));
     data()[index].~value_type();
@@ -814,6 +847,24 @@ template <typename Key, typename T, std::size_t N1, std::size_t N2, typename Com
 METL_NODISCARD bool operator>=(const flat_map<Key, T, N1, Compare>& lhs,
                                const flat_map<Key, T, N2, Compare>& rhs) {
   return !(lhs < rhs);
+}
+
+/// @brief Erases every element of @p map for which @p pred returns true.
+/// @return The number of elements erased.
+/// @note `pred` must not modify @p map.
+template <typename Key, typename T, std::size_t Capacity, typename Compare, typename Pred>
+typename flat_map<Key, T, Capacity, Compare>::size_type erase_if(flat_map<Key, T, Capacity, Compare>& map,
+                                                                 Pred pred) {
+  typename flat_map<Key, T, Capacity, Compare>::size_type erased = 0;
+  for (auto it = map.begin(); it != map.end();) {
+    if (pred(*it)) {
+      it = map.erase(it);
+      ++erased;
+    } else {
+      ++it;
+    }
+  }
+  return erased;
 }
 
 }  // namespace metl
