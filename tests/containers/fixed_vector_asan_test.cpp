@@ -43,9 +43,57 @@ bool poisoned(const vec& v, std::size_t slot) {
   return __asan_address_is_poisoned(base + slot) != 0;
 }
 
+// #321: an element whose destructor re-enters its vector. pop_back shrinks
+// first and then destroys, so the destructor may clear() the vector; that
+// nested clear used to poison the tail, including the slot whose destructor
+// was still running, and the destructor's own later write was reported as a
+// use-after-poison.
+struct reentrant;
+metl::fixed_vector<reentrant, 4>& reentrant_vec();
+struct reentrant {
+  std::int64_t state = 1;
+  bool clears = false;
+  explicit reentrant(bool c) : clears(c) {}
+  reentrant(const reentrant&) = default;
+  reentrant& operator=(const reentrant&) = default;
+  ~reentrant() {
+    if (clears) {
+      reentrant_vec().clear();
+    }
+    *static_cast<volatile std::int64_t*>(&state) = 0;  // finish its own teardown
+  }
+};
+metl::fixed_vector<reentrant, 4>& reentrant_vec() {
+  static metl::fixed_vector<reentrant, 4> v;
+  return v;
+}
+
+void destructor_reenters() {
+  auto& v = reentrant_vec();
+  v.emplace_back(false);
+  v.emplace_back(false);
+  v.emplace_back(true);
+  v.pop_back();  // ~reentrant clears the rest, then writes to itself
+  CHECK_EQ(v.size(), 0u);
+  // Once every destructor has returned, the whole buffer is the tail again.
+  const auto* base = v.data();
+  CHECK(__asan_address_is_poisoned(base) != 0);
+  CHECK(__asan_address_is_poisoned(base + 2) != 0);
+
+  v.emplace_back(false);
+  v.emplace_back(true);
+  v.emplace_back(false);
+  v.erase(v.begin() + 1);  // the shifted-out last element is destroyed: no clear
+  CHECK_EQ(v.size(), 2u);
+  v.clear();  // destroys index 1 (clears = false after the shift) and index 0
+  CHECK_EQ(v.size(), 0u);
+}
+
 }  // namespace
 
 int main() {
+  destructor_reenters();
+
   vec v;
   v.push_back(10);
   v.push_back(20);
