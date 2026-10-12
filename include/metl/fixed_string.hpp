@@ -46,6 +46,7 @@ class fixed_string {
  public:
   using value_type = char;
   using size_type = std::size_t;
+  using difference_type = std::ptrdiff_t;
   using pointer = char*;
   using const_pointer = const char*;
   using reference = char&;

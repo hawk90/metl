@@ -740,14 +740,42 @@ constexpr auto operator>=(const U& lhs, const optional<T>& rhs) -> decltype(lhs 
 
 }  // namespace metl
 
-namespace std {
+namespace metl {
+namespace detail {
 
-/// @brief std::hash specialization; empty optionals hash to 0.
+// std::hash<optional<T>> is enabled exactly when std::hash<remove_const_t<T>>
+// is, as for std::optional. A disabled specialization has no call operator and
+// cannot be constructed, so detection (is_invocable, is_default_constructible)
+// says no instead of picking it and failing inside the body (#316).
+template <typename T, typename = void>
+struct optional_hash {
+  optional_hash() = delete;
+  optional_hash(const optional_hash&) = delete;
+  optional_hash(optional_hash&&) = delete;
+  optional_hash& operator=(const optional_hash&) = delete;
+  optional_hash& operator=(optional_hash&&) = delete;
+  ~optional_hash() = default;
+};
+
 template <typename T>
-struct hash<::metl::optional<T>> {
-  size_t operator()(const ::metl::optional<T>& o) const noexcept {
-    return o.has_value() ? std::hash<T>{}(*o) : static_cast<size_t>(0);
+struct optional_hash<T,
+                     std::void_t<decltype(std::hash<std::remove_const_t<T>>{}(
+                         std::declval<const std::remove_const_t<T>&>()))>> {
+  std::size_t operator()(const ::metl::optional<T>& o) const
+      noexcept(noexcept(std::hash<std::remove_const_t<T>>{}(std::declval<const std::remove_const_t<T>&>()))) {
+    return o.has_value() ? std::hash<std::remove_const_t<T>>{}(*o) : static_cast<std::size_t>(0);
   }
 };
+
+}  // namespace detail
+}  // namespace metl
+
+namespace std {
+
+/// @brief std::hash specialization; empty optionals hash to 0. Enabled only
+///        when `std::hash<std::remove_const_t<T>>` is, and `noexcept` only
+///        when that hash is.
+template <typename T>
+struct hash<::metl::optional<T>> : ::metl::detail::optional_hash<T> {};
 
 }  // namespace std
