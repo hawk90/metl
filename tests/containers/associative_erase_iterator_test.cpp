@@ -96,7 +96,7 @@ void unordered_erase_while_iterating() {
   CHECK_EQ(visited, 8u);  // each element seen once, none skipped
   CHECK_EQ(m.size(), 4u);
   for (int k = 0; k < 8; ++k) {
-    CHECK_EQ(m.contains(k), k % 2 == 1);
+    CHECK_EQ(m.contains(k), k % 2 != 0);
   }
 
   // Erasing never moves an element, so another iterator stays valid.
