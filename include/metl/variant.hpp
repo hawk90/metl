@@ -503,25 +503,7 @@ class variant {
     // -- so those still take the temporary.
     if constexpr (std::is_move_constructible_v<target_type>) {
       if (index_ != variant_npos) {
-        // With no arguments nothing can alias the storage, so the in-place
-        // switch is unconditional and the temporary path is not instantiated.
-        if constexpr (switches_in_place<target_type, Args...> && sizeof...(Args) == 0) {
-          reset();
-          ::new (raw_addr()) target_type();
-          index_ = I;
-          return *std::launder(static_cast<target_type*>(raw_addr()));
-        } else {
-          if constexpr (switches_in_place<target_type, Args...>) {
-            if (!(points_into_storage(detail::addressof(args)) || ...)) {
-              reset();
-              ::new (raw_addr()) target_type(std::forward<Args>(args)...);
-              index_ = I;
-              return *std::launder(static_cast<target_type*>(raw_addr()));
-            }
-          }
-          emplace_through_temporary<I>(std::forward<Args>(args)...);
-          return *std::launder(static_cast<target_type*>(raw_addr()));
-        }
+        return switch_from_active<I>(std::forward<Args>(args)...);
       }
     } else {
       if (index_ != variant_npos) {
@@ -570,6 +552,31 @@ class variant {
   static const move_op* move_assign_ops() noexcept {
     static constexpr move_op ops[] = {detail::move_assign_entry<Ts>()...};
     return ops;
+  }
+
+  // emplace from an active alternative to a movable one; see emplace for when
+  // the temporary is skipped.
+  template <std::size_t I, typename... Args>
+  variant_alternative_t<I, variant>& switch_from_active(Args&&... args) {
+    using target_type = typename detail::nth_type<I, Ts...>::type;
+    if constexpr (switches_in_place<target_type, Args...> && sizeof...(Args) == 0) {
+      // Nothing can alias the storage, so the in-place switch is unconditional
+      // and the temporary path is not instantiated.
+      reset();
+      ::new (raw_addr()) target_type();
+      index_ = I;
+    } else {
+      if constexpr (switches_in_place<target_type, Args...>) {
+        if (!(points_into_storage(detail::addressof(args)) || ...)) {
+          reset();
+          ::new (raw_addr()) target_type(std::forward<Args>(args)...);
+          index_ = I;
+          return *std::launder(static_cast<target_type*>(raw_addr()));
+        }
+      }
+      emplace_through_temporary<I>(std::forward<Args>(args)...);
+    }
+    return *std::launder(static_cast<target_type*>(raw_addr()));
   }
 
   METL_DETAIL_VARIANT_UNREACHABLE_OK_BEGIN
