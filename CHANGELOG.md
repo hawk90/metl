@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`fnv1a_hash` read past the end of a `const char[N]` (#311).** A const array,
+  such as a fixed-size name field read through a const object, bound the
+  non-template `const char*` overload instead of the bounded array branch, and
+  an unterminated one was read until a NUL turned up. Every `char` array, const
+  or not, is now hashed up to its first NUL and never past N. The `const char*`
+  overload is gone. A `const char*` argument takes the template, which hashes it
+  as before; the address of `fnv1a_hash::operator()(const char*)` can no longer
+  be taken.
+
 ## [1.2.1] - 2026-10-11
 
 **Highlights.** A correctness patch from a second review of 1.2.0, each finding
