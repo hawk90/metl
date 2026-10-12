@@ -47,6 +47,25 @@ class function_ref<R(Args...)> {
     METL_HARDEN(function != nullptr);
   }
 
+  /// @brief Binds a function pointer of another signature that is callable as
+  ///        this one, such as `int (*)(long)` for `function_ref<int(int)>`.
+  /// @param function Non-null function pointer to reference.
+  /// @note A lambda with that signature binds, and so does `fixed_function`;
+  ///       a plain function did not (#316).
+  template <
+      typename Fp,
+      typename = std::enable_if_t<std::is_pointer_v<Fp> && std::is_function_v<std::remove_pointer_t<Fp>> &&
+                                  !std::is_convertible_v<Fp, R (*)(Args...)> &&
+                                  detail::is_invocable_r_without_temporary_v<R, Fp, Args...>>>
+  // Implicit on purpose, like the exact-signature pointer constructor above
+  // and std::function_ref: binding at a call site is what function_ref is for.
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  function_ref(Fp function) noexcept
+      : storage_(typename storage::converted_tag{}, reinterpret_cast<generic_function>(function)),
+        callback_(&invoke_converted<Fp>) {
+    METL_HARDEN(function != nullptr);
+  }
+
   // Bind an lvalue callable (const or non-const). Only lvalue references are
   // accepted: F&& is a forwarding reference, so `is_lvalue_reference<F>` is true
   // exactly when the argument is an lvalue. `Referenced` carries the callable's
@@ -109,12 +128,21 @@ class function_ref<R(Args...)> {
   // always read back through the SAME member it was written through
   // (invoke_function reads `function`, invoke_object reads `object`), so this
   // is well-defined — no cross-member type punning.
+  // `void (*)()` is the conventional "any function" pointer: the compilers do
+  // not warn on a cast to or from it, as they do between two other signatures.
+  using generic_function = void (*)();
+
   union storage {
     void* object;
     R (*function)(Args...);
+    generic_function converted;
     constexpr storage() noexcept : object(nullptr) {}
     constexpr explicit storage(void* obj) noexcept : object(obj) {}
     constexpr explicit storage(R (*fn)(Args...)) noexcept : function(fn) {}
+    // Tagged: for function_ref<void()>, generic_function is the signature's own
+    // pointer type, and an untagged overload would collide with the one above.
+    struct converted_tag {};
+    constexpr storage(converted_tag, generic_function fn) noexcept : converted(fn) {}
   };
 
   using callback_type = R (*)(storage, Args&&...);
@@ -123,6 +151,22 @@ class function_ref<R(Args...)> {
   // thunk, refuses a null pointer.
   static R invoke_function(storage bound, Args&&... args) {
     return bound.function(std::forward<Args>(args)...);
+  }
+
+  // A pointer stored by the converting constructor, read back as the type it
+  // was: a function pointer converted to another function pointer type and
+  // back is the original pointer.
+  template <typename Fp>
+  static R invoke_converted(storage bound, Args&&... args) {
+    const Fp function = reinterpret_cast<Fp>(bound.converted);
+    if constexpr (std::is_void_v<R>) {
+      (void)function(std::forward<Args>(args)...);
+    } else {
+      // The constructor admitted the pointer because its result converts
+      // implicitly to R; the cast only states that conversion, so a consumer's
+      // -Wconversion does not flag it inside this header.
+      return static_cast<R>(function(std::forward<Args>(args)...));
+    }
   }
 
   // Referenced carries cv-qualification, so a const callable dispatches to its

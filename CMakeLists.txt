@@ -135,7 +135,7 @@ if(METL_BUILD_TESTS)
     containers/operation_count containers/alias_insert containers/unordered_erase_iteration
     containers/throwing_element containers/array_storage containers/self_range containers/sequence_reentrancy
     containers/recoverable_unchanged
-    containers/contract_edges
+    containers/contract_edges containers/associative_erase_iterator
     # conformance/  (one property, every registered type -- #320)
     conformance/conformance_removal conformance/conformance_capacity conformance/conformance_move
     # memory/
@@ -152,7 +152,7 @@ if(METL_BUILD_TESTS)
     vocab/optional vocab/optional_constexpr vocab/expected vocab/expected_regression
     vocab/variant vocab/variant_regression vocab/span vocab/function_ref
     vocab/fixed_function vocab/fixed_function_const vocab/fixed_function_null vocab/callable_reentrancy vocab/delegate
-    vocab/callable_reference_return
+    vocab/callable_reference_return vocab/vocab_std_parity
     vocab/intrusive_ptr vocab/intrusive_ptr_atomic vocab/intrusive_ptr_contract vocab/intrusive_ptr_alias vocab/scope_exit vocab/type_traits
     vocab/variant_selfassign vocab/emplace_self_alias vocab/vocab_assignment vocab/versioned_handle
     # bits/
