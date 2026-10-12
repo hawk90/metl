@@ -361,6 +361,15 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
     }""",
     },
     {
+        "name": "flat_map_erase_iterator_returns_end",
+        "file": "include/metl/flat_map.hpp",
+        "why": "erase(iterator) returns end() instead of the next element, so a loop "
+               "that erases as it iterates stops after the first erase (#313).",
+        "kills": "ctest:associative_erase_iterator_test",
+        "old": """    return data() + (index < size_ ? index : size_);""",
+        "new": """    return data() + size_;""",
+    },
+    {
         "name": "scheduler_until_idle_stops_on_quiet_round",
         "file": "include/metl/coro/scheduler.hpp",
         "why": "run_until_idle stops after a round in which nothing yielded, "
