@@ -19,6 +19,7 @@
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
 #include "metl/detail/construct.hpp"
+#include "metl/detail/three_way.hpp"
 #include "metl/in_place.hpp"
 #include "metl/type_traits.hpp"
 
@@ -615,6 +616,25 @@ constexpr auto operator>=(const optional<T>& lhs, const optional<U>& rhs) -> dec
 // ---- Comparison: optional vs nullopt ---------------------------------------
 
 /// @brief Compares an optional against nullopt (empty state check).
+#if METL_DETAIL_HAS_THREE_WAY
+/// Three-way comparison (C++20), as std::optional's: an empty optional orders
+/// before any engaged one, and two engaged ones by their values.
+template <typename T, typename U>
+    requires std::three_way_comparable_with<T, U> constexpr std::compare_three_way_result_t<T, U> operator<= >
+    (const optional<T>& lhs, const optional<U>& rhs) {
+  if (lhs.has_value() && rhs.has_value()) {
+    return *lhs <= > *rhs;
+  }
+  return lhs.has_value() <= > rhs.has_value();
+}
+
+/// An optional against nullopt (C++20): empty is equal, engaged is greater.
+template <typename T>
+    constexpr std::strong_ordering operator<= > (const optional<T>& lhs, nullopt_t) noexcept {
+  return lhs.has_value() <= > false;
+}
+#endif
+
 template <typename T>
 constexpr bool operator==(const optional<T>& lhs, nullopt_t) noexcept {
   return !lhs.has_value();

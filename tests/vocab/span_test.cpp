@@ -1,3 +1,5 @@
+#include "metl_check.hpp"
+
 #include <array>
 #include <cstddef>
 #include <type_traits>
@@ -111,7 +113,45 @@ static_assert(cross_extent_checks(), "cross-extent checks failed");
 
 }  // namespace
 
+// #316: a span is a borrowed range and a view, as std::span is, and a span of
+// const elements can view an rvalue container for the call it is passed to.
+#include <vector>
+#if defined(__cpp_lib_ranges) && __cpp_lib_ranges >= 201911L
+#include <algorithm>
+#include <ranges>
+static_assert(std::ranges::borrowed_range<metl::span<int>>, "span is a borrowed range");
+static_assert(std::ranges::view<metl::span<int>>, "span is a view");
+#endif
+namespace {
+#if defined(__cpp_lib_ranges) && __cpp_lib_ranges >= 201911L
+int g_values[] = {1, 2, 3};
+metl::span<int> values() {
+  return metl::span<int>(g_values);
+}
+#endif
+int sum(metl::span<const int> s) {
+  int total = 0;
+  for (int v : s) {
+    total += v;
+  }
+  return total;
+}
+void span_cxx20_ranges_and_rvalues() {
+#if defined(__cpp_lib_ranges) && __cpp_lib_ranges >= 201911L
+  auto found = std::ranges::find(values(), 2);  // an iterator, not ranges::dangling
+  CHECK(found != values().end());
+  CHECK_EQ(*found, 2);
+  auto tail = values() | std::views::drop(1);
+  CHECK_EQ(*tail.begin(), 2);
+#endif
+  CHECK_EQ(sum(std::vector<int>{4, 5, 6}), 15);
+  static_assert(!std::is_constructible_v<metl::span<int>, std::vector<int>&&>,
+                "a span of non-const elements still does not bind an rvalue");
+}
+}  // namespace
+
 int main() {
+  span_cxx20_ranges_and_rvalues();
   int values[] = {10, 20, 30};
   metl::span<int> writable(values);
   metl::span<const int> readable(writable);
@@ -292,5 +332,5 @@ int main() {
     return 23;
   }
 
-  return 0;
+  return metl_test::exit_code();
 }

@@ -3,7 +3,35 @@
 
 #include <metl/fixed_string.hpp>
 
+// #316: C++20 three-way comparison, so a struct that defaults its own <=>
+// can hold one of these.
+#if METL_DETAIL_HAS_THREE_WAY
+#include <compare>
+namespace {
+struct cmp_record {
+  int id;
+  metl::fixed_string<8> field;
+  auto operator<= > (const cmp_record&) const = default;
+};
+void three_way_comparison() {
+  const cmp_record a{1, metl::fixed_string<8>("abc")};
+  const cmp_record b{1, metl::fixed_string<8>("abd")};
+  if (!(a < b) || (a <= > a) != 0) {
+    std::abort();
+  }
+  // Unsigned-char order, as operator<: "\xff" sorts after "a".
+  if (!((metl::fixed_string<4>("\xff") <= > metl::fixed_string<8>("a")) > 0)) {
+    std::abort();
+  }
+}
+}  // namespace
+#define METL_TEST_THREE_WAY 1
+#endif
+
 int main() {
+#ifdef METL_TEST_THREE_WAY
+  three_way_comparison();
+#endif
   metl::fixed_string<8> text;
   if (!text.empty() || text.capacity() != 8 || text.c_str()[0] != '\0') {
     return 1;

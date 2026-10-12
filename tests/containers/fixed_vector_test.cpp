@@ -33,7 +33,38 @@ int tracker::destructions = 0;
 
 }  // namespace
 
+// #316: C++20 three-way comparison, so a struct that defaults its own <=>
+// can hold one of these.
+#if METL_DETAIL_HAS_THREE_WAY
+#include <compare>
+namespace {
+struct cmp_record {
+  int id;
+  metl::fixed_vector<int, 4> field;
+  auto operator<= > (const cmp_record&) const = default;
+};
+void three_way_comparison() {
+  cmp_record a{1, {}};
+  cmp_record b{1, {}};
+  CHECK(a.field.try_push_back(1));
+  CHECK(b.field.try_push_back(2));
+  CHECK(a < b);
+  CHECK((a <= > a) == 0);
+  metl::fixed_vector<int, 4> shorter;
+  metl::fixed_vector<int, 8> longer;
+  CHECK(shorter.try_push_back(1));
+  CHECK(longer.try_push_back(1));
+  CHECK(longer.try_push_back(0));
+  CHECK((shorter <= > longer) < 0);  // a prefix orders first, across capacities
+}
+}  // namespace
+#define METL_TEST_THREE_WAY 1
+#endif
+
 int main() {
+#ifdef METL_TEST_THREE_WAY
+  three_way_comparison();
+#endif
   metl::fixed_vector<int, 3> numbers;
   CHECK(numbers.empty());
   CHECK_EQ(numbers.capacity(), 3u);

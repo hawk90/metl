@@ -37,7 +37,33 @@ int tracker::destructions = 0;
 
 }  // namespace
 
+// #316: C++20 three-way comparison, so a struct that defaults its own <=>
+// can hold one of these.
+#if METL_DETAIL_HAS_THREE_WAY
+#include <compare>
+namespace {
+struct cmp_record {
+  int id;
+  metl::optional<int> field;
+  auto operator<= > (const cmp_record&) const = default;
+};
+void three_way_comparison() {
+  const cmp_record empty{1, metl::nullopt};
+  const cmp_record five{1, 5};
+  CHECK(empty < five);
+  CHECK((five <= > five) == 0);
+  CHECK((metl::optional<int>(3) <= > metl::optional<int>(4)) < 0);
+  CHECK((metl::optional<int>() <= > metl::nullopt) == 0);
+  CHECK((metl::optional<int>(0) <= > metl::nullopt) > 0);
+}
+}  // namespace
+#define METL_TEST_THREE_WAY 1
+#endif
+
 int main() {
+#ifdef METL_TEST_THREE_WAY
+  three_way_comparison();
+#endif
   metl::optional<int> empty;
   CHECK(!empty.has_value());
 
