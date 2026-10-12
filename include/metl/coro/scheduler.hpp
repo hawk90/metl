@@ -5,15 +5,16 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `try_attach`, `try_attach_protothread`, `try_attach_stepper` | wait-free, bounded by `Capacity` |
-///   | `detach`, `is_attached` | wait-free, bounded by `Capacity` |
-///   | `run_once` | bounded by the attached tasks and their own poll cost |
-///   | `run_until_idle` | bounded by its `max_rounds` argument |
+///   | `try_attach`, `try_attach_protothread`, `try_attach_stepper` | wait-free, bounded by `Capacity`
+///   squared | | `detach`, `is_attached` | wait-free, bounded by `Capacity` | | `run_once` | bounded by the
+///   attached tasks and their own poll cost | | `run_until_idle` | bounded by its `max_rounds` argument |
 ///
 /// The task table is a flat array searched linearly, so attaching, detaching and
 /// lookup are `Capacity`-bounded rather than constant -- attaching searches first,
-/// because a task is attached at most once. The array is small and fixed, which is
-/// the trade this type makes for having no free list to corrupt.
+/// because a task is attached at most once. Attaching also picks an attachment
+/// number no live entry uses, which is up to `2 * Capacity + 1` such searches. The
+/// array is small and fixed, which is the trade this type makes for having no free
+/// list to corrupt.
 ///
 /// `run_once` visits each attached task once; its bound is therefore the sum of the
 /// tasks' own poll functions, which the scheduler cannot bound for you. A task that
@@ -89,7 +90,9 @@ class scheduler {
   /// @brief Generic attach for any `bool(*)(void*) noexcept` poll function.
   /// @param task Task pointer passed back to `fn`. @param fn The poll trampoline.
   /// @pre The task is not already attached; attaching it twice aborts.
-  /// @return true if attached, false if the scheduler is full.
+  /// @return true if attached, false if the scheduler is full. Every `try_attach*`
+  ///         also returns false when rounds nested inside polls (a poll calling
+  ///         `run_once`) hold all `2 * Capacity + 1` attachment numbers.
   METL_NODISCARD bool try_attach(void* task, poll_fn fn) noexcept { return try_attach_impl(task, fn); }
 
   /// @brief Detach a task by pointer (linear search, O(N)).
@@ -158,21 +161,68 @@ class scheduler {
     // each remove one, so the scheduler would poll an object the caller has
     // destroyed. A precondition, not "full": checked first, and never stripped.
     METL_HARDEN(!is_attached(task));
-    if (tasks_.full()) {
+    size_type attachment = 0;
+    if (tasks_.full() || !try_take_attachment(attachment)) {
       return false;
     }
-    return tasks_.try_push_back(entry{task_slot{task, fn}, next_attachment_++});
+    return tasks_.try_push_back(entry{task_slot{task, fn}, attachment});
   }
 
   // One attachment. The number tells attachments apart where the task address
   // and poll function cannot: a task detached and attached again, even with
-  // the same poll function, is a new entry. It wraps after 2^N attaches; only
-  // attachments alive in the same round are compared, and there are at most
-  // Capacity of those.
+  // the same poll function, is a new entry.
   struct entry {
     task_slot slot;
     size_type attachment;
   };
+
+  // A round in progress: run_once's snapshot, and the round it is nested in
+  // when a poll runs another round.
+  struct round_frame {
+    const entry* entries;
+    size_type size;
+    const round_frame* outer;
+  };
+
+  // Attachment numbers cycle through [0, 2 * Capacity + 1). A number is in use
+  // while an entry holds it, and while a running round's snapshot holds it:
+  // run_once asks holds() about every snapshot entry, so a number reissued
+  // mid-round would make it poll a detached task's stale slot. Without nested
+  // rounds that is at most Capacity of each, so a free number is always among
+  // the next 2 * Capacity + 1; only rounds nested inside polls can use them all,
+  // and then attaching reports false, as when full.
+  //
+  // A counter that only wraps was not enough (#310): after 2^32 attaches on a
+  // 32-bit target, a new attachment could share its number with a long-lived
+  // one, and the first to complete removed the other. Cycling a small range
+  // also makes the reuse happen in every test, not after 49 days of uptime.
+  static constexpr size_type attachment_numbers = (2 * Capacity) + 1;
+
+  METL_NODISCARD bool try_take_attachment(size_type& out) noexcept {
+    for (size_type tries = 0; tries < attachment_numbers; ++tries) {
+      const size_type candidate = next_attachment_;
+      next_attachment_ = next_attachment_ + 1 == attachment_numbers ? 0 : next_attachment_ + 1;
+      if (!in_use(candidate)) {
+        out = candidate;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool in_use(size_type attachment) const noexcept {
+    if (holds(attachment)) {
+      return true;
+    }
+    for (const round_frame* frame = round_; frame != nullptr; frame = frame->outer) {
+      for (size_type i = 0; i < frame->size; ++i) {
+        if (frame->entries[i].attachment == attachment) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 
   // Whether the attachment is still attached.
   bool holds(size_type attachment) const noexcept {
@@ -196,6 +246,8 @@ class scheduler {
 
   metl::fixed_vector<entry, Capacity> tasks_;
   size_type next_attachment_ = 0;
+  // The innermost running round, while run_once runs; see try_take_attachment.
+  const round_frame* round_ = nullptr;
 };
 
 template <std::size_t Capacity>
@@ -211,6 +263,9 @@ typename scheduler<Capacity>::size_type scheduler<Capacity>::run_once() noexcept
   for (size_type i = 0; i < n; ++i) {
     snapshot[i] = tasks_[i];
   }
+  // Reserve the snapshot's numbers until the round ends.
+  const round_frame frame{snapshot, n, round_};
+  round_ = &frame;
 
   size_type still_running = 0;
   for (size_type i = 0; i < n; ++i) {
@@ -231,6 +286,7 @@ typename scheduler<Capacity>::size_type scheduler<Capacity>::run_once() noexcept
       remove(e.attachment);
     }
   }
+  round_ = frame.outer;
   return still_running;
 }
 
