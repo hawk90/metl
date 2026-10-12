@@ -96,7 +96,27 @@ void test_register_fixed_address() {
 
 }  // namespace
 
+// #316: the documentation lists enums as register types, and read/write took
+// them, but the bit operations on an `enum class` register failed to compile:
+// a scoped enum has no |, & or ~. They now work on the underlying integer.
+namespace {
+enum class ctrl : std::uint32_t { none = 0, enable = 1u << 0, irq = 1u << 3, mode = 3u << 4 };
+
+void enum_register_bit_operations() {
+  alignas(std::uint32_t) volatile ctrl reg = ctrl::none;
+  const metl::mmio_ptr<ctrl> r(&reg);
+  r.set_bits(ctrl::enable);
+  r.set_bits(ctrl::irq);
+  CHECK_EQ(static_cast<std::uint32_t>(r.read()), 0x9u);
+  r.clear_bits(ctrl::enable);
+  CHECK_EQ(static_cast<std::uint32_t>(r.read()), 0x8u);
+  r.modify(ctrl::mode, static_cast<ctrl>(2u << 4));
+  CHECK_EQ(static_cast<std::uint32_t>(r.read()), 0x28u);
+}
+}  // namespace
+
 int main() {
+  enum_register_bit_operations();
   test_ptr_read_write();
   test_ptr_modify_preserves_other_bits();
   test_ptr_set_clear_bits();

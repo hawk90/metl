@@ -13,13 +13,16 @@
 // profile); an ARM7TDMI, ARM9 or non-K ARM11 does not assemble them. On those
 // cores the three functions below fall back to a compiler barrier, as on any
 // other target without the instructions. (GCC has spelled ARMv6KZ both
-// __ARM_ARCH_6KZ__ and __ARM_ARCH_6ZK__.) The arm-hints CI job assembles this
+// __ARM_ARCH_6KZ__ and __ARM_ARCH_6ZK__.) On ARMv6K the hints exist in ARM
+// state only; their Thumb encodings arrived with ARMv6T2 and ARMv6-M, so an
+// ARM1176 compiling Thumb-1 code takes the fallback too (#316). The arm-hints CI job assembles this
 // header per architecture and checks where the hints appear.
 #ifdef __aarch64__
 #define METL_DETAIL_ARM_HINTS 1
-#elif defined(__arm__) && defined(__ARM_ARCH) &&                                 \
-    (__ARM_ARCH >= 7 || defined(__ARM_ARCH_6K__) || defined(__ARM_ARCH_6KZ__) || \
-     defined(__ARM_ARCH_6ZK__) || defined(__ARM_ARCH_6T2__) || defined(__ARM_ARCH_6M__))
+#elif defined(__arm__) && defined(__ARM_ARCH) &&                                              \
+    (__ARM_ARCH >= 7 || defined(__ARM_ARCH_6T2__) || defined(__ARM_ARCH_6M__) ||              \
+     ((defined(__ARM_ARCH_6K__) || defined(__ARM_ARCH_6KZ__) || defined(__ARM_ARCH_6ZK__)) && \
+      (!defined(__thumb__) || defined(__thumb2__))))
 #define METL_DETAIL_ARM_HINTS 1
 #else
 #define METL_DETAIL_ARM_HINTS 0
