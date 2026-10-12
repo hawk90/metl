@@ -235,10 +235,13 @@ struct identity_hash {
 /// differs from its bytes:
 ///
 /// - a character range (`data()` -> `const char*`, plus `size()`): its `size()` characters. This is
-///   `metl::fixed_string` of any capacity, `metl::span<const char>` and `std::string_view`; the
-///   `const char*` overload hashes the same bytes, so all of them interoperate.
+///   `metl::fixed_string` of any capacity, `metl::span<const char>` and `std::string_view`.
+/// - a `const char*` or `char*`: the characters up to its NUL.
+/// - a `char[N]` or `const char[N]`, including a string literal: the characters up to the first NUL,
+///   never past N, so an unterminated buffer is safe.
+///
+///   All of the above hash the same characters the same way, so they interoperate.
 /// - an integral or enum: its value widened to 64 bits, so `5`, `5L` and `std::uint8_t{5}` agree.
-/// - a mutable `char*`: as `const char*`, the characters up to its NUL.
 /// - anything else: its object representation, gated on `std::has_unique_object_representations`.
 ///   Any other pointer passes that gate and is hashed by ADDRESS, which agrees with pointer
 ///   equality but not with equality of what it points to.
@@ -256,18 +259,24 @@ struct fnv1a_hash {
   template <typename T>
   METL_NODISCARD std::size_t operator()(const T& value) const noexcept {
     if constexpr (std::is_array_v<T> && std::is_same_v<std::remove_cv_t<std::remove_extent_t<T>>, char>) {
-      // A `char[N]` buffer: its characters up to the first NUL, never past N.
-      // Without this, a non-const array binds here as T and would hash all N bytes.
+      // A `char[N]` or `const char[N]`: its characters up to the first NUL,
+      // never past N. There is deliberately no non-template `const char*`
+      // overload: a const array would prefer it to this template (a tie that
+      // a non-template wins) and run past an unterminated buffer (#311).
       std::size_t len = 0;
       while (len < std::extent_v<T> && value[len] != '\0') {
         ++len;
       }
       return fnv1a(value, len);
-    } else if constexpr (std::is_same_v<T, char*>) {
-      // A mutable `char*` prefers this template over the `const char*`
-      // overload, and a pointer passes the unique-representation gate, so
-      // without this branch the string would be hashed by its ADDRESS.
-      return (*this)(static_cast<const char*>(value));
+    } else if constexpr (std::is_same_v<T, const char*> || std::is_same_v<T, char*>) {
+      // A C string: the characters up to its NUL. A pointer passes the
+      // unique-representation gate, so without this branch it would be hashed
+      // by its ADDRESS.
+      std::size_t len = 0;
+      while (value[len] != '\0') {
+        ++len;
+      }
+      return fnv1a(value, len);
     } else if constexpr (detail::is_char_range<T>::value) {
       // Not the object representation: metl::fixed_string keeps stale bytes
       // past its terminator, so two equal strings can differ there.
@@ -294,14 +303,6 @@ struct fnv1a_hash {
                     "bit patterns). Provide a specialized hash for other types.");
       return fnv1a(reinterpret_cast<const unsigned char*>(detail::addressof(value)), sizeof(T));
     }
-  }
-
-  METL_NODISCARD std::size_t operator()(const char* str) const noexcept {
-    std::size_t len = 0;
-    while (str[len] != '\0') {
-      ++len;
-    }
-    return fnv1a(str, len);
   }
 };
 

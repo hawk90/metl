@@ -465,7 +465,6 @@ class variant {
       (!std::is_move_constructible_v<typename detail::nth_type<I, Ts...>::type> ||
        std::is_nothrow_move_constructible_v<typename detail::nth_type<I, Ts...>::type>) &&
       detail::all_nothrow_destructible<Ts...>::value) {
-    static_assert(I < sizeof...(Ts), "emplace<I> index out of range");
     using target_type = typename detail::nth_type<I, Ts...>::type;
     static_assert(std::is_constructible_v<target_type, Args&&...>,
                   "alternative must be constructible from the given arguments");
@@ -657,12 +656,13 @@ METL_NODISCARD constexpr const T* get_if(const variant<Ts...>* value) noexcept {
 }
 
 /// @brief Returns a pointer to the active alternative at index `I`, or nullptr.
-/// @tparam I The zero-based alternative index to retrieve.
+/// @tparam I The zero-based alternative index to retrieve. An index out of
+///           range is rejected by `variant_alternative_t` in the return type,
+///           before the body is instantiated.
 /// @param value Pointer to the variant (may be null).
 /// @return Pointer to the alternative if active, otherwise nullptr. Never asserts.
 template <std::size_t I, typename... Ts>
 METL_NODISCARD constexpr variant_alternative_t<I, variant<Ts...>>* get_if(variant<Ts...>* value) noexcept {
-  static_assert(I < sizeof...(Ts), "get_if<I> index out of range");
   using alternative_type = variant_alternative_t<I, variant<Ts...>>;
   if (value == nullptr || value->index() != I) {
     return nullptr;
@@ -673,7 +673,6 @@ METL_NODISCARD constexpr variant_alternative_t<I, variant<Ts...>>* get_if(varian
 template <std::size_t I, typename... Ts>
 METL_NODISCARD constexpr const variant_alternative_t<I, variant<Ts...>>* get_if(
     const variant<Ts...>* value) noexcept {
-  static_assert(I < sizeof...(Ts), "get_if<I> index out of range");
   using alternative_type = variant_alternative_t<I, variant<Ts...>>;
   if (value == nullptr || value->index() != I) {
     return nullptr;

@@ -33,6 +33,7 @@
 #include "metl/detail/plain_integer.hpp"
 #include "metl/detail/ring_core.hpp"
 #include "metl/detail/transparent.hpp"
+#include "metl/detail/word_atomic.hpp"
 #include "metl/endian.hpp"
 #include "metl/event_dispatcher.hpp"
 #include "metl/expected.hpp"
