@@ -378,7 +378,6 @@ struct arena_allocator_adapter {
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = false;
   static constexpr bool fixed_count = false;
-  static constexpr const char* gap_reentrant_clear_destroys_once = "#312";
   static handed_out<type::mark_type, 4>& given() {
     static handed_out<type::mark_type, 4> list;
     return list;

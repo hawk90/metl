@@ -141,12 +141,27 @@ class arena_allocator {
   ///      `mark` call has taken the arena below @c target. After such a rollback
   ///      the offset may not be a record boundary any more, and the walk can
   ///      overshoot it, destroying an object that straddles it.
+  /// @note A destructor run by `rewind` may call back into this arena. Its
+  ///       object is already marked as being destroyed, so a nested `rewind` or
+  ///       `reset` does not destroy it again, and an object it allocates is
+  ///       destroyed and released by the same walk. Its own storage is released
+  ///       only after it returns.
   void rewind(mark_type target) noexcept {
     METL_ASSERT(target.offset <= offset_);
     while (offset_ > target.offset) {
-      const allocation_record record = load_record(offset_);
+      allocation_record record = load_record(offset_);
       if (record.destroy != nullptr) {
-        record.destroy(&storage_[record.payload_offset]);
+        // Disarm the record before the destructor runs, then look again. The
+        // destructor may rewind this arena itself, which must find the object
+        // already being destroyed rather than destroy it a second time (#312),
+        // and it may allocate, which lands above this record and is destroyed
+        // and released before it. The storage itself is released only once the
+        // destructor has returned, so nothing is built over a live object.
+        const destroy_fn_t destroy = record.destroy;
+        record.destroy = nullptr;
+        store_record(offset_, record);
+        destroy(&storage_[record.payload_offset]);
+        continue;
       }
       offset_ = record.previous_offset;
     }
