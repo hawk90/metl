@@ -167,8 +167,8 @@ def self_test():
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--min-lines", type=float, default=85)
-    parser.add_argument("--min-branches", type=float, default=72)
+    parser.add_argument("--min-lines", type=float, default=86.5)
+    parser.add_argument("--min-branches", type=float, default=76.5)
     parser.add_argument("--lcov", type=Path,
                         help="also write the include/metl lcov file it measured here")
     parser.add_argument("--self-test", action="store_true")
