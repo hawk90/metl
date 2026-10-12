@@ -25,6 +25,16 @@ WHAT THIS CANNOT SEE, and why the number is not the whole story:
 So: this measures host-visible RUNTIME branch depth. It is a floor on quality,
 not a summary of it.
 
+ONE FILE, ONE FORMULA (#308). The gated figures are computed from the same
+include/metl lcov export that Codecov receives, with Codecov's formula, so the
+badge and the gate report the same number for the same commit:
+
+  lines     hits / (hits + partials + misses), where a partial is a line that
+            ran but has a branch that never went one of its ways. llvm-cov's
+            own line figure counts a partial line as covered, which is why it
+            read 91.5% while Codecov showed 87%.
+  branches  branches taken / branches found, from the same lcov records.
+
 THE NUMBERS ARE COMPILER-VERSION DEPENDENT. Different Clang releases lower the
 same source to different numbers of instrumented branches -- this repo measured
 1258 branches under Apple Clang and 1122 under Ubuntu's, giving 75.1% and 72.3%
@@ -32,10 +42,11 @@ for identical code. So a local run will not match CI, and the CI number is the
 one the floor is set against. Do not chase a local figure.
 
 Usage:
-    tools/coverage.py [--min-lines 90] [--min-branches 72] [--lcov PATH]
+    tools/coverage.py [--min-lines N] [--min-branches N] [--lcov PATH]
+    tools/coverage.py --self-test
 
---lcov also writes the same measurement, include/metl only, as an lcov file
-for Codecov. The floors here stay the gate; Codecov only displays.
+--lcov writes the include/metl lcov file it measured, for Codecov to upload.
+The floors here stay the gate; Codecov only displays.
 """
 
 import argparse
@@ -84,14 +95,86 @@ def lcov_records_under(text, marker):
     return sum(1 for line in text.splitlines() if line.startswith("SF:") and marker in line)
 
 
+def lcov_totals(text):
+    """Line and branch counts from lcov records, as Codecov counts them.
+
+    Returns (hits, partials, misses, branches_hit, branches_found). A line is a
+    partial when it ran and one of its branches never went one of its ways
+    (BRDA taken count 0 or '-')."""
+    hits = partials = misses = branches_hit = branches_found = 0
+    line_hits, line_has_untaken = {}, set()
+
+    def flush():
+        nonlocal hits, partials, misses
+        for line, count in line_hits.items():
+            if count == 0:
+                misses += 1
+            elif line in line_has_untaken:
+                partials += 1
+            else:
+                hits += 1
+        line_hits.clear()
+        line_has_untaken.clear()
+
+    for raw in text.splitlines():
+        if raw.startswith("DA:"):
+            fields = raw[3:].split(",")
+            line, count = int(fields[0]), int(fields[1])
+            line_hits[line] = max(line_hits.get(line, 0), count)
+        elif raw.startswith("BRDA:"):
+            line, _block, _branch, taken = raw[5:].split(",")
+            branches_found += 1
+            if taken not in ("-", "0"):
+                branches_hit += 1
+            else:
+                line_has_untaken.add(int(line))
+        elif raw == "end_of_record":
+            flush()
+    flush()
+    return hits, partials, misses, branches_hit, branches_found
+
+
+SELF_TEST_LCOV = """SF:include/metl/a.hpp
+DA:1,5
+DA:2,0
+DA:3,2
+DA:4,1
+BRDA:3,0,0,2
+BRDA:3,0,1,0
+BRDA:4,0,0,1
+BRDA:4,0,1,-
+BRDA:5,0,0,3
+end_of_record
+SF:include/metl/b.hpp
+DA:1,1
+DA:1,0
+end_of_record
+"""
+
+
+def self_test():
+    # a.hpp: line 1 hit, 2 missed, 3 and 4 partial (a branch never taken);
+    # b.hpp: a line listed twice counts once, as hit. 5 branches, 3 taken.
+    got = lcov_totals(SELF_TEST_LCOV)
+    want = (2, 2, 1, 3, 5)
+    if got != want:
+        print(f"SELF-TEST FAILED: lcov_totals gave {got}, expected {want}", file=sys.stderr)
+        return 1
+    print("self-test passed: partial lines and untaken branches are counted as Codecov counts them")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--min-lines", type=float, default=90)
+    parser.add_argument("--min-lines", type=float, default=85)
     parser.add_argument("--min-branches", type=float, default=72)
     parser.add_argument("--lcov", type=Path,
-                        help="also write include/metl coverage as an lcov file here")
+                        help="also write the include/metl lcov file it measured here")
+    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
+    if args.self_test:
+        return self_test()
     sys.stdout.reconfigure(line_buffering=True)
 
     profdata, cov = find_tool("llvm-profdata"), find_tool("llvm-cov")
@@ -136,18 +219,20 @@ def main():
                             capture_output=True, text=True).stdout
     (BUILD_DIR / "report.txt").write_text(report)
 
+    exported = subprocess.run([cov, "export", "-format=lcov", *objects,
+                               f"-instr-profile={profile}"],
+                              capture_output=True, text=True)
+    if exported.returncode:
+        print(exported.stderr, file=sys.stderr)
+        return 1
+    kept = lcov_records_under(exported.stdout, "include/metl/")
+    if kept == 0:
+        print("error: the lcov export has no include/metl record", file=sys.stderr)
+        return 1
+    lcov = lcov_filtered(exported.stdout, "include/metl/")
+    (BUILD_DIR / "metl.lcov").write_text(lcov)
     if args.lcov is not None:
-        exported = subprocess.run([cov, "export", "-format=lcov", *objects,
-                                   f"-instr-profile={profile}"],
-                                  capture_output=True, text=True)
-        if exported.returncode:
-            print(exported.stderr, file=sys.stderr)
-            return 1
-        kept = lcov_records_under(exported.stdout, "include/metl/")
-        if kept == 0:
-            print("error: the lcov export has no include/metl record", file=sys.stderr)
-            return 1
-        args.lcov.write_text(lcov_filtered(exported.stdout, "include/metl/"))
+        args.lcov.write_text(lcov)
         print(f"lcov: {kept} include/metl file(s) written to {args.lcov}")
 
     # Columns: file, regions, missed, cover, functions, missed, executed,
@@ -160,14 +245,19 @@ def main():
     for row in sorted(with_branches, key=lambda row: float(row[12].rstrip("%"))):
         print(f"  branches {float(row[12].rstrip('%')):7.2f}%   lines {row[9]:<9} {row[0]}")
 
-    total = [sum(int(row[i]) for row in rows) for i in (1, 2, 4, 5, 7, 8, 10, 11)]
-    reg, regmiss, fn, fnmiss, ln, lnmiss, br, brmiss = total
-    lines_pct, branch_pct = pct(ln, lnmiss), pct(br, brmiss)
-    print("\n=== include/metl totals ===")
+    total = [sum(int(row[i]) for row in rows) for i in (1, 2, 4, 5, 7, 8)]
+    reg, regmiss, fn, fnmiss, ln, lnmiss = total
+    hits, partials, misses, br_hit, br_found = lcov_totals(lcov)
+    lines_pct = 100.0 * hits / (hits + partials + misses) if hits + partials + misses else 0.0
+    branch_pct = 100.0 * br_hit / br_found if br_found else 0.0
+    print("\n=== include/metl totals (gated, from the lcov file Codecov receives) ===")
+    print(f"  lines     {lines_pct:6.2f}%  ({hits} hit, {partials} partial, {misses} missed)"
+          f"   floor {args.min_lines:g}%")
+    print(f"  branches  {branch_pct:6.2f}%  ({br_hit}/{br_found})   floor {args.min_branches:g}%")
+    print("=== llvm-cov report, for reference (a partial line counts as covered) ===")
     print(f"  regions   {pct(reg, regmiss):6.2f}%  ({reg - regmiss}/{reg})")
     print(f"  functions {pct(fn, fnmiss):6.2f}%  ({fn - fnmiss}/{fn})")
-    print(f"  lines     {lines_pct:6.2f}%  ({ln - lnmiss}/{ln})   floor {args.min_lines:g}%")
-    print(f"  branches  {branch_pct:6.2f}%  ({br - brmiss}/{br})   floor {args.min_branches:g}%")
+    print(f"  lines     {pct(ln, lnmiss):6.2f}%  ({ln - lnmiss}/{ln})")
 
     failed = False
     if lines_pct < args.min_lines:
