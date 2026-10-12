@@ -40,22 +40,24 @@ using mmio_bits_t =
 
 template <typename T>
 constexpr T mmio_set(T current, T bits) noexcept {
-  using B = mmio_bits_t<T>;
-  return static_cast<T>(static_cast<B>(static_cast<B>(current) | static_cast<B>(bits)));
+  using raw_type = mmio_bits_t<T>;
+  return static_cast<T>(static_cast<raw_type>(static_cast<raw_type>(current) | static_cast<raw_type>(bits)));
 }
 
 template <typename T>
 constexpr T mmio_clear(T current, T bits) noexcept {
-  using B = mmio_bits_t<T>;
-  return static_cast<T>(static_cast<B>(static_cast<B>(current) & static_cast<B>(~static_cast<B>(bits))));
+  using raw_type = mmio_bits_t<T>;
+  return static_cast<T>(static_cast<raw_type>(static_cast<raw_type>(current) &
+                                              static_cast<raw_type>(~static_cast<raw_type>(bits))));
 }
 
 template <typename T>
 constexpr T mmio_merge(T current, T mask, T value) noexcept {
-  using B = mmio_bits_t<T>;
-  const B cleared = static_cast<B>(static_cast<B>(current) & static_cast<B>(~static_cast<B>(mask)));
-  return static_cast<T>(
-      static_cast<B>(cleared | static_cast<B>(static_cast<B>(value) & static_cast<B>(mask))));
+  using raw_type = mmio_bits_t<T>;
+  const auto cleared = static_cast<raw_type>(static_cast<raw_type>(current) &
+                                             static_cast<raw_type>(~static_cast<raw_type>(mask)));
+  return static_cast<T>(static_cast<raw_type>(
+      cleared | static_cast<raw_type>(static_cast<raw_type>(value) & static_cast<raw_type>(mask))));
 }
 
 }  // namespace detail
