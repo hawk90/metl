@@ -1081,8 +1081,8 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
                "passes for the snapshot's entry and is polled in the round it was "
                "attached.",
         "kills": "ctest:coro_scheduler_reentrancy",
-        "old": "entry{task_slot{task, fn}, next_attachment_++}",
-        "new": "entry{task_slot{task, fn}, next_attachment_}",
+        "old": "entry{task_slot{task, fn}, attachment}",
+        "new": "entry{task_slot{task, fn}, size_type{0}}",
     },
 ]
 
