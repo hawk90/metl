@@ -169,6 +169,46 @@ void visit_accepts_a_single_declared_result() {
   metl::variant<int> single(metl::in_place_index<0>, 3);
   CHECK_EQ(metl::visit(truncating_visitor{}, single), 3);
 }
+
+// ---- emplace with no arguments, from an active alternative -----------------
+// Nothing can alias the storage, so a nothrow default construction switches in
+// place: one construction, and no temporary to move from and destroy.
+struct quiet_tracker {
+  static int constructions;
+  static int destructions;
+  quiet_tracker() noexcept { ++constructions; }
+  quiet_tracker(const quiet_tracker&) noexcept { ++constructions; }
+  quiet_tracker(quiet_tracker&&) noexcept { ++constructions; }
+  quiet_tracker& operator=(const quiet_tracker&) = default;
+  quiet_tracker& operator=(quiet_tracker&&) = default;
+  ~quiet_tracker() { ++destructions; }
+};
+int quiet_tracker::constructions = 0;
+int quiet_tracker::destructions = 0;
+
+void emplace_without_arguments_switches_in_place() {
+  metl::variant<int, quiet_tracker> v(7);
+  quiet_tracker::constructions = 0;
+  quiet_tracker::destructions = 0;
+
+  // From another alternative.
+  (void)v.emplace<quiet_tracker>();
+  CHECK_EQ(v.index(), std::size_t{1});
+  CHECK_EQ(quiet_tracker::constructions, 1);
+  CHECK_EQ(quiet_tracker::destructions, 0);
+
+  // Over the same alternative, by index: the old value goes, one new is built.
+  (void)v.emplace<1>();
+  CHECK_EQ(v.index(), std::size_t{1});
+  CHECK_EQ(quiet_tracker::constructions, 2);
+  CHECK_EQ(quiet_tracker::destructions, 1);
+
+  // And back to an alternative with no constructor to count.
+  (void)v.emplace<int>();
+  CHECK_EQ(v.index(), std::size_t{0});
+  CHECK_EQ(metl::get<int>(v), 0);
+  CHECK_EQ(quiet_tracker::destructions, 2);
+}
 }  // namespace
 
 int main() {
@@ -631,5 +671,6 @@ int main() {
   visit_reaches_every_alternative_on_every_value_category();
   comparisons_reach_every_alternative();
   visit_accepts_a_single_declared_result();
+  emplace_without_arguments_switches_in_place();
   return metl_test::exit_code();
 }
