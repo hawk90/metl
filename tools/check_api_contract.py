@@ -81,7 +81,8 @@ BOOL_ALLOWLIST = {
     # --- private helpers whose bool is an internal predicate ---
     "locate_insert_index": "private helper: 'was a slot found'",
     "is_decimal_digit": "private helper predicate: is this character a digit?",
-    "holds": "private query: is this exact (task, poll) pair attached to the scheduler?",
+    "holds": "private query: is this attachment still attached to the scheduler?",
+    "in_use": "private query: may this attachment number not be issued now?",
 }
 
 # R3 beyond `try_`: asserting forms whose return value is their only output, so

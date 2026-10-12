@@ -345,9 +345,10 @@ def main():
     changed = subprocess.run(["git", "diff", "--name-only", base or "HEAD"], cwd=REPO,
                              capture_output=True, text=True).stdout.split()
     sys.path.insert(0, str(REPO / "tools"))
-    import check_mutants  # noqa: E402 -- the list of mutants lives there
+    import check_mutants  # noqa: E402 -- it loads the mutants from tools/mutants/
     everything = "tools/check_mutants.py" in changed
-    selected = [m for m in check_mutants.MUTANTS if everything or m["file"] in changed]
+    selected = [m for m in check_mutants.MUTANTS
+                if everything or m["file"] in changed or m["source"] in changed]
     if not selected:
         print("  (no mutated header changed -- CI runs all of them)")
     else:
