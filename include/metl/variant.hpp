@@ -28,6 +28,15 @@
 #include <type_traits>
 #include <utility>
 
+// Keeps a cold path out of its caller's stack frame; see variant::emplace.
+#if defined(_MSC_VER) && !defined(__clang__)
+#define METL_DETAIL_VARIANT_NOINLINE __declspec(noinline)
+#elif defined(__GNUC__) || defined(__clang__)
+#define METL_DETAIL_VARIANT_NOINLINE __attribute__((noinline))
+#else
+#define METL_DETAIL_VARIANT_NOINLINE
+#endif
+
 namespace metl {
 
 /// @brief Sentinel index value for a valueless variant (largest size_t).
@@ -474,12 +483,25 @@ class variant {
     // build the new value first. Valueless: nothing to alias. A target that
     // cannot be moved has no such path, so an argument inside the storage is
     // refused rather than read after its destruction.
+    //
+    // The temporary costs a whole alternative of stack and one extra move on
+    // every switch (#315), so it is skipped where it buys nothing: building
+    // from no arguments, or by copy or move from a value of the target type,
+    // that lies outside the storage, when the construction cannot throw (or
+    // exceptions are off). An argument of another type may point into the
+    // storage without lying in it -- a `const char*` into a string alternative
+    // -- so those still take the temporary.
     if constexpr (std::is_move_constructible_v<target_type>) {
       if (index_ != variant_npos) {
-        target_type incoming(std::forward<Args>(args)...);
-        reset();
-        ::new (raw_addr()) target_type(static_cast<target_type&&>(incoming));
-        index_ = I;
+        if constexpr (switches_in_place<target_type, Args...>) {
+          if (!(points_into_storage(detail::addressof(args)) || ...)) {
+            reset();
+            ::new (raw_addr()) target_type(std::forward<Args>(args)...);
+            index_ = I;
+            return *std::launder(static_cast<target_type*>(raw_addr()));
+          }
+        }
+        emplace_through_temporary<I>(std::forward<Args>(args)...);
         return *std::launder(static_cast<target_type*>(raw_addr()));
       }
     } else {
@@ -531,6 +553,52 @@ class variant {
     return ops;
   }
 
+  // The switch through a temporary, out of line: a function's stack frame is
+  // sized for every path in it, so kept inline the temporary would cost its
+  // stack even on the switches that construct in place (#315).
+  template <std::size_t I, typename... Args>
+  METL_DETAIL_VARIANT_NOINLINE void emplace_through_temporary(Args&&... args) {
+    using target_type = typename detail::nth_type<I, Ts...>::type;
+    target_type incoming(std::forward<Args>(args)...);
+    reset();
+    ::new (raw_addr()) target_type(static_cast<target_type&&>(incoming));
+    index_ = I;
+  }
+
+  METL_DETAIL_VARIANT_NOINLINE void assign_through_backup(const variant& other) {
+    variant backup(other);
+    reset();
+    move_ops()[backup.index_](raw_addr(), backup.raw_addr());
+    index_ = backup.index_;
+  }
+
+  METL_DETAIL_VARIANT_NOINLINE void assign_through_backup(variant&& other) {
+    variant backup(static_cast<variant&&>(other));
+    reset();
+    move_ops()[backup.index_](raw_addr(), backup.raw_addr());
+    index_ = backup.index_;
+  }
+
+  // Whether emplace may construct the new alternative straight into the
+  // storage once the old one is destroyed; see emplace.
+  template <typename T, typename... Args>
+  static constexpr bool switches_in_place =
+      (sizeof...(Args) == 0 ||
+       (sizeof...(Args) == 1 &&
+        (std::is_same_v<std::remove_cv_t<std::remove_reference_t<Args>>, T> && ...))) &&
+      (METL_NO_EXCEPTIONS || std::is_nothrow_constructible_v<T, Args&&...>);
+
+  // Per alternative: may assignment from another variant holding it construct
+  // straight into the storage? The same rule as switches_in_place.
+  static const bool* copies_in_place() noexcept {
+    static constexpr bool table[] = {(METL_NO_EXCEPTIONS || std::is_nothrow_copy_constructible_v<Ts>)...};
+    return table;
+  }
+  static const bool* moves_in_place() noexcept {
+    static constexpr bool table[] = {(METL_NO_EXCEPTIONS || std::is_nothrow_move_constructible_v<Ts>)...};
+    return table;
+  }
+
   static std::uintptr_t address_value(const volatile void* address) noexcept {
     return reinterpret_cast<std::uintptr_t>(address);
   }
@@ -572,7 +640,10 @@ class variant {
   // - Different alternative: copy- (or move-) construct a backup variant from
   //   `other` first, so a throw there leaves *this untouched; then reset() and
   //   move the backup's value in. A throw from that final move leaves *this
-  //   valueless (valueless_by_exception()).
+  //   valueless (valueless_by_exception()). Where that copy or move cannot
+  //   throw and `other` does not live inside this variant's storage, the
+  //   backup buys nothing and costs a whole alternative of stack (#315), so
+  //   the value is constructed straight into the storage instead.
   void assign_from(const variant& other) {
     if (index_ == other.index_) {
       const std::size_t active = index_;
@@ -586,10 +657,13 @@ class variant {
       index_ = active;
       return;
     }
-    variant backup(other);
-    reset();
-    move_ops()[backup.index_](raw_addr(), backup.raw_addr());
-    index_ = backup.index_;
+    if (copies_in_place()[other.index_] && !points_into_storage(&other)) {
+      reset();
+      copy_ops()[other.index_](raw_addr(), other.raw_addr());
+      index_ = other.index_;
+      return;
+    }
+    assign_through_backup(other);
   }
 
   void assign_from(variant&& other) {
@@ -605,10 +679,13 @@ class variant {
       index_ = active;
       return;
     }
-    variant backup(static_cast<variant&&>(other));
-    reset();
-    move_ops()[backup.index_](raw_addr(), backup.raw_addr());
-    index_ = backup.index_;
+    if (moves_in_place()[other.index_] && !points_into_storage(&other)) {
+      reset();
+      move_ops()[other.index_](raw_addr(), other.raw_addr());
+      index_ = other.index_;
+      return;
+    }
+    assign_through_backup(std::move(other));
   }
 
   // NOTE: alternatives live in laundered aligned storage, which is not

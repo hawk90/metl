@@ -361,6 +361,15 @@ inline constexpr bool visit_single_result_lvalue_v = true;""",
     }""",
     },
     {
+        "name": "variant_copy_assign_always_through_backup",
+        "file": "include/metl/variant.hpp",
+        "why": "Copy-assignment to another alternative always builds a backup variant, "
+               "a whole alternative of stack on every switch (#315).",
+        "kills": "ctest:variant_stack_frame",
+        "old": """    if (copies_in_place()[other.index_] && !points_into_storage(&other)) {""",
+        "new": """    if (false) {""",
+    },
+    {
         "name": "scheduler_until_idle_stops_on_quiet_round",
         "file": "include/metl/coro/scheduler.hpp",
         "why": "run_until_idle stops after a round in which nothing yielded, "
