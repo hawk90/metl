@@ -53,18 +53,16 @@ class function_ref<R(Args...)> {
   /// @note A lambda with that signature binds, and so does `fixed_function`;
   ///       a plain function did not (#316).
   template <
-      typename F,
-      typename Fp = std::decay_t<F>,
+      typename Fp,
       typename = std::enable_if_t<std::is_pointer_v<Fp> && std::is_function_v<std::remove_pointer_t<Fp>> &&
                                   !std::is_convertible_v<Fp, R (*)(Args...)> &&
                                   detail::is_invocable_r_without_temporary_v<R, Fp, Args...>>>
   // Implicit on purpose, like the exact-signature pointer constructor above
   // and std::function_ref: binding at a call site is what function_ref is for.
   // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
-  function_ref(F&& function) noexcept
-      : storage_(reinterpret_cast<generic_function>(static_cast<Fp>(function))),
-        callback_(&invoke_converted<Fp>) {
-    METL_HARDEN(static_cast<Fp>(function) != nullptr);
+  function_ref(Fp function) noexcept
+      : storage_(reinterpret_cast<generic_function>(function)), callback_(&invoke_converted<Fp>) {
+    METL_HARDEN(function != nullptr);
   }
 
   // Bind an lvalue callable (const or non-const). Only lvalue references are
