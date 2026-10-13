@@ -38,14 +38,20 @@ int tracker::destructions = 0;
 // Two DISTINCT counters, so a path that builds the wrong member, or skips a
 // destructor, moves one count and not the other. `tracker` above counts both
 // sides of an expected<tracker, tracker> together, which balances by accident.
+//
+// The counts live in a namespace-scope array, not in a static member of the
+// template: Clang 23 reports a template's static member that only an
+// instantiation reads as set but not used (llvm/llvm-project#231652).
+int g_counted_live[2] = {0, 0};
+
 template <int Tag>
 struct counted {
-  static int live;
+  static int live() { return g_counted_live[Tag]; }
   int value;
 
-  explicit counted(int input) noexcept : value(input) { ++live; }
-  counted(const counted& other) noexcept : value(other.value) { ++live; }
-  counted(counted&& other) noexcept : value(other.value) { ++live; }
+  explicit counted(int input) noexcept : value(input) { ++g_counted_live[Tag]; }
+  counted(const counted& other) noexcept : value(other.value) { ++g_counted_live[Tag]; }
+  counted(counted&& other) noexcept : value(other.value) { ++g_counted_live[Tag]; }
   counted& operator=(const counted& other) noexcept {
     value = other.value;
     return *this;
@@ -54,11 +60,8 @@ struct counted {
     value = other.value;
     return *this;
   }
-  ~counted() { --live; }
+  ~counted() { --g_counted_live[Tag]; }
 };
-
-template <int Tag>
-int counted<Tag>::live = 0;
 
 using live_value = counted<0>;
 using live_error = counted<1>;
@@ -90,19 +93,19 @@ void move_constructor_moves_the_active_member() {
     result moved(std::move(source));
     CHECK(moved.has_value());
     CHECK_EQ(moved->value, 7);
-    CHECK_EQ(live_value::live, 2);
-    CHECK_EQ(live_error::live, 0);
+    CHECK_EQ(live_value::live(), 2);
+    CHECK_EQ(live_error::live(), 0);
   }
   {
     result source(metl::unexpect, 9);
     result moved(std::move(source));
     CHECK(!moved.has_value());
     CHECK_EQ(moved.error().value, 9);
-    CHECK_EQ(live_value::live, 0);
-    CHECK_EQ(live_error::live, 2);
+    CHECK_EQ(live_value::live(), 0);
+    CHECK_EQ(live_error::live(), 2);
   }
-  CHECK_EQ(live_value::live, 0);
-  CHECK_EQ(live_error::live, 0);
+  CHECK_EQ(live_value::live(), 0);
+  CHECK_EQ(live_error::live(), 0);
 }
 
 void void_copy_assignment_copies_the_state() {
@@ -122,9 +125,9 @@ void void_copy_assignment_copies_the_state() {
     const result success;
     target = success;  // error -> value
     CHECK(target.has_value());
-    CHECK_EQ(live_error::live, 2);  // the two named failures
+    CHECK_EQ(live_error::live(), 2);  // the two named failures
   }
-  CHECK_EQ(live_error::live, 0);
+  CHECK_EQ(live_error::live(), 0);
 }
 
 void error_state_copy_assignment_replaces_the_error() {
@@ -135,10 +138,10 @@ void error_state_copy_assignment_replaces_the_error() {
     target = source;
     CHECK(!target.has_value());
     CHECK_EQ(target.error().value, 2);
-    CHECK_EQ(live_error::live, 2);
-    CHECK_EQ(live_value::live, 0);
+    CHECK_EQ(live_error::live(), 2);
+    CHECK_EQ(live_value::live(), 0);
   }
-  CHECK_EQ(live_error::live, 0);
+  CHECK_EQ(live_error::live(), 0);
 }
 
 void error_error_swap_exchanges_the_errors() {
@@ -151,9 +154,9 @@ void error_error_swap_exchanges_the_errors() {
     CHECK(!b.has_value());
     CHECK_EQ(a.error().value, 2);
     CHECK_EQ(b.error().value, 1);
-    CHECK_EQ(live_error::live, 2);
+    CHECK_EQ(live_error::live(), 2);
   }
-  CHECK_EQ(live_error::live, 0);
+  CHECK_EQ(live_error::live(), 0);
 }
 
 // The value<->error swap moves one member aside, destroys it, and builds the
@@ -165,7 +168,7 @@ void value_error_swap_destroys_what_it_moves(int& error_live) {
   {
     result a(metl::in_place, 1);
     result b(metl::unexpect, 2);
-    CHECK_EQ(live_value::live, 1);
+    CHECK_EQ(live_value::live(), 1);
     CHECK_EQ(error_live, 1);
 
     a.swap(b);  // a: value -> error, b: error -> value
@@ -173,7 +176,7 @@ void value_error_swap_destroys_what_it_moves(int& error_live) {
     CHECK_EQ(a.error().value, 2);
     CHECK(b.has_value());
     CHECK_EQ(b->value, 1);
-    CHECK_EQ(live_value::live, 1);
+    CHECK_EQ(live_value::live(), 1);
     CHECK_EQ(error_live, 1);
 
     b.swap(a);  // the mirror call: swap_value_error with the operands reversed
@@ -181,10 +184,10 @@ void value_error_swap_destroys_what_it_moves(int& error_live) {
     CHECK_EQ(a->value, 1);
     CHECK(!b.has_value());
     CHECK_EQ(b.error().value, 2);
-    CHECK_EQ(live_value::live, 1);
+    CHECK_EQ(live_value::live(), 1);
     CHECK_EQ(error_live, 1);
   }
-  CHECK_EQ(live_value::live, 0);
+  CHECK_EQ(live_value::live(), 0);
   CHECK_EQ(error_live, 0);
 }
 
@@ -194,7 +197,7 @@ void run_lifetime_checks() {
   error_state_copy_assignment_replaces_the_error();
   error_error_swap_exchanges_the_errors();
   static_assert(std::is_nothrow_move_constructible_v<live_error>);
-  value_error_swap_destroys_what_it_moves<live_error>(live_error::live);
+  value_error_swap_destroys_what_it_moves<live_error>(g_counted_live[1]);
   static_assert(!std::is_nothrow_move_constructible_v<live_error_throwing_move>);
   value_error_swap_destroys_what_it_moves<live_error_throwing_move>(live_error_throwing_move::live);
 }
