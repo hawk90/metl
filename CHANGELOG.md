@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`atomic_ref` over a `T` with padding, or aligned below its size, links
+  without libatomic on Clang 11.** `load`, `store` and `exchange` went through
+  `std::atomic<T>`, whose generic path that Clang leaves to libatomic, which
+  bare-metal toolchains do not ship. They now go through an unsigned integer
+  of `T`'s size, as `compare_exchange_*` already did for a padded `T`; a `T`
+  aligned below its size now takes that path for every operation.
 - **On Clang 11, `function_ref`, `fixed_function` and `fixed_any_invocable`
   with a reference return type refuse a callable that returns the referenced
   class by value**, as they do elsewhere (#259). The returned reference would

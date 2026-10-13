@@ -39,6 +39,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <new>
 #include <type_traits>
 
 namespace metl {
@@ -74,17 +75,22 @@ template <typename T>
 inline void atomic_ref_clear_padding(T& /*value*/) noexcept {}
 #endif
 
-// A compare-exchange on the object's bytes, used for every T whose bytes are
-// not all value bits. Not std::atomic's:
-// - libstdc++ clears the padding of `expected` but compares it with the
-//   object's bytes as they are, so on an object whose padding was never
-//   cleared it can never succeed;
-// - for a T aligned below its size (`struct { char; short; }`) it calls the
-//   generic __atomic_compare_exchange, which Clang leaves to libatomic, absent
-//   on bare metal.
-// The bytes go through an unsigned integer of the same size, which the
-// constructor's alignment check makes a valid, lock-free atomic access.
+// Operations on the object's bytes, through an unsigned integer of the same
+// size, which the constructor's alignment check makes a valid atomic access.
+// Used for every T whose bytes are not all value bits, or that is aligned below
+// its size (`struct { char; short; }`). std::atomic's are wrong or unavailable
+// there:
+// - libstdc++'s compare-exchange clears the padding of `expected` but compares
+//   it with the object's bytes as they are, so on an object whose padding was
+//   never cleared it can never succeed;
+// - for a T aligned below its size, libstdc++ calls the generic __atomic_load,
+//   __atomic_store, __atomic_exchange and __atomic_compare_exchange, which Clang
+//   11 leaves to libatomic, absent on bare metal.
 #ifdef __GNUC__
+template <typename T>
+inline constexpr bool atomic_ref_uses_word_v =
+    !std::has_unique_object_representations_v<T> || alignof(T) < sizeof(T);
+
 template <std::size_t Size>
 struct atomic_ref_word;
 template <>
@@ -104,30 +110,79 @@ struct atomic_ref_word<8> {
   using type __attribute__((__may_alias__)) = std::uint64_t;
 };
 
+constexpr int atomic_ref_gnu_order(std::memory_order order) noexcept {
+  switch (order) {
+    case std::memory_order_relaxed:
+      return __ATOMIC_RELAXED;
+    case std::memory_order_consume:
+    case std::memory_order_acquire:
+      return __ATOMIC_ACQUIRE;
+    case std::memory_order_release:
+      return __ATOMIC_RELEASE;
+    case std::memory_order_acq_rel:
+      return __ATOMIC_ACQ_REL;
+    case std::memory_order_seq_cst:
+      break;
+  }
+  return __ATOMIC_SEQ_CST;
+}
+
+// A T from a word's bytes. T need not be default-constructible, so the bytes
+// go into raw storage, as libstdc++'s std::atomic<T>::load does.
+template <typename T, typename Word>
+inline T atomic_ref_from_word(const Word& bits) noexcept {
+  alignas(T) unsigned char buffer[sizeof(T)];
+  std::memcpy(buffer, &bits, sizeof(T));
+  return *std::launder(reinterpret_cast<T*>(buffer));
+}
+
+template <typename T>
+METL_NODISCARD inline T atomic_ref_load(T* object, std::memory_order order) noexcept {
+  if constexpr (atomic_ref_uses_word_v<T>) {
+    using word = typename atomic_ref_word<sizeof(T)>::type;
+    return atomic_ref_from_word<T>(
+        __atomic_load_n(reinterpret_cast<word*>(object), atomic_ref_gnu_order(order)));
+  } else {
+    return atomic_ref_cast(object)->load(order);
+  }
+}
+
+template <typename T>
+inline void atomic_ref_store(T* object, const T& desired, std::memory_order order) noexcept {
+  if constexpr (atomic_ref_uses_word_v<T>) {
+    using word = typename atomic_ref_word<sizeof(T)>::type;
+    word wanted;
+    std::memcpy(&wanted, metl::detail::addressof(desired), sizeof(T));
+    __atomic_store_n(reinterpret_cast<word*>(object), wanted, atomic_ref_gnu_order(order));
+  } else {
+    atomic_ref_cast(object)->store(desired, order);
+  }
+}
+
+template <typename T>
+METL_NODISCARD inline T atomic_ref_exchange(T* object, const T& desired, std::memory_order order) noexcept {
+  if constexpr (atomic_ref_uses_word_v<T>) {
+    using word = typename atomic_ref_word<sizeof(T)>::type;
+    word wanted;
+    std::memcpy(&wanted, metl::detail::addressof(desired), sizeof(T));
+    return atomic_ref_from_word<T>(
+        __atomic_exchange_n(reinterpret_cast<word*>(object), wanted, atomic_ref_gnu_order(order)));
+  } else {
+    return atomic_ref_cast(object)->exchange(desired, order);
+  }
+}
+
 template <typename T>
 METL_NODISCARD inline bool try_atomic_ref_exchange_bytes(
     T* object, T& expected, const T& desired, std::memory_order order, bool weak) noexcept {
   using word = typename atomic_ref_word<sizeof(T)>::type;
-  int success = __ATOMIC_SEQ_CST;
-  int failure = __ATOMIC_SEQ_CST;
-  switch (order) {
-    case std::memory_order_relaxed:
-      success = failure = __ATOMIC_RELAXED;
-      break;
-    case std::memory_order_consume:
-    case std::memory_order_acquire:
-      success = failure = __ATOMIC_ACQUIRE;
-      break;
-    case std::memory_order_release:
-      success = __ATOMIC_RELEASE;
-      failure = __ATOMIC_RELAXED;
-      break;
-    case std::memory_order_acq_rel:
-      success = __ATOMIC_ACQ_REL;
-      failure = __ATOMIC_ACQUIRE;
-      break;
-    case std::memory_order_seq_cst:
-      break;
+  const int success = atomic_ref_gnu_order(order);
+  // The failure order may not release.
+  int failure = success;
+  if (order == std::memory_order_release) {
+    failure = __ATOMIC_RELAXED;
+  } else if (order == std::memory_order_acq_rel) {
+    failure = __ATOMIC_ACQUIRE;
   }
   word held;
   word wanted;
@@ -135,10 +190,31 @@ METL_NODISCARD inline bool try_atomic_ref_exchange_bytes(
   std::memcpy(&wanted, metl::detail::addressof(desired), sizeof(T));
   const bool exchanged =
       __atomic_compare_exchange_n(reinterpret_cast<word*>(object), &held, wanted, weak, success, failure);
-  std::memcpy(metl::detail::addressof(expected), &held, sizeof(T));
+  // T is trivially copyable, so copying its bytes is valid. The void* cast
+  // keeps GCC's -Wclass-memaccess quiet for a T with no default constructor.
+  std::memcpy(static_cast<void*>(metl::detail::addressof(expected)), &held, sizeof(T));
   return exchanged;
 }
 #else
+// Elsewhere (MSVC) every operation is std::atomic's.
+template <typename T>
+inline constexpr bool atomic_ref_uses_word_v = false;
+
+template <typename T>
+METL_NODISCARD inline T atomic_ref_load(T* object, std::memory_order order) noexcept {
+  return atomic_ref_cast(object)->load(order);
+}
+
+template <typename T>
+inline void atomic_ref_store(T* object, const T& desired, std::memory_order order) noexcept {
+  atomic_ref_cast(object)->store(desired, order);
+}
+
+template <typename T>
+METL_NODISCARD inline T atomic_ref_exchange(T* object, const T& desired, std::memory_order order) noexcept {
+  return atomic_ref_cast(object)->exchange(desired, order);
+}
+
 template <typename T>
 METL_NODISCARD inline bool try_atomic_ref_exchange_bytes(
     T* object, T& expected, const T& desired, std::memory_order order, bool weak) noexcept {
@@ -209,7 +285,7 @@ class atomic_ref {
   /// @param order Memory order for the load.
   /// @return The value observed.
   T load(std::memory_order order = std::memory_order_seq_cst) const noexcept {
-    return detail::atomic_ref_cast(ptr_)->load(order);
+    return detail::atomic_ref_load(ptr_, order);
   }
 
   /// @brief Atomically overwrite the value.
@@ -217,7 +293,7 @@ class atomic_ref {
   /// @param order Memory order for the store.
   void store(T desired, std::memory_order order = std::memory_order_seq_cst) const noexcept {
     detail::atomic_ref_clear_padding(desired);
-    detail::atomic_ref_cast(ptr_)->store(desired, order);
+    detail::atomic_ref_store(ptr_, desired, order);
   }
 
   /// @brief Atomically replace the value and return the previous one.
@@ -226,7 +302,7 @@ class atomic_ref {
   /// @return The value held before the exchange.
   T exchange(T desired, std::memory_order order = std::memory_order_seq_cst) const noexcept {
     detail::atomic_ref_clear_padding(desired);
-    return detail::atomic_ref_cast(ptr_)->exchange(desired, order);
+    return detail::atomic_ref_exchange(ptr_, desired, order);
   }
 
   /// @brief Atomic strong compare-and-exchange.
@@ -260,7 +336,7 @@ class atomic_ref {
         // Only the padding differed. Retry with the bytes actually held: that
         // attempt fails only if another thread stored in between.
       }
-    } else if constexpr (!std::has_unique_object_representations_v<T>) {
+    } else if constexpr (detail::atomic_ref_uses_word_v<T>) {
       return detail::try_atomic_ref_exchange_bytes(ptr_, expected, desired, order, false);
     } else {
       return detail::atomic_ref_cast(ptr_)->compare_exchange_strong(expected, desired, order);
@@ -276,7 +352,7 @@ class atomic_ref {
                              T desired,
                              std::memory_order order = std::memory_order_seq_cst) const noexcept {
     detail::atomic_ref_clear_padding(desired);
-    if constexpr (!std::has_unique_object_representations_v<T>) {
+    if constexpr (detail::atomic_ref_uses_word_v<T>) {
       return detail::try_atomic_ref_exchange_bytes(ptr_, expected, desired, order, true);
     } else {
       return detail::atomic_ref_cast(ptr_)->compare_exchange_weak(expected, desired, order);
