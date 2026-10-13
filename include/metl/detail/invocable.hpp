@@ -36,8 +36,18 @@ struct binds_temporary : std::bool_constant<__reference_converts_from_temporary(
 template <typename R, typename U>
 struct binds_temporary : std::bool_constant<__reference_constructs_from_temporary(R, U)> {};
 #elif METL_HAS_BUILTIN(__reference_binds_to_temporary)
+// Older Clang's __reference_binds_to_temporary, Clang 11's among them, answers
+// false for a class prvalue: it counts binding the materialised object as
+// direct. A prvalue of `R`'s referenced type, or of a class derived from it,
+// always materialises one.
 template <typename R, typename U>
-struct binds_temporary : std::bool_constant<__reference_binds_to_temporary(R, U)> {};
+struct binds_materialized_prvalue
+    : std::conjunction<std::is_reference<R>,
+                       std::negation<std::is_reference<U>>,
+                       std::is_convertible<std::remove_reference_t<U>*, std::remove_reference_t<R>*>> {};
+template <typename R, typename U>
+struct binds_temporary : std::disjunction<binds_materialized_prvalue<R, U>,
+                                          std::bool_constant<__reference_binds_to_temporary(R, U)>> {};
 #else
 // Each condition is its own trait so std::conjunction only instantiates it when
 // the earlier ones hold: `R&` must not even be named for `R = void`.
