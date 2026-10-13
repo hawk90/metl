@@ -150,6 +150,33 @@ void test_strong_ignores_padding() {
   CHECK_EQ(wrong.b, ref.load().b);
 }
 
+// Aligned below its size, with no padding and no default constructor. Every
+// operation goes through a word of its size, so none needs libatomic.
+struct bytes4 {
+  explicit bytes4(unsigned char first) : b{first, 2, 3, 4} {}
+  unsigned char b[4];
+};
+
+void test_under_aligned() {
+  static_assert(alignof(bytes4) < sizeof(bytes4), "bytes4 is aligned below its size");
+  static_assert(!std::is_default_constructible_v<bytes4>, "bytes4 has no default constructor");
+  alignas(metl::atomic_ref<bytes4>::required_alignment) bytes4 object(1);
+  metl::atomic_ref<bytes4> ref(object);
+
+  CHECK_EQ(ref.load().b[0], 1);
+  ref.store(bytes4(5));
+  CHECK_EQ(ref.load().b[0], 5);
+  CHECK_EQ(ref.exchange(bytes4(6)).b[0], 5);
+  CHECK_EQ(ref.load().b[0], 6);
+
+  bytes4 expected(6);
+  CHECK(ref.compare_exchange_strong(expected, bytes4(7)));
+  CHECK_EQ(ref.load().b[0], 7);
+  bytes4 stale(6);
+  CHECK(!ref.compare_exchange_strong(stale, bytes4(8)));
+  CHECK_EQ(stale.b[0], 7);
+}
+
 }  // namespace
 
 int main() {
@@ -162,5 +189,6 @@ int main() {
   test_fetch_bitwise();
   test_u8_u16_u64();
   test_strong_ignores_padding();
+  test_under_aligned();
   return metl_test::exit_code();
 }

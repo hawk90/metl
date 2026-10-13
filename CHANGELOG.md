@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A type turned down or deferred records how that was checked, so the
     premise can be checked again. The two corrections above are why.
 
+### Fixed
+
+- **`atomic_ref` over a `T` with padding, or aligned below its size, links
+  without libatomic on Clang 11.** `load`, `store` and `exchange` went through
+  `std::atomic<T>`, whose generic path that Clang leaves to libatomic, which
+  bare-metal toolchains do not ship. They now go through an unsigned integer
+  of `T`'s size, as `compare_exchange_*` already did for a padded `T`; a `T`
+  aligned below its size now takes that path for every operation.
+
 ## [1.2.2] - 2026-10-13
 
 **Highlights.** A correctness patch from a third review, each finding reproduced
