@@ -155,6 +155,8 @@ if(METL_BUILD_TESTS)
     vocab/callable_reference_return vocab/vocab_std_parity
     vocab/intrusive_ptr vocab/intrusive_ptr_atomic vocab/intrusive_ptr_contract vocab/intrusive_ptr_alias vocab/scope_exit vocab/type_traits
     vocab/variant_selfassign vocab/emplace_self_alias vocab/vocab_assignment vocab/versioned_handle
+    vocab/optional_state_pairs vocab/expected_state_pairs vocab/variant_state_pairs
+    vocab/fixed_function_state_pairs vocab/intrusive_ptr_state_pairs
     # bits/
     bits/bit bits/bitfield bits/crc8 bits/crc16 bits/crc32 bits/hash
     bits/hash_unique_repr bits/hash_by_value bits/endian bits/mmio bits/mmio_regression bits/register_access
