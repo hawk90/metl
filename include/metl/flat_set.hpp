@@ -68,6 +68,20 @@ class flat_set {
   using iterator = value_type*;
   using const_iterator = const value_type*;
 
+ private:
+  // Declared ahead of the noexcept-specifiers that name them: GCC 10 and
+  // older do not look ahead in the class there.
+  // The lookups call the comparator in both argument orders; they are noexcept
+  // exactly when it cannot throw. See detail/nothrow_call.hpp
+  // for why std::less is looked through rather than taken at its word.
+  template <typename K>
+  static constexpr bool compare_cannot_throw =
+      detail::nothrow_binary_call_v<Compare, const K&, const value_type&> &&
+      detail::nothrow_binary_call_v<Compare, const value_type&, const K&>;
+  // erase relocates the tail by move construction.
+  static constexpr bool relocate_cannot_throw = std::is_nothrow_move_constructible_v<value_type>;
+
+ public:
   /// @brief Construct an empty set with a default-constructed comparator.
   /// Constant-initialized at namespace scope since C++20 (see
   /// detail/constant_init.hpp); a local one stores nothing to the buffer.
@@ -458,16 +472,6 @@ class flat_set {
   }
 
  private:
-  // The lookups call the comparator in both argument orders; they are noexcept
-  // exactly when it cannot throw. See detail/nothrow_call.hpp
-  // for why std::less is looked through rather than taken at its word.
-  template <typename K>
-  static constexpr bool compare_cannot_throw =
-      detail::nothrow_binary_call_v<Compare, const K&, const value_type&> &&
-      detail::nothrow_binary_call_v<Compare, const value_type&, const K&>;
-  // erase relocates the tail by move construction.
-  static constexpr bool relocate_cannot_throw = std::is_nothrow_move_constructible_v<value_type>;
-
   // Moves every element of `other` (sorted, unique) onto the end of this empty
   // container, in order.
   void append_sorted_from(flat_set& other) noexcept(std::is_nothrow_move_constructible_v<value_type>) {
