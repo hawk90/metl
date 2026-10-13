@@ -134,6 +134,16 @@ class static_unordered_set {
  private:
   static constexpr size_type npos = static_cast<size_type>(-1);
 
+  // Declared ahead of the noexcept-specifiers that name them: GCC 10 and
+  // older do not look ahead in the class there.
+  // Lookups call the hasher and the key equality; they are noexcept exactly
+  // when neither can throw (see detail/nothrow_call.hpp).
+  template <typename K>
+  static constexpr bool lookup_cannot_throw =
+      detail::nothrow_unary_call_v<Hash, const K&> &&
+      detail::nothrow_binary_call_v<KeyEqual, const key_type&, const K&>;
+  static constexpr bool hash_cannot_throw = detail::nothrow_unary_call_v<Hash, const key_type&>;
+
   enum class slot_state : unsigned char {
     empty = 0,
     occupied = 1,
@@ -557,14 +567,6 @@ class static_unordered_set {
   }
 
  private:
-  // Lookups call the hasher and the key equality; they are noexcept exactly
-  // when neither can throw (see detail/nothrow_call.hpp).
-  template <typename K>
-  static constexpr bool lookup_cannot_throw =
-      detail::nothrow_unary_call_v<Hash, const K&> &&
-      detail::nothrow_binary_call_v<KeyEqual, const key_type&, const K&>;
-  static constexpr bool hash_cannot_throw = detail::nothrow_unary_call_v<Hash, const key_type&>;
-
   // The one call in rehash_in_place that can throw: element moves cannot (the
   // rebuild only runs for nothrow-movable elements), the hasher may. When it
   // does, `carry` holds a live element and every slot marked occupied (placed)
