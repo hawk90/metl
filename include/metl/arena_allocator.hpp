@@ -207,6 +207,12 @@ class arena_allocator {
     // the size, as monotonic_buffer checks it: a bad alignment is a caller bug
     // whatever the size, and an empty request must not hide it.
     METL_HARDEN(alignment != 0 && (alignment & (alignment - 1)) == 0);
+    // A zero-byte arena holds no record. Its one-byte placeholder storage must
+    // not be reached by the code below, which GCC cannot otherwise see is dead,
+    // and reports as out of bounds at -O2.
+    if (Capacity == 0) {
+      return nullptr;
+    }
     if (bytes == 0) {
       return nullptr;
     }
