@@ -122,6 +122,10 @@ explicitly (`#include <metl/exp/...>`) does not violate the
 themselves. This is the extension space, and it already exists in the CI
 structure — no policy change needed to use it.
 
+An experimental type has a tracking issue that states, before the type lands,
+when it is promoted to Tier 0 or 1 and when it is removed. Removing one needs no
+deprecation cycle, only a CHANGELOG entry that gives the reason.
+
 `CODEOWNERS` may delegate an experimental area to the contributor who brought
 it.
 
@@ -145,6 +149,9 @@ Copy into the PR description:
 - [ ] single-core ISR safety: lock policy documented or `irq_lock` default
 - [ ] R1 (§9): every capacity-failing operation has BOTH an asserting form and a
       `try_` form — `api-contract` checks R2/R3 mechanically but not this
+- [ ] Tier 2: the tracking issue states the promotion and removal criteria
+- [ ] a type turned down or deferred in §5 records how that was checked (what
+      was searched, which cases were weighed), so the premise can be checked again
 ```
 
 ---
