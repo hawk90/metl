@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A type turned down or deferred records how that was checked, so the
     premise can be checked again. The two corrections above are why.
 
+### Fixed
+
+- **On Clang 11, `function_ref`, `fixed_function` and `fixed_any_invocable`
+  with a reference return type refuse a callable that returns the referenced
+  class by value**, as they do elsewhere (#259). The returned reference would
+  dangle. That Clang's `__reference_binds_to_temporary` reports no temporary
+  for a class prvalue, so that case is now checked directly.
+
 ## [1.2.2] - 2026-10-13
 
 **Highlights.** A correctness patch from a third review, each finding reproduced
