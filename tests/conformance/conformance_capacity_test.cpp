@@ -5,11 +5,19 @@
 //                                 count as it was (SCOPE.md R1/R2)
 //   reusable_after_clear          after clear, the full capacity is available
 //                                 again (#270 was a capacity edge)
+//   zero_capacity_holds_nothing   at capacity 0, a try_ fails without building
+//                                 anything, and the empty object clears, copies,
+//                                 moves and assigns (itself included) like any
+//                                 other. Every adapter names its capacity-0
+//                                 type, or how the type refuses capacity 0.
 
 #include "conformance.hpp"
 
+#include <type_traits>
+
 METL_CONFORMANCE_DECLARE_GAP(full_try_add_changes_nothing)
 METL_CONFORMANCE_DECLARE_GAP(reusable_after_clear)
+METL_CONFORMANCE_DECLARE_GAP(zero_capacity_holds_nothing)
 
 namespace {
 
@@ -74,8 +82,63 @@ struct reusable_after_clear {
   }
 };
 
+struct zero_capacity_holds_nothing {
+  template <typename Adapter>
+  bool operator()(Adapter) const {
+    using zero = typename Adapter::zero_type;
+    bool met = true;
+    {
+      zero c;
+      const bool added = Adapter::try_add(c, 1);
+      Adapter::clear(c);
+      met = !added && Adapter::held(c) == 0 && conformance::probe::live() == 0;
+      if constexpr (Adapter::movable) {
+        zero copy(c);
+        zero moved(std::move(copy));
+        zero assigned;
+        assigned = c;
+        assigned = std::move(moved);
+        zero& alias = c;
+        c = alias;
+        c = std::move(alias);
+        met = met && Adapter::held(copy) == 0 && Adapter::held(moved) == 0 && Adapter::held(assigned) == 0 &&
+              Adapter::held(c) == 0 && !Adapter::try_add(c, 2);
+      }
+      if (!met) {
+        std::fprintf(stderr,
+                     "  %s: try_add at capacity 0 returned %d, held %zu, live %d\n",
+                     Adapter::name,
+                     added,
+                     Adapter::held(c),
+                     conformance::probe::live());
+      }
+    }
+    met = met && conformance::probe::live() == 0 && conformance::probe::destroyed_twice() == 0;
+    conformance::probe::live() = 0;
+    conformance::probe::destroyed_twice() = 0;
+    return met;
+  }
+};
+
+template <typename A, typename = void>
+struct has_zero_type : std::false_type {};
+template <typename A>
+struct has_zero_type<A, std::void_t<typename A::zero_type>> : std::true_type {};
+
+template <typename A, typename = void>
+struct refuses_zero_capacity : std::false_type {};
+template <typename A>
+struct refuses_zero_capacity<A, std::void_t<decltype(A::zero_capacity_refused)>> : std::true_type {};
+
 template <typename Adapter>
 void run_for() {
+  static_assert(has_zero_type<Adapter>::value != refuses_zero_capacity<Adapter>::value,
+                "an adapter names its zero_type, or says how the type refuses capacity 0 -- one of the two");
+  if constexpr (has_zero_type<Adapter>::value) {
+    conformance::run_one<Adapter>("zero_capacity_holds_nothing",
+                                  METL_CONFORMANCE_GAP(zero_capacity_holds_nothing, Adapter),
+                                  zero_capacity_holds_nothing{});
+  }
   if constexpr (Adapter::fixed_count) {
     conformance::run_one<Adapter>("full_try_add_changes_nothing",
                                   METL_CONFORMANCE_GAP(full_try_add_changes_nothing, Adapter),

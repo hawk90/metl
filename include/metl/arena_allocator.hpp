@@ -210,6 +210,12 @@ class arena_allocator {
     if (bytes == 0) {
       return nullptr;
     }
+    // A zero-byte arena holds no record. Its one-byte placeholder storage must
+    // not be reached by the code below, which GCC cannot otherwise see is dead,
+    // and reports as out of bounds at -O2.
+    if (Capacity == 0) {
+      return nullptr;
+    }
 
     const std::uintptr_t base = reinterpret_cast<std::uintptr_t>(&storage_[0]);
     const std::uintptr_t current = base + offset_;
