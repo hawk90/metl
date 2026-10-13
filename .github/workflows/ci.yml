@@ -2565,6 +2565,34 @@ jobs:
           done
           exit "${status:-0}"
 
+  # MSVC 19.29 (VS 2019 16.11), the README's MSVC floor. The runner image's
+  # Visual Studio carries it as the v142 toolset, which `-T v142` selects; the
+  # configure step checks that the selected compiler is 19.29.
+  compiler-floor-msvc:
+    name: compiler-floors / msvc-19.29
+    runs-on: windows-2025
+    needs: preflight
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -B build -S . -T v142 -A x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $version = (Select-String -Path build/CMakeFiles/*/CMakeCXXCompiler.cmake `
+            -Pattern 'set\(CMAKE_CXX_COMPILER_VERSION "(.*)"\)').Matches[0].Groups[1].Value
+          Write-Output "MSVC $version"
+          if (-not $version.StartsWith('19.29.')) { throw "v142 selected MSVC $version, not 19.29" }
+
+      - name: Build
+        run: cmake --build build -j --config Debug
+
+      - name: Test
+        run: ctest --no-tests=error --test-dir build -j --output-on-failure -C Debug
+
   # ---------------------------------------------------------------------------
   # THE MERGE BOUNDARY. This is the only ci.yml check in branch protection's
   # required list (see .github/required-checks.txt), so a job missing from the
@@ -2617,6 +2645,7 @@ jobs:
       - zephyr
       - esp-idf
       - compiler-floors
+      - compiler-floor-msvc
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

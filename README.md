@@ -470,21 +470,24 @@ To consume METL from your own IDF project without vendoring it, point
 
 ## Compatibility matrix
 
-| Toolchain         | Minimum version |
-| ----------------- | --------------- |
-| GCC               | 9               |
-| Clang             | 11              |
-| MSVC              | 19.20 (VS 2019) |
-| arm-none-eabi-gcc | 10              |
+| Toolchain         | Minimum version       |
+| ----------------- | --------------------- |
+| GCC               | 9                     |
+| Clang             | 11                    |
+| MSVC              | 19.29 (VS 2019 16.11) |
+| arm-none-eabi-gcc | 10                    |
 
-**CI builds with every floor except MSVC.** The `compiler-floors` job builds
-METL and runs its tests with GCC 9 and Clang 11, and builds the embedded smoke
-test for Cortex-M0 and Cortex-M4 with arm-none-eabi-gcc 10. Each comes from the
-Ubuntu 20.04 or 22.04 packages, and the GCC 9 and Clang 11 builds configure with
-CMake 3.16, the minimum `CMakeLists.txt` declares. Clang 11 skips the two
-stack-frame checks, which need `-fstack-usage` (Clang 13). MSVC 19.20 is not
-built: the hosted Windows runners ship only a newer Visual Studio, so a
-regression that only it would catch is not gated — report it if you hit one.
+**CI builds with every floor.** The `compiler-floors` job builds METL and runs
+its tests with GCC 9, Clang 11 and MSVC 19.29, and builds the embedded smoke
+test for Cortex-M0 and Cortex-M4 with arm-none-eabi-gcc 10. GCC 9, Clang 11 and
+arm-none-eabi-gcc 10 come from the Ubuntu 20.04 or 22.04 packages, and the GCC 9
+and Clang 11 builds configure with CMake 3.16, the minimum `CMakeLists.txt`
+declares. Clang 11 skips the two stack-frame checks, which need `-fstack-usage`
+(Clang 13). MSVC 19.29 is the v142 toolset of the Windows runner's Visual
+Studio, and VS 2019 16.11 is the one VS 2019 release Microsoft still services.
+Older MSVC is not supported. In a Debug build, 19.20 to 19.24 run a global
+`std::atomic`'s constructor again at startup, so a global queue is not
+constant-initialized there.
 Every other job uses the compilers on the pinned runner images
 (`ubuntu-26.04`, `macos-26`, `windows-2025`; see
 [`ci.yml`](.github/workflows/ci.yml)).

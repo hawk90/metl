@@ -12,11 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI builds with the stated compiler floors.** The `compiler-floors` job
   builds and tests with GCC 9 and Clang 11, and builds for Cortex-M0 and
   Cortex-M4 with arm-none-eabi-gcc 10. None had been built since 1.0.0, and
-  none built; the fixes below make them. MSVC 19.20 is still not built, since
-  the hosted runners do not ship it.
+  none built; the fixes below make them. MSVC is built with 19.29, the new
+  floor (below).
 
 ### Changed
 
+- **The MSVC floor is 19.29 (VS 2019 16.11), up from 19.20.** 19.20 was never
+  built, and building it shows it cannot hold: in a Debug build, MSVC 19.20 to
+  19.24 run a global `std::atomic`'s constructor again at startup, so a global
+  `spsc_queue` or `spsc_byte_ring` is not constant-initialized and loses what an
+  interrupt pushed before `main`. VS 2019 16.11 is the one VS 2019 release
+  Microsoft still services, and the `compiler-floors` job builds and tests it.
 - **`docs/SCOPE.md` corrects the reasons it gave for two types it turned down.**
   - Intrusive lists were rejected because their misuse was "not checkable".
     Destroying a linked node and linking a hook twice are both checkable, by a
