@@ -158,6 +158,10 @@ struct probe_hash {
 //   movable                  move construction is part of the type's contract
 //   fixed_count              held() is an exact element count and capacity a
 //                            number of elements, not of bytes
+//   zero_type                the same type at capacity 0, or instead
+//   zero_capacity_refused    how the type refuses capacity 0
+//
+// The functions are templates, so they serve `type` and `zero_type` alike.
 //
 // and optionally `gap_<property>`, the issue that tracks a known failure.
 
@@ -165,143 +169,286 @@ struct probe_hash {
 struct fixed_vector_adapter {
   using type = metl::fixed_vector<probe, 4>;
   static constexpr const char* name = "fixed_vector";
+  using zero_type = metl::fixed_vector<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
   static constexpr bool fixed_count = true;
-  static bool try_add(type& c, int id) { return c.try_emplace_back(id); }
-  static std::size_t held(const type& c) { return c.size(); }
-  static void remove_one(type& c) { c.pop_back(); }
-  static void clear(type& c) { c.clear(); }
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    return c.try_emplace_back(id);
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.size();
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    c.pop_back();
+  }
+  template <typename C>
+  static void clear(C& c) {
+    c.clear();
+  }
 };
 
 // conformance-header: fixed_deque.hpp
 struct fixed_deque_adapter {
   using type = metl::fixed_deque<probe, 4>;
   static constexpr const char* name = "fixed_deque";
+  using zero_type = metl::fixed_deque<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
   static constexpr bool fixed_count = true;
-  static bool try_add(type& c, int id) { return c.try_emplace_back(id); }
-  static std::size_t held(const type& c) { return c.size(); }
-  static void remove_one(type& c) { c.pop_front(); }
-  static void clear(type& c) { c.clear(); }
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    return c.try_emplace_back(id);
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.size();
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    c.pop_front();
+  }
+  template <typename C>
+  static void clear(C& c) {
+    c.clear();
+  }
 };
 
 // conformance-header: ring_buffer.hpp
 struct ring_buffer_adapter {
   using type = metl::ring_buffer<probe, 4>;
   static constexpr const char* name = "ring_buffer";
+  using zero_type = metl::ring_buffer<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
   static constexpr bool fixed_count = true;
-  static bool try_add(type& c, int id) { return c.try_emplace_back(id); }
-  static std::size_t held(const type& c) { return c.size(); }
-  static void remove_one(type& c) { c.pop_front(); }
-  static void clear(type& c) { c.clear(); }
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    return c.try_emplace_back(id);
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.size();
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    c.pop_front();
+  }
+  template <typename C>
+  static void clear(C& c) {
+    c.clear();
+  }
 };
 
 // conformance-header: fixed_queue.hpp
 struct fixed_queue_adapter {
   using type = metl::fixed_queue<probe, 4>;
   static constexpr const char* name = "fixed_queue";
+  using zero_type = metl::fixed_queue<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
   static constexpr bool fixed_count = true;
-  static bool try_add(type& c, int id) { return c.try_emplace(id); }
-  static std::size_t held(const type& c) { return c.size(); }
-  static void remove_one(type& c) { c.pop(); }
-  static void clear(type& c) { c.clear(); }
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    return c.try_emplace(id);
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.size();
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    c.pop();
+  }
+  template <typename C>
+  static void clear(C& c) {
+    c.clear();
+  }
 };
 
 // conformance-header: fixed_stack.hpp
 struct fixed_stack_adapter {
   using type = metl::fixed_stack<probe, 4>;
   static constexpr const char* name = "fixed_stack";
+  using zero_type = metl::fixed_stack<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
   static constexpr bool fixed_count = true;
-  static bool try_add(type& c, int id) { return c.try_emplace(id); }
-  static std::size_t held(const type& c) { return c.size(); }
-  static void remove_one(type& c) { c.pop(); }
-  static void clear(type& c) { c.clear(); }
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    return c.try_emplace(id);
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.size();
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    c.pop();
+  }
+  template <typename C>
+  static void clear(C& c) {
+    c.clear();
+  }
 };
 
 // conformance-header: fixed_priority_queue.hpp
 struct fixed_priority_queue_adapter {
   using type = metl::fixed_priority_queue<probe, 4>;
   static constexpr const char* name = "fixed_priority_queue";
+  using zero_type = metl::fixed_priority_queue<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
   static constexpr bool fixed_count = true;
-  static bool try_add(type& c, int id) { return c.try_emplace(id); }
-  static std::size_t held(const type& c) { return c.size(); }
-  static void remove_one(type& c) { c.pop(); }
-  static void clear(type& c) { c.clear(); }
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    return c.try_emplace(id);
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.size();
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    c.pop();
+  }
+  template <typename C>
+  static void clear(C& c) {
+    c.clear();
+  }
 };
 
 // conformance-header: static_message_queue.hpp
 struct static_message_queue_adapter {
   using type = metl::static_message_queue<probe, 4>;
   static constexpr const char* name = "static_message_queue";
+  static constexpr const char* zero_capacity_refused = "a static_assert: it could hold nothing";
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
   static constexpr bool fixed_count = true;
-  static bool try_add(type& c, int id) { return c.try_emplace(id); }
-  static std::size_t held(const type& c) { return c.size(); }
-  static void remove_one(type& c) { c.pop(); }
-  static void clear(type& c) { c.clear(); }
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    return c.try_emplace(id);
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.size();
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    c.pop();
+  }
+  template <typename C>
+  static void clear(C& c) {
+    c.clear();
+  }
 };
 
 // conformance-header: flat_map.hpp
 struct flat_map_adapter {
   using type = metl::flat_map<int, probe, 4>;
   static constexpr const char* name = "flat_map";
+  using zero_type = metl::flat_map<int, probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
   static constexpr bool fixed_count = true;
-  static bool try_add(type& c, int id) { return c.try_emplace(id, probe(id)); }
-  static std::size_t held(const type& c) { return c.size(); }
-  static void remove_one(type& c) { (void)c.erase(c.begin()->key); }
-  static void clear(type& c) { c.clear(); }
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    return c.try_emplace(id, probe(id));
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.size();
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    (void)c.erase(c.begin()->key);
+  }
+  template <typename C>
+  static void clear(C& c) {
+    c.clear();
+  }
 };
 
 // conformance-header: flat_set.hpp
 struct flat_set_adapter {
   using type = metl::flat_set<probe, 4>;
   static constexpr const char* name = "flat_set";
+  using zero_type = metl::flat_set<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
   static constexpr bool fixed_count = true;
-  static bool try_add(type& c, int id) { return c.try_emplace(probe(id)); }
-  static std::size_t held(const type& c) { return c.size(); }
-  static void remove_one(type& c) { (void)c.erase(probe::key(c.begin()->id)); }
-  static void clear(type& c) { c.clear(); }
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    return c.try_emplace(probe(id));
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.size();
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    (void)c.erase(probe::key(c.begin()->id));
+  }
+  template <typename C>
+  static void clear(C& c) {
+    c.clear();
+  }
 };
 
 // conformance-header: static_unordered_map.hpp
 struct static_unordered_map_adapter {
   using type = metl::static_unordered_map<int, probe, 4>;
   static constexpr const char* name = "static_unordered_map";
+  using zero_type = metl::static_unordered_map<int, probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
   static constexpr bool fixed_count = true;
-  static bool try_add(type& c, int id) { return c.try_emplace(id, probe(id)); }
-  static std::size_t held(const type& c) { return c.size(); }
-  static void remove_one(type& c) { (void)c.erase(c.begin()->key); }
-  static void clear(type& c) { c.clear(); }
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    return c.try_emplace(id, probe(id));
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.size();
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    (void)c.erase(c.begin()->key);
+  }
+  template <typename C>
+  static void clear(C& c) {
+    c.clear();
+  }
 };
 
 // conformance-header: static_unordered_set.hpp
 struct static_unordered_set_adapter {
   using type = metl::static_unordered_set<probe, 4, probe_hash>;
   static constexpr const char* name = "static_unordered_set";
+  using zero_type = metl::static_unordered_set<probe, 0, probe_hash>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
   static constexpr bool fixed_count = true;
-  static bool try_add(type& c, int id) { return c.try_emplace(probe(id)); }
-  static std::size_t held(const type& c) { return c.size(); }
-  static void remove_one(type& c) { (void)c.erase(probe::key(c.begin()->id)); }
-  static void clear(type& c) { c.clear(); }
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    return c.try_emplace(probe(id));
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.size();
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    (void)c.erase(probe::key(c.begin()->id));
+  }
+  template <typename C>
+  static void clear(C& c) {
+    c.clear();
+  }
 };
 
 // The pools and the arena hand out addresses instead of holding a sequence, so
@@ -318,24 +465,35 @@ struct handed_out {
 struct object_pool_adapter {
   using type = metl::object_pool<probe, 4>;
   static constexpr const char* name = "object_pool";
+  using zero_type = metl::object_pool<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = false;
   static constexpr bool fixed_count = true;
+  // One list per instantiation: `type` and `zero_type` hand out separately.
+  template <typename C>
   static handed_out<probe*, 4>& given() {
     static handed_out<probe*, 4> list;
     return list;
   }
-  static bool try_add(type& c, int id) {
+  template <typename C>
+  static bool try_add(C& c, int id) {
     probe* object = c.try_emplace(id);
     if (object != nullptr) {
-      given().push(object);
+      given<C>().push(object);
     }
     return object != nullptr;
   }
-  static std::size_t held(const type& c) { return c.size(); }
-  static void remove_one(type& c) { (void)c.destroy(given().pop()); }
-  static void clear(type& c) {
-    given().count = 0;
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.size();
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    (void)c.destroy(given<C>().pop());
+  }
+  template <typename C>
+  static void clear(C& c) {
+    given<C>().count = 0;
     c.clear();
   }
 };
@@ -344,24 +502,34 @@ struct object_pool_adapter {
 struct handle_pool_adapter {
   using type = metl::handle_pool<probe, 4>;
   static constexpr const char* name = "handle_pool";
+  using zero_type = metl::handle_pool<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = false;
   static constexpr bool fixed_count = true;
-  static handed_out<type::handle_type, 4>& given() {
-    static handed_out<type::handle_type, 4> list;
+  template <typename C>
+  static handed_out<typename C::handle_type, 4>& given() {
+    static handed_out<typename C::handle_type, 4> list;
     return list;
   }
-  static bool try_add(type& c, int id) {
-    const type::handle_type handle = c.try_emplace(id);
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    const typename C::handle_type handle = c.try_emplace(id);
     if (handle.valid()) {
-      given().push(handle);
+      given<C>().push(handle);
     }
     return handle.valid();
   }
-  static std::size_t held(const type& c) { return c.size(); }
-  static void remove_one(type& c) { (void)c.destroy(given().pop()); }
-  static void clear(type& c) {
-    given().count = 0;
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.size();
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    (void)c.destroy(given<C>().pop());
+  }
+  template <typename C>
+  static void clear(C& c) {
+    given<C>().count = 0;
     c.clear();
   }
 };
@@ -375,39 +543,45 @@ struct handle_pool_adapter {
 struct arena_allocator_adapter {
   using type = metl::arena_allocator<256>;
   static constexpr const char* name = "arena_allocator";
+  using zero_type = metl::arena_allocator<0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = false;
   static constexpr bool fixed_count = false;
-  static handed_out<type::mark_type, 4>& given() {
-    static handed_out<type::mark_type, 4> list;
+  template <typename C>
+  static handed_out<typename C::mark_type, 4>& given() {
+    static handed_out<typename C::mark_type, 4> list;
     return list;
   }
-  static bool try_add(type& c, int id) {
-    if (given().count == capacity) {
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    if (given<C>().count == capacity) {
       return false;
     }
-    const type::mark_type before = c.mark();
-    if (c.try_emplace<probe>(id) == nullptr) {
+    const typename C::mark_type before = c.mark();
+    if (c.template try_emplace<probe>(id) == nullptr) {
       return false;
     }
-    given().push(before);
+    given<C>().push(before);
     return true;
   }
-  static std::size_t held(const type& c) {
+  template <typename C>
+  static std::size_t held(const C& c) {
     std::size_t count = 0;
-    for (std::size_t i = 0; i < given().count; ++i) {
-      count += c.used() > given().items[i].offset ? std::size_t{1} : std::size_t{0};
+    for (std::size_t i = 0; i < given<C>().count; ++i) {
+      count += c.used() > given<C>().items[i].offset ? std::size_t{1} : std::size_t{0};
     }
     return count;
   }
-  static void remove_one(type& c) {
-    const type::mark_type target = given().items[given().count - 1];
+  template <typename C>
+  static void remove_one(C& c) {
+    const typename C::mark_type target = given<C>().items[given<C>().count - 1];
     c.rewind(target);
-    --given().count;
+    --given<C>().count;
   }
-  static void clear(type& c) {
+  template <typename C>
+  static void clear(C& c) {
     c.reset();
-    given().count = 0;
+    given<C>().count = 0;
   }
 };
 
