@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **CI builds with the stated compiler floors.** The `compiler-floors` job
+  builds and tests with GCC 9 and Clang 11, and builds for Cortex-M0 and
+  Cortex-M4 with arm-none-eabi-gcc 10. None had been built since 1.0.0, and
+  none built; the fixes below make them. MSVC 19.20 is still not built, since
+  the hosted runners do not ship it.
+
 ### Changed
 
 - **`docs/SCOPE.md` corrects the reasons it gave for two types it turned down.**
@@ -27,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CMake 3.16 to 3.18 configure METL**, as `cmake_minimum_required(3.16)`
+  says. The `metl` INTERFACE library carried a custom property, which CMake
+  rejects on an INTERFACE target before 3.19. Nothing read it; it is gone.
 - **`flat_map`, `flat_set`, `static_unordered_map`, `static_unordered_set`,
   `fixed_priority_queue` and `scope_exit` compile with GCC 9 and 10** (also
   arm-none-eabi-gcc 10), the floors the README states. Their noexcept-specifiers
