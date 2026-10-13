@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`docs/SCOPE.md` corrects the reasons it gave for two types it turned down.**
+  - Intrusive lists were rejected because their misuse was "not checkable".
+    Destroying a linked node and linking a hook twice are both checkable, by a
+    hook that records whether it is linked, as Boost.Intrusive's safe mode
+    does. The rejection now rests on an unchecked list and on the lack of a case
+    that handles cannot serve, and #337 tries a checked one in Tier 2.
+  - `fixed_bitset` was deferred for lack of an in-library caller, but
+    `handle_pool` keeps a `bool` per slot and is one. #336 measures whether one
+    bit per slot pays there.
+
 ## [1.2.2] - 2026-10-13
 
 **Highlights.** A correctness patch from a third review, each finding reproduced
