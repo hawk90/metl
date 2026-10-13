@@ -177,6 +177,83 @@ void test_under_aligned() {
   CHECK_EQ(stale.b[0], 7);
 }
 
+#ifdef __GNUC__
+// Every std::memory_order maps to the GNU builtin order of the same strength,
+// and a compare-exchange's failure order to that order without its release
+// half. The table is read at run time, so each case of the switches runs.
+void test_gnu_order_mapping() {
+  struct row {
+    std::memory_order order;
+    int gnu;
+    int gnu_failure;
+  };
+  const row table[] = {
+      {std::memory_order_relaxed, __ATOMIC_RELAXED, __ATOMIC_RELAXED},
+      {std::memory_order_consume, __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE},
+      {std::memory_order_acquire, __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE},
+      {std::memory_order_release, __ATOMIC_RELEASE, __ATOMIC_RELAXED},
+      {std::memory_order_acq_rel, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE},
+      {std::memory_order_seq_cst, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST},
+  };
+  for (const row& r : table) {
+    CHECK_EQ(metl::detail::atomic_ref_gnu_order(r.order), r.gnu);
+    CHECK_EQ(metl::detail::atomic_ref_gnu_failure_order(r.order), r.gnu_failure);
+  }
+}
+#endif
+
+// The word path (a T with padding or aligned below its size) under every order
+// each operation accepts. MSVC has no word path; there the same calls go
+// through std::atomic.
+void test_word_path_under_every_order() {
+#ifdef __GNUC__
+  static_assert(metl::detail::atomic_ref_uses_word_v<bytes4>, "bytes4 takes the word path");
+#endif
+  const std::memory_order loads[] = {std::memory_order_relaxed,
+                                     std::memory_order_consume,
+                                     std::memory_order_acquire,
+                                     std::memory_order_seq_cst};
+  const std::memory_order stores[] = {
+      std::memory_order_relaxed, std::memory_order_release, std::memory_order_seq_cst};
+  const std::memory_order all[] = {std::memory_order_relaxed,
+                                   std::memory_order_consume,
+                                   std::memory_order_acquire,
+                                   std::memory_order_release,
+                                   std::memory_order_acq_rel,
+                                   std::memory_order_seq_cst};
+
+  alignas(metl::atomic_ref<bytes4>::required_alignment) bytes4 object(1);
+  metl::atomic_ref<bytes4> ref(object);
+  unsigned char next = 2;
+  for (const std::memory_order order : stores) {
+    ref.store(bytes4(next), order);
+    CHECK_EQ(ref.load().b[0], next);
+    ++next;
+  }
+  for (const std::memory_order order : loads) {
+    CHECK_EQ(ref.load(order).b[0], next - 1);
+  }
+  for (const std::memory_order order : all) {
+    const unsigned char held = ref.load().b[0];
+    CHECK_EQ(ref.exchange(bytes4(next), order).b[0], held);
+    ++next;
+
+    bytes4 expected(static_cast<unsigned char>(next - 1));
+    CHECK(ref.compare_exchange_strong(expected, bytes4(next), order));
+    bytes4 stale(0);
+    CHECK(!ref.compare_exchange_strong(stale, bytes4(0), order));
+    CHECK_EQ(stale.b[0], next);
+    ++next;
+
+    bytes4 weak_expected(static_cast<unsigned char>(next - 1));
+    while (!ref.compare_exchange_weak(weak_expected, bytes4(next), order)) {
+      CHECK_EQ(weak_expected.b[0], next - 1);  // only a spurious failure may repeat
+    }
+    CHECK_EQ(ref.load().b[0], next);
+    ++next;
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -190,5 +267,9 @@ int main() {
   test_u8_u16_u64();
   test_strong_ignores_padding();
   test_under_aligned();
+#ifdef __GNUC__
+  test_gnu_order_mapping();
+#endif
+  test_word_path_under_every_order();
   return metl_test::exit_code();
 }
