@@ -72,15 +72,21 @@ struct invoke_binds_temporary : binds_temporary<R, std::invoke_result_t<F, Args.
 /// `std::is_invocable_r_v`, refusing a result that `R` could only bind as a
 /// temporary. `invoke_binds_temporary` is only instantiated for an invocable `F`.
 template <typename R, typename F, typename... Args>
+struct is_invocable_r_without_temporary
+    : std::conjunction<std::is_invocable_r<R, F, Args...>,
+                       std::negation<invoke_binds_temporary<R, F, Args...>>> {};
+template <typename R, typename F, typename... Args>
 inline constexpr bool is_invocable_r_without_temporary_v =
-    std::conjunction_v<std::is_invocable_r<R, F, Args...>,
-                       std::negation<invoke_binds_temporary<R, F, Args...>>>;
+    is_invocable_r_without_temporary<R, F, Args...>::value;
 
 /// The `noexcept` form, for the `R(Args...) noexcept` specialisations.
 template <typename R, typename F, typename... Args>
+struct is_nothrow_invocable_r_without_temporary
+    : std::conjunction<std::is_nothrow_invocable_r<R, F, Args...>,
+                       std::negation<invoke_binds_temporary<R, F, Args...>>> {};
+template <typename R, typename F, typename... Args>
 inline constexpr bool is_nothrow_invocable_r_without_temporary_v =
-    std::conjunction_v<std::is_nothrow_invocable_r<R, F, Args...>,
-                       std::negation<invoke_binds_temporary<R, F, Args...>>>;
+    is_nothrow_invocable_r_without_temporary<R, F, Args...>::value;
 
 }  // namespace detail
 }  // namespace metl
