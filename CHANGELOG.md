@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A type turned down or deferred records how that was checked, so the
     premise can be checked again. The two corrections above are why.
 
+### Fixed
+
+- **`flat_map`, `flat_set`, `static_unordered_map`, `static_unordered_set`,
+  `fixed_priority_queue` and `scope_exit` compile with GCC 9 and 10** (also
+  arm-none-eabi-gcc 10), the floors the README states. Their noexcept-specifiers
+  named a helper constant declared further down the class; the standard allows
+  that, but GCC 10 and older reject it. The helpers are now declared first.
+  Broken since 1.0.0; the coro scheduler, which uses `fixed_priority_queue`, was
+  broken with them.
+
 ## [1.2.2] - 2026-10-13
 
 **Highlights.** A correctness patch from a third review, each finding reproduced
