@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A type turned down or deferred records how that was checked, so the
     premise can be checked again. The two corrections above are why.
 
+### Fixed
+
+- **Storing one `fixed_function` or `fixed_any_invocable` in another of a
+  different capacity compiles with GCC 9 and Clang 11.** The converting
+  constructors' constraint asked whether the wrapper itself was storable while
+  its own move constructor was being resolved, a cycle those compilers reject.
+  The constraint now uses `std::conjunction`, which stops at the first false
+  condition.
+
 ## [1.2.2] - 2026-10-13
 
 **Highlights.** A correctness patch from a third review, each finding reproduced
