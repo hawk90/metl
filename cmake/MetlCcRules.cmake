@@ -85,8 +85,6 @@ function(metl_cc_library)
     target_compile_definitions(${ARG_NAME} ${scope} ${ARG_DEFINES})
   endif()
 
-  # Tag library so install rules can sweep them.
-  set_target_properties(${ARG_NAME} PROPERTIES METL_KIND library)
 endfunction()
 
 # ---------------------------------------------------------------------------

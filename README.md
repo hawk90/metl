@@ -477,12 +477,17 @@ To consume METL from your own IDF project without vendoring it, point
 | MSVC              | 19.20 (VS 2019) |
 | arm-none-eabi-gcc | 10              |
 
-**These minimums are the C++17 floors METL is written against, and no CI job
-builds with them.** CI uses the compilers that ship on its pinned runner images
+**CI builds with every floor except MSVC.** The `compiler-floors` job builds
+METL and runs its tests with GCC 9 and Clang 11, and builds the embedded smoke
+test for Cortex-M0 and Cortex-M4 with arm-none-eabi-gcc 10. Each comes from the
+Ubuntu 20.04 or 22.04 packages, and the GCC 9 and Clang 11 builds configure with
+CMake 3.16, the minimum `CMakeLists.txt` declares. Clang 11 skips the two
+stack-frame checks, which need `-fstack-usage` (Clang 13). MSVC 19.20 is not
+built: the hosted Windows runners ship only a newer Visual Studio, so a
+regression that only it would catch is not gated — report it if you hit one.
+Every other job uses the compilers on the pinned runner images
 (`ubuntu-26.04`, `macos-26`, `windows-2025`; see
-[`ci.yml`](.github/workflows/ci.yml)), which are newer than every floor here. A
-regression that only an older compiler would catch is not gated — report it if
-you hit one.
+[`ci.yml`](.github/workflows/ci.yml)).
 
 **Language standard: C++17 is the baseline and is what these minimums are for.**
 Building as C++20 is also verified in CI, under Clang and GCC

@@ -429,8 +429,11 @@ if(METL_BUILD_TESTS)
   #   the stack only at -O2 and -O3, so this TU is built at -O2, with no
   #   sanitizer or coverage flags, and every frame must stay under the 32 bytes
   #   the CRC-16 table would add. See tests/embedded/crc_stack_probe.cpp.
+  #   Clang gained -fstack-usage in 13, so older compilers skip these checks.
   # -------------------------------------------------------------------------
-  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT MSVC)
+  include(CheckCXXCompilerFlag)
+  check_cxx_compiler_flag(-fstack-usage METL_HAVE_FSTACK_USAGE)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT MSVC AND METL_HAVE_FSTACK_USAGE)
     add_library(metl_crc_stack_probe OBJECT tests/embedded/crc_stack_probe.cpp)
     target_link_libraries(metl_crc_stack_probe PRIVATE metl::metl)
     target_compile_features(metl_crc_stack_probe PRIVATE cxx_std_17)
