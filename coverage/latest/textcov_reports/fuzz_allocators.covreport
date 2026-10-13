@@ -1,135 +1,135 @@
 LLVMFuzzerTestOneInput:
-  135|    282|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
+  135|    292|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
   136|       |  // Split the input: the first byte selects which allocator to exercise so both
   137|       |  // get real coverage over a run.
-  138|    282|  metl_fuzz::byte_reader in(data, size);
-  139|    282|  if ((in.byte() & 1u) == 0u) {
+  138|    292|  metl_fuzz::byte_reader in(data, size);
+  139|    292|  if ((in.byte() & 1u) == 0u) {
   ------------------
-  |  Branch (139:7): [True: 205, False: 77]
+  |  Branch (139:7): [True: 215, False: 77]
   ------------------
-  140|    205|    drive_arena(in);
-  141|    205|  } else {
+  140|    215|    drive_arena(in);
+  141|    215|  } else {
   142|     77|    drive_static(in);
   143|     77|  }
-  144|    282|  return 0;
-  145|    282|}
+  144|    292|  return 0;
+  145|    292|}
 fuzz_allocators.cpp:_ZN12_GLOBAL__N_111drive_arenaERN9metl_fuzz11byte_readerE:
-   39|    205|void drive_arena(metl_fuzz::byte_reader& in) {
-   40|    205|  auto arena = std::make_unique<metl::arena_allocator<kArenaBytes>>();
-   41|    205|  std::vector<metl::arena_allocator<kArenaBytes>::mark_type> marks;
+   39|    215|void drive_arena(metl_fuzz::byte_reader& in) {
+   40|    215|  auto arena = std::make_unique<metl::arena_allocator<kArenaBytes>>();
+   41|    215|  std::vector<metl::arena_allocator<kArenaBytes>::mark_type> marks;
    42|       |
-   43|  8.32k|  while (!in.empty()) {
+   43|  9.58k|  while (!in.empty()) {
   ------------------
-  |  Branch (43:10): [True: 8.12k, False: 205]
+  |  Branch (43:10): [True: 9.36k, False: 215]
   ------------------
-   44|  8.12k|    switch (in.byte() % 6u) {
-   45|  3.02k|      case 0: {  // raw allocate + full write
+   44|  9.36k|    switch (in.byte() % 6u) {
+   45|  3.23k|      case 0: {  // raw allocate + full write
   ------------------
-  |  Branch (45:7): [True: 3.02k, False: 5.10k]
+  |  Branch (45:7): [True: 3.23k, False: 6.13k]
   ------------------
-   46|  3.02k|        const std::size_t bytes = in.byte() % (kArenaBytes / 2 + 1);
-   47|  3.02k|        const std::size_t align = bounded_alignment(in.byte());
-   48|  3.02k|        const std::size_t before = arena->used();
-   49|  3.02k|        void* p = arena->allocate(bytes, align);
-   50|  3.02k|        if (p != nullptr) {
+   46|  3.23k|        const std::size_t bytes = in.byte() % (kArenaBytes / 2 + 1);
+   47|  3.23k|        const std::size_t align = bounded_alignment(in.byte());
+   48|  3.23k|        const std::size_t before = arena->used();
+   49|  3.23k|        void* p = arena->allocate(bytes, align);
+   50|  3.23k|        if (p != nullptr) {
   ------------------
-  |  Branch (50:13): [True: 2.21k, False: 807]
+  |  Branch (50:13): [True: 2.43k, False: 800]
   ------------------
-   51|  2.21k|          std::memset(p, 0xA5, bytes);
-   52|  2.21k|          if (arena->used() <= before || arena->used() > arena->capacity()) {
+   51|  2.43k|          std::memset(p, 0xA5, bytes);
+   52|  2.43k|          if (arena->used() <= before || arena->used() > arena->capacity()) {
   ------------------
-  |  Branch (52:15): [True: 0, False: 2.21k]
-  |  Branch (52:42): [True: 0, False: 2.21k]
+  |  Branch (52:15): [True: 0, False: 2.43k]
+  |  Branch (52:42): [True: 0, False: 2.43k]
   ------------------
    53|      0|            METL_FUZZ_TRAP();
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
    54|      0|          }
-   55|  2.21k|        }
-   56|  3.02k|        break;
-   57|  3.02k|      }
-   58|  3.02k|      case 1: {  // typed emplace (destructor tracked for rewind)
+   55|  2.43k|        }
+   56|  3.23k|        break;
+   57|  3.23k|      }
+   58|  3.23k|      case 1: {  // typed emplace (destructor tracked for rewind)
   ------------------
-  |  Branch (58:7): [True: 2.03k, False: 6.08k]
+  |  Branch (58:7): [True: 2.37k, False: 6.98k]
   ------------------
-   59|  2.03k|        std::uint64_t* p = arena->try_emplace<std::uint64_t>(in.integer<std::uint64_t>());
-   60|  2.03k|        if (p != nullptr) {
+   59|  2.37k|        std::uint64_t* p = arena->try_emplace<std::uint64_t>(in.integer<std::uint64_t>());
+   60|  2.37k|        if (p != nullptr) {
   ------------------
-  |  Branch (60:13): [True: 1.31k, False: 725]
+  |  Branch (60:13): [True: 1.64k, False: 733]
   ------------------
-   61|  1.31k|          volatile std::uint64_t v = *p;
-   62|  1.31k|          (void)v;
-   63|  1.31k|        }
-   64|  2.03k|        break;
-   65|  3.02k|      }
-   66|    938|      case 2: {  // capture a savepoint
+   61|  1.64k|          volatile std::uint64_t v = *p;
+   62|  1.64k|          (void)v;
+   63|  1.64k|        }
+   64|  2.37k|        break;
+   65|  3.23k|      }
+   66|    920|      case 2: {  // capture a savepoint
   ------------------
-  |  Branch (66:7): [True: 938, False: 7.18k]
+  |  Branch (66:7): [True: 920, False: 8.44k]
   ------------------
-   67|    938|        marks.push_back(arena->mark());
-   68|    938|        break;
-   69|  3.02k|      }
-   70|    913|      case 3: {  // rewind to the most recent still-valid (LIFO) savepoint
+   67|    920|        marks.push_back(arena->mark());
+   68|    920|        break;
+   69|  3.23k|      }
+   70|    914|      case 3: {  // rewind to the most recent still-valid (LIFO) savepoint
   ------------------
-  |  Branch (70:7): [True: 913, False: 7.21k]
+  |  Branch (70:7): [True: 914, False: 8.45k]
   ------------------
-   71|    913|        if (!marks.empty()) {
+   71|    914|        if (!marks.empty()) {
   ------------------
-  |  Branch (71:13): [True: 653, False: 260]
+  |  Branch (71:13): [True: 536, False: 378]
   ------------------
-   72|    653|          const auto target = marks.back();
-   73|    653|          marks.pop_back();
-   74|    653|          arena->rewind(target);  // LIFO: target.offset <= used()
-   75|    653|        }
-   76|    913|        break;
-   77|  3.02k|      }
-   78|    988|      case 4: {  // reset everything
+   72|    536|          const auto target = marks.back();
+   73|    536|          marks.pop_back();
+   74|    536|          arena->rewind(target);  // LIFO: target.offset <= used()
+   75|    536|        }
+   76|    914|        break;
+   77|  3.23k|      }
+   78|  1.65k|      case 4: {  // reset everything
   ------------------
-  |  Branch (78:7): [True: 988, False: 7.13k]
+  |  Branch (78:7): [True: 1.65k, False: 7.71k]
   ------------------
-   79|    988|        arena->reset();
-   80|    988|        marks.clear();
-   81|    988|        if (!arena->empty()) {
+   79|  1.65k|        arena->reset();
+   80|  1.65k|        marks.clear();
+   81|  1.65k|        if (!arena->empty()) {
   ------------------
-  |  Branch (81:13): [True: 0, False: 988]
+  |  Branch (81:13): [True: 0, False: 1.65k]
   ------------------
    82|      0|          METL_FUZZ_TRAP();
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
    83|      0|        }
-   84|    988|        break;
-   85|    988|      }
-   86|    988|      default: {
+   84|  1.65k|        break;
+   85|  1.65k|      }
+   86|  1.65k|      default: {
   ------------------
-  |  Branch (86:7): [True: 223, False: 7.90k]
+  |  Branch (86:7): [True: 263, False: 9.10k]
   ------------------
-   87|    223|        if (arena->used() > arena->capacity()) {
+   87|    263|        if (arena->used() > arena->capacity()) {
   ------------------
-  |  Branch (87:13): [True: 0, False: 223]
+  |  Branch (87:13): [True: 0, False: 263]
   ------------------
    88|      0|          METL_FUZZ_TRAP();
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
    89|      0|        }
-   90|    223|        break;
-   91|    223|      }
-   92|  8.12k|    }
-   93|  8.12k|  }
-   94|    205|}
+   90|    263|        break;
+   91|    263|      }
+   92|  9.36k|    }
+   93|  9.36k|  }
+   94|    215|}
 fuzz_allocators.cpp:_ZN12_GLOBAL__N_117bounded_alignmentEh:
-   31|  3.02k|std::size_t bounded_alignment(std::uint8_t raw) {
-   32|  3.02k|  std::size_t align = std::size_t{1} << (raw % 5u);  // 1,2,4,8,16
-   33|  3.02k|  if (align > alignof(std::max_align_t)) {
+   31|  3.23k|std::size_t bounded_alignment(std::uint8_t raw) {
+   32|  3.23k|  std::size_t align = std::size_t{1} << (raw % 5u);  // 1,2,4,8,16
+   33|  3.23k|  if (align > alignof(std::max_align_t)) {
   ------------------
-  |  Branch (33:7): [True: 0, False: 3.02k]
+  |  Branch (33:7): [True: 0, False: 3.23k]
   ------------------
    34|      0|    align = alignof(std::max_align_t);
    35|      0|  }
-   36|  3.02k|  return align;
-   37|  3.02k|}
+   36|  3.23k|  return align;
+   37|  3.23k|}
 fuzz_allocators.cpp:_ZN12_GLOBAL__N_112drive_staticERN9metl_fuzz11byte_readerE:
    96|     77|void drive_static(metl_fuzz::byte_reader& in) {
    97|     77|  auto alloc = std::make_unique<metl::static_allocator<std::uint32_t, kStaticBytes>>();
@@ -199,30 +199,30 @@ fuzz_allocators.cpp:_ZN12_GLOBAL__N_112drive_staticERN9metl_fuzz11byte_readerE:
   131|     77|}
 
 _ZN9metl_fuzz11byte_readerC2EPKhm:
-   42|    282|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
+   42|    292|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
 _ZN9metl_fuzz11byte_reader4byteEv:
-   48|  36.6k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
+   48|  41.0k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
   ------------------
-  |  Branch (48:41): [True: 36.1k, False: 512]
+  |  Branch (48:41): [True: 40.4k, False: 578]
   ------------------
 _ZNK9metl_fuzz11byte_reader5emptyEv:
-   45|  10.5k|  bool empty() const noexcept { return remaining() == 0; }
+   45|  11.7k|  bool empty() const noexcept { return remaining() == 0; }
 _ZNK9metl_fuzz11byte_reader9remainingEv:
-   44|  10.5k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
+   44|  11.7k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
   ------------------
-  |  Branch (44:51): [True: 10.2k, False: 282]
+  |  Branch (44:51): [True: 11.5k, False: 292]
   ------------------
 _ZN9metl_fuzz11byte_reader7integerImEET_v:
-   52|  2.03k|  UInt integer() noexcept {
-   53|  2.03k|    UInt value = 0;
-   54|  18.3k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
+   52|  2.37k|  UInt integer() noexcept {
+   53|  2.37k|    UInt value = 0;
+   54|  21.4k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
   ------------------
-  |  Branch (54:29): [True: 16.3k, False: 2.03k]
+  |  Branch (54:29): [True: 19.0k, False: 2.37k]
   ------------------
-   55|  16.3k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
-   56|  16.3k|    }
-   57|  2.03k|    return value;
-   58|  2.03k|  }
+   55|  19.0k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
+   56|  19.0k|    }
+   57|  2.37k|    return value;
+   58|  2.37k|  }
 _ZN9metl_fuzz11byte_reader7integerIjEET_v:
    52|    721|  UInt integer() noexcept {
    53|    721|    UInt value = 0;
@@ -236,15 +236,15 @@ _ZN9metl_fuzz11byte_reader7integerIjEET_v:
    58|    721|  }
 
 _ZN4metl15arena_allocatorILm256EEC2Ev:
-   52|    205|  constexpr arena_allocator() noexcept : offset_(0), storage_{} {}
+   52|    215|  constexpr arena_allocator() noexcept : offset_(0), storage_{} {}
 _ZNK4metl15arena_allocatorILm256EE4usedEv:
-  176|  7.67k|  METL_NODISCARD constexpr size_type used() const noexcept { return offset_; }
+  176|  8.36k|  METL_NODISCARD constexpr size_type used() const noexcept { return offset_; }
 _ZN4metl15arena_allocatorILm256EE8allocateEmm:
-   82|  3.02k|  METL_NODISCARD void* allocate(size_type bytes, size_type alignment = alignof(std::max_align_t)) noexcept {
-   83|  3.02k|    return allocate_impl(bytes, alignment, nullptr);
-   84|  3.02k|  }
+   82|  3.23k|  METL_NODISCARD void* allocate(size_type bytes, size_type alignment = alignof(std::max_align_t)) noexcept {
+   83|  3.23k|    return allocate_impl(bytes, alignment, nullptr);
+   84|  3.23k|  }
 _ZN4metl15arena_allocatorILm256EE13allocate_implEmmPDoFvPvE:
-  201|  5.06k|  void* allocate_impl(size_type bytes, size_type alignment, destroy_fn_t destroy) noexcept {
+  201|  5.61k|  void* allocate_impl(size_type bytes, size_type alignment, destroy_fn_t destroy) noexcept {
   202|       |    // `align_up`'s bitmask arithmetic is only correct for a power-of-two
   203|       |    // alignment; a non-power-of-two `alignment` (only reachable via the runtime
   204|       |    // `allocate(bytes, alignment)` overload) would silently corrupt the offset
@@ -252,174 +252,174 @@ _ZN4metl15arena_allocatorILm256EE13allocate_implEmmPDoFvPvE:
   206|       |    // so this memory-safety floor survives METL_HARDENING_NONE. Checked before
   207|       |    // the size, as monotonic_buffer checks it: a bad alignment is a caller bug
   208|       |    // whatever the size, and an empty request must not hide it.
-  209|  5.06k|    METL_HARDEN(alignment != 0 && (alignment & (alignment - 1)) == 0);
+  209|  5.61k|    METL_HARDEN(alignment != 0 && (alignment & (alignment - 1)) == 0);
   ------------------
-  |  |  140|  5.06k|  do {                                                             \
-  |  |  141|  5.06k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  140|  5.61k|  do {                                                             \
+  |  |  141|  5.61k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|  10.1k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  11.2k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 5.06k]
-  |  |  |  |  |  Branch (25:70): [True: 5.06k, False: 0]
-  |  |  |  |  |  Branch (25:70): [True: 5.06k, False: 0]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 5.61k]
+  |  |  |  |  |  Branch (25:70): [True: 5.61k, False: 0]
+  |  |  |  |  |  Branch (25:70): [True: 5.61k, False: 0]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |  142|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |  143|      0|    }                                                              \
-  |  |  144|  5.06k|  } while (false)
+  |  |  144|  5.61k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (144:12): [Folded, False: 5.06k]
+  |  |  |  Branch (144:12): [Folded, False: 5.61k]
   |  |  ------------------
   ------------------
-  210|  5.06k|    if (bytes == 0) {
+  210|  5.61k|    if (bytes == 0) {
   ------------------
-  |  Branch (210:9): [True: 320, False: 4.74k]
+  |  Branch (210:9): [True: 324, False: 5.29k]
   ------------------
-  211|    320|      return nullptr;
-  212|    320|    }
+  211|    324|      return nullptr;
+  212|    324|    }
   213|       |
-  214|  4.74k|    const std::uintptr_t base = reinterpret_cast<std::uintptr_t>(&storage_[0]);
-  215|  4.74k|    const std::uintptr_t current = base + offset_;
-  216|  4.74k|    const std::uintptr_t aligned = align_up(current, alignment);
-  217|  4.74k|    const size_type padding = static_cast<size_type>(aligned - current);
+  214|  5.29k|    const std::uintptr_t base = reinterpret_cast<std::uintptr_t>(&storage_[0]);
+  215|  5.29k|    const std::uintptr_t current = base + offset_;
+  216|  5.29k|    const std::uintptr_t aligned = align_up(current, alignment);
+  217|  5.29k|    const size_type padding = static_cast<size_type>(aligned - current);
   218|       |
   219|       |    // Overflow-safe bounds check. Computing `padding + bytes + sizeof(record)`
   220|       |    // up front can wrap size_type for a huge `bytes`, yielding a small total
   221|       |    // that slips past the bound and overruns the arena. Instead subtract each
   222|       |    // component from the remaining space (which never underflows because each
   223|       |    // step is guarded), so no addition can overflow before the check.
-  224|  4.74k|    const size_type space = remaining();
-  225|  4.74k|    if (padding > space) {
+  224|  5.29k|    const size_type space = remaining();
+  225|  5.29k|    if (padding > space) {
   ------------------
-  |  Branch (225:9): [True: 0, False: 4.74k]
+  |  Branch (225:9): [True: 0, False: 5.29k]
   ------------------
   226|      0|      return nullptr;
   227|      0|    }
-  228|  4.74k|    size_type left = space - padding;
-  229|  4.74k|    if (bytes > left) {
+  228|  5.29k|    size_type left = space - padding;
+  229|  5.29k|    if (bytes > left) {
   ------------------
-  |  Branch (229:9): [True: 787, False: 3.95k]
+  |  Branch (229:9): [True: 787, False: 4.50k]
   ------------------
   230|    787|      return nullptr;
   231|    787|    }
-  232|  3.95k|    left -= bytes;
-  233|  3.95k|    if (sizeof(allocation_record) > left) {
+  232|  4.50k|    left -= bytes;
+  233|  4.50k|    if (sizeof(allocation_record) > left) {
   ------------------
-  |  Branch (233:9): [True: 425, False: 3.52k]
+  |  Branch (233:9): [True: 422, False: 4.08k]
   ------------------
-  234|    425|      return nullptr;
-  235|    425|    }
+  234|    422|      return nullptr;
+  235|    422|    }
   236|       |
   237|       |    // Safe now: padding + bytes + sizeof(record) <= space <= Capacity.
-  238|  3.52k|    const size_type total_bytes = padding + bytes + sizeof(allocation_record);
+  238|  4.08k|    const size_type total_bytes = padding + bytes + sizeof(allocation_record);
   239|       |
-  240|  3.52k|    const size_type previous_offset = offset_;
-  241|  3.52k|    const size_type payload_offset = previous_offset + padding;
-  242|  3.52k|    const size_type next_offset = previous_offset + total_bytes;
+  240|  4.08k|    const size_type previous_offset = offset_;
+  241|  4.08k|    const size_type payload_offset = previous_offset + padding;
+  242|  4.08k|    const size_type next_offset = previous_offset + total_bytes;
   243|       |
-  244|  3.52k|    store_record(next_offset, allocation_record{previous_offset, payload_offset, destroy});
-  245|  3.52k|    offset_ = next_offset;
-  246|  3.52k|    return &storage_[payload_offset];
-  247|  3.95k|  }
+  244|  4.08k|    store_record(next_offset, allocation_record{previous_offset, payload_offset, destroy});
+  245|  4.08k|    offset_ = next_offset;
+  246|  4.08k|    return &storage_[payload_offset];
+  247|  4.50k|  }
 _ZN4metl15arena_allocatorILm256EE8align_upEmm:
-  197|  4.74k|  static constexpr std::uintptr_t align_up(std::uintptr_t value, size_type alignment) noexcept {
-  198|  4.74k|    return alignment == 0 ? value : (value + (alignment - 1)) & ~(alignment - 1);
+  197|  5.29k|  static constexpr std::uintptr_t align_up(std::uintptr_t value, size_type alignment) noexcept {
+  198|  5.29k|    return alignment == 0 ? value : (value + (alignment - 1)) & ~(alignment - 1);
   ------------------
-  |  Branch (198:12): [True: 0, False: 4.74k]
+  |  Branch (198:12): [True: 0, False: 5.29k]
   ------------------
-  199|  4.74k|  }
+  199|  5.29k|  }
 _ZNK4metl15arena_allocatorILm256EE9remainingEv:
-  178|  4.74k|  METL_NODISCARD constexpr size_type remaining() const noexcept { return Capacity - offset_; }
+  178|  5.29k|  METL_NODISCARD constexpr size_type remaining() const noexcept { return Capacity - offset_; }
 _ZN4metl15arena_allocatorILm256EE12store_recordEmRKNS1_17allocation_recordE:
-  249|  6.15k|  void store_record(size_type end_offset, const allocation_record& record) noexcept {
-  250|  6.15k|    const unsigned char* source = reinterpret_cast<const unsigned char*>(&record);
-  251|  6.15k|    unsigned char* destination = &storage_[end_offset - sizeof(allocation_record)];
-  252|   153k|    for (size_type i = 0; i < sizeof(allocation_record); ++i) {
+  249|  7.37k|  void store_record(size_type end_offset, const allocation_record& record) noexcept {
+  250|  7.37k|    const unsigned char* source = reinterpret_cast<const unsigned char*>(&record);
+  251|  7.37k|    unsigned char* destination = &storage_[end_offset - sizeof(allocation_record)];
+  252|   184k|    for (size_type i = 0; i < sizeof(allocation_record); ++i) {
   ------------------
-  |  Branch (252:27): [True: 147k, False: 6.15k]
+  |  Branch (252:27): [True: 176k, False: 7.37k]
   ------------------
-  253|   147k|      destination[i] = source[i];
-  254|   147k|    }
-  255|  6.15k|  }
+  253|   176k|      destination[i] = source[i];
+  254|   176k|    }
+  255|  7.37k|  }
 _ZNK4metl15arena_allocatorILm256EE8capacityEv:
-  174|  2.43k|  METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
+  174|  2.69k|  METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
 _ZN4metl15arena_allocatorILm256EE11try_emplaceImJmEEEPT_DpOT0_:
-   94|  2.03k|  METL_NODISCARD T* try_emplace(Args&&... args) {
-   95|  2.03k|    static_assert(alignof(T) <= alignof(std::max_align_t),
-   96|  2.03k|                  "type alignment exceeds arena_allocator maximum alignment");
+   94|  2.37k|  METL_NODISCARD T* try_emplace(Args&&... args) {
+   95|  2.37k|    static_assert(alignof(T) <= alignof(std::max_align_t),
+   96|  2.37k|                  "type alignment exceeds arena_allocator maximum alignment");
    97|       |
    98|       |    // Reserve the slot WITHOUT registering the destructor yet. If we committed
    99|       |    // the destroy record up front and T's constructor then threw, `rewind`/
   100|       |    // `reset` would later invoke ~T() on never-constructed storage (UB). Only
   101|       |    // after construction succeeds do we patch the record's destroy pointer in.
-  102|  2.03k|    void* memory = allocate_impl(sizeof(T), alignof(T), nullptr);
-  103|  2.03k|    if (memory == nullptr) {
+  102|  2.37k|    void* memory = allocate_impl(sizeof(T), alignof(T), nullptr);
+  103|  2.37k|    if (memory == nullptr) {
   ------------------
-  |  Branch (103:9): [True: 725, False: 1.31k]
+  |  Branch (103:9): [True: 733, False: 1.64k]
   ------------------
-  104|    725|      return nullptr;
-  105|    725|    }
+  104|    733|      return nullptr;
+  105|    733|    }
   106|       |    // Where this allocation's record ends, captured now: T's constructor may
   107|       |    // allocate from this arena too, and then `offset_` names the newest of
   108|       |    // those records, not this one.
-  109|  1.31k|    const size_type record_end = offset_;
+  109|  1.64k|    const size_type record_end = offset_;
   110|       |
-  111|  1.31k|    T* object = ::new (memory) T(std::forward<Args>(args)...);
+  111|  1.64k|    T* object = ::new (memory) T(std::forward<Args>(args)...);
   112|       |
   113|       |    // Construction succeeded: register the destructor on this allocation's own
   114|       |    // record. A throwing constructor never reaches here, so no record ever
   115|       |    // points at unconstructed storage.
-  116|  1.31k|    allocation_record record = load_record(record_end);
-  117|  1.31k|    record.destroy = &destroy_object<T>;
-  118|  1.31k|    store_record(record_end, record);
-  119|  1.31k|    return object;
-  120|  2.03k|  }
+  116|  1.64k|    allocation_record record = load_record(record_end);
+  117|  1.64k|    record.destroy = &destroy_object<T>;
+  118|  1.64k|    store_record(record_end, record);
+  119|  1.64k|    return object;
+  120|  2.37k|  }
 _ZNK4metl15arena_allocatorILm256EE11load_recordEm:
-  257|  6.15k|  allocation_record load_record(size_type end_offset) const noexcept {
-  258|  6.15k|    allocation_record record{};
-  259|  6.15k|    const unsigned char* source = &storage_[end_offset - sizeof(allocation_record)];
-  260|  6.15k|    unsigned char* destination = reinterpret_cast<unsigned char*>(&record);
-  261|   153k|    for (size_type i = 0; i < sizeof(allocation_record); ++i) {
+  257|  7.37k|  allocation_record load_record(size_type end_offset) const noexcept {
+  258|  7.37k|    allocation_record record{};
+  259|  7.37k|    const unsigned char* source = &storage_[end_offset - sizeof(allocation_record)];
+  260|  7.37k|    unsigned char* destination = reinterpret_cast<unsigned char*>(&record);
+  261|   184k|    for (size_type i = 0; i < sizeof(allocation_record); ++i) {
   ------------------
-  |  Branch (261:27): [True: 147k, False: 6.15k]
+  |  Branch (261:27): [True: 176k, False: 7.37k]
   ------------------
-  262|   147k|      destination[i] = source[i];
-  263|   147k|    }
-  264|  6.15k|    return record;
-  265|  6.15k|  }
+  262|   176k|      destination[i] = source[i];
+  263|   176k|    }
+  264|  7.37k|    return record;
+  265|  7.37k|  }
 _ZN4metl15arena_allocatorILm256EE14destroy_objectImEEvPv:
-  193|  1.31k|  static void destroy_object(void* memory) noexcept {
-  194|  1.31k|    std::launder(static_cast<T*>(memory))->~T();
-  195|  1.31k|  }
+  193|  1.64k|  static void destroy_object(void* memory) noexcept {
+  194|  1.64k|    std::launder(static_cast<T*>(memory))->~T();
+  195|  1.64k|  }
 _ZNK4metl15arena_allocatorILm256EE4markEv:
-   70|    938|  METL_NODISCARD mark_type mark() const noexcept { return mark_type{offset_}; }
+   70|    920|  METL_NODISCARD mark_type mark() const noexcept { return mark_type{offset_}; }
 _ZN4metl15arena_allocatorILm256EE6rewindENS1_9mark_typeE:
-  149|  1.84k|  void rewind(mark_type target) noexcept {
-  150|  1.84k|    METL_ASSERT(target.offset <= offset_);
+  149|  2.40k|  void rewind(mark_type target) noexcept {
+  150|  2.40k|    METL_ASSERT(target.offset <= offset_);
   ------------------
-  |  |  107|  1.84k|  do {                                                             \
-  |  |  108|  1.84k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  107|  2.40k|  do {                                                             \
+  |  |  108|  2.40k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|  1.84k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  2.40k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 1.84k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 2.40k]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |  109|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |  110|      0|    }                                                              \
-  |  |  111|  1.84k|  } while (false)
+  |  |  111|  2.40k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (111:12): [Folded, False: 1.84k]
+  |  |  |  Branch (111:12): [Folded, False: 2.40k]
   |  |  ------------------
   ------------------
-  151|  6.68k|    while (offset_ > target.offset) {
+  151|  8.13k|    while (offset_ > target.offset) {
   ------------------
-  |  Branch (151:12): [True: 4.84k, False: 1.84k]
+  |  Branch (151:12): [True: 5.72k, False: 2.40k]
   ------------------
-  152|  4.84k|      allocation_record record = load_record(offset_);
-  153|  4.84k|      if (record.destroy != nullptr) {
+  152|  5.72k|      allocation_record record = load_record(offset_);
+  153|  5.72k|      if (record.destroy != nullptr) {
   ------------------
-  |  Branch (153:11): [True: 1.31k, False: 3.52k]
+  |  Branch (153:11): [True: 1.64k, False: 4.08k]
   ------------------
   154|       |        // Disarm the record before the destructor runs, then look again. The
   155|       |        // destructor may rewind this arena itself, which must find the object
@@ -427,21 +427,21 @@ _ZN4metl15arena_allocatorILm256EE6rewindENS1_9mark_typeE:
   157|       |        // and it may allocate, which lands above this record and is destroyed
   158|       |        // and released before it. The storage itself is released only once the
   159|       |        // destructor has returned, so nothing is built over a live object.
-  160|  1.31k|        const destroy_fn_t destroy = record.destroy;
-  161|  1.31k|        record.destroy = nullptr;
-  162|  1.31k|        store_record(offset_, record);
-  163|  1.31k|        destroy(&storage_[record.payload_offset]);
-  164|  1.31k|        continue;
-  165|  1.31k|      }
-  166|  3.52k|      offset_ = record.previous_offset;
-  167|  3.52k|    }
-  168|  1.84k|  }
+  160|  1.64k|        const destroy_fn_t destroy = record.destroy;
+  161|  1.64k|        record.destroy = nullptr;
+  162|  1.64k|        store_record(offset_, record);
+  163|  1.64k|        destroy(&storage_[record.payload_offset]);
+  164|  1.64k|        continue;
+  165|  1.64k|      }
+  166|  4.08k|      offset_ = record.previous_offset;
+  167|  4.08k|    }
+  168|  2.40k|  }
 _ZN4metl15arena_allocatorILm256EE5resetEv:
-  171|  1.19k|  void reset() noexcept { rewind(mark_type{0}); }
+  171|  1.87k|  void reset() noexcept { rewind(mark_type{0}); }
 _ZNK4metl15arena_allocatorILm256EE5emptyEv:
-  180|    988|  METL_NODISCARD constexpr bool empty() const noexcept { return offset_ == 0; }
+  180|  1.65k|  METL_NODISCARD constexpr bool empty() const noexcept { return offset_ == 0; }
 _ZN4metl15arena_allocatorILm256EED2Ev:
-   57|    205|  ~arena_allocator() { reset(); }
+   57|    215|  ~arena_allocator() { reset(); }
 
 _ZN4metl16monotonic_bufferILm256EEC2Ev:
    47|     77|  constexpr monotonic_buffer() noexcept : offset_(0), storage_{} {}
