@@ -35,6 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Broken since 1.0.0; the coro scheduler, which uses `fixed_priority_queue`, was
   broken with them.
 
+- **`#include <metl/metl.hpp>` compiles on Cortex-M0/M0+ with GCC 12 and older
+  and Clang 16 and older.** `mpmc_queue`'s check for a lock-free
+  compare-exchange did not depend on the template arguments, so those compilers
+  evaluated it when the header was included, not when a queue was used. The
+  check now depends on `T`; using an `mpmc_queue` there still fails with the same
+  message.
+
 ## [1.2.2] - 2026-10-13
 
 **Highlights.** A correctness patch from a third review, each finding reproduced
