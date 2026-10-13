@@ -21,6 +21,15 @@ WHAT THIS CANNOT SEE, and why the number is not the whole story:
     lookup_table.hpp and detail/crc.hpp. Those are measurement artifacts, not
     test gaps -- do not "fix" them by adding runtime tests that duplicate a
     static_assert.
+  * A constant condition reads as a MISSED branch. llvm-cov's lcov export
+    writes the folded side of a branch -- the `while (false)` of every
+    METL_ASSERT, METL_HARDEN, METL_DASSERT and METL_PANIC -- as a branch never
+    taken. `llvm-cov report` and the record's own BRF/BRH leave it out
+    (llvm/llvm-project#231521, #363). So the gated branch figure, and
+    Codecov's partial lines, read low: on 106de55e7, 77.5% branches where an
+    export that skips folded sides gives 85.7%. The floors are set against the
+    figure as exported. Do not correct it by matching source text; wait for
+    the fixed export and reset the floors from CI.
 
 So: this measures host-visible RUNTIME branch depth. It is a floor on quality,
 not a summary of it.
