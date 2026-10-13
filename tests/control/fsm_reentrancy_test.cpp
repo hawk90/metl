@@ -69,6 +69,21 @@ struct hook_log {
   }
 };
 
+#if !METL_NO_EXCEPTIONS
+// a -> b runs `outer`, which dispatches b -> c and catches what that
+// transition's action throws.
+struct throwing_chain {
+  metl::fsm<st, ev, 3, 3, 3>* machine = nullptr;
+  void outer(st, ev, st) {
+    try {
+      (void)machine->dispatch(ev::go);
+    } catch (int) {
+    }
+  }
+  void thrower(st, ev, st) { throw 1; }
+};
+#endif
+
 }  // namespace
 
 int main() {
@@ -154,6 +169,64 @@ int main() {
     CHECK(plain.dispatch(ev::go));
     CHECK(hooks.equals("xAeB"));
   }
+
+  // A hook table with fewer hooks than slots: the unfilled slot is
+  // {State{}, no handler}, and State{} is `a`. Entering `a` skips that slot and
+  // runs the hook listed after it.
+  {
+    hook_log hooks;
+    using hooked_t = metl::fsm<st, ev, 1, 2, 0>;
+    using hook_t = metl::fsm_state_hook<st>;
+    using on_state = metl::delegate<void(st)>;
+
+    const std::array<metl::fsm_transition<st, ev>, 1> table{{{st::b, ev::go, st::a, {}}}};
+    const std::array<hook_t, 2> entry{{
+        {},
+        {st::a, on_state::bind<hook_log, &hook_log::enter>(hooks)},
+    }};
+    hooked_t partial(st::b, table, entry, {});
+    CHECK(partial.dispatch(ev::go));
+    CHECK(hooks.equals("eA"));
+  }
+
+#if !METL_NO_EXCEPTIONS
+  // An action that throws inside a chained dispatch, caught by the outer
+  // action: the inner target is committed and never entered (fsm.hpp, dispatch),
+  // so neither b nor c is entered, and leaving c later skips its exit hook.
+  {
+    hook_log hooks;
+    throwing_chain chain;
+    using hooked_t = metl::fsm<st, ev, 3, 3, 3>;
+    using hook_t = metl::fsm_state_hook<st>;
+    using on_state = metl::delegate<void(st)>;
+    using action = metl::delegate<void(st, ev, st)>;
+
+    const std::array<metl::fsm_transition<st, ev>, 3> table{{
+        {st::a, ev::go, st::b, action::bind<throwing_chain, &throwing_chain::outer>(chain)},
+        {st::b, ev::go, st::c, action::bind<throwing_chain, &throwing_chain::thrower>(chain)},
+        {st::c, ev::go, st::a, {}},
+    }};
+    const std::array<hook_t, 3> entry{{
+        {st::a, on_state::bind<hook_log, &hook_log::enter>(hooks)},
+        {st::b, on_state::bind<hook_log, &hook_log::enter>(hooks)},
+        {st::c, on_state::bind<hook_log, &hook_log::enter>(hooks)},
+    }};
+    const std::array<hook_t, 3> exit{{
+        {st::a, on_state::bind<hook_log, &hook_log::exit>(hooks)},
+        {st::b, on_state::bind<hook_log, &hook_log::exit>(hooks)},
+        {st::c, on_state::bind<hook_log, &hook_log::exit>(hooks)},
+    }};
+
+    hooked_t thrown(st::a, table, entry, exit);
+    chain.machine = &thrown;
+    CHECK(thrown.dispatch(ev::go));
+    CHECK(thrown.current_state() == st::c);
+    CHECK(hooks.equals("xA"));
+    CHECK(thrown.dispatch(ev::go));
+    CHECK(thrown.current_state() == st::a);
+    CHECK(hooks.equals("xAeA"));
+  }
+#endif
 
   return metl_test::exit_code();
 }
