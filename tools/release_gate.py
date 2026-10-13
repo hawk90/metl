@@ -11,10 +11,16 @@ ESP-IDF) and `analyze / c-cpp` (CodeQL). A tag releases a commit only when
 
 A check still running is waited for (main's CI takes 10-25 minutes, most of it
 queueing for runners). A check that finished without success fails the release
-at once. A check that has not appeared after NO_RUN_MINUTES fails too: main's
-CI starts within a minute or two of a merge, so its absence means CI never ran
-on this commit -- an old one, or one from before the check existed -- and
-waiting the full hour to report a timeout would point at the wrong cause.
+at once.
+
+A check that has not appeared yet is waited for while the workflow that
+produces it is still running on this commit. `ci-gate` is a fan-in: GitHub
+creates its check run only when every job it needs has finished, so for most of
+a healthy CI run it does not exist. Only when that workflow is not running here
+-- it never started, or finished without producing the check -- and
+NO_RUN_MINUTES have passed, does the gate fail: CI never ran on this commit (an
+old one, or one from before the check existed), and waiting the full hour would
+point at the wrong cause.
 
 Usage (in release.yml, with GH_TOKEN set and `checks: read`):
     tools/release_gate.py --repo owner/name --sha <sha> --ref <tag>
@@ -28,18 +34,24 @@ import sys
 import time
 
 REQUIRED = ("ci-gate", "analyze / c-cpp")
+# The workflow that produces each required check.
+PRODUCER = {"ci-gate": ".github/workflows/ci.yml", "analyze / c-cpp": ".github/workflows/codeql.yml"}
 WAIT_MINUTES = 60
 NO_RUN_MINUTES = 10
 
 
-def verdict(runs, minute):
-    """'pass', 'fail:<why>' or 'wait' for one check's runs at `minute`."""
+def verdict(runs, minute, producing=False):
+    """'pass', 'fail:<why>' or 'wait' for one check's runs at `minute`.
+
+    `producing`: the workflow that creates this check is queued or running on
+    the commit, so a check that has not appeared yet is still to come."""
     if any(run.get("conclusion") == "success" for run in runs):
         return "pass"
     if runs and all(run.get("status") == "completed" for run in runs):
         return "fail:finished as " + ",".join(str(run.get("conclusion")) for run in runs)
-    if not runs and minute >= NO_RUN_MINUTES:
-        return f"fail:never reported in {NO_RUN_MINUTES} minutes -- main's CI did not run on this commit"
+    if not runs and not producing and minute >= NO_RUN_MINUTES:
+        return (f"fail:never reported in {NO_RUN_MINUTES} minutes, and the workflow that "
+                f"produces it is not running -- main's CI did not run on this commit")
     return "wait"
 
 
@@ -61,6 +73,16 @@ def check_runs(repo, sha, name):
     return [run for run in runs if (run.get("app") or {}).get("slug") == "github-actions"]
 
 
+def producing_workflows(repo, sha):
+    """Paths of the workflows with a run on `sha` that has not completed."""
+    result = subprocess.run(
+        ["gh", "api", "-X", "GET", f"repos/{repo}/actions/runs", "-f", f"head_sha={sha}",
+         "-f", "per_page=100"],
+        capture_output=True, text=True, check=True)
+    runs = json.loads(result.stdout)["workflow_runs"]
+    return {run["path"] for run in runs if run.get("status") != "completed"}
+
+
 def on_main(sha):
     subprocess.run(["git", "fetch", "--no-tags", "--quiet", "origin", "main"], check=True)
     return subprocess.run(["git", "merge-base", "--is-ancestor", sha, "origin/main"]).returncode == 0
@@ -76,13 +98,16 @@ def self_test():
         ([running], 30, "wait"),
         ([], 3, "wait"),
         ([], NO_RUN_MINUTES, "fail"),
+        # A fan-in check does not exist until its workflow's other jobs finish.
+        ([], NO_RUN_MINUTES + 15, "wait", True),
         ([done_fail, ok], 0, "pass"),          # a re-run that succeeded counts
     ]
     failures = []
-    for runs, minute, want in cases:
-        got = verdict(runs, minute)
+    for runs, minute, want, *producing in cases:
+        got = verdict(runs, minute, *producing)
         if not got.startswith(want):
-            failures.append(f"verdict({runs}, minute={minute}) = {got}, want {want}")
+            failures.append(f"verdict({runs}, minute={minute}, producing={producing}) = {got}, "
+                            f"want {want}")
     combos = [
         ({"ci-gate": "pass", "analyze / c-cpp": "pass"}, "pass"),
         ({"ci-gate": "pass", "analyze / c-cpp": "wait"}, "wait"),
@@ -92,13 +117,16 @@ def self_test():
     for verdicts, want in combos:
         if overall(verdicts)[0] != want:
             failures.append(f"overall({verdicts}) = {overall(verdicts)[0]}, want {want}")
+    if set(PRODUCER) != set(REQUIRED):
+        failures.append(f"PRODUCER names {sorted(PRODUCER)}, REQUIRED {sorted(REQUIRED)}")
     if set(REQUIRED) != {"ci-gate", "analyze / c-cpp"}:
         failures.append(f"REQUIRED changed to {REQUIRED}; update the docstring and this test")
     if failures:
         print("SELF-TEST FAILED:\n  " + "\n  ".join(failures), file=sys.stderr)
         return 1
     print(f"self-test passed: {len(cases)} single-check and {len(combos)} combined verdicts, "
-          f"including a re-run that succeeded and a check that never reported")
+          f"including a re-run that succeeded, a check that never reported, and a fan-in "
+          f"check its running workflow has not created yet")
     return 0
 
 
@@ -121,7 +149,10 @@ def main():
               f"main: merge first, then tag the merge commit.")
         return 1
     for minute in range(WAIT_MINUTES + 1):
-        verdicts = {name: verdict(check_runs(args.repo, args.sha, name), minute) for name in REQUIRED}
+        running = producing_workflows(args.repo, args.sha)
+        verdicts = {name: verdict(check_runs(args.repo, args.sha, name), minute,
+                                  PRODUCER[name] in running)
+                    for name in REQUIRED}
         state, detail = overall(verdicts)
         if state == "pass":
             print(f"main's {' and '.join(REQUIRED)} passed for {args.sha}")
