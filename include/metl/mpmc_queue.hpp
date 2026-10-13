@@ -91,7 +91,12 @@ class mpmc_queue {
   static_assert(Capacity >= 2, "mpmc_queue Capacity must be at least 2");
   static_assert((Capacity & (Capacity - 1)) == 0, "mpmc_queue Capacity must be a power of two");
 
-  static_assert(std::atomic<std::size_t>::is_always_lock_free,
+  // detail::dependent_true_v<T> makes the condition depend on T, so it is
+  // checked when a queue is instantiated, not when the header is included:
+  // GCC 12 and Clang 16 and older evaluate a non-dependent static_assert in a
+  // class template at its definition, so including metl.hpp on ARMv6-M would
+  // fail.
+  static_assert(detail::dependent_true_v<T> && std::atomic<std::size_t>::is_always_lock_free,
                 "metl::mpmc_queue requires a lock-free compare-exchange on std::size_t. "
                 "ARMv6-M (Cortex-M0/M0+) has no CAS instruction. Use "
                 "metl::guarded<metl::static_message_queue<T, N>, metl::irq_lock> there — and "
