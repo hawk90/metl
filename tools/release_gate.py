@@ -29,6 +29,8 @@ Usage (in release.yml, with GH_TOKEN set and `checks: read`):
 
 import argparse
 import json
+import pathlib
+import re
 import subprocess
 import sys
 import time
@@ -119,6 +121,15 @@ def self_test():
             failures.append(f"overall({verdicts}) = {overall(verdicts)[0]}, want {want}")
     if set(PRODUCER) != set(REQUIRED):
         failures.append(f"PRODUCER names {sorted(PRODUCER)}, REQUIRED {sorted(REQUIRED)}")
+    # A renamed workflow or job would stop the wait silently, and the gate
+    # would again fail a healthy CI run after NO_RUN_MINUTES.
+    root = pathlib.Path(__file__).resolve().parent.parent
+    for name, path in PRODUCER.items():
+        workflow = root / path
+        if not workflow.is_file():
+            failures.append(f"PRODUCER[{name!r}] = {path}, which does not exist")
+        elif not re.search(rf"^\s+name: {re.escape(name)}\s*$", workflow.read_text(), re.MULTILINE):
+            failures.append(f"{path} has no job named {name!r}, so it cannot produce that check")
     if set(REQUIRED) != {"ci-gate", "analyze / c-cpp"}:
         failures.append(f"REQUIRED changed to {REQUIRED}; update the docstring and this test")
     if failures:
