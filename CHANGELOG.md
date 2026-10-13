@@ -47,6 +47,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its own move constructor was being resolved, a cycle those compilers reject.
   The constraint now uses `std::conjunction`, which stops at the first false
   condition.
+- **On Clang 11, `function_ref`, `fixed_function` and `fixed_any_invocable`
+  with a reference return type refuse a callable that returns the referenced
+  class by value**, as they do elsewhere (#259). The returned reference would
+  dangle. That Clang's `__reference_binds_to_temporary` reports no temporary
+  for a class prvalue, so that case is now checked directly.
 
 ## [1.2.2] - 2026-10-13
 
