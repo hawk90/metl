@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`#include <metl/metl.hpp>` compiles on Cortex-M0/M0+ with GCC 12 and older
+  and Clang 16 and older.** `mpmc_queue`'s check for a lock-free
+  compare-exchange did not depend on the template arguments, so those compilers
+  evaluated it when the header was included, not when a queue was used. The
+  check now depends on `T`; using an `mpmc_queue` there still fails with the same
+  message.
 - **`flat_map`, `flat_set`, `static_unordered_map`, `static_unordered_set`,
   `fixed_priority_queue` and `scope_exit` compile with GCC 9 and 10** (also
   arm-none-eabi-gcc 10), the floors the README states. Their noexcept-specifiers
