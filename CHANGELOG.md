@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `fixed_bitset` was deferred for lack of an in-library caller, but
     `handle_pool` keeps a `bool` per slot and is one. #336 measures whether one
     bit per slot pays there.
+- **`docs/SCOPE.md` adds two rules.**
+  - An experimental type's tracking issue states its promotion and removal
+    criteria before the type lands. Removing one needs no deprecation cycle,
+    only a CHANGELOG entry with the reason.
+  - A type turned down or deferred records how that was checked, so the
+    premise can be checked again. The two corrections above are why.
 
 ## [1.2.2] - 2026-10-13
 
