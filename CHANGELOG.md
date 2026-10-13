@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Storing one `fixed_function` or `fixed_any_invocable` in another of a
+  different capacity compiles with GCC 9 and Clang 11.** The converting
+  constructors' constraint asked whether the wrapper itself was storable while
+  its own move constructor was being resolved, a cycle those compilers reject.
+  The constraint now uses `std::conjunction`, which stops at the first false
+  condition.
 - **`#include <metl/metl.hpp>` compiles on Cortex-M0/M0+ with GCC 12 and older
   and Clang 16 and older.** `mpmc_queue`'s check for a lock-free
   compare-exchange did not depend on the template arguments, so those compilers
