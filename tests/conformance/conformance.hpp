@@ -30,7 +30,9 @@
 #include <utility>
 
 #include <metl/arena_allocator.hpp>
+#include <metl/expected.hpp>
 #include <metl/fixed_deque.hpp>
+#include <metl/fixed_function.hpp>
 #include <metl/fixed_priority_queue.hpp>
 #include <metl/fixed_queue.hpp>
 #include <metl/fixed_stack.hpp>
@@ -38,11 +40,15 @@
 #include <metl/flat_map.hpp>
 #include <metl/flat_set.hpp>
 #include <metl/handle_pool.hpp>
+#include <metl/mpmc_queue.hpp>
 #include <metl/object_pool.hpp>
+#include <metl/optional.hpp>
 #include <metl/ring_buffer.hpp>
+#include <metl/spsc_queue.hpp>
 #include <metl/static_message_queue.hpp>
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
+#include <metl/variant.hpp>
 
 namespace conformance {
 
@@ -103,6 +109,14 @@ struct probe {
     }
     return *this;
   }
+// GCC 16 at -O2 reports the reads below as maybe-uninitialized when the probe
+// lives in an optional's union storage: std::optional<probe> warns after just
+// emplace() and reset(), and metl::optional the same. The probe was built; the
+// volatile read is what detects a second destruction, so it stays.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
   ~probe() {
     if (*static_cast<volatile int*>(&alive) != alive_tag) {
       ++destroyed_twice();
@@ -119,6 +133,10 @@ struct probe {
       on_destroy()(*this);
     }
   }
+
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
   static probe key(int i) {
     probe unarmed;
@@ -156,6 +174,9 @@ struct probe_hash {
 //   remove_one(c)            remove exactly one probe, whichever the type picks
 //   clear(c)                 remove every probe
 //   movable                  move construction is part of the type's contract
+//   move_empties_source      moving leaves the source holding nothing; the
+//                            vocabulary types keep the source's state, as std
+//                            does, and only its value is moved from
 //   fixed_count              held() is an exact element count and capacity a
 //                            number of elements, not of bytes
 //   zero_type                the same type at capacity 0, or instead
@@ -172,6 +193,7 @@ struct fixed_vector_adapter {
   using zero_type = metl::fixed_vector<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
+  static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
   template <typename C>
   static bool try_add(C& c, int id) {
@@ -198,6 +220,7 @@ struct fixed_deque_adapter {
   using zero_type = metl::fixed_deque<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
+  static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
   template <typename C>
   static bool try_add(C& c, int id) {
@@ -224,6 +247,7 @@ struct ring_buffer_adapter {
   using zero_type = metl::ring_buffer<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
+  static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
   template <typename C>
   static bool try_add(C& c, int id) {
@@ -250,6 +274,7 @@ struct fixed_queue_adapter {
   using zero_type = metl::fixed_queue<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
+  static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
   template <typename C>
   static bool try_add(C& c, int id) {
@@ -276,6 +301,7 @@ struct fixed_stack_adapter {
   using zero_type = metl::fixed_stack<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
+  static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
   template <typename C>
   static bool try_add(C& c, int id) {
@@ -302,6 +328,7 @@ struct fixed_priority_queue_adapter {
   using zero_type = metl::fixed_priority_queue<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
+  static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
   template <typename C>
   static bool try_add(C& c, int id) {
@@ -328,6 +355,7 @@ struct static_message_queue_adapter {
   static constexpr const char* zero_capacity_refused = "a static_assert: it could hold nothing";
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
+  static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
   template <typename C>
   static bool try_add(C& c, int id) {
@@ -354,6 +382,7 @@ struct flat_map_adapter {
   using zero_type = metl::flat_map<int, probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
+  static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
   template <typename C>
   static bool try_add(C& c, int id) {
@@ -380,6 +409,7 @@ struct flat_set_adapter {
   using zero_type = metl::flat_set<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
+  static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
   template <typename C>
   static bool try_add(C& c, int id) {
@@ -406,6 +436,7 @@ struct static_unordered_map_adapter {
   using zero_type = metl::static_unordered_map<int, probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
+  static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
   template <typename C>
   static bool try_add(C& c, int id) {
@@ -432,6 +463,7 @@ struct static_unordered_set_adapter {
   using zero_type = metl::static_unordered_set<probe, 0, probe_hash>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
+  static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
   template <typename C>
   static bool try_add(C& c, int id) {
@@ -468,6 +500,7 @@ struct object_pool_adapter {
   using zero_type = metl::object_pool<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = false;
+  static constexpr bool move_empties_source = false;
   static constexpr bool fixed_count = true;
   // One list per instantiation: `type` and `zero_type` hand out separately.
   template <typename C>
@@ -505,6 +538,7 @@ struct handle_pool_adapter {
   using zero_type = metl::handle_pool<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = false;
+  static constexpr bool move_empties_source = false;
   static constexpr bool fixed_count = true;
   template <typename C>
   static handed_out<typename C::handle_type, 4>& given() {
@@ -546,6 +580,7 @@ struct arena_allocator_adapter {
   using zero_type = metl::arena_allocator<0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = false;
+  static constexpr bool move_empties_source = false;
   static constexpr bool fixed_count = false;
   template <typename C>
   static handed_out<typename C::mark_type, 4>& given() {
@@ -585,6 +620,214 @@ struct arena_allocator_adapter {
   }
 };
 
+// The queues: a try_pop moves the element out, and it ends when the local it
+// was moved into does.
+template <typename Queue>
+void pop_one(Queue& c) {
+  probe out;
+  (void)c.try_pop(out);
+}
+
+// conformance-header: spsc_queue.hpp
+struct spsc_queue_adapter {
+  using type = metl::spsc_queue<probe, 4>;
+  static constexpr const char* name = "spsc_queue";
+  static constexpr const char* zero_capacity_refused = "a static_assert: Capacity is at least 2";
+  static constexpr std::size_t capacity = 4;
+  static constexpr bool movable = false;
+  static constexpr bool move_empties_source = false;
+  static constexpr bool fixed_count = true;
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    return c.try_emplace(id);
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.size_approx();
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    pop_one(c);
+  }
+  template <typename C>
+  static void clear(C& c) {
+    while (!c.empty()) {
+      pop_one(c);
+    }
+  }
+};
+
+// conformance-header: mpmc_queue.hpp
+struct mpmc_queue_adapter {
+  using type = metl::mpmc_queue<probe, 4>;
+  static constexpr const char* name = "mpmc_queue";
+  static constexpr const char* zero_capacity_refused = "a static_assert: Capacity is at least 2";
+  static constexpr std::size_t capacity = 4;
+  static constexpr bool movable = false;
+  static constexpr bool move_empties_source = false;
+  static constexpr bool fixed_count = true;
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    return c.try_emplace(id);
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.size_approx();
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    pop_one(c);
+  }
+  template <typename C>
+  static void clear(C& c) {
+    while (!c.empty()) {
+      pop_one(c);
+    }
+  }
+};
+
+// The vocabulary types hold at most one object: capacity 1, and try_add fails
+// while one is held, as for a full container. They have no capacity parameter.
+
+// conformance-header: optional.hpp
+struct optional_adapter {
+  using type = metl::optional<probe>;
+  static constexpr const char* name = "optional";
+  static constexpr const char* zero_capacity_refused = "no capacity parameter: it holds at most one";
+  static constexpr std::size_t capacity = 1;
+  static constexpr bool movable = true;
+  static constexpr bool move_empties_source = false;
+  static constexpr bool fixed_count = true;
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    if (c.has_value()) {
+      return false;
+    }
+    c.emplace(id);
+    return true;
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.has_value() ? 1 : 0;
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    c.reset();
+  }
+  template <typename C>
+  static void clear(C& c) {
+    c.reset();
+  }
+};
+
+// An expected that starts in the error state, which here means "holds no
+// object": a default-constructed expected<probe, int> would hold a probe.
+struct expected_slot : metl::expected<probe, int> {
+  expected_slot() noexcept : metl::expected<probe, int>(metl::unexpect, 0) {}
+};
+
+// conformance-header: expected.hpp
+struct expected_adapter {
+  using type = expected_slot;
+  static constexpr const char* name = "expected";
+  // Switching state destroys the old member while has_value() still names it.
+  static constexpr const char* gap_removal_commits_first = "#374";
+  static constexpr const char* gap_reentrant_clear_destroys_once = "#374";
+  static constexpr const char* zero_capacity_refused = "no capacity parameter: it holds at most one";
+  static constexpr std::size_t capacity = 1;
+  static constexpr bool movable = true;
+  static constexpr bool move_empties_source = false;
+  static constexpr bool fixed_count = true;
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    if (c.has_value()) {
+      return false;
+    }
+    c.emplace(id);
+    return true;
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c.has_value() ? 1 : 0;
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    c.emplace_error(0);
+  }
+  template <typename C>
+  static void clear(C& c) {
+    c.emplace_error(0);
+  }
+};
+
+// conformance-header: variant.hpp
+struct variant_adapter {
+  using type = metl::variant<int, probe>;
+  static constexpr const char* name = "variant";
+  static constexpr const char* zero_capacity_refused = "no capacity parameter: it holds at most one";
+  static constexpr std::size_t capacity = 1;
+  static constexpr bool movable = true;
+  static constexpr bool move_empties_source = false;
+  static constexpr bool fixed_count = true;
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    if (metl::holds_alternative<probe>(c)) {
+      return false;
+    }
+    c.template emplace<probe>(id);
+    return true;
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return metl::holds_alternative<probe>(c) ? 1 : 0;
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    c.template emplace<int>(0);
+  }
+  template <typename C>
+  static void clear(C& c) {
+    c.template emplace<int>(0);
+  }
+};
+
+// A probe the wrapper can call.
+struct callable_probe {
+  probe held;
+  void operator()() const noexcept {}
+};
+
+// conformance-header: fixed_function.hpp
+struct fixed_function_adapter {
+  using type = metl::fixed_function<void(), 32>;
+  static constexpr const char* name = "fixed_function";
+  static constexpr const char* zero_capacity_refused = "its storage holds one target";
+  static constexpr std::size_t capacity = 1;
+  static constexpr bool movable = true;
+  static constexpr bool move_empties_source = true;
+  static constexpr bool fixed_count = true;
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    if (c) {
+      return false;
+    }
+    c = callable_probe{probe(id)};
+    return true;
+  }
+  template <typename C>
+  static std::size_t held(const C& c) {
+    return c ? 1 : 0;
+  }
+  template <typename C>
+  static void remove_one(C& c) {
+    c = nullptr;
+  }
+  template <typename C>
+  static void clear(C& c) {
+    c = nullptr;
+  }
+};
+
 using registry = std::tuple<fixed_vector_adapter,
                             fixed_deque_adapter,
                             ring_buffer_adapter,
@@ -598,7 +841,18 @@ using registry = std::tuple<fixed_vector_adapter,
                             static_unordered_set_adapter,
                             object_pool_adapter,
                             handle_pool_adapter,
-                            arena_allocator_adapter>;
+                            arena_allocator_adapter,
+                            spsc_queue_adapter,
+                            mpmc_queue_adapter,
+                            optional_adapter,
+                            expected_adapter,
+                            variant_adapter,
+                            fixed_function_adapter>;
+
+// How many elements a property fills: three, or fewer for a type that holds
+// fewer.
+template <typename Adapter>
+inline constexpr int filled = Adapter::capacity < 3 ? static_cast<int>(Adapter::capacity) : 3;
 
 template <typename Adapter>
 typename Adapter::type& instance() {
