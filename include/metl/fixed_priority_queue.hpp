@@ -63,6 +63,17 @@ class fixed_priority_queue {
   using const_reference = const T&;
   using value_compare = Compare;
 
+ private:
+  // Declared ahead of the noexcept-specifiers that name it: GCC 10 and
+  // older do not look ahead in the class there.
+  // Whether the comparator can throw. std::less / std::greater do not declare
+  // their call operator noexcept, so detail::nothrow_binary_call looks through
+  // them to the operator they apply: pop() on a queue of int -- or of any type
+  // whose `<` is noexcept -- keeps its noexcept (this replaced a
+  // scalar-only rule).
+  static constexpr bool comparator_cannot_throw = detail::nothrow_binary_call_v<Compare, const T&, const T&>;
+
+ public:
   /// Constructs an empty queue with a default-constructed comparator.
   fixed_priority_queue() = default;
 
@@ -188,13 +199,6 @@ class fixed_priority_queue {
   METL_NODISCARD span<const T> as_span() const noexcept { return storage_.as_span(); }
 
  private:
-  // Whether the comparator can throw. std::less / std::greater do not declare
-  // their call operator noexcept, so detail::nothrow_binary_call looks through
-  // them to the operator they apply: pop() on a queue of int -- or of any type
-  // whose `<` is noexcept -- keeps its noexcept (this replaced a
-  // scalar-only rule).
-  static constexpr bool comparator_cannot_throw = detail::nothrow_binary_call_v<Compare, const T&, const T&>;
-
   /// Runs a step that reorders the heap. If an element move or the comparator
   /// throws part-way, the heap property is gone and later pops would come out in
   /// the wrong order, so the queue is cleared before rethrowing -- the same rule
