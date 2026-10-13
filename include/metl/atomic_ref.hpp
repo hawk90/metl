@@ -137,29 +137,39 @@ inline T atomic_ref_from_word(const Word& bits) noexcept {
 }
 
 template <typename T>
-METL_NODISCARD inline T atomic_ref_load_bytes(const T* object, std::memory_order order) noexcept {
-  using word = typename atomic_ref_word<sizeof(T)>::type;
-  return atomic_ref_from_word<T>(
-      __atomic_load_n(reinterpret_cast<const word*>(object), atomic_ref_gnu_order(order)));
+METL_NODISCARD inline T atomic_ref_load(T* object, std::memory_order order) noexcept {
+  if constexpr (atomic_ref_uses_word_v<T>) {
+    using word = typename atomic_ref_word<sizeof(T)>::type;
+    return atomic_ref_from_word<T>(
+        __atomic_load_n(reinterpret_cast<word*>(object), atomic_ref_gnu_order(order)));
+  } else {
+    return atomic_ref_cast(object)->load(order);
+  }
 }
 
 template <typename T>
-inline void atomic_ref_store_bytes(T* object, const T& desired, std::memory_order order) noexcept {
-  using word = typename atomic_ref_word<sizeof(T)>::type;
-  word wanted;
-  std::memcpy(&wanted, metl::detail::addressof(desired), sizeof(T));
-  __atomic_store_n(reinterpret_cast<word*>(object), wanted, atomic_ref_gnu_order(order));
+inline void atomic_ref_store(T* object, const T& desired, std::memory_order order) noexcept {
+  if constexpr (atomic_ref_uses_word_v<T>) {
+    using word = typename atomic_ref_word<sizeof(T)>::type;
+    word wanted;
+    std::memcpy(&wanted, metl::detail::addressof(desired), sizeof(T));
+    __atomic_store_n(reinterpret_cast<word*>(object), wanted, atomic_ref_gnu_order(order));
+  } else {
+    atomic_ref_cast(object)->store(desired, order);
+  }
 }
 
 template <typename T>
-METL_NODISCARD inline T atomic_ref_exchange_bytes(T* object,
-                                                  const T& desired,
-                                                  std::memory_order order) noexcept {
-  using word = typename atomic_ref_word<sizeof(T)>::type;
-  word wanted;
-  std::memcpy(&wanted, metl::detail::addressof(desired), sizeof(T));
-  return atomic_ref_from_word<T>(
-      __atomic_exchange_n(reinterpret_cast<word*>(object), wanted, atomic_ref_gnu_order(order)));
+METL_NODISCARD inline T atomic_ref_exchange(T* object, const T& desired, std::memory_order order) noexcept {
+  if constexpr (atomic_ref_uses_word_v<T>) {
+    using word = typename atomic_ref_word<sizeof(T)>::type;
+    word wanted;
+    std::memcpy(&wanted, metl::detail::addressof(desired), sizeof(T));
+    return atomic_ref_from_word<T>(
+        __atomic_exchange_n(reinterpret_cast<word*>(object), wanted, atomic_ref_gnu_order(order)));
+  } else {
+    return atomic_ref_cast(object)->exchange(desired, order);
+  }
 }
 
 template <typename T>
@@ -186,25 +196,22 @@ METL_NODISCARD inline bool try_atomic_ref_exchange_bytes(
   return exchanged;
 }
 #else
+// Elsewhere (MSVC) every operation is std::atomic's.
 template <typename T>
 inline constexpr bool atomic_ref_uses_word_v = false;
 
-// Never called here (atomic_ref_uses_word_v is false), but atomic_ref names
-// them in discarded `if constexpr` branches, and those names must still exist.
 template <typename T>
-METL_NODISCARD inline T atomic_ref_load_bytes(T* object, std::memory_order order) noexcept {
+METL_NODISCARD inline T atomic_ref_load(T* object, std::memory_order order) noexcept {
   return atomic_ref_cast(object)->load(order);
 }
 
 template <typename T>
-inline void atomic_ref_store_bytes(T* object, const T& desired, std::memory_order order) noexcept {
+inline void atomic_ref_store(T* object, const T& desired, std::memory_order order) noexcept {
   atomic_ref_cast(object)->store(desired, order);
 }
 
 template <typename T>
-METL_NODISCARD inline T atomic_ref_exchange_bytes(T* object,
-                                                  const T& desired,
-                                                  std::memory_order order) noexcept {
+METL_NODISCARD inline T atomic_ref_exchange(T* object, const T& desired, std::memory_order order) noexcept {
   return atomic_ref_cast(object)->exchange(desired, order);
 }
 
@@ -278,11 +285,7 @@ class atomic_ref {
   /// @param order Memory order for the load.
   /// @return The value observed.
   T load(std::memory_order order = std::memory_order_seq_cst) const noexcept {
-    if constexpr (detail::atomic_ref_uses_word_v<T>) {
-      return detail::atomic_ref_load_bytes(ptr_, order);
-    } else {
-      return detail::atomic_ref_cast(ptr_)->load(order);
-    }
+    return detail::atomic_ref_load(ptr_, order);
   }
 
   /// @brief Atomically overwrite the value.
@@ -290,11 +293,7 @@ class atomic_ref {
   /// @param order Memory order for the store.
   void store(T desired, std::memory_order order = std::memory_order_seq_cst) const noexcept {
     detail::atomic_ref_clear_padding(desired);
-    if constexpr (detail::atomic_ref_uses_word_v<T>) {
-      detail::atomic_ref_store_bytes(ptr_, desired, order);
-    } else {
-      detail::atomic_ref_cast(ptr_)->store(desired, order);
-    }
+    detail::atomic_ref_store(ptr_, desired, order);
   }
 
   /// @brief Atomically replace the value and return the previous one.
@@ -303,11 +302,7 @@ class atomic_ref {
   /// @return The value held before the exchange.
   T exchange(T desired, std::memory_order order = std::memory_order_seq_cst) const noexcept {
     detail::atomic_ref_clear_padding(desired);
-    if constexpr (detail::atomic_ref_uses_word_v<T>) {
-      return detail::atomic_ref_exchange_bytes(ptr_, desired, order);
-    } else {
-      return detail::atomic_ref_cast(ptr_)->exchange(desired, order);
-    }
+    return detail::atomic_ref_exchange(ptr_, desired, order);
   }
 
   /// @brief Atomic strong compare-and-exchange.
