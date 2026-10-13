@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-10-13
+
+**Highlights.** METL now builds with the minimum compilers the README states,
+and CI checks each of them. Until now none had been built, and none built:
+GCC 9 and 10, Clang 11, arm-none-eabi-gcc 10 and CMake 3.16 each rejected
+some part of the library. The MSVC floor moves to 19.29, since 19.20 cannot
+keep the constant-initialization guarantee the SPSC queues rely on.
+
+### Upgrading from 1.2.2
+
+No code change is needed. Two things differ:
+
+- The MSVC floor is 19.29 (VS 2019 16.11). MSVC 19.20 to 19.28 are no longer
+  supported; see Changed.
+- `atomic_ref` over a `T` with padding, or aligned below its size, now accesses
+  it as an unsigned integer of the same size; see Fixed. Its results are
+  unchanged.
+
 ### Added
 
 - **CI builds with the stated compiler floors.** The `compiler-floors` job
