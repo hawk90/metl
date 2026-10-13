@@ -246,6 +246,12 @@ METL_NODISCARD inline bool try_atomic_ref_exchange_bytes(
 ///          reference at link time, not a compile error. Check
 ///          `is_always_lock_free` when the target may be an MCU, or keep `T`
 ///          to 4 bytes or fewer there.
+///
+/// @note **MSVC 19.26 and older refuse a `T` aligned below its size**, such as
+///       `struct { char; short; }`. Their `std::atomic<T>` asks the program to
+///       define `_ENABLE_ATOMIC_ALIGNMENT_FIX`, acknowledging the layout change
+///       VS 2015 Update 2 made. Define it for the whole program, since the change
+///       breaks binary compatibility with code built by older compilers.
 template <typename T>
 class atomic_ref {
   static_assert(std::is_trivially_copyable_v<T>, "atomic_ref requires a trivially copyable type");

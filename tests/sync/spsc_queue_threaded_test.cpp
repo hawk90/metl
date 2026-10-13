@@ -66,7 +66,8 @@ int test_spsc() {
 // verifies the accesses are genuinely atomic.
 int test_atomic_ref() {
   constexpr int kThreads = 4;
-  constexpr int kIncrements = 25000;
+  // static: MSVC 19.20 makes a lambda capture even a constexpr local.
+  static constexpr int kIncrements = 25000;
 
   alignas(metl::atomic_ref<int>::required_alignment) int counter = 0;
 

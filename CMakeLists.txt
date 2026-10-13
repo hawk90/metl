@@ -109,6 +109,10 @@ if(METL_BUILD_TESTS)
     endif()
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     target_compile_options(metl_test_options INTERFACE /W4 /permissive-)
+    # MSVC 19.26 and older refuse std::atomic<T> for a T aligned below its size
+    # unless the program acknowledges the VS 2015 Update 2 layout change; the
+    # tests build atomic_ref over such types. See atomic_ref.hpp.
+    target_compile_definitions(metl_test_options INTERFACE _ENABLE_ATOMIC_ALIGNMENT_FIX)
     if(METL_WARNINGS_AS_ERRORS)
       target_compile_options(metl_test_options INTERFACE /WX)
     endif()

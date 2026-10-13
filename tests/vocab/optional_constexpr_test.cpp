@@ -19,7 +19,9 @@
 
 // After the METL headers on purpose: included first, it would define the
 // feature-test macro for construct.hpp and hide exactly the bug below.
+#if __has_include(<version>)
 #include <version>
+#endif
 
 // Gate on the macro the LIBRARY gates on, not on __cplusplus.
 //

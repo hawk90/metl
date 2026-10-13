@@ -186,7 +186,8 @@ int main() {
   }
   {
     metl::tick_extender<63, null_lock> ext;
-    constexpr std::uint64_t top = (std::uint64_t{1} << 63) - 1;
+    // static: MSVC 19.20 makes a lambda capture even a constexpr local.
+    static constexpr std::uint64_t top = (std::uint64_t{1} << 63) - 1;
     CHECK_EQ(ext.now([] { return top; }), top);
     CHECK_EQ(ext.now([] { return std::uint64_t{0}; }), top + 1);
   }

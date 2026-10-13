@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The tests build with MSVC 19.20**, the README's MSVC floor. Two used a
+  `constexpr` local in a lambda without capturing it, which 19.20 rejects, and
+  one included `<version>`, which its standard library does not have.
+  `atomic_ref` documents that MSVC 19.26 and older need
+  `_ENABLE_ATOMIC_ALIGNMENT_FIX` for a `T` aligned below its size.
 - **CMake 3.16 to 3.18 configure METL**, as `cmake_minimum_required(3.16)`
   says. The `metl` INTERFACE library carried a custom property, which CMake
   rejects on an INTERFACE target before 3.19. Nothing read it; it is gone.
