@@ -189,6 +189,25 @@ METL_NODISCARD inline bool try_atomic_ref_exchange_bytes(
 template <typename T>
 inline constexpr bool atomic_ref_uses_word_v = false;
 
+// Never called here (atomic_ref_uses_word_v is false), but atomic_ref names
+// them in discarded `if constexpr` branches, and those names must still exist.
+template <typename T>
+METL_NODISCARD inline T atomic_ref_load_bytes(T* object, std::memory_order order) noexcept {
+  return atomic_ref_cast(object)->load(order);
+}
+
+template <typename T>
+inline void atomic_ref_store_bytes(T* object, const T& desired, std::memory_order order) noexcept {
+  atomic_ref_cast(object)->store(desired, order);
+}
+
+template <typename T>
+METL_NODISCARD inline T atomic_ref_exchange_bytes(T* object,
+                                                  const T& desired,
+                                                  std::memory_order order) noexcept {
+  return atomic_ref_cast(object)->exchange(desired, order);
+}
+
 template <typename T>
 METL_NODISCARD inline bool try_atomic_ref_exchange_bytes(
     T* object, T& expected, const T& desired, std::memory_order order, bool weak) noexcept {
