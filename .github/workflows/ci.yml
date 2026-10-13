@@ -2565,6 +2565,52 @@ jobs:
           done
           exit "${status:-0}"
 
+  # MSVC 19.20, the README's MSVC floor. The hosted runners ship only a newer
+  # Visual Studio, so this row installs Microsoft's fixed-version Build Tools
+  # bootstrapper for VS 2019 16.0.22 (MSVC 19.20) from the VS 2019 release
+  # history page, checks it against the SHA-256 in its URL, and builds and runs
+  # the tests with it next to the image's own Visual Studio.
+  compiler-floor-msvc:
+    name: compiler-floors / msvc-19.20
+    runs-on: windows-2025
+    needs: preflight
+    timeout-minutes: 60
+    env:
+      VS_BOOTSTRAPPER_URL: https://download.visualstudio.microsoft.com/download/pr/0af00169-b3da-4369-a810-69b1c655d105/a610564bf5e214bc49c6a58e93c7a24d0ce49b1ffaec5fa957e2c8101f368ae2/vs_BuildTools.exe
+      VS_BOOTSTRAPPER_SHA256: a610564bf5e214bc49c6a58e93c7a24d0ce49b1ffaec5fa957e2c8101f368ae2
+      VS_INSTALL_PATH: C:\BuildTools2019
+    steps:
+      - name: Install VS 2019 16.0.22 Build Tools (MSVC 19.20)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri $env:VS_BOOTSTRAPPER_URL -OutFile vs_BuildTools.exe
+          $hash = (Get-FileHash vs_BuildTools.exe -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:VS_BOOTSTRAPPER_SHA256) { throw "bootstrapper SHA-256 is $hash" }
+          $p = Start-Process -FilePath .\vs_BuildTools.exe -Wait -PassThru -ArgumentList @(
+            '--quiet', '--wait', '--norestart', '--nocache',
+            '--installPath', $env:VS_INSTALL_PATH,
+            '--add', 'Microsoft.VisualStudio.Workload.VCTools', '--includeRecommended')
+          # 3010: installed, a reboot is pending, which the build does not need.
+          if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "installer exit code $($p.ExitCode)" }
+          Get-ChildItem "$env:VS_INSTALL_PATH\VC\Tools\MSVC" | Select-Object -ExpandProperty Name
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Configure
+        shell: pwsh
+        run: >-
+          cmake -B build -S . -G "Visual Studio 16 2019" -A x64
+          "-DCMAKE_GENERATOR_INSTANCE=$env:VS_INSTALL_PATH"
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build -j --config Debug
+
+      - name: Test
+        shell: pwsh
+        run: ctest --no-tests=error --test-dir build -j --output-on-failure -C Debug
+
   # ---------------------------------------------------------------------------
   # THE MERGE BOUNDARY. This is the only ci.yml check in branch protection's
   # required list (see .github/required-checks.txt), so a job missing from the
@@ -2617,6 +2663,7 @@ jobs:
       - zephyr
       - esp-idf
       - compiler-floors
+      - compiler-floor-msvc
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5
