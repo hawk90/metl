@@ -75,6 +75,13 @@ int main() {
     const auto empty = metl::try_parse_uint<std::uint32_t>(metl::span<const char>());
     CHECK(!empty.has_value());
     CHECK(empty.error() == metl::parse_error::empty);
+    // The signed and hex forms refuse empty input the same way.
+    const auto empty_int = metl::try_parse_int<std::int32_t>(metl::span<const char>());
+    CHECK(!empty_int.has_value());
+    CHECK(empty_int.error() == metl::parse_error::empty);
+    const auto empty_hex = metl::try_parse_hex<std::uint32_t>(metl::span<const char>());
+    CHECK(!empty_hex.has_value());
+    CHECK(empty_hex.error() == metl::parse_error::empty);
 
     const auto garbage = metl::try_parse_uint<std::uint32_t>(TEXT("abc"));
     CHECK(!garbage.has_value());

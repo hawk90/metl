@@ -127,6 +127,23 @@ constexpr int atomic_ref_gnu_order(std::memory_order order) noexcept {
   return __ATOMIC_SEQ_CST;
 }
 
+// The failure order of a compare-exchange may not release: release becomes
+// relaxed and acq_rel becomes acquire, as std::atomic derives it.
+constexpr int atomic_ref_gnu_failure_order(std::memory_order order) noexcept {
+  switch (order) {
+    case std::memory_order_release:
+      return __ATOMIC_RELAXED;
+    case std::memory_order_acq_rel:
+      return __ATOMIC_ACQUIRE;
+    case std::memory_order_relaxed:
+    case std::memory_order_consume:
+    case std::memory_order_acquire:
+    case std::memory_order_seq_cst:
+      break;
+  }
+  return atomic_ref_gnu_order(order);
+}
+
 // A T from a word's bytes. T need not be default-constructible, so the bytes
 // go into raw storage, as libstdc++'s std::atomic<T>::load does.
 template <typename T, typename Word>
@@ -177,13 +194,7 @@ METL_NODISCARD inline bool try_atomic_ref_exchange_bytes(
     T* object, T& expected, const T& desired, std::memory_order order, bool weak) noexcept {
   using word = typename atomic_ref_word<sizeof(T)>::type;
   const int success = atomic_ref_gnu_order(order);
-  // The failure order may not release.
-  int failure = success;
-  if (order == std::memory_order_release) {
-    failure = __ATOMIC_RELAXED;
-  } else if (order == std::memory_order_acq_rel) {
-    failure = __ATOMIC_ACQUIRE;
-  }
+  const int failure = atomic_ref_gnu_failure_order(order);
   word held;
   word wanted;
   std::memcpy(&held, metl::detail::addressof(expected), sizeof(T));
