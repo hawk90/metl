@@ -128,7 +128,8 @@ def self_test():
         workflow = root / path
         if not workflow.is_file():
             failures.append(f"PRODUCER[{name!r}] = {path}, which does not exist")
-        elif not re.search(rf"^\s+name: {re.escape(name)}\s*$", workflow.read_text(), re.MULTILINE):
+        # Job level only: a step's `with: name:` (an artifact) sits deeper.
+        elif not re.search(rf"^    name: {re.escape(name)}\s*$", workflow.read_text(), re.MULTILINE):
             failures.append(f"{path} has no job named {name!r}, so it cannot produce that check")
     if set(REQUIRED) != {"ci-gate", "analyze / c-cpp"}:
         failures.append(f"REQUIRED changed to {REQUIRED}; update the docstring and this test")
