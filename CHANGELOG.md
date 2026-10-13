@@ -38,6 +38,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CMake 3.16 to 3.18 configure METL**, as `cmake_minimum_required(3.16)`
   says. The `metl` INTERFACE library carried a custom property, which CMake
   rejects on an INTERFACE target before 3.19. Nothing read it; it is gone.
+- **`atomic_ref` over a `T` with padding, or aligned below its size, links
+  without libatomic on Clang 11.** `load`, `store` and `exchange` went through
+  `std::atomic<T>`, whose generic path that Clang leaves to libatomic, which
+  bare-metal toolchains do not ship. They now go through an unsigned integer
+  of `T`'s size, as `compare_exchange_*` already did for a padded `T`; a `T`
+  aligned below its size now takes that path for every operation.
+- **On Clang 11, `function_ref`, `fixed_function` and `fixed_any_invocable`
+  with a reference return type refuse a callable that returns the referenced
+  class by value**, as they do elsewhere (#259). The returned reference would
+  dangle. That Clang's `__reference_binds_to_temporary` reports no temporary
+  for a class prvalue, so that case is now checked directly.
+- **Storing one `fixed_function` or `fixed_any_invocable` in another of a
+  different capacity compiles with GCC 9 and Clang 11.** The converting
+  constructors' constraint asked whether the wrapper itself was storable while
+  its own move constructor was being resolved, a cycle those compilers reject.
+  The constraint now uses `std::conjunction`, which stops at the first false
+  condition.
+- **`#include <metl/metl.hpp>` compiles on Cortex-M0/M0+ with GCC 12 and older
+  and Clang 16 and older.** `mpmc_queue`'s check for a lock-free
+  compare-exchange did not depend on the template arguments, so those compilers
+  evaluated it when the header was included, not when a queue was used. The
+  check now depends on `T`; using an `mpmc_queue` there still fails with the same
+  message.
 - **`flat_map`, `flat_set`, `static_unordered_map`, `static_unordered_set`,
   `fixed_priority_queue` and `scope_exit` compile with GCC 9 and 10** (also
   arm-none-eabi-gcc 10), the floors the README states. Their noexcept-specifiers
@@ -45,30 +68,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that, but GCC 10 and older reject it. The helpers are now declared first.
   Broken since 1.0.0; the coro scheduler, which uses `fixed_priority_queue`, was
   broken with them.
-
-- **`#include <metl/metl.hpp>` compiles on Cortex-M0/M0+ with GCC 12 and older
-  and Clang 16 and older.** `mpmc_queue`'s check for a lock-free
-  compare-exchange did not depend on the template arguments, so those compilers
-  evaluated it when the header was included, not when a queue was used. The
-  check now depends on `T`; using an `mpmc_queue` there still fails with the same
-  message.
-- **Storing one `fixed_function` or `fixed_any_invocable` in another of a
-  different capacity compiles with GCC 9 and Clang 11.** The converting
-  constructors' constraint asked whether the wrapper itself was storable while
-  its own move constructor was being resolved, a cycle those compilers reject.
-  The constraint now uses `std::conjunction`, which stops at the first false
-  condition.
-- **On Clang 11, `function_ref`, `fixed_function` and `fixed_any_invocable`
-  with a reference return type refuse a callable that returns the referenced
-  class by value**, as they do elsewhere (#259). The returned reference would
-  dangle. That Clang's `__reference_binds_to_temporary` reports no temporary
-  for a class prvalue, so that case is now checked directly.
-- **`atomic_ref` over a `T` with padding, or aligned below its size, links
-  without libatomic on Clang 11.** `load`, `store` and `exchange` went through
-  `std::atomic<T>`, whose generic path that Clang leaves to libatomic, which
-  bare-metal toolchains do not ship. They now go through an unsigned integer
-  of `T`'s size, as `compare_exchange_*` already did for a padded `T`; a `T`
-  aligned below its size now takes that path for every operation.
 
 ## [1.2.2] - 2026-10-13
 
