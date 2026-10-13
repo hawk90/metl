@@ -34,6 +34,17 @@ class scope_exit {
   static_assert(noexcept(std::declval<F&>()()),
                 "metl::scope_exit requires the stored callable to be noexcept");
 
+  // Declared ahead of the noexcept-specifiers that name them: GCC 10 and
+  // older do not look ahead in the class there.
+  template <typename G>
+  static constexpr bool nothrow_store =
+      std::is_nothrow_constructible_v<F, G> || std::is_nothrow_constructible_v<F, G&>;
+
+  // What func_ is built from: the forwarded callable when that cannot throw,
+  // else an lvalue, so a throwing construction leaves `func` usable.
+  template <typename G>
+  using store_as = std::conditional_t<std::is_nothrow_constructible_v<F, G>, G, std::remove_reference_t<G>&>;
+
  public:
   /// @brief Construct an armed guard owning a copy/move of the callable.
   /// @param func Callable to invoke at scope exit.
@@ -85,15 +96,6 @@ class scope_exit {
   METL_NODISCARD bool active() const noexcept { return active_; }
 
  private:
-  template <typename G>
-  static constexpr bool nothrow_store =
-      std::is_nothrow_constructible_v<F, G> || std::is_nothrow_constructible_v<F, G&>;
-
-  // What func_ is built from: the forwarded callable when that cannot throw,
-  // else an lvalue, so a throwing construction leaves `func` usable.
-  template <typename G>
-  using store_as = std::conditional_t<std::is_nothrow_constructible_v<F, G>, G, std::remove_reference_t<G>&>;
-
   F func_;
   bool active_;
 };

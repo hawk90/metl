@@ -246,6 +246,11 @@ struct is_detected_impl : false_type {};
 template <template <typename...> class Operation, typename... Args>
 struct is_detected_impl<void_t<Operation<Args...>>, Operation, Args...> : true_type {};
 
+// Always true. Naming a template parameter in a static_assert condition
+// defers the check to instantiation.
+template <typename...>
+inline constexpr bool dependent_true_v = true;
+
 }  // namespace detail
 
 /// @brief Detection idiom: true_type if `Operation<Args...>` is a valid type, else false_type.
