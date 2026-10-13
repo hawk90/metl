@@ -492,6 +492,11 @@ Every other job uses the compilers on the pinned runner images
 (`ubuntu-26.04`, `macos-26`, `windows-2025`; see
 [`ci.yml`](.github/workflows/ci.yml)).
 
+**CI also builds with the newest Clang.** The runner images' Clang is older
+than the newest release (21 on `ubuntu-26.04`), so the `compiler-ceiling` job
+builds METL and runs its tests, warnings as errors, with Clang 23.1.3 from
+LLVM's release archive, checked against its published SHA-256.
+
 **Language standard: C++17 is the baseline and is what these minimums are for.**
 Building as C++20 is also verified in CI, under Clang and GCC
 (`config-matrix / cxx20`, `cxx20-gcc`), and is supported, but not required —
