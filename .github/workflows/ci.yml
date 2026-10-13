@@ -2497,6 +2497,71 @@ jobs:
           path: samples/esp-idf/metl_hello
 
   # ---------------------------------------------------------------------------
+  # The README's minimum compilers. Every other job uses the compilers on its
+  # pinned runner image, all newer than these floors, so a C++17 feature an
+  # older compiler or standard library lacks would pass everywhere else. Each
+  # row builds in the distribution that ships that floor as a package, so no
+  # toolchain is downloaded by hand: Ubuntu 20.04 has GCC 9, Clang 11 and
+  # CMake 3.16 (CMakeLists.txt's own minimum); Ubuntu 22.04 has
+  # arm-none-eabi-gcc 10.3.
+  # ---------------------------------------------------------------------------
+  compiler-floors:
+    name: compiler-floors / ${{ matrix.name }}
+    runs-on: ubuntu-26.04
+    needs: preflight
+    timeout-minutes: 30
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gcc-9
+            image: ubuntu:20.04
+            packages: g++-9
+            cc: gcc-9
+            cxx: g++-9
+          - name: clang-11
+            image: ubuntu:20.04
+            packages: clang-11 g++
+            cc: clang-11
+            cxx: clang++-11
+          - name: arm-none-eabi-gcc-10
+            image: ubuntu:22.04
+            packages: gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+    steps:
+      - name: Install the floor toolchain
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git make cmake python3 \
+            ${{ matrix.packages }}
+          cmake --version | head -1
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Build and run the tests (host floors)
+        if: matrix.cxx
+        run: |
+          ${{ matrix.cxx }} --version | head -1
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=17 \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          cmake --build build -j "$(nproc)"
+          ctest --test-dir build -j "$(nproc)" --output-on-failure
+
+      - name: Build the embedded smoke images (ARM floor)
+        if: ${{ !matrix.cxx }}
+        run: |
+          arm-none-eabi-g++ --version | head -1
+          for cpu in cortex-m0 cortex-m4; do
+            cmake -B "build-$cpu" -S . -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake \
+              -DMETL_ARM_CPU="$cpu" -DMETL_BUILD_TESTS=OFF -DMETL_BUILD_EMBEDDED_SMOKE=ON \
+              -DMETL_INSTALL=OFF
+            cmake --build "build-$cpu" -j "$(nproc)"
+          done
+
+  # ---------------------------------------------------------------------------
   # THE MERGE BOUNDARY. This is the only ci.yml check in branch protection's
   # required list (see .github/required-checks.txt), so a job missing from the
   # `needs:` below is a job that does not block a merge — it still runs, still
@@ -2547,6 +2612,7 @@ jobs:
       - install-check
       - zephyr
       - esp-idf
+      - compiler-floors
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5
