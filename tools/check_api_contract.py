@@ -47,6 +47,7 @@ BOOL_ALLOWLIST = {
     "valueless_by_exception": "state query, mirrors std::variant",
     "holds_value": "expected's private state query; false while a member is switched",
     "holds_error": "expected's private state query; false while a member is switched",
+    "settled": "expected's private state query; false while a member is switched",
     "valid": "state query",
     "active": "state query",
     "is_done": "state query",

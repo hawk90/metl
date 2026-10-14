@@ -796,7 +796,10 @@ class expected {
   constexpr bool holds_value() const noexcept { return state_ == detail::expected_state::value; }
   constexpr bool holds_error() const noexcept { return state_ == detail::expected_state::error; }
   // A change while the old member is being destroyed would destroy it again.
-  void require_settled() const noexcept { METL_HARDEN(state_ != detail::expected_state::switching); }
+  // The condition is a call so that the expression text METL_HARDEN stores in
+  // every binary stays short.
+  constexpr bool settled() const noexcept { return state_ != detail::expected_state::switching; }
+  void require_settled() const noexcept { METL_HARDEN(settled()); }
 
   template <typename... Args>
   void construct_value(Args&&... args) {
@@ -1575,7 +1578,8 @@ class expected<void, E> {
   constexpr bool holds_value() const noexcept { return state_ == detail::expected_state::value; }
   constexpr bool holds_error() const noexcept { return state_ == detail::expected_state::error; }
   // A change while the error is being destroyed would destroy it again.
-  void require_settled() const noexcept { METL_HARDEN(state_ != detail::expected_state::switching); }
+  constexpr bool settled() const noexcept { return state_ != detail::expected_state::switching; }
+  void require_settled() const noexcept { METL_HARDEN(settled()); }
 
   template <typename... Args>
   void construct_error(Args&&... args) {
