@@ -156,6 +156,7 @@ if(METL_BUILD_TESTS)
     vocab/callable_reference_return vocab/vocab_std_parity
     vocab/intrusive_ptr vocab/intrusive_ptr_atomic vocab/intrusive_ptr_contract vocab/intrusive_ptr_alias vocab/scope_exit vocab/type_traits
     vocab/variant_selfassign vocab/emplace_self_alias vocab/vocab_assignment vocab/versioned_handle vocab/expected_reentrancy
+    vocab/vocab_assert_trips
     vocab/optional_state_pairs vocab/expected_state_pairs vocab/variant_state_pairs
     vocab/fixed_function_state_pairs vocab/intrusive_ptr_state_pairs
     # bits/
@@ -189,7 +190,7 @@ if(METL_BUILD_TESTS)
     # /EH, longjmp runs no destructors, as on every other compiler.
     if(MSVC)
       file(READ tests/${_t}_test.cpp _src)
-      if(_src MATCHES "<csetjmp>|hardening_common\\.h")
+      if(_src MATCHES "<csetjmp>|hardening_common\\.h|assert_trip\\.hpp")
         # C4611 warns that setjmp may skip destructors -- which, built
         # without /EH, is exactly and only what happens.
         target_compile_options(metl_${_name}_test PRIVATE /EHs-c- /wd4611)
