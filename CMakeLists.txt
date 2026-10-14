@@ -140,7 +140,7 @@ if(METL_BUILD_TESTS)
     # conformance/  (one property, every registered type -- #320)
     conformance/conformance_removal conformance/conformance_capacity conformance/conformance_move
     conformance/conformance_self conformance/conformance_copy conformance/conformance_throwing
-    conformance/conformance_stability
+    conformance/conformance_stability conformance/conformance_alias
     # memory/
     memory/arena_allocator memory/static_allocator memory/monotonic_buffer
     memory/object_pool memory/allocator_overflow
