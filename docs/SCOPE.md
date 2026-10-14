@@ -344,6 +344,7 @@ claim about a **gate** going stale, and nothing was checking those.
 | [`check_amalgamation.py`](../tools/check_amalgamation.py) | the shipped single header builds and runs the whole suite | `--self-test` |
 | [`check_docs.py`](../tools/check_docs.py) | D1–D8: the documentation claims a machine can settle | `--self-test` |
 | [`check_compile_fail.py`](../tools/check_compile_fail.py) | that the public `static_assert`s actually fire, and that the gap between how many there are and how many are pinned only shrinks | `--self-test` |
+| [`check_source_compat.py`](../tools/check_source_compat.py) | source compatibility across a minor or patch release: the previous release's tests and examples build and pass against the current headers, and an old test that may break is recorded with its issue (#343) | `--self-test` |
 | [`check_mutants.py`](../tools/check_mutants.py) | that the gates above notice a deliberately broken library | `--self-test` |
 | [`check_changelog.py`](../tools/check_changelog.py) | C1–C3: that every change to code under `include/` carries a well-formed fragment in `changelog.d/`, and that nobody writes into the shared `[Unreleased]` list the fragments replace (#272) | `--self-test` |
 | [`check_commit_message.py`](../tools/check_commit_message.py) | that a pull-request title -- the subject squash-merging puts on main -- follows Conventional Commits with the agreed types | `--self-test` |

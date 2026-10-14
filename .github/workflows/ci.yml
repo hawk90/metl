@@ -2587,6 +2587,49 @@ jobs:
           done
           exit "${status:-0}"
 
+  # ---------------------------------------------------------------------------
+  # Source compatibility (#343): the previous release's tests and examples,
+  # built against this tree's include/. A minor or patch release must not
+  # break code that compiled against the last one.
+  # ---------------------------------------------------------------------------
+  source-compat:
+    name: source-compat
+    runs-on: ubuntu-26.04
+    needs: preflight
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          # The baseline is the newest release tag reachable from HEAD; a
+          # shallow clone has no tags.
+          fetch-depth: 0
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: ${{ github.job }}-${{ runner.os }}
+          max-size: 300M
+
+      - name: Install build deps
+        uses: ./.github/actions/apt-install
+        with:
+          packages: build-essential clang
+          cache-key: build-essential-clang
+
+      - name: The check must still bite (canary)
+        env:
+          CXX: clang++
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+        run: tools/check_source_compat.py --self-test
+
+      - name: The previous release's tests pass against these headers
+        env:
+          CXX: clang++
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+        run: tools/check_source_compat.py
+
   # MSVC 19.29 (VS 2019 16.11), the README's MSVC floor. The runner image's
   # Visual Studio carries it as the v142 toolset, which `-T v142` selects; the
   # configure step checks that the selected compiler is 19.29.
@@ -2728,6 +2771,7 @@ jobs:
       - compiler-floors
       - compiler-floor-msvc
       - compiler-ceiling
+      - source-compat
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5
