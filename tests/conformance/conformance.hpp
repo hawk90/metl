@@ -77,6 +77,22 @@ struct probe {
     static int count = 0;
     return count;
   }
+  // The thing a probe throws (exceptions builds only).
+  struct thrown {};
+  // When non-zero, counts down on every construction or copy of an armed
+  // probe; the one that brings it to zero throws instead, before it counts as
+  // live. Zero, the default, never throws.
+  static int& throw_after() {
+    static int count = 0;
+    return count;
+  }
+  static void maybe_throw() {
+#if !METL_NO_EXCEPTIONS
+    if (throw_after() > 0 && --throw_after() == 0) {
+      throw thrown{};
+    }
+#endif
+  }
   // Called from every armed probe's destructor, after `live()` has dropped by one.
   static void (*&on_destroy())(const probe&) {
     static void (*hook)(const probe&) = nullptr;
@@ -84,15 +100,24 @@ struct probe {
   }
 
   probe() = default;
-  explicit probe(int i) : id(i), armed(true) { ++live(); }
-  probe(const probe& other) : id(other.id), armed(other.armed) {
-    if (armed) {
+  explicit probe(int i) : id(i) {
+    maybe_throw();
+    armed = true;
+    ++live();
+  }
+  probe(const probe& other) : id(other.id) {
+    if (other.armed) {
+      maybe_throw();
+      armed = true;
       ++live();
     }
   }
   probe(probe&& other) noexcept : id(other.id), armed(other.armed) { other.armed = false; }
   probe& operator=(const probe& other) {
     if (this != &other) {
+      if (other.armed) {
+        maybe_throw();
+      }
       drop();
       id = other.id;
       armed = other.armed;
