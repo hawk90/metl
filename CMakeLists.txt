@@ -136,6 +136,7 @@ if(METL_BUILD_TESTS)
     containers/throwing_element containers/array_storage containers/self_range containers/sequence_reentrancy
     containers/recoverable_unchanged
     containers/contract_edges containers/associative_erase_iterator containers/container_edges
+    containers/container_assert_trips
     # conformance/  (one property, every registered type -- #320)
     conformance/conformance_removal conformance/conformance_capacity conformance/conformance_move
     conformance/conformance_self conformance/conformance_copy
@@ -171,7 +172,7 @@ if(METL_BUILD_TESTS)
     core/assert core/compiler core/smoke core/ram_footprint core/version
     core/hardening_none core/hardening_fast core/hardening_debug core/hostile_types
     core/harden_floor_none core/harden_floor_memory core/low_findings core/audit_g6
-    core/conditional_noexcept core/rare_paths
+    core/conditional_noexcept core/rare_paths core/utility_assert_trips
   )
 
   foreach(_t IN LISTS _metl_tests)

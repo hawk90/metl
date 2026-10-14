@@ -95,28 +95,37 @@ class arena_allocator {
     static_assert(alignof(T) <= alignof(std::max_align_t),
                   "type alignment exceeds arena_allocator maximum alignment");
 
-    // Reserve the slot WITHOUT registering the destructor yet. If we committed
-    // the destroy record up front and T's constructor then threw, `rewind`/
-    // `reset` would later invoke ~T() on never-constructed storage (UB). Only
-    // after construction succeeds do we patch the record's destroy pointer in.
-    void* memory = allocate_impl(sizeof(T), alignof(T), nullptr);
-    if (memory == nullptr) {
+    if constexpr (sizeof(T) + sizeof(allocation_record) > Capacity) {
+      // Never fits, at any offset. Said here rather than found at run time:
+      // the path that builds T and stores its record would then be compiled
+      // for an object larger than the arena, which GCC reports as out of
+      // bounds (-Warray-bounds) although it never runs.
+      ((void)args, ...);
       return nullptr;
+    } else {
+      // Reserve the slot WITHOUT registering the destructor yet. If we committed
+      // the destroy record up front and T's constructor then threw, `rewind`/
+      // `reset` would later invoke ~T() on never-constructed storage (UB). Only
+      // after construction succeeds do we patch the record's destroy pointer in.
+      void* memory = allocate_impl(sizeof(T), alignof(T), nullptr);
+      if (memory == nullptr) {
+        return nullptr;
+      }
+      // Where this allocation's record ends, captured now: T's constructor may
+      // allocate from this arena too, and then `offset_` names the newest of
+      // those records, not this one.
+      const size_type record_end = offset_;
+
+      T* object = ::new (memory) T(std::forward<Args>(args)...);
+
+      // Construction succeeded: register the destructor on this allocation's own
+      // record. A throwing constructor never reaches here, so no record ever
+      // points at unconstructed storage.
+      allocation_record record = load_record(record_end);
+      record.destroy = &destroy_object<T>;
+      store_record(record_end, record);
+      return object;
     }
-    // Where this allocation's record ends, captured now: T's constructor may
-    // allocate from this arena too, and then `offset_` names the newest of
-    // those records, not this one.
-    const size_type record_end = offset_;
-
-    T* object = ::new (memory) T(std::forward<Args>(args)...);
-
-    // Construction succeeded: register the destructor on this allocation's own
-    // record. A throwing constructor never reaches here, so no record ever
-    // points at unconstructed storage.
-    allocation_record record = load_record(record_end);
-    record.destroy = &destroy_object<T>;
-    store_record(record_end, record);
-    return object;
   }
 
   /// @brief Like `try_emplace`, but asserts that the allocation succeeds.
