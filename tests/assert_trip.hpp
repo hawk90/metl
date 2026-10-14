@@ -6,9 +6,12 @@
 //
 // runs the callable with an assert handler that longjmps back out before the
 // guaranteed abort, as tests/core/hardening_common.h does, and returns whether
-// an assert fired. Each firing is also appended, as `file:line`, to the file
-// named by METL_ASSERT_TRIP_LOG when that is set, which
-// tools/check_assert_trips.py compares with every METL_ASSERT in include/metl.
+// an assert fired. Each firing also prints one line,
+//
+//   metl-assert-trip <file>:<line>
+//
+// which tools/check_assert_trips.py reads from ctest's output and compares
+// with every METL_ASSERT in include/metl.
 //
 // The longjmp leaves the callable's frames without running their destructors,
 // so the callable must not own anything that needs one: trip on objects that
@@ -19,7 +22,6 @@
 
 #include <csetjmp>
 #include <cstdio>
-#include <cstdlib>
 
 #include <metl/assert.hpp>
 
@@ -38,14 +40,8 @@ inline bool& trip_fired() {
 }
 
 inline void record_trip(const char* file, int line) noexcept {
-  const char* path = std::getenv("METL_ASSERT_TRIP_LOG");
-  if (path == nullptr || *path == '\0') {
-    return;
-  }
-  if (std::FILE* log = std::fopen(path, "a")) {
-    (void)std::fprintf(log, "%s:%d\n", file, line);
-    (void)std::fclose(log);
-  }
+  (void)std::printf("metl-assert-trip %s:%d\n", file, line);
+  (void)std::fflush(stdout);  // the longjmp that follows must not lose it
 }
 
 inline void trip_handler(const char* /*expr*/, const char* file, int line) noexcept {

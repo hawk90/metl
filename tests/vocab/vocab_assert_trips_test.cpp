@@ -117,7 +117,7 @@ int plain_noexcept() noexcept {
   return 1;
 }
 
-// Larger than the 16 bytes the wrappers below hold.
+// Larger than the one byte the wrappers below hold.
 struct too_big {
   unsigned char bytes[64] = {};
   int operator()() const noexcept { return bytes[0]; }
@@ -125,18 +125,18 @@ struct too_big {
 
 template <typename Wrapper, typename Function>
 void assign_trips_when_it_does_not_fit(Function function) {
-  static Wrapper pointer_target;  // a function pointer does not fit in 4 bytes
+  static Wrapper pointer_target;  // no function pointer fits in one byte
   static Wrapper callable_target;
   CHECK(trips([&] { pointer_target.assign(function); }));
   CHECK(trips([&] { callable_target.assign(too_big{}); }));
 }
 
 void fixed_function_assign_trips_when_it_does_not_fit() {
-  static_assert(sizeof(int (*)()) > 4, "a function pointer must not fit the 4-byte wrapper");
-  assign_trips_when_it_does_not_fit<metl::fixed_function<int(), 4>>(&plain);
-  assign_trips_when_it_does_not_fit<metl::fixed_function<int() noexcept, 4>>(&plain_noexcept);
-  assign_trips_when_it_does_not_fit<metl::fixed_any_invocable<int(), 4>>(&plain);
-  assign_trips_when_it_does_not_fit<metl::fixed_any_invocable<int() noexcept, 4>>(&plain_noexcept);
+  static_assert(sizeof(int (*)()) > 1, "a function pointer must not fit the one-byte wrapper");
+  assign_trips_when_it_does_not_fit<metl::fixed_function<int(), 1>>(&plain);
+  assign_trips_when_it_does_not_fit<metl::fixed_function<int() noexcept, 1>>(&plain_noexcept);
+  assign_trips_when_it_does_not_fit<metl::fixed_any_invocable<int(), 1>>(&plain);
+  assign_trips_when_it_does_not_fit<metl::fixed_any_invocable<int() noexcept, 1>>(&plain_noexcept);
 }
 
 // ---- intrusive_ptr -------------------------------------------------------------------
