@@ -138,7 +138,7 @@ if(METL_BUILD_TESTS)
     containers/contract_edges containers/associative_erase_iterator containers/container_edges
     # conformance/  (one property, every registered type -- #320)
     conformance/conformance_removal conformance/conformance_capacity conformance/conformance_move
-    conformance/conformance_self conformance/conformance_copy
+    conformance/conformance_self conformance/conformance_copy conformance/conformance_stability
     # memory/
     memory/arena_allocator memory/static_allocator memory/monotonic_buffer
     memory/object_pool memory/allocator_overflow
