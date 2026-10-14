@@ -68,6 +68,13 @@ def stage(tag, root):
     with tarfile.open(archive) as tar:
         tar.extractall(tree, filter="data")
     archive.unlink()
+    # `git archive` honours export-ignore, which would drop old tests without a
+    # word; every file the tag holds must be here.
+    missing = [name for name in git("ls-tree", "-r", "--name-only", tag).splitlines()
+               if not (tree / name).exists() and not (tree / name).is_symlink()]
+    if missing:
+        raise SystemExit(f"::error::git archive {tag} left out {len(missing)} file(s), "
+                         f"such as {missing[0]}; export-ignore in .gitattributes?")
     shutil.rmtree(tree / "include")
     shutil.copytree(REPO / "include", tree / "include")
     return tree
