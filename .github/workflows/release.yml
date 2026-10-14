@@ -113,6 +113,18 @@ jobs:
       - name: Verify the amalgamation runs the whole test suite
         run: tools/check_amalgamation.py --header "metl-${version}-single.hpp"
 
+      # The notes come from CHANGELOG.md, which `tools/check_changelog.py
+      # --assemble` writes from changelog.d/ in the release commit. A fragment
+      # still there would be a change released without a note.
+      - name: Every changelog fragment is assembled
+        run: |
+          left="$(find changelog.d -name '*.md' ! -name README.md)"
+          if [[ -n "${left}" ]]; then
+            printf '::error::changelog.d/ still holds fragments; run tools/check_changelog.py --assemble %s first:\n%s\n' \
+              "${version}" "${left}"
+            exit 1
+          fi
+
       - name: Extract this version's changelog section
         run: |
           # Look the section up by the FULL tag, not the stripped version, and

@@ -138,9 +138,11 @@ Before requesting review:
 - [ ] `clang-format` (pinned hook) and `clang-tidy` have been run; the gates
       above that your change touches pass.
 - [ ] A bug fix comes with a regression test that failed before the fix.
-- [ ] [`CHANGELOG.md`](CHANGELOG.md) is updated under the `[Unreleased]`
-      section. A change that breaks or silently alters existing code says so --
-      after 1.0 that means a new major version (see README "Status").
+- [ ] A change a user could notice adds a fragment in
+      [`changelog.d/`](changelog.d/README.md) -- not an entry in
+      `CHANGELOG.md`, which is written from the fragments at release. A change
+      that breaks or silently alters existing code says so -- after 1.0 that
+      means a new major version (see README "Status").
 - [ ] Public API changes are documented in headers and, where appropriate,
       in [`README.md`](README.md).
 - [ ] The [`docs/SCOPE.md`](docs/SCOPE.md) invariant checklist is satisfied —

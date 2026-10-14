@@ -6,6 +6,6 @@ See [CONTRIBUTING.md](https://github.com/hawk90/metl/blob/main/CONTRIBUTING.md) 
 
 - [ ] `tools/pre_push.py` passes (installed as the pre-push hook by `pre-commit install`)
 - [ ] A bug fix comes with a regression test that failed before the fix
-- [ ] `CHANGELOG.md` updated under `[Unreleased]`; a breaking change says so
+- [ ] A `changelog.d/<slug>.<type>.md` fragment for a user-visible change; a breaking change says so
 - [ ] Public API changes are documented in the headers (and README/docs where relevant)
 - [ ] A new public header states its progress guarantee and is in `metl.hpp`
