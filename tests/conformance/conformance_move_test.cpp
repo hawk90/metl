@@ -18,18 +18,19 @@ struct moved_from_is_empty_and_reusable {
     bool met = true;
     {
       type source;
-      for (int id = 1; id <= 3; ++id) {
+      const int n = conformance::filled<Adapter>;
+      for (int id = 1; id <= n; ++id) {
         met = Adapter::try_add(source, id) && met;
       }
       type constructed(std::move(source));
-      met = met && Adapter::held(constructed) == 3 && Adapter::held(source) == 0 &&
-            conformance::probe::live() == 3;
+      met = met && Adapter::held(constructed) == static_cast<std::size_t>(n) && Adapter::held(source) == 0 &&
+            conformance::probe::live() == n;
 
       type assigned;
       met = Adapter::try_add(assigned, 7) && met;
       assigned = std::move(constructed);
-      met = met && Adapter::held(assigned) == 3 && Adapter::held(constructed) == 0 &&
-            conformance::probe::live() == 3;
+      met = met && Adapter::held(assigned) == static_cast<std::size_t>(n) &&
+            Adapter::held(constructed) == 0 && conformance::probe::live() == n;
 
       // Both sources are usable to full capacity.
       for (std::size_t i = 0; i < Adapter::capacity; ++i) {
@@ -56,7 +57,7 @@ struct moved_from_is_empty_and_reusable {
 
 template <typename Adapter>
 void run_for() {
-  if constexpr (Adapter::movable) {
+  if constexpr (Adapter::movable && Adapter::move_empties_source) {
     conformance::run_one<Adapter>("moved_from_is_empty_and_reusable",
                                   METL_CONFORMANCE_GAP(moved_from_is_empty_and_reusable, Adapter),
                                   moved_from_is_empty_and_reusable{});

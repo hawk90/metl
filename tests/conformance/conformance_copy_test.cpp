@@ -16,13 +16,14 @@ struct copy_is_equal_and_independent {
   template <typename Adapter>
   bool operator()(Adapter) const {
     using type = typename Adapter::type;
+    const int n = conformance::filled<Adapter>;
     bool met = true;
     std::size_t constructed_held = 0;
     std::size_t assigned_held = 0;
     int live_after_copies = 0;
     {
       type source;
-      for (int id = 1; id <= 3; ++id) {
+      for (int id = 1; id <= n; ++id) {
         met = Adapter::try_add(source, id) && met;
       }
       const type constructed(source);
@@ -32,22 +33,24 @@ struct copy_is_equal_and_independent {
       constructed_held = Adapter::held(constructed);
       assigned_held = Adapter::held(assigned);
       live_after_copies = conformance::probe::live();
-      met = met && constructed_held == 3 && assigned_held == 3 && live_after_copies == 9;
+      const std::size_t count = static_cast<std::size_t>(n);
+      met = met && constructed_held == count && assigned_held == count && live_after_copies == 3 * n;
 
       // Emptying the source leaves both copies whole.
       Adapter::clear(source);
-      met = met && Adapter::held(constructed) == 3 && Adapter::held(assigned) == 3 &&
-            conformance::probe::live() == 6;
+      met = met && Adapter::held(constructed) == count && Adapter::held(assigned) == count &&
+            conformance::probe::live() == 2 * n;
     }
     met = met && conformance::probe::live() == 0 && conformance::probe::destroyed_twice() == 0;
     if (!met) {
       std::fprintf(stderr,
-                   "  %s: held by copy-constructed %zu, copy-assigned %zu; live after copies %d (want 9), "
+                   "  %s: held by copy-constructed %zu, copy-assigned %zu; live after copies %d (want %d), "
                    "at end %d, destroyed twice %d\n",
                    Adapter::name,
                    constructed_held,
                    assigned_held,
                    live_after_copies,
+                   3 * n,
                    conformance::probe::live(),
                    conformance::probe::destroyed_twice());
     }
