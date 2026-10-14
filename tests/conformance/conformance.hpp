@@ -78,6 +78,22 @@ struct probe {
     static int count = 0;
     return count;
   }
+  // The thing a probe throws (exceptions builds only).
+  struct thrown {};
+  // When non-zero, counts down on every construction or copy of an armed
+  // probe; the one that brings it to zero throws instead, before it counts as
+  // live. Zero, the default, never throws.
+  static int& throw_after() {
+    static int count = 0;
+    return count;
+  }
+  static void maybe_throw() {
+#if !METL_NO_EXCEPTIONS
+    if (throw_after() > 0 && --throw_after() == 0) {
+      throw thrown{};
+    }
+#endif
+  }
   // While moves_watched() is set, the ids of the armed probes a type moved,
   // assigned over or destroyed. An element the type left in place appears in
   // none of these. Ids are below 128.
@@ -101,9 +117,15 @@ struct probe {
   }
 
   probe() = default;
-  explicit probe(int i) : id(i), armed(true) { ++live(); }
-  probe(const probe& other) : id(other.id), armed(other.armed) {
-    if (armed) {
+  explicit probe(int i) : id(i) {
+    maybe_throw();
+    armed = true;
+    ++live();
+  }
+  probe(const probe& other) : id(other.id) {
+    if (other.armed) {
+      maybe_throw();
+      armed = true;
       ++live();
     }
   }
@@ -115,6 +137,9 @@ struct probe {
   }
   probe& operator=(const probe& other) {
     if (this != &other) {
+      if (other.armed) {
+        maybe_throw();
+      }
       if (armed) {
         note_moved(id);
       }

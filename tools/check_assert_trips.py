@@ -40,25 +40,8 @@ ASSERT = re.compile(r"\bMETL_ASSERT\(")
 
 # header -> (asserts not yet tripped by any test, why). May only shrink.
 ALLOWED = {
-    "arena_allocator.hpp": (2, "not tripped yet; #364 covers it in a later batch"),
-    "coro/deadline_scheduler.hpp": (1, "not tripped yet; #364 covers it in a later batch"),
-    "detail/ring_core.hpp": (7, "not tripped yet; #364 covers it in a later batch"),
-    "fixed_deque.hpp": (1, "not tripped yet; #364 covers it in a later batch"),
-    "fixed_string.hpp": (12, "not tripped yet; #364 covers it in a later batch"),
-    "fixed_vector.hpp": (14, "not tripped yet; #364 covers it in a later batch"),
-    "flat_map.hpp": (8, "not tripped yet; #364 covers it in a later batch"),
-    "flat_set.hpp": (7, "not tripped yet; #364 covers it in a later batch"),
-    "format.hpp": (3, "not tripped yet; #364 covers it in a later batch"),
-    "handle_pool.hpp": (2, "not tripped yet; #364 covers it in a later batch"),
-    "lookup_table.hpp": (2, "not tripped yet; #364 covers it in a later batch"),
-    "monotonic_buffer.hpp": (1, "not tripped yet; #364 covers it in a later batch"),
-    "object_pool.hpp": (1, "not tripped yet; #364 covers it in a later batch"),
-    "spsc_byte_ring.hpp": (1, "not tripped yet; #364 covers it in a later batch"),
-    "static_allocator.hpp": (4, "not tripped yet; #364 covers it in a later batch"),
-    "static_message_queue.hpp": (3, "not tripped yet; #364 covers it in a later batch"),
-    "static_unordered_map.hpp": (10, "not tripped yet; #364 covers it in a later batch"),
-    "static_unordered_set.hpp": (3, "not tripped yet; #364 covers it in a later batch"),
-    "tick_extender.hpp": (1, "not tripped yet; #364 covers it in a later batch"),
+    "static_unordered_map.hpp": (6, "after size_ < Capacity holds a free slot always exists, so `available` and the free-slot check are internal invariants no caller can break"),
+    "static_unordered_set.hpp": (2, "after size_ < Capacity holds a free slot always exists, so `available` and the free-slot check are internal invariants no caller can break"),
 }
 
 
