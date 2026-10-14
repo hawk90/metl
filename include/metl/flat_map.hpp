@@ -56,6 +56,14 @@ namespace metl {
 /// @c Compare, giving O(log n) lookup via binary search and O(n) insert/erase (shifting).
 /// Not thread-safe.
 ///
+/// @par Iterator invalidation
+/// The elements are one sorted, contiguous run. Inserting a new key, or erasing
+/// one, shifts the elements at and after its position, invalidating iterators,
+/// pointers and references to them; those before it stay valid. Assigning to an
+/// existing key's value and lookups invalidate nothing; `clear` invalidates
+/// all. (`std::flat_map` invalidates everything on insert and erase; this is
+/// the narrower rule the storage gives.)
+///
 /// @tparam Key Key type used for ordering and lookup.
 /// @tparam T Mapped value type.
 /// @tparam Capacity Maximum number of elements (fixed at compile time).

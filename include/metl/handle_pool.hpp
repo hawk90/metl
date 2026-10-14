@@ -57,6 +57,12 @@ namespace metl {
 ///   | `get` / `contains`          | wait-free, bounded   |
 ///   | constructor / `clear`       | bounded, O(Capacity) |
 ///
+/// @par Reference invalidation
+/// Objects never move: `try_emplace`/`emplace` invalidate nothing, and
+/// `destroy` ends only the object its handle names. That handle stops resolving
+/// (its slot's generation changes); other handles, and pointers to other
+/// objects, stay valid. `clear` ends them all.
+///
 /// @tparam T Pooled object type.
 /// @tparam Capacity Number of slots (fixed at compile time).
 /// @tparam GenT Unsigned generation counter type. Widening it to `std::uint32_t`

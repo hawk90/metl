@@ -39,6 +39,15 @@ namespace metl {
 /// try_emplace_back/emplace_back/try_push_back, pop_front, clear, capacity,
 /// and the value-semantic copy/move operations.
 ///
+/// @par Iterator invalidation
+/// Elements never move: adding at the back or removing at the front builds or
+/// destroys only that element, so pointers and references to the others stay
+/// valid. An iterator, though, holds a position counted from the front, so
+/// `pop_front`, and a `push_overwrite` that drops the oldest element, shift
+/// what every iterator refers to by one place. `emplace_back`/`push_back` keep
+/// iterators to existing elements valid and invalidate `end()`; `clear`
+/// invalidates all.
+///
 /// @tparam T Element type.
 /// @tparam Capacity Maximum number of elements (fixed at compile time).
 template <typename T, std::size_t Capacity>

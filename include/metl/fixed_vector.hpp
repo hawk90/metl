@@ -95,6 +95,16 @@ inline constexpr bool is_reverse_iterator_over_pointer_v = is_reverse_iterator_o
 /// asserts and aborts by default; use the `try_*` variants for a non-asserting,
 /// bool-returning path. Not thread-safe.
 ///
+/// @par Iterator invalidation
+/// The storage is inline and never reallocates, so -- unlike `std::vector` --
+/// adding at the back (`push_back`, `emplace_back`, a growing `resize`)
+/// invalidates only `end()`. `insert`/`emplace` at a position and `erase` shift
+/// the elements at and after that position, invalidating iterators, pointers
+/// and references to them; those before it stay valid. `pop_back` and a
+/// shrinking `resize` invalidate only the elements they remove, and `clear` and
+/// `assign` invalidate all. `swap` exchanges values in place: an iterator keeps
+/// its position, and positions past the new size are invalid.
+///
 /// @tparam T Element type.
 /// @tparam Capacity Maximum number of elements (fixed at compile time).
 template <typename T, std::size_t Capacity>

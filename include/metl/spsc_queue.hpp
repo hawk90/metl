@@ -43,6 +43,10 @@ namespace metl {
 /// heap allocation. Capacity must be a power of two so indices can be masked instead
 /// of using modulo.
 ///
+/// @par Reference invalidation
+/// The queue hands out no reference to an element: `try_pop` moves the element
+/// out into the caller's object.
+///
 /// @tparam T Element type.
 /// @tparam Capacity Number of slots; must be a power of two and at least 2.
 /// @note Thread-safe for EXACTLY one producer thread (`try_push`/`try_emplace`) and

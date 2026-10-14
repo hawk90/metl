@@ -273,6 +273,13 @@ using variant_alternative_t = typename variant_alternative<I, V>::type;
 /// for the largest alternative; it never allocates. Copyable when all
 /// alternatives are, but never *trivially* copyable (user-provided copy
 /// constructor and destructor).
+/// @par Reference invalidation
+/// A reference to the active alternative stays valid until it ends: `emplace`
+/// of any alternative, assignment of a different alternative, a throw that
+/// leaves the variant valueless, or destruction. Assigning the same
+/// alternative assigns in place, unless that alternative has no assignment
+/// operator: then it is destroyed and rebuilt, which also ends it.
+///
 /// @tparam Ts The alternative types (at least one required).
 /// @note `get<>()` (both free and by-index) ASSERTS (aborts by default) when the
 /// requested alternative is not active; it does NOT throw std::bad_variant_access.

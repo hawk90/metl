@@ -32,6 +32,11 @@ namespace metl {
 /// variants return false instead. Popping/accessing an empty queue asserts.
 /// Not thread-safe.
 ///
+/// @par Reference invalidation
+/// Elements never move: `push`/`emplace` invalidate nothing, and `pop`
+/// invalidates only references to the element it removes, the one `front()`
+/// returned. `clear` invalidates all.
+///
 /// @tparam T Element type.
 /// @tparam Capacity Maximum number of elements (fixed at compile time).
 template <typename T, std::size_t Capacity>

@@ -23,6 +23,7 @@
 
 #include "metl_check.hpp"
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdio>
@@ -93,6 +94,22 @@ struct probe {
     }
 #endif
   }
+  // While moves_watched() is set, the ids of the armed probes a type moved,
+  // assigned over or destroyed. An element the type left in place appears in
+  // none of these. Ids are below 128.
+  static bool& moves_watched() {
+    static bool on = false;
+    return on;
+  }
+  static std::array<bool, 128>& moved() {
+    static std::array<bool, 128> ids{};
+    return ids;
+  }
+  static void note_moved(int i) {
+    if (moves_watched() && i >= 0 && i < 128) {
+      moved()[static_cast<std::size_t>(i)] = true;
+    }
+  }
   // Called from every armed probe's destructor, after `live()` has dropped by one.
   static void (*&on_destroy())(const probe&) {
     static void (*hook)(const probe&) = nullptr;
@@ -112,11 +129,19 @@ struct probe {
       ++live();
     }
   }
-  probe(probe&& other) noexcept : id(other.id), armed(other.armed) { other.armed = false; }
+  probe(probe&& other) noexcept : id(other.id), armed(other.armed) {
+    if (armed) {
+      note_moved(id);
+    }
+    other.armed = false;
+  }
   probe& operator=(const probe& other) {
     if (this != &other) {
       if (other.armed) {
         maybe_throw();
+      }
+      if (armed) {
+        note_moved(id);
       }
       drop();
       id = other.id;
@@ -129,6 +154,12 @@ struct probe {
   }
   probe& operator=(probe&& other) noexcept {
     if (this != &other) {
+      if (armed) {
+        note_moved(id);
+      }
+      if (other.armed) {
+        note_moved(other.id);
+      }
       drop();
       id = other.id;
       armed = other.armed;
@@ -150,6 +181,9 @@ struct probe {
       return;
     }
     const bool was_armed = armed;
+    if (was_armed) {
+      note_moved(id);
+    }
     drop();
     // Ends the lifetime before the hook re-enters the container. Touching a
     // member after the hook would be equally valid, but fixed_vector's ASan
@@ -210,6 +244,9 @@ struct probe_hash {
 //   zero_capacity_refused    how the type refuses capacity 0
 //   available                optional, true by default: false where the type
 //                            does not build for this target
+//   add_moves_others         try_add may move the elements already held, as
+//   remove_moves_others      may remove_one; each as the header's invalidation
+//                            rule states, and checked where it says they stay
 //   reentrant_clear_refused  optional: why the type refuses a clear() from
 //                            an element's destructor, which it checks rather
 //                            than survives
@@ -222,6 +259,8 @@ struct probe_hash {
 struct fixed_vector_adapter {
   using type = metl::fixed_vector<probe, 4>;
   static constexpr const char* name = "fixed_vector";
+  static constexpr bool add_moves_others = false;
+  static constexpr bool remove_moves_others = false;
   using zero_type = metl::fixed_vector<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
@@ -249,6 +288,8 @@ struct fixed_vector_adapter {
 struct fixed_deque_adapter {
   using type = metl::fixed_deque<probe, 4>;
   static constexpr const char* name = "fixed_deque";
+  static constexpr bool add_moves_others = false;
+  static constexpr bool remove_moves_others = false;
   using zero_type = metl::fixed_deque<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
@@ -276,6 +317,8 @@ struct fixed_deque_adapter {
 struct ring_buffer_adapter {
   using type = metl::ring_buffer<probe, 4>;
   static constexpr const char* name = "ring_buffer";
+  static constexpr bool add_moves_others = false;
+  static constexpr bool remove_moves_others = false;
   using zero_type = metl::ring_buffer<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
@@ -303,6 +346,8 @@ struct ring_buffer_adapter {
 struct fixed_queue_adapter {
   using type = metl::fixed_queue<probe, 4>;
   static constexpr const char* name = "fixed_queue";
+  static constexpr bool add_moves_others = false;
+  static constexpr bool remove_moves_others = false;
   using zero_type = metl::fixed_queue<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
@@ -330,6 +375,8 @@ struct fixed_queue_adapter {
 struct fixed_stack_adapter {
   using type = metl::fixed_stack<probe, 4>;
   static constexpr const char* name = "fixed_stack";
+  static constexpr bool add_moves_others = false;
+  static constexpr bool remove_moves_others = false;
   using zero_type = metl::fixed_stack<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
@@ -357,6 +404,8 @@ struct fixed_stack_adapter {
 struct fixed_priority_queue_adapter {
   using type = metl::fixed_priority_queue<probe, 4>;
   static constexpr const char* name = "fixed_priority_queue";
+  static constexpr bool add_moves_others = true;
+  static constexpr bool remove_moves_others = true;
   using zero_type = metl::fixed_priority_queue<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
@@ -384,6 +433,8 @@ struct fixed_priority_queue_adapter {
 struct static_message_queue_adapter {
   using type = metl::static_message_queue<probe, 4>;
   static constexpr const char* name = "static_message_queue";
+  static constexpr bool add_moves_others = false;
+  static constexpr bool remove_moves_others = false;
   static constexpr const char* zero_capacity_refused = "a static_assert: it could hold nothing";
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
@@ -411,6 +462,8 @@ struct static_message_queue_adapter {
 struct flat_map_adapter {
   using type = metl::flat_map<int, probe, 4>;
   static constexpr const char* name = "flat_map";
+  static constexpr bool add_moves_others = true;
+  static constexpr bool remove_moves_others = true;
   using zero_type = metl::flat_map<int, probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
@@ -438,6 +491,8 @@ struct flat_map_adapter {
 struct flat_set_adapter {
   using type = metl::flat_set<probe, 4>;
   static constexpr const char* name = "flat_set";
+  static constexpr bool add_moves_others = true;
+  static constexpr bool remove_moves_others = true;
   using zero_type = metl::flat_set<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
@@ -465,6 +520,8 @@ struct flat_set_adapter {
 struct static_unordered_map_adapter {
   using type = metl::static_unordered_map<int, probe, 4>;
   static constexpr const char* name = "static_unordered_map";
+  static constexpr bool add_moves_others = true;
+  static constexpr bool remove_moves_others = false;
   using zero_type = metl::static_unordered_map<int, probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
@@ -492,6 +549,8 @@ struct static_unordered_map_adapter {
 struct static_unordered_set_adapter {
   using type = metl::static_unordered_set<probe, 4, probe_hash>;
   static constexpr const char* name = "static_unordered_set";
+  static constexpr bool add_moves_others = true;
+  static constexpr bool remove_moves_others = false;
   using zero_type = metl::static_unordered_set<probe, 0, probe_hash>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = true;
@@ -529,6 +588,8 @@ struct handed_out {
 struct object_pool_adapter {
   using type = metl::object_pool<probe, 4>;
   static constexpr const char* name = "object_pool";
+  static constexpr bool add_moves_others = false;
+  static constexpr bool remove_moves_others = false;
   using zero_type = metl::object_pool<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = false;
@@ -567,6 +628,8 @@ struct object_pool_adapter {
 struct handle_pool_adapter {
   using type = metl::handle_pool<probe, 4>;
   static constexpr const char* name = "handle_pool";
+  static constexpr bool add_moves_others = false;
+  static constexpr bool remove_moves_others = false;
   using zero_type = metl::handle_pool<probe, 0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = false;
@@ -609,6 +672,8 @@ struct handle_pool_adapter {
 struct arena_allocator_adapter {
   using type = metl::arena_allocator<256>;
   static constexpr const char* name = "arena_allocator";
+  static constexpr bool add_moves_others = false;
+  static constexpr bool remove_moves_others = false;
   using zero_type = metl::arena_allocator<0>;
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = false;
@@ -664,6 +729,8 @@ void pop_one(Queue& c) {
 struct spsc_queue_adapter {
   using type = metl::spsc_queue<probe, 4>;
   static constexpr const char* name = "spsc_queue";
+  static constexpr bool add_moves_others = false;
+  static constexpr bool remove_moves_others = false;
   static constexpr const char* zero_capacity_refused = "a static_assert: Capacity is at least 2";
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = false;
@@ -693,6 +760,8 @@ struct spsc_queue_adapter {
 struct mpmc_queue_adapter {
   using type = metl::mpmc_queue<probe, 4>;
   static constexpr const char* name = "mpmc_queue";
+  static constexpr bool add_moves_others = false;
+  static constexpr bool remove_moves_others = false;
   // mpmc_queue refuses, at compile time, a target with no lock-free atomic
   // read-modify-write on std::size_t (ARMv6-M); it is checked where it builds.
   static constexpr bool available = std::atomic<std::size_t>::is_always_lock_free;
@@ -728,6 +797,8 @@ struct mpmc_queue_adapter {
 struct optional_adapter {
   using type = metl::optional<probe>;
   static constexpr const char* name = "optional";
+  static constexpr bool add_moves_others = false;
+  static constexpr bool remove_moves_others = false;
   static constexpr const char* zero_capacity_refused = "no capacity parameter: it holds at most one";
   static constexpr std::size_t capacity = 1;
   static constexpr bool movable = true;
@@ -765,6 +836,8 @@ struct expected_slot : metl::expected<probe, int> {
 struct expected_adapter {
   using type = expected_slot;
   static constexpr const char* name = "expected";
+  static constexpr bool add_moves_others = false;
+  static constexpr bool remove_moves_others = false;
   static constexpr const char* reentrant_clear_refused =
       "a precondition: a member's destructor does not change its expected, and a change fails METL_HARDEN "
       "(#374)";
@@ -799,6 +872,8 @@ struct expected_adapter {
 struct variant_adapter {
   using type = metl::variant<int, probe>;
   static constexpr const char* name = "variant";
+  static constexpr bool add_moves_others = false;
+  static constexpr bool remove_moves_others = false;
   static constexpr const char* zero_capacity_refused = "no capacity parameter: it holds at most one";
   static constexpr std::size_t capacity = 1;
   static constexpr bool movable = true;
@@ -836,6 +911,8 @@ struct callable_probe {
 struct fixed_function_adapter {
   using type = metl::fixed_function<void(), 32>;
   static constexpr const char* name = "fixed_function";
+  static constexpr bool add_moves_others = false;
+  static constexpr bool remove_moves_others = false;
   static constexpr const char* zero_capacity_refused = "its storage holds one target";
   static constexpr std::size_t capacity = 1;
   static constexpr bool movable = true;

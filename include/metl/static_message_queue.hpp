@@ -35,6 +35,11 @@ namespace metl {
 ///
 /// Backed by an inline array of @c Capacity slots with NO dynamic heap allocation.
 ///
+/// @par Reference invalidation
+/// Elements never move: `push`/`emplace` and their `try_` forms invalidate
+/// nothing, and `pop`/`try_pop` invalidate only references to the element they
+/// remove, the one `front()` returned. `clear` invalidates all.
+///
 /// @tparam T Element type.
 /// @tparam Capacity Maximum number of elements the queue can hold.
 /// @warning SINGLE-THREADED ONLY. `head_`/`tail_`/`size_` are plain non-atomic
