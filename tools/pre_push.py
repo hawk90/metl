@@ -85,6 +85,7 @@ GATES = [
     ["tools/check_conformance.py"],
     ["tools/check_ci_gate.py"],
     ["tools/check_compile_fail.py"],
+    ["tools/check_changelog.py", "--base", "origin/main"],
 ]
 
 
