@@ -32,7 +32,8 @@ WHAT RUNS, cheapest first, stopping at the first failure:
      job does. The flags and the compiler/standard matrix are read from
      ci.yml, so there is one list.
   9. source-based coverage against its floors (tools/coverage.py), as the
-     `coverage` job does. On macOS the profile tools come from Xcode: the
+     `coverage` job does -- the default build only: the job's --configurations
+     adds four more instrumented builds. On macOS the profile tools come from Xcode: the
      Homebrew llvm-profdata cannot read Apple clang's profiles.
 
   Step 4b adds two more builds: ASan+UBSan at METL_HARDENING=0, and

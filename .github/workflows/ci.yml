@@ -1347,8 +1347,10 @@ jobs:
   #
   # What this number does NOT cover, stated here because a single percentage
   # invites the wrong conclusion:
-  #   * `#if` arms this configuration does not compile -- config-matrix exists
-  #     for those, since coverage cannot report on code that was never built.
+  #   * `#if` arms this configuration does not compile. --configurations builds
+  #     C++20, -fno-exceptions, METL_HARDENING=0 and METL_CRC_TABLE=0 too and
+  #     requires every line only one of them compiles to have run (#387); their
+  #     figures are printed but not merged into these, which llvm-cov cannot do.
   #   * Anything gated on being an MCU: irq_lock's PRIMASK path, the ARMv6-M
   #     capability rejections, the -fno-exceptions arms. Their evidence is
   #     qemu-conformance.
@@ -1363,7 +1365,8 @@ jobs:
     name: coverage
     runs-on: ubuntu-26.04
     needs: preflight
-    timeout-minutes: 20
+    # Five instrumented builds and test runs: the default and --configurations.
+    timeout-minutes: 45
     # id-token: the Codecov upload authenticates with this run's OIDC token, so
     # no upload secret is stored anywhere. Nothing else here writes.
     permissions:
@@ -1398,7 +1401,7 @@ jobs:
           CXX: clang++
           CMAKE_C_COMPILER_LAUNCHER: ccache
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
-        run: tools/coverage.py --min-lines 89.4 --min-branches 83.0 --lcov build-coverage/metl.lcov
+        run: tools/coverage.py --min-lines 89.4 --min-branches 83.0 --lcov build-coverage/metl.lcov --configurations
 
       # Display only: the floors above are the gate, and codecov.yml makes
       # Codecov's own statuses informational. A fork's pull request gets no OIDC
