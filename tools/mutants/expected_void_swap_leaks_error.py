@@ -7,11 +7,9 @@ MUTANT = {
     "why": "swapping success with an error moves the error across but never "
            "destroys the moved-from one: an E that is never destroyed.",
     "kills": "ctest:expected_state_pairs",
-    "old": """      construct_error(static_cast<E&&>(*other.error_ptr()));
+    "old": """      other.state_ = detail::expected_state::switching;
       other.error_ptr()->~E();
-      has_value_ = false;
-      other.has_value_ = true;""",
-    "new": """      construct_error(static_cast<E&&>(*other.error_ptr()));
-      has_value_ = false;
-      other.has_value_ = true;""",
+      other.state_ = detail::expected_state::value;""",
+    "new": """      other.state_ = detail::expected_state::switching;
+      other.state_ = detail::expected_state::value;""",
 }

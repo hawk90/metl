@@ -8,17 +8,21 @@ MUTANT = {
            "other object; the state and the error are never copied.",
     "kills": "ctest:expected_test",
     "old": """  expected& operator=(const expected& other) {
+    require_settled();
+    other.require_settled();
     if (this == &other) {
       return *this;
     }
 
-    if (other.has_value_) {
-      if (!has_value_) {""",
+    if (other.holds_value()) {
+      if (!holds_value()) {""",
     "new": """  expected& operator=(const expected& other) {
+    require_settled();
+    other.require_settled();
     if (this != &other) {
       return *this;
     }
 
-    if (other.has_value_) {
-      if (!has_value_) {""",
+    if (other.holds_value()) {
+      if (!holds_value()) {""",
 }

@@ -43,7 +43,6 @@ ALLOWED = {
     "arena_allocator.hpp": (2, "not tripped yet; #364 covers it in a later batch"),
     "coro/deadline_scheduler.hpp": (1, "not tripped yet; #364 covers it in a later batch"),
     "detail/ring_core.hpp": (7, "not tripped yet; #364 covers it in a later batch"),
-    "expected.hpp": (21, "not tripped yet; #364 covers it in a later batch"),
     "fixed_deque.hpp": (1, "not tripped yet; #364 covers it in a later batch"),
     "fixed_string.hpp": (12, "not tripped yet; #364 covers it in a later batch"),
     "fixed_vector.hpp": (14, "not tripped yet; #364 covers it in a later batch"),
