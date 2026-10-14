@@ -25,6 +25,9 @@
 
 #include <array>
 #include <atomic>
+#if defined(__cpp_impl_three_way_comparison) && defined(__cpp_lib_three_way_comparison)
+#include <compare>
+#endif
 #include <cstddef>
 #include <cstdio>
 #include <functional>
@@ -219,8 +222,19 @@ struct probe {
     return unarmed;
   }
 
+  // Ordered by id, with every comparison a std counterpart can ask for.
   friend bool operator<(const probe& lhs, const probe& rhs) { return lhs.id < rhs.id; }
   friend bool operator==(const probe& lhs, const probe& rhs) { return lhs.id == rhs.id; }
+  friend bool operator!=(const probe& lhs, const probe& rhs) { return lhs.id != rhs.id; }
+  friend bool operator<=(const probe& lhs, const probe& rhs) { return lhs.id <= rhs.id; }
+  friend bool operator>(const probe& lhs, const probe& rhs) { return lhs.id > rhs.id; }
+  friend bool operator>=(const probe& lhs, const probe& rhs) { return lhs.id >= rhs.id; }
+#if defined(__cpp_impl_three_way_comparison) && defined(__cpp_lib_three_way_comparison)
+  // Standard: c++17 would split the operator into two tokens.
+  // clang-format off
+  friend std::strong_ordering operator<=>(const probe& lhs, const probe& rhs) { return lhs.id <=> rhs.id; }
+  // clang-format on
+#endif
 
  private:
   // Assigning over a probe ends the value it held but runs no destructor, so
@@ -269,6 +283,28 @@ struct probe_hash {
 // The functions are templates, so they serve `type` and `zero_type` alike.
 //
 // and optionally `gap_<property>`, the issue that tracks a known failure.
+
+// The bucket an unordered container of `Capacity` with the default hash starts
+// probing from for `key`, as the containers compute it.
+template <std::size_t Capacity>
+std::size_t home_bucket(int key) {
+  return static_cast<std::size_t>(metl::detail::hash_mix(std::hash<int>{}(key))) &
+         (metl::detail::compute_bucket_count(Capacity) - 1);
+}
+
+// Three ids that share a home bucket, so an unordered container holds them in
+// adjacent slots.
+template <std::size_t Capacity>
+std::array<int, 3> colliding_ids() {
+  std::array<int, 3> ids{1, 0, 0};
+  std::size_t found = 1;
+  for (int key = 2; found < ids.size(); ++key) {
+    if (home_bucket<Capacity>(key) == home_bucket<Capacity>(1)) {
+      ids[found++] = key;
+    }
+  }
+  return ids;
+}
 
 // Whether a namespace-scope object of the type is constant-initialized, so
 // that nothing before main() -- an interrupt, another static initializer --
@@ -686,6 +722,10 @@ struct static_unordered_map_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
+  // Ids that land in adjacent slots: with ids spread over the table, an
+  // erase(iterator) that skipped the next slot would still find the right
+  // element (conformance_std_parity_test.cpp).
+  static std::array<int, 3> parity_ids() { return colliding_ids<capacity>(); }
   static constexpr constant_init constant_init_level = constant_init::never;
   static constexpr const char* constant_init_refused = "its constructor marks every slot empty at run time";
   template <typename C>
@@ -706,11 +746,6 @@ struct static_unordered_map_adapter {
   }
   static constexpr int copy_own_ops = 2;
   static constexpr int copy_own_fill = 2;
-  // The bucket a key starts probing from, as the map computes it.
-  template <typename C>
-  static std::size_t home_of(int key) {
-    return static_cast<std::size_t>(metl::detail::hash_mix(std::hash<int>{}(key))) & (C::bucket_count - 1);
-  }
   template <typename C>
   static copy_result copy_own(C& c, int op, int k) {
     if (op == 0) {
@@ -729,11 +764,11 @@ struct static_unordered_map_adapter {
     c.clear();
     const int copied = 1 + k;
     int blocker = 10;
-    while (home_of<C>(blocker) != home_of<C>(copied)) {
+    while (home_bucket<capacity>(blocker) != home_bucket<capacity>(copied)) {
       ++blocker;
     }
     int other = blocker + 1;
-    while (home_of<C>(other) == home_of<C>(copied)) {
+    while (home_bucket<capacity>(other) == home_bucket<capacity>(copied)) {
       ++other;
     }
     (void)c.try_emplace(blocker, probe(blocker));
@@ -757,6 +792,10 @@ struct static_unordered_set_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
+  // Ids that land in adjacent slots: with ids spread over the table, an
+  // erase(iterator) that skipped the next slot would still find the right
+  // element (conformance_std_parity_test.cpp).
+  static std::array<int, 3> parity_ids() { return colliding_ids<capacity>(); }
   static constexpr constant_init constant_init_level = constant_init::never;
   static constexpr const char* constant_init_refused = "its constructor marks every slot empty at run time";
   template <typename C>
