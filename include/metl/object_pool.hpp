@@ -22,6 +22,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/constant_init.hpp"
 #include "metl/type_traits.hpp"
 
 #include <cstddef>
@@ -56,7 +57,13 @@ class object_pool {
   using const_pointer = const T*;
 
   /// Constructs an empty pool with all slots free.
-  constexpr object_pool() noexcept = default;
+  /// Constant-initialized at namespace scope since C++20 (see
+  /// detail/constant_init.hpp); a local one stores nothing to the slots.
+  constexpr object_pool() noexcept {
+    for (storage_type& slot : storage_) {
+      detail::zero_for_constant_init(slot.bytes);
+    }
+  }
 
   ~object_pool() { clear(); }
 
