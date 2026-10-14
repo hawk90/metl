@@ -3,7 +3,7 @@
 // Every movable container is also copyable, and the headers that say so call
 // self-assignment safe. One that clears before it copies loses the elements,
 // and one that moves elements onto themselves can destroy one twice. The
-// property fills three elements, assigns and swaps the container with itself,
+// property fills up to three elements, assigns and swaps the container with itself,
 // and then removes the elements one by one: each removal must end exactly one
 // live element. (Counted by liveness, not by destructor calls: a heap's pop
 // ends the top element by assigning over it.)
@@ -18,6 +18,7 @@ struct self_assignment_changes_nothing {
   template <typename Adapter>
   bool operator()(Adapter) const {
     using type = typename Adapter::type;
+    const int n = conformance::filled<Adapter>;
     bool met = true;
     std::size_t after_copy = 0;
     std::size_t after_move = 0;
@@ -25,7 +26,7 @@ struct self_assignment_changes_nothing {
     int removed_in_step = -1;  // the first removal that did not end exactly one element
     {
       type c;
-      for (int id = 1; id <= 3; ++id) {
+      for (int id = 1; id <= n; ++id) {
         met = Adapter::try_add(c, id) && met;
       }
       type& alias = c;
@@ -36,9 +37,11 @@ struct self_assignment_changes_nothing {
       using std::swap;
       swap(c, alias);
       after_swap = Adapter::held(c);
-      met = met && after_copy == 3 && after_move == 3 && after_swap == 3 && conformance::probe::live() == 3;
+      const std::size_t count = static_cast<std::size_t>(n);
+      met = met && after_copy == count && after_move == count && after_swap == count &&
+            conformance::probe::live() == n;
 
-      for (int left = 2; left >= 0; --left) {
+      for (int left = n - 1; left >= 0; --left) {
         Adapter::remove_one(c);
         const bool one_ended =
             Adapter::held(c) == static_cast<std::size_t>(left) && conformance::probe::live() == left;

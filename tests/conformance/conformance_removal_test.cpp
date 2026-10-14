@@ -39,7 +39,7 @@ struct removal_commits_first {
     auto& c = conformance::instance<Adapter>();
     Adapter::clear(c);
     bool met = true;
-    for (int id = 1; id <= 3; ++id) {
+    for (int id = 1; id <= conformance::filled<Adapter>; ++id) {
       met = Adapter::try_add(c, id) && met;
     }
 
@@ -56,7 +56,8 @@ struct removal_commits_first {
 
     // One value ends. A heap ends it by assigning over it, so its destructor
     // need not run; whichever destructors do run must see it already gone.
-    met = met && live_after_one == 2 && single.destroyed <= 1 && single.still_counted == 0;
+    met = met && live_after_one == conformance::filled<Adapter> - 1 && single.destroyed <= 1 &&
+          single.still_counted == 0;
     met = met && all.still_counted == 0;
     met = met && Adapter::held(c) == 0 && conformance::probe::live() == 0;
     if (!met) {
@@ -98,7 +99,7 @@ struct reentrant_clear_destroys_once {
     auto& c = conformance::instance<Adapter>();
     Adapter::clear(c);
     bool met = true;
-    for (int id = 1; id <= 3; ++id) {
+    for (int id = 1; id <= conformance::filled<Adapter>; ++id) {
       met = Adapter::try_add(c, id) && met;
     }
     conformance::probe::destroyed_twice() = 0;
