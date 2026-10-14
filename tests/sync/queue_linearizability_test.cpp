@@ -206,7 +206,7 @@ constexpr unsigned kRounds = 2000;
 void spsc_histories_are_linearizable() {
   unsigned bad = 0;
   for (unsigned seed = 1; seed <= kRounds && bad == 0; ++seed) {
-    bad += run_round<metl::spsc_queue<int, 4>>("spsc_queue", seed, 1, 1, 12, failures::strict) ? 0 : 1;
+    bad += run_round<metl::spsc_queue<int, 4>>("spsc_queue", seed, 1, 1, 12, failures::strict) ? 0u : 1u;
   }
   CHECK_EQ(bad, 0u);
 }
@@ -214,7 +214,7 @@ void spsc_histories_are_linearizable() {
 void mpmc_histories_are_linearizable() {
   unsigned bad = 0;
   for (unsigned seed = 1; seed <= kRounds && bad == 0; ++seed) {
-    bad += run_round<metl::mpmc_queue<int, 4>>("mpmc_queue", seed, 2, 2, 7, failures::relaxed) ? 0 : 1;
+    bad += run_round<metl::mpmc_queue<int, 4>>("mpmc_queue", seed, 2, 2, 7, failures::relaxed) ? 0u : 1u;
   }
   CHECK_EQ(bad, 0u);
 }
