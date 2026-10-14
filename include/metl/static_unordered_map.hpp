@@ -276,6 +276,9 @@ class static_unordered_map {
 
   /// @brief Construct an empty map with all slots marked empty.
   /// @note noexcept exactly when default-constructing `Hash` and `KeyEqual` is.
+  /// @note Not constexpr: the slots are marked empty at run time, so a
+  ///       namespace-scope map is initialized at run time, in link order.
+  ///       Construct it before anything that runs earlier can reach it.
   static_unordered_map() noexcept(std::is_nothrow_default_constructible_v<Hash> &&
                                   std::is_nothrow_default_constructible_v<KeyEqual>)
       : size_(0), hasher_(), key_equal_() {

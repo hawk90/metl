@@ -270,6 +270,16 @@ struct probe_hash {
 //
 // and optionally `gap_<property>`, the issue that tracks a known failure.
 
+// Whether a namespace-scope object of the type is constant-initialized, so
+// that nothing before main() -- an interrupt, another static initializer --
+// can see it before its constructor ran (conformance_constinit_test.cpp).
+enum class constant_init {
+  always,       // in every standard
+  since_cxx20,  // C++20 and later; in C++17 a constexpr constructor must
+                // initialize the element buffer too
+  never,        // the adapter says why in constant_init_refused
+};
+
 // What copy_own (conformance_alias_test.cpp) should leave: how many elements
 // the type holds, and how many live probes carry the copied element's id.
 struct copy_result {
@@ -289,6 +299,7 @@ struct fixed_vector_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace_back(id);
@@ -343,6 +354,7 @@ struct fixed_deque_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace_back(id);
@@ -385,6 +397,7 @@ struct ring_buffer_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace_back(id);
@@ -431,6 +444,7 @@ struct fixed_queue_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace(id);
@@ -469,6 +483,7 @@ struct fixed_stack_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace(id);
@@ -506,6 +521,7 @@ struct fixed_priority_queue_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace(id);
@@ -543,6 +559,7 @@ struct static_message_queue_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace(id);
@@ -580,6 +597,7 @@ struct flat_map_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace(id, probe(id));
@@ -629,6 +647,7 @@ struct flat_set_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace(probe(id));
@@ -667,6 +686,8 @@ struct static_unordered_map_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::never;
+  static constexpr const char* constant_init_refused = "its constructor marks every slot empty at run time";
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace(id, probe(id));
@@ -736,6 +757,8 @@ struct static_unordered_set_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::never;
+  static constexpr const char* constant_init_refused = "its constructor marks every slot empty at run time";
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace(probe(id));
@@ -788,6 +811,7 @@ struct object_pool_adapter {
   static constexpr bool movable = false;
   static constexpr bool move_empties_source = false;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   // One list per instantiation: `type` and `zero_type` hand out separately.
   template <typename C>
   static handed_out<probe*, 4>& given() {
@@ -839,6 +863,8 @@ struct handle_pool_adapter {
   static constexpr bool movable = false;
   static constexpr bool move_empties_source = false;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::never;
+  static constexpr const char* constant_init_refused = "its constructor links the free list at run time";
   template <typename C>
   static handed_out<typename C::handle_type, 4>& given() {
     static handed_out<typename C::handle_type, 4> list;
@@ -898,6 +924,7 @@ struct arena_allocator_adapter {
   static constexpr bool movable = false;
   static constexpr bool move_empties_source = false;
   static constexpr bool fixed_count = false;
+  static constexpr constant_init constant_init_level = constant_init::always;
   template <typename C>
   static handed_out<typename C::mark_type, 4>& given() {
     static handed_out<typename C::mark_type, 4> list;
@@ -977,6 +1004,7 @@ struct spsc_queue_adapter {
   static constexpr bool movable = false;
   static constexpr bool move_empties_source = false;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::always;
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace(id);
@@ -1012,6 +1040,9 @@ struct mpmc_queue_adapter {
   static constexpr bool movable = false;
   static constexpr bool move_empties_source = false;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::never;
+  static constexpr const char* constant_init_refused =
+      "each slot starts at its own sequence number, written at run time (see its header)";
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace(id);
@@ -1047,6 +1078,7 @@ struct optional_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = false;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::always;
   template <typename C>
   static bool try_add(C& c, int id) {
     if (c.has_value()) {
@@ -1097,6 +1129,9 @@ struct expected_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = false;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::never;
+  static constexpr const char* constant_init_refused =
+      "its constexpr default constructor uses placement new, never constant-evaluated (#395)";
   template <typename C>
   static bool try_add(C& c, int id) {
     if (c.has_value()) {
@@ -1138,6 +1173,9 @@ struct variant_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = false;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::never;
+  static constexpr const char* constant_init_refused =
+      "its constexpr default constructor uses placement new, never constant-evaluated (#395)";
   template <typename C>
   static bool try_add(C& c, int id) {
     if (metl::holds_alternative<probe>(c)) {
@@ -1185,6 +1223,7 @@ struct fixed_function_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = true;
   static constexpr bool fixed_count = true;
+  static constexpr constant_init constant_init_level = constant_init::always;
   template <typename C>
   static bool try_add(C& c, int id) {
     if (c) {

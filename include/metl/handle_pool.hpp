@@ -113,6 +113,9 @@ class handle_pool {
                 "metl::handle_pool Capacity must fit the handle's slot index field");
 
   /// Constructs an empty pool with every slot free and generation 1.
+  /// @note Not constexpr: the free list is linked at run time, so a
+  ///       namespace-scope pool is initialized at run time, in link order.
+  ///       Construct it before anything that runs earlier can reach it.
   handle_pool() noexcept : free_head_(0), size_(0) {
     for (size_type i = 0; i < Capacity; ++i) {
       next_[i] = static_cast<index_type>(i + 1);  // last one points at `Capacity` == end
