@@ -7,11 +7,11 @@ MUTANT = {
     "why": "swapping two expecteds that both hold errors does nothing.",
     "kills": "ctest:expected_test",
     "old": """      swap(*value_ptr(), *other.value_ptr());
-    } else if (!has_value_ && !other.has_value_) {
+    } else if (!holds_value() && !other.holds_value()) {
       using std::swap;
       swap(*error_ptr(), *other.error_ptr());
-    } else if (has_value_ && !other.has_value_) {""",
+    } else if (holds_value() && !other.holds_value()) {""",
     "new": """      swap(*value_ptr(), *other.value_ptr());
-    } else if (!has_value_ && !other.has_value_) {
-    } else if (has_value_ && !other.has_value_) {""",
+    } else if (!holds_value() && !other.holds_value()) {
+    } else if (holds_value() && !other.holds_value()) {""",
 }

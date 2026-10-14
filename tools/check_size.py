@@ -99,19 +99,21 @@ BUDGETS = {
 TOLERANCE_BYTES = 512
 
 # Budgets for `.rodata` of the same linked probe. Measured by the `invariants`
-# job on main, run 32586215841: all four targets reported 408, which is what a
+# job, run 38493698132 (#374): all four targets reported 472, which is what a
 # section of pure constants should do -- it does not depend on instruction
-# selection the way `.text` does.
+# selection the way `.text` does. The first budget, 408 (run 32586215841), had
+# drifted to 456 on main within the tolerance; #374's destructor check then
+# stores its file name and expression text, which took it to 472.
 #
 # The tolerance is deliberately much tighter than .text's 512. A toolchain bump
 # moves code generation; it does not move the number of constant bytes the
 # source declares. Slack here would only hide the thing this is for -- a table
 # quietly arriving in the image.
 RODATA_BUDGETS = {
-    "cortex-m0": 408,
-    "cortex-m3": 408,
-    "cortex-m4": 408,
-    "cortex-m7": 408,
+    "cortex-m0": 472,
+    "cortex-m3": 472,
+    "cortex-m4": 472,
+    "cortex-m7": 472,
 }
 RODATA_TOLERANCE_BYTES = 64
 
