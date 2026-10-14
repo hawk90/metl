@@ -23,10 +23,12 @@
 
 #include "metl_check.hpp"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdio>
 #include <functional>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 #include <metl/arena_allocator.hpp>
@@ -181,6 +183,8 @@ struct probe_hash {
 //                            number of elements, not of bytes
 //   zero_type                the same type at capacity 0, or instead
 //   zero_capacity_refused    how the type refuses capacity 0
+//   available                optional, true by default: false where the type
+//                            does not build for this target
 //
 // The functions are templates, so they serve `type` and `zero_type` alike.
 //
@@ -661,6 +665,9 @@ struct spsc_queue_adapter {
 struct mpmc_queue_adapter {
   using type = metl::mpmc_queue<probe, 4>;
   static constexpr const char* name = "mpmc_queue";
+  // mpmc_queue refuses, at compile time, a target with no lock-free atomic
+  // read-modify-write on std::size_t (ARMv6-M); it is checked where it builds.
+  static constexpr bool available = std::atomic<std::size_t>::is_always_lock_free;
   static constexpr const char* zero_capacity_refused = "a static_assert: Capacity is at least 2";
   static constexpr std::size_t capacity = 4;
   static constexpr bool movable = false;
@@ -865,8 +872,27 @@ typename Adapter::type& instance() {
 // A property is a callable template `bool operator()(Adapter) const` that
 // returns whether the type met it, printing what it saw when it did not.
 // `gap` is the adapter's known-gap issue for this property, or nullptr.
+template <typename A, typename = void>
+struct is_available : std::true_type {};
+template <typename A>
+struct is_available<A, std::void_t<decltype(A::available)>> : std::bool_constant<A::available> {};
+
+template <typename Adapter, typename Property>
+void run_available(const char* property_name, const char* gap, Property property);
+
 template <typename Adapter, typename Property>
 void run_one(const char* property_name, const char* gap, Property property) {
+  if constexpr (!is_available<Adapter>::value) {
+    std::printf("%s: %s: not built for this target\n", Adapter::name, property_name);
+    (void)gap;
+    (void)property;
+  } else {
+    run_available<Adapter>(property_name, gap, property);
+  }
+}
+
+template <typename Adapter, typename Property>
+void run_available(const char* property_name, const char* gap, Property property) {
   const bool met = property(Adapter{});
   if (gap == nullptr) {
     if (!met) {
