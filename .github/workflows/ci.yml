@@ -1188,6 +1188,14 @@ jobs:
             --machine ${{ matrix.machine }} \
             --expect-build-fail '${{ matrix.expect_build_fail }}'
 
+      # The mutants of code only a Cortex-M build compiles, such as irq_lock's
+      # PRIMASK sequence, which the host `mutants` job cannot build (#388).
+      # They name cortex-m3, the core of the runner's default machine.
+      - name: Break the Cortex-M-only code on purpose; the tests here must notice
+        if: matrix.cpu == 'cortex-m3'
+        timeout-minutes: 15
+        run: tools/check_mutants.py --kinds qemu
+
       - name: Upload build/run logs on failure
         if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
@@ -1752,7 +1760,9 @@ jobs:
         # them. Not written here: a count in a comment went stale (#245 said 68
         # for 65). 47 took 13 minutes on CI.
         timeout-minutes: 45
-        run: tools/check_mutants.py --build-dir build-mutants
+        # The qemu: mutants need the ARM toolchain and QEMU; qemu-conformance
+        # runs them.
+        run: tools/check_mutants.py --build-dir build-mutants --skip-kinds qemu
 
   # ---------------------------------------------------------------------------
   # clang-tidy (blocking deduplicated ratchet)
