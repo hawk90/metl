@@ -67,6 +67,8 @@ CTEST_TIMEOUT_SECONDS = 120
 #
 #   ctest:<regex>   ctest -R <regex> must fail
 #   tsan:<target>   the test target, built with ThreadSanitizer, must fail
+#   qemu:<cpu>:<test>  the test, cross-built for that Cortex-M core and run
+#                   under QEMU by tools/run_qemu_tests.py, must fail
 #   tool:<argv>     the command must exit non-zero
 #
 # tsan: is for a weakened memory order. On real hardware the reordering it
@@ -75,6 +77,14 @@ CTEST_TIMEOUT_SECONDS = 120
 # tracks happens-before rather than what the cores did, reports the race on
 # every run (#341). Those targets build in `<build-dir>-tsan`, configured on
 # first use.
+#
+# qemu: is for code only a Cortex-M build compiles -- irq_lock's PRIMASK
+# sequence. The host suite cannot kill such a mutant, since the mutated line is
+# not even built there (#388). The ARM toolchain and QEMU must be installed; a
+# run without them is broken, not killed, and the CI `mutants` job leaves these
+# to `qemu-conformance` with --skip-kinds qemu. Each qemu: gate is run once on
+# the unmutated tree first and must pass, so a test failing for another reason
+# cannot pass for a kill.
 #
 # Each mutant lives in its own file, tools/mutants/<name>.py, which defines one
 # dict, MUTANT. One list in this file meant every PR that added a mutant
@@ -192,10 +202,47 @@ def run_gate(spec, build_dir):
                                  "--timeout", str(CTEST_TIMEOUT_SECONDS)],
                                 capture_output=True, text=True, cwd=REPO)
         return result.returncode != 0, result.stdout[-800:]
+    if kind == "qemu":
+        result = run_qemu_gate(rest)
+        if result.returncode == QEMU_NOT_RUN:
+            return None, "the ARM toolchain or QEMU is missing (use --skip-kinds qemu)"
+        if result.returncode == QEMU_BAD_ARGUMENTS:
+            return None, (result.stdout + result.stderr).strip()[-300:]
+        return result.returncode != 0, result.stdout[-800:]
     if kind == "tool":
         result = subprocess.run(rest.split(), capture_output=True, text=True, cwd=REPO)
         return result.returncode != 0, (result.stdout + result.stderr)[-800:]
     raise RuntimeError(f"unknown gate kind {kind!r}")
+
+
+# tools/run_qemu_tests.py's exit statuses that are not a test result.
+QEMU_BAD_ARGUMENTS = 2
+QEMU_NOT_RUN = 3
+
+
+def run_qemu_gate(spec):
+    """`spec` is `<cpu>:<test>`, the test as run_qemu_tests.py discovers it. The
+    runner's default machine, mps2-an385, is a Cortex-M3: name cortex-m3, or a
+    core that board runs, here."""
+    cpu, _, test = spec.partition(":")
+    return subprocess.run([sys.executable, str(REPO / "tools" / "run_qemu_tests.py"), "--cpu", cpu,
+                           "--only", test], capture_output=True, text=True, cwd=REPO)
+
+
+def qemu_baselines_pass(mutants, say):
+    """Each distinct qemu: gate must pass on the unmutated tree."""
+    ok = True
+    for spec in sorted({m["kills"].partition(":")[2] for m in mutants if m["kills"].startswith("qemu:")}):
+        result = run_qemu_gate(spec)
+        if result.returncode == QEMU_NOT_RUN:
+            say(f"qemu:{spec} cannot run: the ARM toolchain or QEMU is missing "
+                f"(use --skip-kinds qemu)", error=True)
+            ok = False
+        elif result.returncode != 0:
+            say(f"qemu:{spec} fails on the unmutated tree, so no mutant could be told killed:\n"
+                f"{result.stdout[-800:]}", error=True)
+            ok = False
+    return ok
 
 
 def check(mutants, build_dir, quiet=False):
@@ -208,6 +255,9 @@ def check(mutants, build_dir, quiet=False):
               file=sys.stderr if error else sys.stdout)
 
     survivors, broken = [], []
+
+    if not qemu_baselines_pass(mutants, say):
+        return 1
 
     for mutant in mutants:
         path = REPO / mutant["file"]
@@ -314,6 +364,24 @@ def self_test():
             # An empty run must fail.
             if check([], build_dir="unused", quiet=True) == 0:
                 failures.append("a run over NO mutants reported success")
+
+            # A qemu: gate that cannot run -- no toolchain or QEMU -- must fail
+            # the run before mutating anything, never read as a kill; and one
+            # whose test already fails on the unmutated tree must too.
+            original_gate = globals()["run_qemu_gate"]
+            qemu_mutant = dict(survivor, name="fixture_qemu", file=str(relative),
+                               kills="qemu:cortex-m3:sync/lock_test.cpp")
+            try:
+                for status, label in ((QEMU_NOT_RUN, "a missing toolchain"),
+                                      (1, "a test failing on the unmutated tree")):
+                    globals()["run_qemu_gate"] = (
+                        lambda _spec, status=status: subprocess.CompletedProcess([], status, "", ""))
+                    if check([qemu_mutant], build_dir="unused", quiet=True) == 0:
+                        failures.append(f"a qemu: gate with {label} passed")
+                    if fake.read_text() != "int marker = 1;\n":
+                        failures.append(f"the fixture changed although {label} should stop the run first")
+            finally:
+                globals()["run_qemu_gate"] = original_gate
         finally:
             globals()["REPO"] = original_repo
 
@@ -354,6 +422,8 @@ def main():
     parser.add_argument("--only", help="substring of a mutant name")
     parser.add_argument("--files", help="comma-separated paths: run only the mutants of these "
                                         "files (an empty list selects none)")
+    parser.add_argument("--kinds", help="comma-separated gate kinds: run only the mutants they kill")
+    parser.add_argument("--skip-kinds", help="comma-separated gate kinds whose mutants to leave out")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
@@ -362,6 +432,12 @@ def main():
         return self_test()
 
     selected = [m for m in MUTANTS if not args.only or args.only in m["name"]]
+    if args.kinds:
+        kinds = set(args.kinds.split(","))
+        selected = [m for m in selected if m["kills"].partition(":")[0] in kinds]
+    if args.skip_kinds:
+        skipped = set(args.skip_kinds.split(","))
+        selected = [m for m in selected if m["kills"].partition(":")[0] not in skipped]
     if args.files is not None:
         wanted = {path for path in args.files.split(",") if path}
         # A mutant runs when the header it mutates changed, or its own file did.

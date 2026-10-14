@@ -42,10 +42,16 @@ cannot drift from what a real run does.
 Usage:
     tools/run_qemu_tests.py [--cpu cortex-m3] [--machine mps2-an385]
                             [--expect-build-fail a.cpp,b.cpp] [--plan]
+                            [--only sync/lock_test.cpp,...]
+
+--only runs just those tests, after the canary; tools/check_mutants.py uses it
+for its qemu: gates. Exit status 3 means the toolchain or QEMU is missing, so
+a caller can tell "not run" from "failed".
 """
 
 import argparse
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -183,6 +189,8 @@ def main():
     # them builds, the gate has silently stopped working and that is a failure.
     parser.add_argument("--expect-build-fail", default="")
     parser.add_argument("--plan", action="store_true")
+    parser.add_argument("--only", default="",
+                        help="comma-separated tests (as discovery names them) to run instead of all")
     args = parser.parse_args()
     sys.stdout.reconfigure(line_buffering=True)
 
@@ -210,6 +218,15 @@ def main():
     if stale:
         return 2
 
+    if args.only:
+        wanted = [name for name in args.only.split(",") if name]
+        unknown = [name for name in wanted if name not in sources or name in DENIED]
+        if unknown:
+            print(f"::error::--only names {unknown}, which discovery did not find or the deny-list "
+                  f"excludes", file=sys.stderr)
+            return 2
+        sources = [name for name in sources if name in wanted]
+
     if args.plan:
         denied = sum(1 for s in sources if s in DENIED)
         xfail = sum(1 for s in sources if s not in DENIED and s in expect_fail)
@@ -219,6 +236,11 @@ def main():
         print(f"xfail-build:  {xfail}")
         print(f"would-run:    {len(sources) - denied - xfail}")
         return 0
+
+    missing = [tool for tool in ("arm-none-eabi-g++", "qemu-system-arm") if shutil.which(tool) is None]
+    if missing:
+        print(f"::error::{', '.join(missing)} not found: nothing was built or run", file=sys.stderr)
+        return 3
 
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
     flags = cflags(args.cpu)
