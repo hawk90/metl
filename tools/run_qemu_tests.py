@@ -73,6 +73,7 @@ DENIED = {
     "sync/mpmc_queue_stall_threaded_test.cpp": "needs <thread>",
     "sync/spsc_byte_ring_threaded_test.cpp": "needs <thread>",
     "sync/size_hint_observer_threaded_test.cpp": "needs <thread>",
+    "sync/queue_linearizability_test.cpp": "needs <thread>",
     "containers/fixed_vector_asan_test.cpp": "forked death test; also assumes ASan",
     "core/assert_test.cpp": "setjmp/longjmp around an abort path; host-runtime specific",
     "memory/arena_throwing_ctor_test.cpp": "throws; needs -fexceptions",
