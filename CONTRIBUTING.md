@@ -138,9 +138,10 @@ Before requesting review:
 - [ ] `clang-format` (pinned hook) and `clang-tidy` have been run; the gates
       above that your change touches pass.
 - [ ] A bug fix comes with a regression test that failed before the fix.
-- [ ] A change a user could notice adds a fragment in
+- [ ] A change to code under `include/` adds a fragment in
       [`changelog.d/`](changelog.d/README.md) -- not an entry in
-      `CHANGELOG.md`, which is written from the fragments at release. A change
+      `CHANGELOG.md`, which is written from the fragments at release. One no
+      user can notice, such as a refactor, uses the type `internal`. A change
       that breaks or silently alters existing code says so -- after 1.0 that
       means a new major version (see README "Status").
 - [ ] Public API changes are documented in headers and, where appropriate,

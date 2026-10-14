@@ -11,6 +11,8 @@ list:
   `changed`, `deprecated`, `removed`, `fixed` or `security`.
 - The file holds one or more `- ` bullets, written as they should read in the
   release notes. A change that breaks or silently alters existing code says so.
+- A change under `include/` that no user can notice, such as a refactor, uses
+  the type `internal`, with one bullet saying why. It is dropped at release.
 
 A branch that changes code under `include/` must add one. Lines that are only
 comments do not count. `tools/check_changelog.py` checks this in CI and in

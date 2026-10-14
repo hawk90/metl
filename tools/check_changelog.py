@@ -11,7 +11,9 @@ each change adds its own file, and two PRs never touch the same one:
 <slug> is the issue or a short name (`374-expected-destructor-reentry`), and
 <type> is a Keep a Changelog section: added, changed, deprecated, removed,
 fixed or security. The file holds one or more `- ` bullets, written as they
-will read in the release notes.
+will read in the release notes. A change under include/ that no user can
+notice (a refactor) uses the type `internal`: its bullet says why, and it is
+dropped at release.
 
 Checks (the default):
   C1  every file in changelog.d/ is named <slug>.<type>.md with a known type,
@@ -47,7 +49,10 @@ FRAGMENTS = "changelog.d"
 CHANGELOG = "CHANGELOG.md"
 # Keep a Changelog's sections, in its order.
 TYPES = ["added", "changed", "deprecated", "removed", "fixed", "security"]
-FRAGMENT_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*\.(" + "|".join(TYPES) + r")\.md$")
+# A change to include/ that no user can notice -- a refactor, a test hook --
+# says so in a fragment of this type. It satisfies C3 and is dropped at release.
+INTERNAL = "internal"
+FRAGMENT_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*\.(" + "|".join(TYPES + [INTERNAL]) + r")\.md$")
 UNRELEASED = "## [Unreleased]"
 
 
@@ -66,6 +71,17 @@ def unreleased_body(root):
     return text[start:end if end >= 0 else len(text)]
 
 
+def is_comment_or_blank(line):
+    """A blank line, a `//` line, or a line of a `/* */` block.
+
+    A block's inner lines start with `*` and a space or end there; a line that
+    starts with `*` and an expression (`*out = value;`) is code.
+    """
+    content = line.strip()
+    return (not content or content.startswith(("//", "/*", "*/"))
+            or content == "*" or content.startswith("* "))
+
+
 def code_lines_changed(root, base):
     """The added or removed lines under include/ that are not only comments."""
     merge_base = subprocess.run(["git", "merge-base", base, "HEAD"], cwd=root,
@@ -76,8 +92,7 @@ def code_lines_changed(root, base):
     for line in diff.splitlines():
         if line.startswith(("+++", "---")) or not line.startswith(("+", "-")):
             continue
-        content = line[1:].strip()
-        if content and not content.startswith(("//", "/*", "*")):
+        if not is_comment_or_blank(line[1:]):
             changed.append(line)
     return changed, merge_base
 
@@ -95,7 +110,7 @@ def check(root, base=None):
     for path in fragments(root):
         if not FRAGMENT_NAME.match(path.name):
             problems.append(("C1", f"{FRAGMENTS}/{path.name}: name it <slug>.<type>.md, "
-                                   f"with <type> one of {', '.join(TYPES)}"))
+                                   f"with <type> one of {', '.join(TYPES + [INTERNAL])}"))
         elif not any(line.startswith("- ") for line in path.read_text(encoding="utf-8").splitlines()):
             problems.append(("C1", f"{FRAGMENTS}/{path.name}: holds no `- ` bullet"))
     body = unreleased_body(root)
@@ -116,7 +131,7 @@ def assemble(root, version, date):
     by_type = {kind: [] for kind in TYPES}
     for path in fragments(root):
         match = FRAGMENT_NAME.match(path.name)
-        if match:
+        if match and match.group(1) != INTERNAL:
             by_type[match.group(1)].append(path.read_text(encoding="utf-8").strip())
     sections = [f"### {kind.capitalize()}\n\n" + "\n\n".join(entries)
                 for kind, entries in by_type.items() if entries]
@@ -181,6 +196,13 @@ def self_test():
         (root / "include" / "a.hpp").write_text("// Returns one.\nint f();\n")
         if check(root, base="main"):
             failures.append(f"a comment-only change should need no fragment: {check(root, base='main')}")
+        (root / "include" / "a.hpp").write_text("// Returns one.\n/* A block\n * comment.\n */\nint f();\n")
+        if check(root, base="main"):
+            failures.append(f"a block comment should need no fragment: {check(root, base='main')}")
+        # A dereference starts with `*` too, and is code.
+        (root / "include" / "a.hpp").write_text("int f();\n*out = value;\n")
+        if [rule for rule, _ in check(root, base="main")] != ["C3"]:
+            failures.append(f"C3 should count `*out = value;` as code: {check(root, base='main')}")
         (root / "include" / "a.hpp").write_text("// Returns one.\nlong f();\n")
         if [rule for rule, _ in check(root, base="main")] != ["C3"]:
             failures.append(f"C3 should flag a code change without a fragment: {check(root, base='main')}")
@@ -190,6 +212,11 @@ def self_test():
 
         # --assemble: sections in Keep a Changelog order, fragments gone, the
         # README kept, Unreleased empty again.
+        (root / FRAGMENTS / "1-f-returns-long.changed.md").unlink()
+        (root / FRAGMENTS / "1-f-refactor.internal.md").write_text("- Only the declaration moved.\n")
+        if check(root, base="main"):
+            failures.append(f"an internal fragment should satisfy C3: {check(root, base='main')}")
+        (root / FRAGMENTS / "1-f-returns-long.changed.md").write_text("- `f` returns `long`.\n")
         (root / FRAGMENTS / "2-g.fixed.md").write_text("- `g` no longer crashes.\n")
         (root / FRAGMENTS / "3-h.added.md").write_text("- `h`.\n")
         count = assemble(root, "1.1.0", "2026-02-02")
@@ -200,6 +227,8 @@ def self_test():
             failures.append(f"--assemble should write Added, Changed, Fixed under 1.1.0 in that order:\n{text}")
         if [p.name for p in (root / FRAGMENTS).iterdir()] != ["README.md"]:
             failures.append("--assemble should delete the fragments it used, and only those")
+        if "Only the declaration moved" in text or "### Internal" in text:
+            failures.append("--assemble should drop internal fragments from the notes")
         if check(root):
             failures.append(f"the assembled changelog should pass: {check(root)}")
 
@@ -208,7 +237,7 @@ def self_test():
             print(f"::error::self-test: {failure}", file=sys.stderr)
         return 1
     print("self-test passed: bad fragment names, empty fragments, entries under Unreleased and a code "
-          "change without a fragment are rejected; comments need none; --assemble orders and cleans up")
+          "change without a fragment are rejected; comments need none; an internal fragment satisfies C3 and is dropped by --assemble, which orders and cleans up")
     return 0
 
 
