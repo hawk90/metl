@@ -204,6 +204,16 @@ jobs:
       - name: Test
         run: ctest --no-tests=error --test-dir build -j --output-on-failure -C ${{ matrix.build_type }}
 
+      # Every METL_ASSERT a test trips is logged, and the ratchet in
+      # tools/check_assert_trips.py says how many each header may still leave
+      # untripped (#364). One row: which asserts the tests trip does not depend
+      # on the compiler, and asserts are live in Debug.
+      - name: Every METL_ASSERT is tripped by a test (ratchet)
+        if: matrix.os == 'ubuntu-26.04' && matrix.compiler.cc == 'clang' && matrix.build_type == 'Debug'
+        run: |
+          tools/check_assert_trips.py --self-test
+          tools/check_assert_trips.py --build-dir build
+
       - name: Upload test logs on failure
         if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
