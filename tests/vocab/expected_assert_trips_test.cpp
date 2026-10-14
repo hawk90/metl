@@ -50,33 +50,30 @@ using void_result = metl::expected<void, member>;
 void accessors_trip_in_the_wrong_state() {
   static result error(metl::unexpect, 1);
   static result value(metl::in_place, 1);
-  const result& cerror = error;
-  const result& cvalue = value;
   CHECK(trips([] { (void)static_cast<const result&>(error)->id; }));
   CHECK(trips([] { (void)error->id; }));
-  CHECK(trips([&] { (void)*cerror; }));
+  CHECK(trips([] { (void)*static_cast<const result&>(error); }));
   CHECK(trips([] { (void)*error; }));
-  CHECK(trips([&] { (void)*std::move(cerror); }));
+  CHECK(trips([] { (void)*std::move(static_cast<const result&>(error)); }));
   CHECK(trips([] { (void)*std::move(error); }));
   CHECK(trips([] { (void)error.value(); }));
-  CHECK(trips([&] { (void)cerror.value(); }));
+  CHECK(trips([] { (void)static_cast<const result&>(error).value(); }));
   CHECK(trips([] { (void)std::move(error).value(); }));
-  CHECK(trips([&] { (void)std::move(cerror).value(); }));
+  CHECK(trips([] { (void)std::move(static_cast<const result&>(error)).value(); }));
   CHECK(trips([] { (void)value.error(); }));
-  CHECK(trips([&] { (void)cvalue.error(); }));
+  CHECK(trips([] { (void)static_cast<const result&>(value).error(); }));
   CHECK(trips([] { (void)std::move(value).error(); }));
-  CHECK(trips([&] { (void)std::move(cvalue).error(); }));
+  CHECK(trips([] { (void)std::move(static_cast<const result&>(value)).error(); }));
 
   static void_result failed(metl::unexpect, 1);
   static void_result ok;
-  const void_result& cok = ok;
   CHECK(trips([] { failed.value(); }));
   CHECK(trips([] { std::move(failed).value(); }));
   CHECK(trips([] { *failed; }));
   CHECK(trips([] { (void)ok.error(); }));
-  CHECK(trips([&] { (void)cok.error(); }));
+  CHECK(trips([] { (void)static_cast<const void_result&>(ok).error(); }));
   CHECK(trips([] { (void)std::move(ok).error(); }));
-  CHECK(trips([&] { (void)std::move(cok).error(); }));
+  CHECK(trips([] { (void)std::move(static_cast<const void_result&>(ok)).error(); }));
 }
 
 // ---- monadic operations while switching -------------------------------------------
