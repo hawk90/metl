@@ -38,11 +38,13 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 # {tag: {old test source or ctest name: "why it may break (#issue)"}}
 EXPECTED_BREAKS = {}
 
-# make, on a failed object or link step:
-#   make[2]: *** [CMakeFiles/metl_x_test.dir/tests/containers/x_test.cpp.o] Error 1
-#   make[2]: *** [metl_x_test] Error 1
-FAILED_OBJECT = re.compile(r"\*\*\* \[CMakeFiles/[^/\]]+\.dir/(.+?)\.o\] Error")
-FAILED_LINK = re.compile(r"\*\*\* \[([A-Za-z0-9_]+)\] Error")
+# make, on a failed object or link step. GNU make 4 puts the makefile and line
+# before the target; make 3.81 (macOS) does not:
+#   make[2]: *** [CMakeFiles/metl_x_test.dir/build.make:79: CMakeFiles/metl_x_test.dir/tests/x_test.cpp.o] Error 1
+#   make[2]: *** [CMakeFiles/metl_x_test.dir/tests/x_test.cpp.o] Error 1
+#   make[2]: *** [CMakeFiles/metl_x_test.dir/build.make:120: metl_x_test] Error 1
+FAILED_OBJECT = re.compile(r"\*\*\* \[(?:[^\]]*?:\d+: )?CMakeFiles/[^/\]]+\.dir/(.+?)\.o\] Error")
+FAILED_LINK = re.compile(r"\*\*\* \[(?:[^\]]*?:\d+: )?([A-Za-z0-9_]+)\] Error")
 # ctest, after "The following tests FAILED:":
 #   	 12 - metl_x_test (Failed)
 FAILED_TEST = re.compile(r"^\s*\d+ - (\S+) \((Failed|SEGFAULT|Subprocess aborted|Timeout|Exception|"
