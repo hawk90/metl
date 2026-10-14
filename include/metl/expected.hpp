@@ -209,6 +209,12 @@ void replace_live(U* slot, expected_state& state, expected_state settled, Args&&
 /// Holds either a value `T` or an error `E` in an internal union; it never
 /// allocates. Copyable when both `T` and `E` are, but never *trivially* copyable
 /// (user-provided copy constructor and destructor).
+/// @par Reference invalidation
+/// A reference to the value or the error stays valid until that member ends:
+/// a switch between value and error (by assignment, `emplace`/`emplace_error`
+/// or `swap`), an `emplace` within the same state (which replaces it), or
+/// destruction. Assignment within the same state assigns to the same object.
+///
 /// @tparam T The expected (success) value type.
 /// @tparam E The error type.
 /// @note `value()`, `operator*`, `operator->`, and `error()` ASSERT (abort by

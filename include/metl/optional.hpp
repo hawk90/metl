@@ -56,6 +56,12 @@ struct is_metl_optional<optional<U>> : true_type {};
 /// bool`, the const overloads of `operator*`, `operator->` and `value()`, and
 /// the comparisons. Copy, move, assignment, `emplace`, `value_or` and the
 /// non-const observers are not.
+/// @par Reference invalidation
+/// A reference to the value stays valid until that object ends: `reset`,
+/// `= nullopt`, `emplace` (which replaces it), assigning an empty optional, or
+/// destruction. Assigning a value while engaged assigns to the same object,
+/// except for a `const T`, which cannot be assigned and is replaced.
+///
 /// @tparam T The contained value type.
 /// @note Accessors like `value()`, `operator*`, and `operator->` ASSERT (abort
 /// by default) rather than throwing when the optional is empty. Use `value_or`

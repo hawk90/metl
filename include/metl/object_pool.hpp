@@ -39,6 +39,10 @@ namespace metl {
 /// pointers remain stable for the object's lifetime. Non-copyable and
 /// non-movable. Not thread-safe.
 ///
+/// @par Reference invalidation
+/// Objects never move: `try_emplace`/`emplace` invalidate nothing, and
+/// `destroy` ends only the object it is given. `clear` ends them all.
+///
 /// @tparam T Pooled object type.
 /// @tparam Capacity Number of slots (fixed at compile time).
 template <typename T, std::size_t Capacity>

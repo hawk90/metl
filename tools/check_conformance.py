@@ -91,6 +91,7 @@ REGISTRY_LIST = re.compile(r"using registry = std::tuple<([^>]*)>;", re.S)
 GAP = re.compile(r"static constexpr const char\* gap_(\w+) = \"([^\"]*)\";")
 DECLARED = re.compile(r"METL_CONFORMANCE_DECLARE_GAP\((\w+)\)")
 ISSUE = re.compile(r"^#\d+$")
+INVALIDATION = re.compile(r"^/// @par (Iterator|Reference) invalidation$", re.M)
 
 
 def public_headers(include_dir):
@@ -98,8 +99,9 @@ def public_headers(include_dir):
                   for p in include_dir.rglob("*.hpp") if "detail" not in p.parts)
 
 
-def check(headers, registry_text, test_texts, exempt, pending):
-    """Return a list of problems (strings)."""
+def check(headers, registry_text, test_texts, exempt, pending, header_texts=None):
+    """Return a list of problems (strings). `header_texts` maps a header to its
+    text; when given, every registered header must state its invalidation rule."""
     problems = []
 
     tagged = {}
@@ -139,6 +141,14 @@ def check(headers, registry_text, test_texts, exempt, pending):
             problems.append(f"gap_{prop} = \"{issue}\": a known gap must name its issue, like \"#312\"")
         if prop not in declared:
             problems.append(f"gap_{prop}: no test declares the property `{prop}`")
+
+    # The stability properties check what a header says about invalidation, so
+    # a registered type has to say it (#340).
+    for header in sorted(tagged):
+        text = (header_texts or {}).get(header)
+        if text is not None and not INVALIDATION.search(text):
+            problems.append(f"{header}: registered, but its class documentation has no "
+                            "`@par Iterator invalidation` or `@par Reference invalidation` paragraph")
     return problems
 
 
@@ -168,11 +178,19 @@ def self_test():
         if got != expect:
             print(f"SELF-TEST FAILED [{name}]: expected a problem={expect}, got {got}", file=sys.stderr)
             return 1
+    stated = {"a.hpp": "/// @par Reference invalidation\n/// Nothing moves.\n"}
+    unstated = {"a.hpp": "/// Holds things.\n"}
+    for name, texts, expect in (("rule stated", stated, False), ("rule missing", unstated, True)):
+        got = bool(check(["a.hpp"], SELF_TEST_REGISTRY, tests, {}, set(), texts))
+        if got != expect:
+            print(f"SELF-TEST FAILED [{name}]: expected a problem={expect}, got {got}", file=sys.stderr)
+            return 1
     overlap = PENDING & set(EXEMPT)
     if overlap:
         print(f"SELF-TEST FAILED: {sorted(overlap)} is both EXEMPT and PENDING", file=sys.stderr)
         return 1
-    print("self-test passed: an unlisted header, a stray adapter or an unnamed gap is rejected")
+    print("self-test passed: an unlisted header, a stray adapter, an unnamed gap or an unstated "
+          "invalidation rule is rejected")
     return 0
 
 
@@ -187,7 +205,8 @@ def main():
     headers = public_headers(INCLUDE)
     registry_text = REGISTRY.read_text(encoding="utf-8")
     test_texts = [p.read_text(encoding="utf-8") for p in sorted(SUITE.glob("*_test.cpp"))]
-    problems = check(headers, registry_text, test_texts, EXEMPT, PENDING)
+    header_texts = {h: (INCLUDE / h).read_text(encoding="utf-8") for h in headers}
+    problems = check(headers, registry_text, test_texts, EXEMPT, PENDING, header_texts)
 
     registered = len(TAG.findall(registry_text))
     print(f"conformance registry: {registered} registered, {len(EXEMPT)} exempt, "

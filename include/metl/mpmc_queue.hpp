@@ -50,6 +50,10 @@ namespace metl {
 /// docs/SCOPE.md §1 that restricts this type to **multi-core use** — never
 /// between an ISR and the main loop on a single core.
 ///
+/// @par Reference invalidation
+/// The queue hands out no reference to an element: `try_pop` moves the element
+/// out into the caller's object.
+///
 /// @tparam T Element type; must be nothrow move-constructible/assignable and
 ///         nothrow destructible, for the same reason `spsc_queue` requires it.
 /// @tparam Capacity Number of slots; must be a power of two and at least 2.

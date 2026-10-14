@@ -37,6 +37,11 @@ namespace metl {
 /// order, and that order may differ between two queues built from the same
 /// insertions. If you need a tiebreak, put it in the element and in @c Compare.
 ///
+/// @par Reference invalidation
+/// `push`/`emplace` and `pop` sift the heap and may move any element, so every
+/// reference, including one from `top()`, is invalid after either. `clear`
+/// invalidates all.
+///
 /// @tparam T Element type. Must be move-constructible and move-assignable: a heap
 ///           has to move elements between slots to restore its invariant.
 /// @tparam Capacity Maximum number of elements (fixed at compile time).

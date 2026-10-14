@@ -48,6 +48,14 @@ namespace metl {
 /// compile time. Elements are held in ascending order per @c Compare, giving O(log n) lookup
 /// via binary search and O(n) insert/erase (shifting). Not thread-safe.
 ///
+/// @par Iterator invalidation
+/// The elements are one sorted, contiguous run. Inserting a new key, or erasing
+/// one, shifts the elements at and after its position, invalidating iterators,
+/// pointers and references to them; those before it stay valid. Lookups
+/// invalidate nothing; `clear` invalidates all. (`std::flat_set` invalidates
+/// everything on insert and erase; this is the narrower rule the storage
+/// gives.)
+///
 /// @tparam Key Element/key type used for ordering and lookup.
 /// @tparam Capacity Maximum number of elements (fixed at compile time).
 /// @tparam Compare Strict-weak-ordering comparator (transparent comparators enable
