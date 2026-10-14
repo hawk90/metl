@@ -73,6 +73,17 @@ struct probe {
     static int count = 0;
     return count;
   }
+  // How many armed probes exist with each id (ids below 128). Kept with
+  // live(): it tells a copy of the right element from a copy of a neighbour.
+  static std::array<int, 128>& live_ids() {
+    static std::array<int, 128> counts{};
+    return counts;
+  }
+  static void count_live(int i, int delta) {
+    if (i >= 0 && i < 128) {
+      live_ids()[static_cast<std::size_t>(i)] += delta;
+    }
+  }
   // How many destructor calls ran on an object already destroyed.
   static int& destroyed_twice() {
     static int count = 0;
@@ -121,12 +132,14 @@ struct probe {
     maybe_throw();
     armed = true;
     ++live();
+    count_live(id, 1);
   }
   probe(const probe& other) : id(other.id) {
     if (other.armed) {
       maybe_throw();
       armed = true;
       ++live();
+      count_live(id, 1);
     }
   }
   probe(probe&& other) noexcept : id(other.id), armed(other.armed) {
@@ -148,6 +161,7 @@ struct probe {
       armed = other.armed;
       if (armed) {
         ++live();
+        count_live(id, 1);
       }
     }
     return *this;
@@ -216,6 +230,7 @@ struct probe {
     if (armed) {
       armed = false;
       --live();
+      count_live(id, -1);
     }
   }
 };
@@ -255,6 +270,14 @@ struct probe_hash {
 //
 // and optionally `gap_<property>`, the issue that tracks a known failure.
 
+// What copy_own (conformance_alias_test.cpp) should leave: how many elements
+// the type holds, and how many live probes carry the copied element's id.
+struct copy_result {
+  std::size_t held;
+  int source_id;
+  int copies;
+};
+
 // conformance-header: fixed_vector.hpp
 struct fixed_vector_adapter {
   using type = metl::fixed_vector<probe, 4>;
@@ -281,6 +304,31 @@ struct fixed_vector_adapter {
   template <typename C>
   static void clear(C& c) {
     c.clear();
+  }
+  // copy_own: add a copy of the k-th held element by operation `op`.
+  static constexpr int copy_own_ops = 5;
+  static constexpr int copy_own_fill = 2;
+  template <typename C>
+  static copy_result copy_own(C& c, int op, int k) {
+    const probe& own = c[static_cast<std::size_t>(k)];
+    const int id = own.id;
+    switch (op) {
+      case 0:
+        c.push_back(own);
+        return {3, id, 2};
+      case 1:
+        c.insert(c.begin(), own);
+        return {3, id, 2};
+      case 2:
+        c.insert(c.begin(), 2, own);
+        return {4, id, 3};
+      case 3:
+        c.assign(3, own);
+        return {3, id, 3};
+      default:
+        c.resize(4, own);
+        return {4, id, 3};
+    }
   }
 };
 
@@ -311,6 +359,19 @@ struct fixed_deque_adapter {
   static void clear(C& c) {
     c.clear();
   }
+  static constexpr int copy_own_ops = 2;
+  static constexpr int copy_own_fill = 2;
+  template <typename C>
+  static copy_result copy_own(C& c, int op, int k) {
+    const probe& own = c[static_cast<std::size_t>(k)];
+    const int id = own.id;
+    if (op == 0) {
+      c.push_front(own);
+    } else {
+      c.push_back(own);
+    }
+    return {3, id, 2};
+  }
 };
 
 // conformance-header: ring_buffer.hpp
@@ -339,6 +400,23 @@ struct ring_buffer_adapter {
   template <typename C>
   static void clear(C& c) {
     c.clear();
+  }
+  static constexpr int copy_own_ops = 2;
+  static constexpr int copy_own_fill = 2;
+  template <typename C>
+  static copy_result copy_own(C& c, int op, int k) {
+    const int id = c[static_cast<std::size_t>(k)].id;
+    if (op == 0) {
+      c.emplace_back(c[static_cast<std::size_t>(k)]);
+      return {3, id, 2};
+    }
+    // Full, so push_overwrite evicts the oldest: when k is 0 that is the
+    // element being copied, and its copy is all that is left of it.
+    while (!c.full()) {
+      c.emplace_back(50 + static_cast<int>(c.size()));
+    }
+    c.push_overwrite(c[static_cast<std::size_t>(k)]);
+    return {capacity, id, k == 0 ? 1 : 2};
   }
 };
 
@@ -369,6 +447,15 @@ struct fixed_queue_adapter {
   static void clear(C& c) {
     c.clear();
   }
+  static constexpr int copy_own_ops = 1;
+  static constexpr int copy_own_fill = 2;
+  template <typename C>
+  static copy_result copy_own(C& c, int, int k) {
+    const probe& own = k == 0 ? c.front() : c.back();
+    const int id = own.id;
+    c.push(own);
+    return {3, id, 2};
+  }
 };
 
 // conformance-header: fixed_stack.hpp
@@ -397,6 +484,14 @@ struct fixed_stack_adapter {
   template <typename C>
   static void clear(C& c) {
     c.clear();
+  }
+  static constexpr int copy_own_ops = 1;
+  static constexpr int copy_own_fill = 1;
+  template <typename C>
+  static copy_result copy_own(C& c, int, int) {
+    const int id = c.top().id;
+    c.push(c.top());
+    return {2, id, 2};
   }
 };
 
@@ -427,6 +522,14 @@ struct fixed_priority_queue_adapter {
   static void clear(C& c) {
     c.clear();
   }
+  static constexpr int copy_own_ops = 1;
+  static constexpr int copy_own_fill = 1;
+  template <typename C>
+  static copy_result copy_own(C& c, int, int) {
+    const int id = c.top().id;
+    c.push(c.top());
+    return {2, id, 2};
+  }
 };
 
 // conformance-header: static_message_queue.hpp
@@ -455,6 +558,14 @@ struct static_message_queue_adapter {
   template <typename C>
   static void clear(C& c) {
     c.clear();
+  }
+  static constexpr int copy_own_ops = 1;
+  static constexpr int copy_own_fill = 1;
+  template <typename C>
+  static copy_result copy_own(C& c, int, int) {
+    const int id = c.front().id;
+    c.push(c.front());
+    return {2, id, 2};
   }
 };
 
@@ -485,6 +596,26 @@ struct flat_map_adapter {
   static void clear(C& c) {
     c.clear();
   }
+  static constexpr int copy_own_ops = 3;
+  static constexpr int copy_own_fill = 2;
+  template <typename C>
+  static copy_result copy_own(C& c, int op, int k) {
+    const probe& own = c[static_cast<std::size_t>(k)].value;
+    const int id = own.id;
+    // Key 0 sorts first, so the new entry shifts every held one.
+    switch (op) {
+      case 0:
+        (void)c.try_emplace(0, own);
+        return {3, id, 2};
+      case 1:
+        c.insert_or_assign(0, own);
+        return {3, id, 2};
+      default:
+        // Assigns over the other element's value.
+        c.insert_or_assign(c[static_cast<std::size_t>(1 - k)].key, own);
+        return {2, id, 2};
+    }
+  }
 };
 
 // conformance-header: flat_set.hpp
@@ -513,6 +644,15 @@ struct flat_set_adapter {
   template <typename C>
   static void clear(C& c) {
     c.clear();
+  }
+  // A copy of a held element is a key already held: nothing is added.
+  static constexpr int copy_own_ops = 1;
+  static constexpr int copy_own_fill = 2;
+  template <typename C>
+  static copy_result copy_own(C& c, int, int k) {
+    const int id = c[static_cast<std::size_t>(k)].id;
+    (void)c.try_emplace(c[static_cast<std::size_t>(k)]);
+    return {2, id, 1};
   }
 };
 
@@ -543,6 +683,46 @@ struct static_unordered_map_adapter {
   static void clear(C& c) {
     c.clear();
   }
+  static constexpr int copy_own_ops = 2;
+  static constexpr int copy_own_fill = 2;
+  // The bucket a key starts probing from, as the map computes it.
+  template <typename C>
+  static std::size_t home_of(int key) {
+    return static_cast<std::size_t>(metl::detail::hash_mix(std::hash<int>{}(key))) & (C::bucket_count - 1);
+  }
+  template <typename C>
+  static copy_result copy_own(C& c, int op, int k) {
+    if (op == 0) {
+      auto it = c.begin();
+      for (int i = 0; i < k; ++i) {
+        ++it;
+      }
+      const int id = it->value.id;
+      (void)c.try_emplace(100, it->value);
+      return {3, id, 2};
+    }
+    // Two tombstones in eight buckets make the next new key rebuild the table
+    // first. Laid out so that the rebuild moves the copied element: `blocker`
+    // takes its home bucket first, pushing it one slot on, and is then erased,
+    // so the rebuild puts it back home. (The filled elements are replaced.)
+    c.clear();
+    const int copied = 1 + k;
+    int blocker = 10;
+    while (home_of<C>(blocker) != home_of<C>(copied)) {
+      ++blocker;
+    }
+    int other = blocker + 1;
+    while (home_of<C>(other) == home_of<C>(copied)) {
+      ++other;
+    }
+    (void)c.try_emplace(blocker, probe(blocker));
+    (void)c.try_emplace(copied, probe(copied));
+    (void)c.try_emplace(other, probe(other));
+    (void)c.erase(blocker);
+    (void)c.erase(other);
+    (void)c.try_emplace(100, *c.find(copied));
+    return {2, copied, 2};
+  }
 };
 
 // conformance-header: static_unordered_set.hpp
@@ -571,6 +751,19 @@ struct static_unordered_set_adapter {
   template <typename C>
   static void clear(C& c) {
     c.clear();
+  }
+  // A copy of a held element is a key already held: nothing is added.
+  static constexpr int copy_own_ops = 1;
+  static constexpr int copy_own_fill = 2;
+  template <typename C>
+  static copy_result copy_own(C& c, int, int k) {
+    auto it = c.begin();
+    for (int i = 0; i < k; ++i) {
+      ++it;
+    }
+    const int id = it->id;
+    (void)c.try_emplace(*it);
+    return {2, id, 1};
   }
 };
 
@@ -622,6 +815,17 @@ struct object_pool_adapter {
     given<C>().count = 0;
     c.clear();
   }
+  static constexpr int copy_own_ops = 1;
+  static constexpr int copy_own_fill = 2;
+  template <typename C>
+  static copy_result copy_own(C& c, int, int k) {
+    const int id = given<C>().items[k]->id;
+    probe* object = c.try_emplace(*given<C>().items[k]);
+    if (object != nullptr) {
+      given<C>().push(object);
+    }
+    return {3, id, 2};
+  }
 };
 
 // conformance-header: handle_pool.hpp
@@ -661,6 +865,21 @@ struct handle_pool_adapter {
     given<C>().count = 0;
     c.clear();
   }
+  static constexpr int copy_own_ops = 1;
+  static constexpr int copy_own_fill = 2;
+  template <typename C>
+  static copy_result copy_own(C& c, int, int k) {
+    const probe* own = c.get(given<C>().items[k]);
+    if (own == nullptr) {
+      return {0, 0, -1};  // the handle no longer resolves: the property fails
+    }
+    const int id = own->id;
+    const typename C::handle_type handle = c.try_emplace(*own);
+    if (handle.valid()) {
+      given<C>().push(handle);
+    }
+    return {3, id, 2};
+  }
 };
 
 // The arena counts bytes, not objects. held() approximates: an object is held
@@ -684,17 +903,29 @@ struct arena_allocator_adapter {
     static handed_out<typename C::mark_type, 4> list;
     return list;
   }
+  // The objects placed, in the same order as `given`.
   template <typename C>
-  static bool try_add(C& c, int id) {
+  static handed_out<probe*, 4>& objects() {
+    static handed_out<probe*, 4> list;
+    return list;
+  }
+  template <typename C, typename Arg>
+  static bool place(C& c, Arg&& arg) {
     if (given<C>().count == capacity) {
       return false;
     }
     const typename C::mark_type before = c.mark();
-    if (c.template try_emplace<probe>(id) == nullptr) {
+    probe* object = c.template try_emplace<probe>(std::forward<Arg>(arg));
+    if (object == nullptr) {
       return false;
     }
     given<C>().push(before);
+    objects<C>().push(object);
     return true;
+  }
+  template <typename C>
+  static bool try_add(C& c, int id) {
+    return place(c, id);
   }
   template <typename C>
   static std::size_t held(const C& c) {
@@ -709,11 +940,21 @@ struct arena_allocator_adapter {
     const typename C::mark_type target = given<C>().items[given<C>().count - 1];
     c.rewind(target);
     --given<C>().count;
+    --objects<C>().count;
   }
   template <typename C>
   static void clear(C& c) {
     c.reset();
     given<C>().count = 0;
+    objects<C>().count = 0;
+  }
+  static constexpr int copy_own_ops = 1;
+  static constexpr int copy_own_fill = 2;
+  template <typename C>
+  static copy_result copy_own(C& c, int, int k) {
+    const int id = objects<C>().items[k]->id;
+    (void)place(c, *objects<C>().items[k]);
+    return {3, id, 2};
   }
 };
 
@@ -754,6 +995,7 @@ struct spsc_queue_adapter {
       pop_one(c);
     }
   }
+  static constexpr const char* copy_own_refused = "it hands out no reference to a held element";
 };
 
 // conformance-header: mpmc_queue.hpp
@@ -788,6 +1030,7 @@ struct mpmc_queue_adapter {
       pop_one(c);
     }
   }
+  static constexpr const char* copy_own_refused = "it hands out no reference to a held element";
 };
 
 // The vocabulary types hold at most one object: capacity 1, and try_add fails
@@ -823,6 +1066,14 @@ struct optional_adapter {
   template <typename C>
   static void clear(C& c) {
     c.reset();
+  }
+  static constexpr int copy_own_ops = 1;
+  static constexpr int copy_own_fill = 1;
+  template <typename C>
+  static copy_result copy_own(C& c, int, int) {
+    const int id = c->id;
+    c.emplace(*c);
+    return {1, id, 1};
   }
 };
 
@@ -866,6 +1117,14 @@ struct expected_adapter {
   static void clear(C& c) {
     c.emplace_error(0);
   }
+  static constexpr int copy_own_ops = 1;
+  static constexpr int copy_own_fill = 1;
+  template <typename C>
+  static copy_result copy_own(C& c, int, int) {
+    const int id = c->id;
+    c.emplace(*c);
+    return {1, id, 1};
+  }
 };
 
 // conformance-header: variant.hpp
@@ -898,6 +1157,14 @@ struct variant_adapter {
   template <typename C>
   static void clear(C& c) {
     c.template emplace<int>(0);
+  }
+  static constexpr int copy_own_ops = 1;
+  static constexpr int copy_own_fill = 1;
+  template <typename C>
+  static copy_result copy_own(C& c, int, int) {
+    const int id = metl::get<probe>(c).id;
+    c.template emplace<probe>(metl::get<probe>(c));
+    return {1, id, 1};
   }
 };
 
@@ -938,6 +1205,7 @@ struct fixed_function_adapter {
   static void clear(C& c) {
     c = nullptr;
   }
+  static constexpr const char* copy_own_refused = "it hands out no reference to its target";
 };
 
 using registry = std::tuple<fixed_vector_adapter,
