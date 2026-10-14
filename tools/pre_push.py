@@ -324,6 +324,11 @@ def main():
                   "-DMETL_WARNINGS_AS_ERRORS=ON"]
     if not build_and_test("sanitizers", "c++", sanitizers):
         return 1
+    # Every METL_ASSERT a test trips is logged; the ratchet says how many each
+    # header may still leave untripped (#364). Asserts are live in this build.
+    if not step("check_assert_trips.py", [python, "tools/check_assert_trips.py",
+                                          "--build-dir", str(BUILD_ROOT / "sanitizers")]):
+        return 1
 
     print("4b. the two configurations most likely to differ")
     # METL_ASSERT stripped: what a misuse does when only METL_HARDEN is left.
