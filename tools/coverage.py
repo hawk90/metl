@@ -11,6 +11,13 @@ WHAT THIS CANNOT SEE, and why the number is not the whole story:
     code the build produced, so a branch nobody builds does not appear as
     uncovered -- it does not appear at all. METL_CRC_TABLE=0 has its own CI job
     for that reason; see config-matrix.
+  * `#if` arms of the other configurations, unless --configurations is given.
+    Then each of CONFIGURATIONS is built and run too, and every line that only
+    that configuration compiles must have run: the -fno-exceptions arms, the
+    C++20 comparisons, the bitwise CRC loops. Their figures cannot be merged
+    into this one -- llvm-cov keeps one mapping per function name, so handing it
+    both builds' binaries reported exactly the default build's numbers -- and
+    so they are a separate gate (#387).
   * Everything gated on being an MCU. irq_lock's PRIMASK path, the ARMv6-M
     capability rejections, the -fno-exceptions arms of expected.hpp -- none of
     that code exists in a host build. Its evidence is the qemu-conformance job,
@@ -51,7 +58,7 @@ for identical code. So a local run will not match CI, and the CI number is the
 one the floor is set against. Do not chase a local figure.
 
 Usage:
-    tools/coverage.py [--min-lines N] [--min-branches N] [--lcov PATH]
+    tools/coverage.py [--min-lines N] [--min-branches N] [--lcov PATH] [--configurations]
     tools/coverage.py --self-test
 
 --lcov writes the include/metl lcov file it measured, for Codecov to upload.
@@ -68,6 +75,15 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 BUILD_DIR = REPO / "build-coverage"
 PROF_DIR = BUILD_DIR / "profraw"
+
+# The configurations whose `#if` arms the default build does not compile, each
+# with the flags that select it. Each is measured on its own (#387).
+CONFIGURATIONS = {
+    "cxx20": "-std=c++20",
+    "no-exceptions": "-fno-exceptions -fno-rtti",
+    "hardening-0": "-DMETL_HARDENING=0",
+    "crc-table-off": "-DMETL_CRC_TABLE=0",
+}
 
 
 def find_tool(name):
@@ -143,6 +159,43 @@ def lcov_totals(text):
     return hits, partials, misses, branches_hit, branches_found
 
 
+def line_counts(text):
+    """{(repo-relative file, line): execution count} from lcov records."""
+    counts, path = {}, None
+    for raw in text.splitlines():
+        if raw.startswith("SF:"):
+            path = raw[3:]
+        elif raw.startswith("DA:"):
+            fields = raw[3:].split(",")
+            key = (path, int(fields[0]))
+            counts[key] = max(counts.get(key, 0), int(fields[1]))
+    return counts
+
+
+def carries_code(text):
+    """Whether a source line holds code: not blank, a comment or a lone brace.
+    Region boundaries differ between builds, so a configuration can report a
+    blank line the default build does not."""
+    stripped = text.strip()
+    return bool(stripped) and not stripped.startswith(("//", "/*", "*")) and stripped not in ("{", "}", "};")
+
+
+def configuration_only_unexecuted(default_lcov, configuration_lcov, source_line):
+    """The code lines only `configuration_lcov` reports, and of those the ones
+    that never ran. `source_line(path, number)` returns the line's text."""
+    default = line_counts(default_lcov)
+    only = {key: count for key, count in line_counts(configuration_lcov).items()
+            if key not in default and carries_code(source_line(*key))}
+    return only, sorted(key for key, count in only.items() if count == 0)
+
+
+def read_source_line(path, number):
+    try:
+        return (REPO / path).read_text().splitlines()[number - 1]
+    except (OSError, IndexError):
+        return ""
+
+
 SELF_TEST_LCOV = """SF:include/metl/a.hpp
 DA:1,5
 DA:2,0
@@ -169,8 +222,98 @@ def self_test():
     if got != want:
         print(f"SELF-TEST FAILED: lcov_totals gave {got}, expected {want}", file=sys.stderr)
         return 1
-    print("self-test passed: partial lines and untaken branches are counted as Codecov counts them")
+    # A configuration adds lines 7-9 to a.hpp: 7 ran, 8 did not, 9 is blank.
+    default = "SF:include/metl/a.hpp\nDA:1,1\nDA:2,0\nend_of_record\n"
+    other = "SF:include/metl/a.hpp\nDA:1,0\nDA:7,3\nDA:8,0\nDA:9,0\nend_of_record\n"
+    source = {1: "int f();", 7: "  throw_or_abort();", 8: "  std::abort();", 9: ""}
+    only, unexecuted = configuration_only_unexecuted(default, other, lambda _path, n: source.get(n, ""))
+    if sorted(only) != [("include/metl/a.hpp", 7), ("include/metl/a.hpp", 8)] or \
+            unexecuted != [("include/metl/a.hpp", 8)]:
+        print(f"SELF-TEST FAILED: configuration-only lines {sorted(only)}, unexecuted {unexecuted}",
+              file=sys.stderr)
+        return 1
+    print("self-test passed: partial lines and untaken branches are counted as Codecov counts them, "
+          "and a configuration's own code lines are found and checked")
     return 0
+
+
+def measure(build_dir, cxx_flags, profdata, cov):
+    """Builds `build_dir` instrumented with `cxx_flags`, runs every test and
+    returns (the lcov export, llvm-cov's report), or None after saying why."""
+    prof_dir = build_dir / "profraw"
+    shutil.rmtree(build_dir, ignore_errors=True)
+    prof_dir.mkdir(parents=True)
+
+    quiet = {"stdout": subprocess.DEVNULL}
+    configure = ["cmake", "-B", str(build_dir), "-S", str(REPO), "-DCMAKE_BUILD_TYPE=Debug",
+                 "-DMETL_ENABLE_COVERAGE=ON", "-DMETL_INSTALL=OFF"]
+    if cxx_flags:
+        configure.append(f"-DCMAKE_CXX_FLAGS={cxx_flags}")
+    if subprocess.run(configure, **quiet).returncode:
+        return None
+    if subprocess.run(["cmake", "--build", str(build_dir), "-j"], **quiet).returncode:
+        return None
+
+    env = dict(os.environ, LLVM_PROFILE_FILE=str(prof_dir / "%p.profraw"))
+    ctest = subprocess.run(["ctest", "--no-tests=error", "--test-dir", str(build_dir), "-j4",
+                            "--output-on-failure"], env=env, capture_output=True, text=True)
+    (build_dir / "ctest.log").write_text(ctest.stdout + ctest.stderr)
+    if ctest.returncode != 0:
+        # The whole log: the failing test's own output is what explains it.
+        print(ctest.stdout + ctest.stderr)
+        print("error: tests failed under instrumentation; coverage numbers would be meaningless",
+              file=sys.stderr)
+        return None
+    print("\n".join((ctest.stdout + ctest.stderr).splitlines()[-3:]))
+
+    profile = build_dir / "coverage.profdata"
+    if subprocess.run([profdata, "merge", "-sparse", *map(str, prof_dir.glob("*.profraw")),
+                       "-o", str(profile)]).returncode:
+        return None
+
+    # Every test is its own binary, so every one has to be handed to llvm-cov or
+    # the functions only that binary exercised are reported as unexecuted.
+    objects = []
+    for binary in sorted(build_dir.glob("metl_*")):
+        if binary.is_file() and os.access(binary, os.X_OK):
+            objects += ["-object", str(binary)]
+    report = subprocess.run([cov, "report", *objects, f"-instr-profile={profile}"],
+                            capture_output=True, text=True).stdout
+    (build_dir / "report.txt").write_text(report)
+
+    exported = subprocess.run([cov, "export", "-format=lcov", *objects,
+                               f"-instr-profile={profile}"],
+                              capture_output=True, text=True)
+    if exported.returncode:
+        print(exported.stderr, file=sys.stderr)
+        return None
+    return exported.stdout, report
+
+
+def configurations_ran(default_lcov, profdata, cov):
+    """Measures each of CONFIGURATIONS and checks that every line only it
+    compiles ran. Returns whether all did."""
+    print("\n=== configurations (#387): the lines only each one compiles must run ===")
+    all_ran = True
+    for name, flags in CONFIGURATIONS.items():
+        print(f"--- {name} ({flags})")
+        measured = measure(REPO / f"build-coverage-{name}", flags, profdata, cov)
+        if measured is None:
+            print(f"FAIL: the {name} configuration did not build and run")
+            all_ran = False
+            continue
+        lcov = lcov_filtered(measured[0], "include/metl/")
+        hits, partials, misses, br_hit, br_found = lcov_totals(lcov)
+        only, unexecuted = configuration_only_unexecuted(default_lcov, lcov, read_source_line)
+        print(f"  lines {100.0 * hits / (hits + partials + misses):6.2f}%   branches "
+              f"{100.0 * br_hit / br_found if br_found else 0.0:6.2f}%   (for reference)")
+        print(f"  lines only this configuration compiles: {len(only)}, "
+              f"{len(only) - len(unexecuted)} of them ran")
+        for path, number in unexecuted:
+            print(f"FAIL: {path}:{number} is compiled only in {name} and no test ran it: "
+                  f"{read_source_line(path, number).strip()}")
+            all_ran = False
+    return all_ran
 
 
 def main():
@@ -180,6 +323,9 @@ def main():
     parser.add_argument("--min-branches", type=float, default=83.0)
     parser.add_argument("--lcov", type=Path,
                         help="also write the include/metl lcov file it measured here")
+    parser.add_argument("--configurations", action="store_true",
+                        help="also build each of CONFIGURATIONS and require every line only it "
+                             "compiles to have run")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -191,54 +337,15 @@ def main():
         print("error: llvm-profdata / llvm-cov not found on PATH", file=sys.stderr)
         return 2
 
-    shutil.rmtree(BUILD_DIR, ignore_errors=True)
-    PROF_DIR.mkdir(parents=True)
-
-    quiet = {"stdout": subprocess.DEVNULL}
-    if subprocess.run(["cmake", "-B", str(BUILD_DIR), "-S", str(REPO), "-DCMAKE_BUILD_TYPE=Debug",
-                       "-DMETL_ENABLE_COVERAGE=ON", "-DMETL_INSTALL=OFF"], **quiet).returncode:
+    measured = measure(BUILD_DIR, "", profdata, cov)
+    if measured is None:
         return 1
-    if subprocess.run(["cmake", "--build", str(BUILD_DIR), "-j"], **quiet).returncode:
-        return 1
-
-    env = dict(os.environ, LLVM_PROFILE_FILE=str(PROF_DIR / "%p.profraw"))
-    ctest = subprocess.run(["ctest", "--no-tests=error", "--test-dir", str(BUILD_DIR), "-j4",
-                            "--output-on-failure"], env=env, capture_output=True, text=True)
-    (BUILD_DIR / "ctest.log").write_text(ctest.stdout + ctest.stderr)
-    if ctest.returncode != 0:
-        # The whole log: the failing test's own output is what explains it.
-        print(ctest.stdout + ctest.stderr)
-        print("error: tests failed under instrumentation; coverage numbers would be meaningless",
-              file=sys.stderr)
-        return 1
-    print("\n".join((ctest.stdout + ctest.stderr).splitlines()[-3:]))
-
-    profile = BUILD_DIR / "coverage.profdata"
-    if subprocess.run([profdata, "merge", "-sparse", *map(str, PROF_DIR.glob("*.profraw")),
-                       "-o", str(profile)]).returncode:
-        return 1
-
-    # Every test is its own binary, so every one has to be handed to llvm-cov or
-    # the functions only that binary exercised are reported as unexecuted.
-    objects = []
-    for binary in sorted(BUILD_DIR.glob("metl_*")):
-        if binary.is_file() and os.access(binary, os.X_OK):
-            objects += ["-object", str(binary)]
-    report = subprocess.run([cov, "report", *objects, f"-instr-profile={profile}"],
-                            capture_output=True, text=True).stdout
-    (BUILD_DIR / "report.txt").write_text(report)
-
-    exported = subprocess.run([cov, "export", "-format=lcov", *objects,
-                               f"-instr-profile={profile}"],
-                              capture_output=True, text=True)
-    if exported.returncode:
-        print(exported.stderr, file=sys.stderr)
-        return 1
-    kept = lcov_records_under(exported.stdout, "include/metl/")
+    exported_lcov, report = measured
+    kept = lcov_records_under(exported_lcov, "include/metl/")
     if kept == 0:
         print("error: the lcov export has no include/metl record", file=sys.stderr)
         return 1
-    lcov = lcov_filtered(exported.stdout, "include/metl/")
+    lcov = lcov_filtered(exported_lcov, "include/metl/")
     (BUILD_DIR / "metl.lcov").write_text(lcov)
     if args.lcov is not None:
         args.lcov.write_text(lcov)
@@ -269,6 +376,8 @@ def main():
     print(f"  lines     {pct(ln, lnmiss):6.2f}%  ({ln - lnmiss}/{ln})")
 
     failed = False
+    if args.configurations:
+        failed = not configurations_ran(lcov, profdata, cov)
     if lines_pct < args.min_lines:
         print(f"\nFAIL: line coverage {lines_pct:.2f}% is below the {args.min_lines:g}% floor")
         failed = True

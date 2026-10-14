@@ -191,7 +191,44 @@ void value_error_swap_destroys_what_it_moves(int& error_live) {
   CHECK_EQ(error_live, 0);
 }
 
+// A value whose move constructor may throw. Switching an error-state expected
+// to a value builds it aside and then moves it in; with such a move the error
+// is kept in a backup until the move succeeds, and without exceptions the move
+// is made directly. Both paths must end with exactly one live value.
+struct live_value_throwing_move {
+  static int live;
+  int value;
+
+  explicit live_value_throwing_move(int input) noexcept : value(input) { ++live; }
+  live_value_throwing_move(const live_value_throwing_move& other) noexcept : value(other.value) { ++live; }
+  live_value_throwing_move(live_value_throwing_move&& other) noexcept(false) : value(other.value) { ++live; }
+  live_value_throwing_move& operator=(const live_value_throwing_move&) = default;
+  live_value_throwing_move& operator=(live_value_throwing_move&&) = default;
+  ~live_value_throwing_move() { --live; }
+};
+
+int live_value_throwing_move::live = 0;
+
+void error_to_value_with_a_throwing_move() {
+  static_assert(!std::is_nothrow_move_constructible_v<live_value_throwing_move>);
+  using result = metl::expected<live_value_throwing_move, int>;
+  {
+    result e(metl::unexpect, 7);
+    e.emplace(3);
+    CHECK(e.has_value());
+    CHECK_EQ(e->value, 3);
+    CHECK_EQ(live_value_throwing_move::live, 1);
+    e = metl::make_unexpected(8);
+    e = live_value_throwing_move(4);
+    CHECK(e.has_value());
+    CHECK_EQ(e->value, 4);
+    CHECK_EQ(live_value_throwing_move::live, 1);
+  }
+  CHECK_EQ(live_value_throwing_move::live, 0);
+}
+
 void run_lifetime_checks() {
+  error_to_value_with_a_throwing_move();
   move_constructor_moves_the_active_member();
   void_copy_assignment_copies_the_state();
   error_state_copy_assignment_replaces_the_error();
