@@ -35,6 +35,11 @@ namespace metl {
 /// allocation. Each allocation records enough metadata to unwind in LIFO order via
 /// `mark`/`rewind`, running destructors for objects created through `try_emplace`.
 ///
+/// @par Reference invalidation
+/// Objects never move: an allocation invalidates nothing. `rewind(m)` ends
+/// every object allocated after the mark `m`, and `reset` ends all of them;
+/// pointers to objects allocated before `m` stay valid.
+///
 /// @tparam Capacity Backing storage size in bytes.
 /// @warning NOT thread-safe: all operations mutate a shared offset without
 ///          synchronization. Use from a single thread and never from an ISR.

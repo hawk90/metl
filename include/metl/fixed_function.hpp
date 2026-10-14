@@ -519,6 +519,11 @@ class fixed_any_invocable_impl {
 /// Like std::function but with no heap allocation: the callable is copied into
 /// an inline buffer of `Capacity` bytes (aligned to std::max_align_t). Copyable
 /// and movable. Specialized for both `R(Args...)` and `R(Args...) noexcept`.
+/// @par Reference invalidation
+/// The target lives inside the wrapper. Assigning a new target, `= nullptr`,
+/// moving from the wrapper, `swap` and destruction end or move it, so nothing
+/// may keep a reference into it across those.
+///
 /// @tparam Signature The call signature, e.g. `int(float)` or `void() noexcept`.
 /// @tparam Capacity Inline storage size in bytes (default 32).
 /// @warning A callable larger than `Capacity` cannot be stored: `try_assign`
@@ -807,6 +812,11 @@ inline void swap(fixed_function<Sig, Cap>& lhs, fixed_function<Sig, Cap>& rhs) n
 /// Like fixed_function but accepts non-copyable callables; it is move-only. The
 /// callable is stored in an inline buffer of `Capacity` bytes with no heap
 /// allocation. Specialized for both `R(Args...)` and `R(Args...) noexcept`.
+/// @par Reference invalidation
+/// The target lives inside the wrapper. Assigning a new target, `= nullptr`,
+/// moving from the wrapper, `swap` and destruction end or move it, so nothing
+/// may keep a reference into it across those.
+///
 /// @tparam Signature The call signature, e.g. `int(float)` or `void() noexcept`.
 /// @tparam Capacity Inline storage size in bytes (default 32).
 /// @warning A callable larger than `Capacity` cannot be stored: `try_assign`

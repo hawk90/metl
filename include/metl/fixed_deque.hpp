@@ -39,6 +39,14 @@ namespace metl {
 /// and the value-semantic copy/move operations. `fixed_deque` adds front
 /// insertion and back removal.
 ///
+/// @par Iterator invalidation
+/// Elements never move: adding or removing at either end builds or destroys
+/// only that element, so pointers and references to the others stay valid.
+/// An iterator, though, holds a position counted from the front, so
+/// `pop_front` and `emplace_front`/`push_front` shift what every iterator
+/// refers to by one place. Operations at the back keep iterators to existing
+/// elements valid and invalidate `end()`; `clear` invalidates all.
+///
 /// @tparam T Element type.
 /// @tparam Capacity Maximum number of elements (fixed at compile time).
 template <typename T, std::size_t Capacity>
