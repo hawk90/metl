@@ -56,14 +56,22 @@ inline void trip_handler(const char* /*expr*/, const char* file, int line) noexc
 
 }  // namespace detail
 
+// The handler that was installed before a trip. Static, not a local: a value
+// live across setjmp may be clobbered by the longjmp, and GCC reports the one
+// inside the inlined set_assert_handler (-Wclobbered), as in assert_test.cpp.
+inline metl::assert_handler_t& previous_handler() {
+  static metl::assert_handler_t handler = nullptr;
+  return handler;
+}
+
 template <typename F>
 bool trips(F&& f) {
-  const metl::assert_handler_t previous = metl::set_assert_handler(&detail::trip_handler);
+  previous_handler() = metl::set_assert_handler(&detail::trip_handler);
   detail::trip_fired() = false;
   if (setjmp(detail::trip_jump()) == 0) {
     f();
   }
-  metl::set_assert_handler(previous);
+  (void)metl::set_assert_handler(previous_handler());
   return detail::trip_fired();
 }
 
