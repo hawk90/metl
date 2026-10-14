@@ -318,7 +318,8 @@ struct agrees_with_std {
 #if defined(__cpp_impl_three_way_comparison) && defined(__cpp_lib_three_way_comparison)
         // clang-format off
         if constexpr (has_spaceship<type>::value) {
-          same = same && ((a <=> b) < 0) == ((sa <=> sb) < 0) && ((a <=> b) == 0) == ((sa <=> sb) == 0);
+          same = same && std::is_lt(a <=> b) == std::is_lt(sa <=> sb) &&
+                 std::is_eq(a <=> b) == std::is_eq(sa <=> sb);
         }
         // clang-format on
 #endif
