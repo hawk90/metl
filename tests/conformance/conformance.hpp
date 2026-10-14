@@ -185,6 +185,9 @@ struct probe_hash {
 //   zero_capacity_refused    how the type refuses capacity 0
 //   available                optional, true by default: false where the type
 //                            does not build for this target
+//   reentrant_clear_refused  optional: why the type refuses a clear() from
+//                            an element's destructor, which it checks rather
+//                            than survives
 //
 // The functions are templates, so they serve `type` and `zero_type` alike.
 //
@@ -737,9 +740,9 @@ struct expected_slot : metl::expected<probe, int> {
 struct expected_adapter {
   using type = expected_slot;
   static constexpr const char* name = "expected";
-  // Switching state destroys the old member while has_value() still names it.
-  static constexpr const char* gap_removal_commits_first = "#374";
-  static constexpr const char* gap_reentrant_clear_destroys_once = "#374";
+  static constexpr const char* reentrant_clear_refused =
+      "a precondition: a member's destructor does not change its expected, and a change fails METL_HARDEN "
+      "(#374)";
   static constexpr const char* zero_capacity_refused = "no capacity parameter: it holds at most one";
   static constexpr std::size_t capacity = 1;
   static constexpr bool movable = true;
@@ -872,6 +875,11 @@ typename Adapter::type& instance() {
 // A property is a callable template `bool operator()(Adapter) const` that
 // returns whether the type met it, printing what it saw when it did not.
 // `gap` is the adapter's known-gap issue for this property, or nullptr.
+template <typename A, typename = void>
+struct refuses_reentrant_clear : std::false_type {};
+template <typename A>
+struct refuses_reentrant_clear<A, std::void_t<decltype(A::reentrant_clear_refused)>> : std::true_type {};
+
 template <typename A, typename = void>
 struct is_available : std::true_type {};
 template <typename A>

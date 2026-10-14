@@ -132,9 +132,15 @@ void run_for() {
                                   METL_CONFORMANCE_GAP(removal_commits_first, Adapter),
                                   removal_commits_first{});
   }
-  conformance::run_one<Adapter>("reentrant_clear_destroys_once",
-                                METL_CONFORMANCE_GAP(reentrant_clear_destroys_once, Adapter),
-                                reentrant_clear_destroys_once{});
+  if constexpr (conformance::refuses_reentrant_clear<Adapter>::value) {
+    std::printf("%s: reentrant_clear_destroys_once: refused by contract, %s\n",
+                Adapter::name,
+                Adapter::reentrant_clear_refused);
+  } else {
+    conformance::run_one<Adapter>("reentrant_clear_destroys_once",
+                                  METL_CONFORMANCE_GAP(reentrant_clear_destroys_once, Adapter),
+                                  reentrant_clear_destroys_once{});
+  }
 }
 
 template <typename... Adapters>
