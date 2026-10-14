@@ -208,7 +208,8 @@ if(METL_BUILD_TESTS)
 
   # -------------------------------------------------------------------------
   # Multi-threaded concurrency tests (need a threading runtime): spsc_queue,
-  # atomic_handle, spsc_byte_ring, mpmc_queue (two) and size_hint_observer. Built and
+  # atomic_handle, spsc_byte_ring, mpmc_queue (two), the queues' linearizability
+  # and size_hint_observer. Built and
   # run in every configuration, including the TSAN sanitizer job where they
   # actually validate those types' memory ordering.
   # -------------------------------------------------------------------------
@@ -252,6 +253,14 @@ if(METL_BUILD_TESTS)
     SRCS tests/sync/mpmc_queue_threaded_test.cpp
     DEPS metl::metl_test_options Threads::Threads
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/tests
+    LABELS "metl"
+  )
+
+  metl_cc_test(
+    NAME metl_queue_linearizability_test
+    SRCS tests/sync/queue_linearizability_test.cpp
+    DEPS metl::metl_test_options Threads::Threads
+    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/sync
     LABELS "metl"
   )
 

@@ -66,7 +66,15 @@ CTEST_TIMEOUT_SECONDS = 120
 # compiling. `kills` names the gate that must reject it.
 #
 #   ctest:<regex>   ctest -R <regex> must fail
+#   tsan:<target>   the test target, built with ThreadSanitizer, must fail
 #   tool:<argv>     the command must exit non-zero
+#
+# tsan: is for a weakened memory order. On real hardware the reordering it
+# allows almost never happens -- a relaxed load where an acquire belongs
+# survived 20 of 20 threaded runs on an Apple M2 -- while ThreadSanitizer, which
+# tracks happens-before rather than what the cores did, reports the race on
+# every run (#341). Those targets build in `<build-dir>-tsan`, configured on
+# first use.
 #
 # Each mutant lives in its own file, tools/mutants/<name>.py, which defines one
 # dict, MUTANT. One list in this file meant every PR that added a mutant
@@ -129,9 +137,44 @@ def apply_mutant(mutant):
     return original
 
 
+def tsan_build_dir(build_dir):
+    return f"{build_dir}-tsan"
+
+
+def build_tsan_target(build_dir, target):
+    """Configures the ThreadSanitizer tree if needed, then builds `target`."""
+    tsan_dir = tsan_build_dir(build_dir)
+    if not (REPO / tsan_dir / "CMakeCache.txt").exists():
+        # The same compiler as the baseline tree: CI picks Clang through CC/CXX
+        # in its configure step only, so the environment here would pick GCC.
+        command = ["cmake", "-B", tsan_dir, "-S", str(REPO), "-DCMAKE_BUILD_TYPE=Debug",
+                   "-DMETL_ENABLE_TSAN=ON", "-DMETL_INSTALL=OFF"]
+        cache = REPO / build_dir / "CMakeCache.txt"
+        if cache.exists():
+            for line in cache.read_text().splitlines():
+                if line.startswith(("CMAKE_C_COMPILER:", "CMAKE_CXX_COMPILER:", "CMAKE_CXX_COMPILER_LAUNCHER:")):
+                    name, _, value = line.partition("=")
+                    command.append(f"-D{name}={value}")
+        configure = subprocess.run(command, capture_output=True, text=True, cwd=REPO)
+        if configure.returncode != 0:
+            return configure
+    return subprocess.run(["cmake", "--build", tsan_dir, "--target", target, "-j"],
+                          capture_output=True, text=True, cwd=REPO)
+
+
 def run_gate(spec, build_dir):
     """True if the gate REJECTED the tree (i.e. the mutant was killed)."""
     kind, _, rest = spec.partition(":")
+    if kind == "tsan":
+        build = build_tsan_target(build_dir, rest)
+        if build.returncode != 0:
+            errors = [line for line in (build.stdout + build.stderr).splitlines() if "error" in line]
+            first = errors[0].strip() if errors else "(no error line in the build output)"
+            return None, f"the mutated tree did not build under ThreadSanitizer: {first}"
+        result = subprocess.run(["ctest", "--test-dir", tsan_build_dir(build_dir), "-R", f"^{rest}$",
+                                 "--timeout", str(CTEST_TIMEOUT_SECONDS), "--no-tests=error"],
+                                capture_output=True, text=True, cwd=REPO)
+        return result.returncode != 0, result.stdout[-800:]
     if kind == "ctest":
         build = subprocess.run(["cmake", "--build", build_dir, "-j"],
                                capture_output=True, text=True, cwd=REPO)
@@ -199,6 +242,8 @@ def check(mutants, build_dir, quiet=False):
     if any(m["kills"].startswith("ctest:") for m in mutants):
         subprocess.run(["cmake", "--build", build_dir, "-j"],
                        capture_output=True, text=True, cwd=REPO)
+    for target in sorted({m["kills"].partition(":")[2] for m in mutants if m["kills"].startswith("tsan:")}):
+        build_tsan_target(build_dir, target)
 
     say(f"{len(mutants)} mutant(s), {len(survivors)} survivor(s), {len(broken)} broken")
 
