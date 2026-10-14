@@ -8,12 +8,12 @@ MUTANT = {
            "value from an error. Copy elision means a prvalue never reaches "
            "it, so only a test that moves a NAMED expected instantiates it.",
     "kills": "ctest:expected_test",
-    "old": """    if (has_value_) {
+    "old": """    if (holds_value()) {
       construct_value(static_cast<T&&>(other.value_unchecked()));
     } else {
       construct_error(static_cast<E&&>(other.error_unchecked()));
     }""",
-    "new": """    if (!has_value_) {
+    "new": """    if (!holds_value()) {
       construct_value(static_cast<T&&>(other.value_unchecked()));
     } else {
       construct_error(static_cast<E&&>(other.error_unchecked()));

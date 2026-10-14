@@ -9,7 +9,11 @@ MUTANT = {
            "wrong, and only the fuzz harness's value oracle reads it.",
     "kills": "ctest:replay_fuzz_vocab",
     "old": """                                                 std::is_nothrow_move_constructible_v<E>) {
+    require_settled();
+    other.require_settled();
     if (this == &other) {""",
     "new": """                                                 std::is_nothrow_move_constructible_v<E>) {
+    require_settled();
+    other.require_settled();
     if (this != &other) {""",
 }

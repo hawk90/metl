@@ -8,6 +8,8 @@ MUTANT = {
            "error is not put back: a destroyed E under has_value() == false.",
     "kills": "ctest:expected_regression",
     "old": """        construct_error(static_cast<E&&>(backup));
+        state_ = detail::expected_state::error;
         throw;""",
-    "new": """        throw;""",
+    "new": """        state_ = detail::expected_state::error;
+        throw;""",
 }

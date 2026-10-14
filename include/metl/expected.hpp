@@ -151,38 +151,53 @@ struct is_metl_expected_with_value : false_type {};
 template <typename T, typename G>
 struct is_metl_expected_with_value<expected<T, G>, T> : true_type {};
 
+// Which member an expected holds. `switching` is the stretch in which the old
+// member is being destroyed and the new one is not built yet, so neither is
+// live: a destructor that reaches back into the expected there finds no value
+// (has_value() is false), and an attempt to change it fails METL_HARDEN rather
+// than destroying the old member a second time (#374).
+enum class expected_state : unsigned char { error, value, switching };
+
 // Replaces the live `U` at `slot` with one built from `args`. `args` may refer
 // into `*slot` (`e.emplace(e.value())`), so a movable `U` is always built
 // before the old one is touched. If anything throws, `slot`
-// still holds a live `U` -- the old object, or a moved-back copy of it -- so the
-// owning expected's `has_value_` stays true to what is stored and its
-// destructor destroys exactly once.
+// still holds a live `U` -- the old object, or a moved-back copy of it -- so
+// `state` is back at `settled`, true to what is stored, and the owning
+// expected's destructor destroys exactly once. While the old `U` is destroyed,
+// `state` reads `switching`.
 template <typename U, typename... Args>
-void replace_live(U* slot, Args&&... args) {
+void replace_live(U* slot, expected_state& state, expected_state settled, Args&&... args) {
   if constexpr (!std::is_move_constructible_v<U>) {
     // Nothing can be built aside or set aside for a rollback -- std::expected::
     // emplace rejects such a U outright; METL keeps accepting it, without the
     // aliasing support or the guarantee.
+    state = expected_state::switching;
     slot->~U();
     ::new (static_cast<void*>(slot)) U(std::forward<Args>(args)...);
+    state = settled;
   } else if constexpr (std::is_nothrow_move_constructible_v<U> || METL_NO_EXCEPTIONS) {
     // Only the constructor can throw, and it runs while the old value is intact.
     U incoming(std::forward<Args>(args)...);
+    state = expected_state::switching;
     slot->~U();
     ::new (static_cast<void*>(slot)) U(static_cast<U&&>(incoming));
+    state = settled;
   }
 #if !METL_NO_EXCEPTIONS
   else {
     // The final move can throw: keep the old value in `backup` to move back.
     U incoming(std::forward<Args>(args)...);
     U backup(static_cast<U&&>(*slot));
+    state = expected_state::switching;
     slot->~U();
     try {
       ::new (static_cast<void*>(slot)) U(static_cast<U&&>(incoming));
     } catch (...) {
       ::new (static_cast<void*>(slot)) U(static_cast<U&&>(backup));
+      state = settled;
       throw;
     }
+    state = settled;
   }
 #endif
 }
@@ -199,6 +214,12 @@ void replace_live(U* slot, Args&&... args) {
 /// @note `value()`, `operator*`, `operator->`, and `error()` ASSERT (abort by
 /// default) when accessed in the wrong state; they do NOT throw
 /// std::bad_expected_access. Use `value_or`/`error_or` for checked fallbacks.
+/// @pre `T`'s and `E`'s destructors do not change the expected that holds
+///      them. While a member is destroyed -- on a switch between value and
+///      error, an `emplace`, or the expected's own destruction -- the expected
+///      holds neither member: `has_value()` is false, and any change, copy or
+///      move of it fails METL_HARDEN, never stripped, instead of destroying the
+///      old member twice (#374). std::expected leaves the same case undefined.
 template <typename T, typename E>
 class expected {
   static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
@@ -217,24 +238,24 @@ class expected {
   /// @brief Constructs a value-state expected by default-constructing `T`.
   // Default constructor (requires T default-constructible).
   template <typename U = T, typename = std::enable_if_t<std::is_default_constructible_v<U>>>
-  constexpr expected() : has_value_(true) {
+  constexpr expected() : state_(detail::expected_state::value) {
     construct_value();
   }
 
   /// @brief Constructs a value-state expected from a copied value.
-  expected(const T& value) : has_value_(true) { construct_value(value); }
+  expected(const T& value) : state_(detail::expected_state::value) { construct_value(value); }
   /// @brief Constructs a value-state expected from a moved value.
-  expected(T&& value) : has_value_(true) { construct_value(static_cast<T&&>(value)); }
+  expected(T&& value) : state_(detail::expected_state::value) { construct_value(static_cast<T&&>(value)); }
 
   /// @brief Constructs an error-state expected from an unexpected wrapper.
   // unexpected conversion constructors.
   template <typename G = E, typename = std::enable_if_t<std::is_constructible_v<E, const G&>>>
-  expected(const unexpected<G>& u) : has_value_(false) {
+  expected(const unexpected<G>& u) : state_(detail::expected_state::error) {
     construct_error(u.error());
   }
 
   template <typename G = E, typename = std::enable_if_t<std::is_constructible_v<E, G&&>>>
-  expected(unexpected<G>&& u) : has_value_(false) {
+  expected(unexpected<G>&& u) : state_(detail::expected_state::error) {
     construct_error(static_cast<G&&>(u.error()));
   }
 
@@ -243,7 +264,7 @@ class expected {
   /// @param args Arguments forwarded to `T`'s constructor.
   // in_place_t and unexpect_t tag constructors.
   template <typename... Args, typename = std::enable_if_t<std::is_constructible_v<T, Args...>>>
-  constexpr explicit expected(in_place_t, Args&&... args) : has_value_(true) {
+  constexpr explicit expected(in_place_t, Args&&... args) : state_(detail::expected_state::value) {
     construct_value(std::forward<Args>(args)...);
   }
 
@@ -251,13 +272,14 @@ class expected {
   /// @tparam Args Constructor argument types forwarded to `E`.
   /// @param args Arguments forwarded to `E`'s constructor.
   template <typename... Args, typename = std::enable_if_t<std::is_constructible_v<E, Args...>>>
-  constexpr explicit expected(unexpect_t, Args&&... args) : has_value_(false) {
+  constexpr explicit expected(unexpect_t, Args&&... args) : state_(detail::expected_state::error) {
     construct_error(std::forward<Args>(args)...);
   }
 
   /// @brief Copy constructor; copies the active value or error.
-  expected(const expected& other) : has_value_(other.has_value_) {
-    if (has_value_) {
+  expected(const expected& other) : state_(other.state_) {
+    other.require_settled();
+    if (holds_value()) {
       construct_value(other.value_unchecked());
     } else {
       construct_error(other.error_unchecked());
@@ -267,8 +289,9 @@ class expected {
   /// @brief Move constructor; moves the active value or error.
   expected(expected&& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
                                       std::is_nothrow_move_constructible_v<E>)
-      : has_value_(other.has_value_) {
-    if (has_value_) {
+      : state_(other.state_) {
+    other.require_settled();
+    if (holds_value()) {
       construct_value(static_cast<T&&>(other.value_unchecked()));
     } else {
       construct_error(static_cast<E&&>(other.error_unchecked()));
@@ -276,17 +299,22 @@ class expected {
   }
 
   /// @brief Destroys the active value or error.
-  ~expected() { destroy_active(); }
+  ~expected() {
+    require_settled();
+    destroy_active();
+  }
 
   // ---- Assignment ----------------------------------------------------------
 
   /// @brief Copy-assigns, switching state if needed (exception-safe).
   expected& operator=(const expected& other) {
+    require_settled();
+    other.require_settled();
     if (this == &other) {
       return *this;
     }
 
-    if (other.has_value_) {
+    if (other.holds_value()) {
       assign_value_or_rebind(other.value_unchecked());
     } else {
       assign_error_or_rebind(other.error_unchecked());
@@ -300,11 +328,13 @@ class expected {
                                                  std::is_nothrow_move_constructible_v<T> &&
                                                  std::is_nothrow_move_assignable_v<E> &&
                                                  std::is_nothrow_move_constructible_v<E>) {
+    require_settled();
+    other.require_settled();
     if (this == &other) {
       return *this;
     }
 
-    if (other.has_value_) {
+    if (other.holds_value()) {
       assign_value_or_rebind(static_cast<T&&>(other.value_unchecked()));
     } else {
       assign_error_or_rebind(static_cast<E&&>(other.error_unchecked()));
@@ -343,15 +373,15 @@ class expected {
   // ---- Observers -----------------------------------------------------------
 
   /// @brief Returns true if the expected holds a value (not an error).
-  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
+  METL_NODISCARD constexpr explicit operator bool() const noexcept { return holds_value(); }
   /// @brief Returns true if the expected holds a value (not an error).
-  METL_NODISCARD constexpr bool has_value() const noexcept { return has_value_; }
+  METL_NODISCARD constexpr bool has_value() const noexcept { return holds_value(); }
 
   /// @brief Accesses a member of the contained value.
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
   METL_NODISCARD const T* operator->() const noexcept {
-    METL_ASSERT(has_value_);
+    METL_ASSERT(holds_value());
     return value_ptr();
   }
 
@@ -359,7 +389,7 @@ class expected {
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
   METL_NODISCARD T* operator->() noexcept {
-    METL_ASSERT(has_value_);
+    METL_ASSERT(holds_value());
     return value_ptr();
   }
 
@@ -367,7 +397,7 @@ class expected {
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
   METL_NODISCARD const T& operator*() const& noexcept {
-    METL_ASSERT(has_value_);
+    METL_ASSERT(holds_value());
     return *value_ptr();
   }
 
@@ -375,7 +405,7 @@ class expected {
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
   METL_NODISCARD T& operator*() & noexcept {
-    METL_ASSERT(has_value_);
+    METL_ASSERT(holds_value());
     return *value_ptr();
   }
 
@@ -383,7 +413,7 @@ class expected {
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
   METL_NODISCARD const T&& operator*() const&& noexcept {
-    METL_ASSERT(has_value_);
+    METL_ASSERT(holds_value());
     return static_cast<const T&&>(*value_ptr());
   }
 
@@ -391,7 +421,7 @@ class expected {
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
   METL_NODISCARD T&& operator*() && noexcept {
-    METL_ASSERT(has_value_);
+    METL_ASSERT(holds_value());
     return static_cast<T&&>(*value_ptr());
   }
 
@@ -400,7 +430,7 @@ class expected {
   /// @warning Asserts (aborts by default) in the error state; it does NOT throw
   /// std::bad_expected_access. Use `value_or` for a checked fallback.
   METL_NODISCARD T& value() & noexcept {
-    METL_ASSERT(has_value_);
+    METL_ASSERT(holds_value());
     return *value_ptr();
   }
 
@@ -408,7 +438,7 @@ class expected {
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does NOT throw.
   METL_NODISCARD const T& value() const& noexcept {
-    METL_ASSERT(has_value_);
+    METL_ASSERT(holds_value());
     return *value_ptr();
   }
 
@@ -416,7 +446,7 @@ class expected {
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does NOT throw.
   METL_NODISCARD T&& value() && noexcept {
-    METL_ASSERT(has_value_);
+    METL_ASSERT(holds_value());
     return static_cast<T&&>(*value_ptr());
   }
 
@@ -424,7 +454,7 @@ class expected {
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does NOT throw.
   METL_NODISCARD const T&& value() const&& noexcept {
-    METL_ASSERT(has_value_);
+    METL_ASSERT(holds_value());
     return static_cast<const T&&>(*value_ptr());
   }
 
@@ -433,7 +463,7 @@ class expected {
   /// @warning Asserts (aborts by default) in the value state; it does NOT throw.
   /// Use `error_or` for a checked fallback.
   METL_NODISCARD E& error() & noexcept {
-    METL_ASSERT(!has_value_);
+    METL_ASSERT(holds_error());
     return *error_ptr();
   }
 
@@ -441,7 +471,7 @@ class expected {
   /// @pre !has_value()
   /// @warning Asserts (aborts by default) in the value state; it does NOT throw.
   METL_NODISCARD const E& error() const& noexcept {
-    METL_ASSERT(!has_value_);
+    METL_ASSERT(holds_error());
     return *error_ptr();
   }
 
@@ -449,7 +479,7 @@ class expected {
   /// @pre !has_value()
   /// @warning Asserts (aborts by default) in the value state; it does NOT throw.
   METL_NODISCARD E&& error() && noexcept {
-    METL_ASSERT(!has_value_);
+    METL_ASSERT(holds_error());
     return static_cast<E&&>(*error_ptr());
   }
 
@@ -457,7 +487,7 @@ class expected {
   /// @pre !has_value()
   /// @warning Asserts (aborts by default) in the value state; it does NOT throw.
   METL_NODISCARD const E&& error() const&& noexcept {
-    METL_ASSERT(!has_value_);
+    METL_ASSERT(holds_error());
     return static_cast<const E&&>(*error_ptr());
   }
 
@@ -465,27 +495,27 @@ class expected {
   /// @param default_value Returned (converted to `T`) in the error state.
   template <typename U>
   METL_NODISCARD std::remove_cv_t<T> value_or(U&& default_value) const& {
-    return has_value_ ? *value_ptr() : static_cast<std::remove_cv_t<T>>(std::forward<U>(default_value));
+    return holds_value() ? *value_ptr() : static_cast<std::remove_cv_t<T>>(std::forward<U>(default_value));
   }
 
   /// @brief Returns the value if present, else `default_value`. Never asserts.
   template <typename U>
   METL_NODISCARD std::remove_cv_t<T> value_or(U&& default_value) && {
-    return has_value_ ? static_cast<T&&>(*value_ptr())
-                      : static_cast<std::remove_cv_t<T>>(std::forward<U>(default_value));
+    return holds_value() ? static_cast<T&&>(*value_ptr())
+                         : static_cast<std::remove_cv_t<T>>(std::forward<U>(default_value));
   }
 
   /// @brief Returns the error if present, else `default_value`. Never asserts.
   /// @param default_value Returned (converted to `E`) in the value state.
   template <typename G>
   METL_NODISCARD E error_or(G&& default_value) const& {
-    return has_value_ ? static_cast<E>(std::forward<G>(default_value)) : *error_ptr();
+    return holds_error() ? *error_ptr() : static_cast<E>(std::forward<G>(default_value));
   }
 
   /// @brief Returns the error if present, else `default_value`. Never asserts.
   template <typename G>
   METL_NODISCARD E error_or(G&& default_value) && {
-    return has_value_ ? static_cast<E>(std::forward<G>(default_value)) : static_cast<E&&>(*error_ptr());
+    return holds_error() ? static_cast<E&&>(*error_ptr()) : static_cast<E>(std::forward<G>(default_value));
   }
 
   // ---- Modifiers -----------------------------------------------------------
@@ -499,10 +529,11 @@ class expected {
   ///       the cost of one move.
   template <typename... Args>
   T& emplace(Args&&... args) {
-    // Never destroy-then-construct: a throwing constructor would leave
-    // has_value_ naming a destroyed member, destroyed again by ~expected.
-    if (has_value_) {
-      detail::replace_live(value_ptr(), std::forward<Args>(args)...);
+    require_settled();
+    // Never destroy-then-construct: a throwing constructor would leave the
+    // discriminant naming a destroyed member, destroyed again by ~expected.
+    if (holds_value()) {
+      detail::replace_live(value_ptr(), state_, detail::expected_state::value, std::forward<Args>(args)...);
     } else {
       reinit_as_value(std::forward<Args>(args)...);
     }
@@ -515,10 +546,11 @@ class expected {
   /// @return Reference to the newly constructed error.
   template <typename... Args>
   E& emplace_error(Args&&... args) {
-    if (has_value_) {
+    require_settled();
+    if (holds_value()) {
       reinit_as_error(std::forward<Args>(args)...);
     } else {
-      detail::replace_live(error_ptr(), std::forward<Args>(args)...);
+      detail::replace_live(error_ptr(), state_, detail::expected_state::error, std::forward<Args>(args)...);
     }
     return *error_ptr();
   }
@@ -531,13 +563,15 @@ class expected {
                                       std::is_nothrow_move_constructible_v<E> &&
                                       std::is_nothrow_move_assignable_v<T> &&
                                       std::is_nothrow_move_assignable_v<E>) {
-    if (has_value_ && other.has_value_) {
+    require_settled();
+    other.require_settled();
+    if (holds_value() && other.holds_value()) {
       using std::swap;
       swap(*value_ptr(), *other.value_ptr());
-    } else if (!has_value_ && !other.has_value_) {
+    } else if (!holds_value() && !other.holds_value()) {
       using std::swap;
       swap(*error_ptr(), *other.error_ptr());
-    } else if (has_value_ && !other.has_value_) {
+    } else if (holds_value() && !other.holds_value()) {
       swap_value_error(*this, other);
     } else {
       swap_value_error(other, *this);
@@ -554,9 +588,10 @@ class expected {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(**this))>>;
     static_assert(detail::is_metl_expected_with_error<result_t, E>::value,
                   "expected::and_then(F): F must return a metl::expected with the same error type E");
-    if (has_value_) {
+    if (holds_value()) {
       return std::forward<F>(f)(**this);
     }
+    METL_ASSERT(holds_error());
     return result_t(unexpected<E>(*error_ptr()));
   }
 
@@ -565,9 +600,10 @@ class expected {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(**this))>>;
     static_assert(detail::is_metl_expected_with_error<result_t, E>::value,
                   "expected::and_then(F): F must return a metl::expected with the same error type E");
-    if (has_value_) {
+    if (holds_value()) {
       return std::forward<F>(f)(**this);
     }
+    METL_ASSERT(holds_error());
     return result_t(unexpected<E>(*error_ptr()));
   }
 
@@ -577,9 +613,10 @@ class expected {
         std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<T&&>(**this)))>>;
     static_assert(detail::is_metl_expected_with_error<result_t, E>::value,
                   "expected::and_then(F): F must return a metl::expected with the same error type E");
-    if (has_value_) {
+    if (holds_value()) {
       return std::forward<F>(f)(static_cast<T&&>(**this));
     }
+    METL_ASSERT(holds_error());
     return result_t(unexpected<E>(static_cast<E&&>(*error_ptr())));
   }
 
@@ -589,9 +626,10 @@ class expected {
         std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<const T&&>(**this)))>>;
     static_assert(detail::is_metl_expected_with_error<result_t, E>::value,
                   "expected::and_then(F): F must return a metl::expected with the same error type E");
-    if (has_value_) {
+    if (holds_value()) {
       return std::forward<F>(f)(static_cast<const T&&>(**this));
     }
+    METL_ASSERT(holds_error());
     return result_t(unexpected<E>(static_cast<const E&&>(*error_ptr())));
   }
 
@@ -601,18 +639,20 @@ class expected {
   template <typename F>
   METL_NODISCARD constexpr auto transform(F&& f) & {
     using result_value_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(**this))>>;
-    if (has_value_) {
+    if (holds_value()) {
       return expected<result_value_t, E>(in_place, std::forward<F>(f)(**this));
     }
+    METL_ASSERT(holds_error());
     return expected<result_value_t, E>(unexpect, *error_ptr());
   }
 
   template <typename F>
   METL_NODISCARD constexpr auto transform(F&& f) const& {
     using result_value_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(**this))>>;
-    if (has_value_) {
+    if (holds_value()) {
       return expected<result_value_t, E>(in_place, std::forward<F>(f)(**this));
     }
+    METL_ASSERT(holds_error());
     return expected<result_value_t, E>(unexpect, *error_ptr());
   }
 
@@ -620,9 +660,10 @@ class expected {
   METL_NODISCARD constexpr auto transform(F&& f) && {
     using result_value_t =
         std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<T&&>(**this)))>>;
-    if (has_value_) {
+    if (holds_value()) {
       return expected<result_value_t, E>(in_place, std::forward<F>(f)(static_cast<T&&>(**this)));
     }
+    METL_ASSERT(holds_error());
     return expected<result_value_t, E>(unexpect, static_cast<E&&>(*error_ptr()));
   }
 
@@ -630,9 +671,10 @@ class expected {
   METL_NODISCARD constexpr auto transform(F&& f) const&& {
     using result_value_t = std::remove_cv_t<
         std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<const T&&>(**this)))>>;
-    if (has_value_) {
+    if (holds_value()) {
       return expected<result_value_t, E>(in_place, std::forward<F>(f)(static_cast<const T&&>(**this)));
     }
+    METL_ASSERT(holds_error());
     return expected<result_value_t, E>(unexpect, static_cast<const E&&>(*error_ptr()));
   }
 
@@ -644,9 +686,10 @@ class expected {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(*error_ptr()))>>;
     static_assert(detail::is_metl_expected_with_value<result_t, T>::value,
                   "expected::or_else(F): F must return a metl::expected with the same value type T");
-    if (has_value_) {
+    if (holds_value()) {
       return result_t(in_place, *value_ptr());
     }
+    METL_ASSERT(holds_error());
     return std::forward<F>(f)(*error_ptr());
   }
 
@@ -655,9 +698,10 @@ class expected {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(*error_ptr()))>>;
     static_assert(detail::is_metl_expected_with_value<result_t, T>::value,
                   "expected::or_else(F): F must return a metl::expected with the same value type T");
-    if (has_value_) {
+    if (holds_value()) {
       return result_t(in_place, *value_ptr());
     }
+    METL_ASSERT(holds_error());
     return std::forward<F>(f)(*error_ptr());
   }
 
@@ -667,9 +711,10 @@ class expected {
         std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<E&&>(*error_ptr())))>>;
     static_assert(detail::is_metl_expected_with_value<result_t, T>::value,
                   "expected::or_else(F): F must return a metl::expected with the same value type T");
-    if (has_value_) {
+    if (holds_value()) {
       return result_t(in_place, static_cast<T&&>(*value_ptr()));
     }
+    METL_ASSERT(holds_error());
     return std::forward<F>(f)(static_cast<E&&>(*error_ptr()));
   }
 
@@ -679,9 +724,10 @@ class expected {
         std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<const E&&>(*error_ptr())))>>;
     static_assert(detail::is_metl_expected_with_value<result_t, T>::value,
                   "expected::or_else(F): F must return a metl::expected with the same value type T");
-    if (has_value_) {
+    if (holds_value()) {
       return result_t(in_place, static_cast<const T&&>(*value_ptr()));
     }
+    METL_ASSERT(holds_error());
     return std::forward<F>(f)(static_cast<const E&&>(*error_ptr()));
   }
 
@@ -692,9 +738,10 @@ class expected {
   METL_NODISCARD constexpr auto transform_error(F&& f) & {
     using result_error_t =
         std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(*error_ptr()))>>;
-    if (has_value_) {
+    if (holds_value()) {
       return expected<T, result_error_t>(in_place, *value_ptr());
     }
+    METL_ASSERT(holds_error());
     return expected<T, result_error_t>(unexpect, std::forward<F>(f)(*error_ptr()));
   }
 
@@ -702,9 +749,10 @@ class expected {
   METL_NODISCARD constexpr auto transform_error(F&& f) const& {
     using result_error_t =
         std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(*error_ptr()))>>;
-    if (has_value_) {
+    if (holds_value()) {
       return expected<T, result_error_t>(in_place, *value_ptr());
     }
+    METL_ASSERT(holds_error());
     return expected<T, result_error_t>(unexpect, std::forward<F>(f)(*error_ptr()));
   }
 
@@ -712,9 +760,10 @@ class expected {
   METL_NODISCARD constexpr auto transform_error(F&& f) && {
     using result_error_t = std::remove_cv_t<
         std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<E&&>(*error_ptr())))>>;
-    if (has_value_) {
+    if (holds_value()) {
       return expected<T, result_error_t>(in_place, static_cast<T&&>(*value_ptr()));
     }
+    METL_ASSERT(holds_error());
     return expected<T, result_error_t>(unexpect, std::forward<F>(f)(static_cast<E&&>(*error_ptr())));
   }
 
@@ -722,9 +771,10 @@ class expected {
   METL_NODISCARD constexpr auto transform_error(F&& f) const&& {
     using result_error_t = std::remove_cv_t<
         std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<const E&&>(*error_ptr())))>>;
-    if (has_value_) {
+    if (holds_value()) {
       return expected<T, result_error_t>(in_place, static_cast<const T&&>(*value_ptr()));
     }
+    METL_ASSERT(holds_error());
     return expected<T, result_error_t>(unexpect, std::forward<F>(f)(static_cast<const E&&>(*error_ptr())));
   }
 
@@ -743,6 +793,11 @@ class expected {
   E& error_unchecked() noexcept { return *error_ptr(); }
   const E& error_unchecked() const noexcept { return *error_ptr(); }
 
+  constexpr bool holds_value() const noexcept { return state_ == detail::expected_state::value; }
+  constexpr bool holds_error() const noexcept { return state_ == detail::expected_state::error; }
+  // A change while the old member is being destroyed would destroy it again.
+  void require_settled() const noexcept { METL_HARDEN(state_ != detail::expected_state::switching); }
+
   template <typename... Args>
   void construct_value(Args&&... args) {
     ::new (storage_addr()) T(std::forward<Args>(args)...);
@@ -753,8 +808,12 @@ class expected {
     ::new (storage_addr()) E(std::forward<Args>(args)...);
   }
 
+  // Only the destructor calls this; a member's destructor that reaches back
+  // finds the expected switching.
   void destroy_active() noexcept {
-    if (has_value_) {
+    const bool had_value = holds_value();
+    state_ = detail::expected_state::switching;
+    if (had_value) {
       value_ptr()->~T();
     } else {
       error_ptr()->~E();
@@ -763,7 +822,8 @@ class expected {
 
   template <typename U>
   void assign_value_or_rebind(U&& value) {
-    if (has_value_) {
+    require_settled();
+    if (holds_value()) {
       *value_ptr() = std::forward<U>(value);
       return;
     }
@@ -773,7 +833,8 @@ class expected {
 
   template <typename G>
   void assign_error_or_rebind(G&& error) {
-    if (!has_value_) {
+    require_settled();
+    if (!holds_value()) {
       *error_ptr() = std::forward<G>(error);
       return;
     }
@@ -784,7 +845,7 @@ class expected {
   // Cross-state reinitialization (std::expected's "reinit-expected" pattern).
   // reinit_as_value: precondition, currently in the error state; switch to the
   // value state (reinit_as_error is the mirror image). A throwing constructor
-  // never destroys the old member while leaving has_value_ unchanged (which
+  // never destroys the old member while leaving the discriminant unchanged (which
   // would double-destroy it on ~expected).
   template <typename... Args>
   void reinit_as_value(Args&&... args) {
@@ -798,43 +859,51 @@ class expected {
     } else if constexpr (std::is_nothrow_constructible_v<T, Args&&...>) {
       // A non-movable T cannot be built aside; aliasing the old member is a
       // precondition violation here, as it is for std::expected.
+      state_ = detail::expected_state::switching;
       error_ptr()->~E();
       construct_value(std::forward<Args>(args)...);
     } else {
 #if METL_NO_EXCEPTIONS
+      state_ = detail::expected_state::switching;
       error_ptr()->~E();
       construct_value(std::forward<Args>(args)...);
 #else
       E backup(static_cast<E&&>(*error_ptr()));
+      state_ = detail::expected_state::switching;
       error_ptr()->~E();
       try {
         construct_value(std::forward<Args>(args)...);
       } catch (...) {
         construct_error(static_cast<E&&>(backup));  // restore the previous state
+        state_ = detail::expected_state::error;
         throw;
       }
 #endif
     }
-    has_value_ = true;
+    state_ = detail::expected_state::value;
   }
 
   // Replaces the old member with an already-built `incoming`. Only the move
   // can throw now; if it does, the old member is restored from a backup.
   void commit_value(T&& incoming) {
     if constexpr (std::is_nothrow_move_constructible_v<T>) {
+      state_ = detail::expected_state::switching;
       error_ptr()->~E();
       construct_value(std::move(incoming));
     } else {
 #if METL_NO_EXCEPTIONS
+      state_ = detail::expected_state::switching;
       error_ptr()->~E();
       construct_value(std::move(incoming));
 #else
       E backup(static_cast<E&&>(*error_ptr()));
+      state_ = detail::expected_state::switching;
       error_ptr()->~E();
       try {
         construct_value(std::move(incoming));
       } catch (...) {
         construct_error(static_cast<E&&>(backup));
+        state_ = detail::expected_state::error;
         throw;
       }
 #endif
@@ -853,43 +922,51 @@ class expected {
     } else if constexpr (std::is_nothrow_constructible_v<E, Args&&...>) {
       // A non-movable E cannot be built aside; aliasing the old member is a
       // precondition violation here, as it is for std::expected.
+      state_ = detail::expected_state::switching;
       value_ptr()->~T();
       construct_error(std::forward<Args>(args)...);
     } else {
 #if METL_NO_EXCEPTIONS
+      state_ = detail::expected_state::switching;
       value_ptr()->~T();
       construct_error(std::forward<Args>(args)...);
 #else
       T backup(static_cast<T&&>(*value_ptr()));
+      state_ = detail::expected_state::switching;
       value_ptr()->~T();
       try {
         construct_error(std::forward<Args>(args)...);
       } catch (...) {
         construct_value(static_cast<T&&>(backup));  // restore the previous state
+        state_ = detail::expected_state::value;
         throw;
       }
 #endif
     }
-    has_value_ = false;
+    state_ = detail::expected_state::error;
   }
 
   // Replaces the old member with an already-built `incoming`. Only the move
   // can throw now; if it does, the old member is restored from a backup.
   void commit_error(E&& incoming) {
     if constexpr (std::is_nothrow_move_constructible_v<E>) {
+      state_ = detail::expected_state::switching;
       value_ptr()->~T();
       construct_error(std::move(incoming));
     } else {
 #if METL_NO_EXCEPTIONS
+      state_ = detail::expected_state::switching;
       value_ptr()->~T();
       construct_error(std::move(incoming));
 #else
       T backup(static_cast<T&&>(*value_ptr()));
+      state_ = detail::expected_state::switching;
       value_ptr()->~T();
       try {
         construct_error(std::move(incoming));
       } catch (...) {
         construct_value(static_cast<T&&>(backup));
+        state_ = detail::expected_state::value;
         throw;
       }
 #endif
@@ -909,6 +986,9 @@ class expected {
     // requirement.
     static_assert(std::is_nothrow_move_constructible_v<T> || std::is_nothrow_move_constructible_v<E>,
                   "metl::expected::swap requires T or E to be nothrow move constructible");
+    // Both read as switching until both members are in place again.
+    v.state_ = detail::expected_state::switching;
+    e.state_ = detail::expected_state::switching;
     if constexpr (std::is_nothrow_move_constructible_v<E>) {
       E tmp(static_cast<E&&>(*e.error_ptr()));
       e.error_ptr()->~E();
@@ -928,6 +1008,8 @@ class expected {
           ::new (e.storage_addr()) T(static_cast<T&&>(*v.value_ptr()));
         } catch (...) {
           ::new (e.storage_addr()) E(static_cast<E&&>(tmp));  // restore e
+          v.state_ = detail::expected_state::value;
+          e.state_ = detail::expected_state::error;
           throw;
         }
       }
@@ -944,14 +1026,16 @@ class expected {
 #if !METL_NO_EXCEPTIONS
       } catch (...) {
         ::new (v.storage_addr()) T(static_cast<T&&>(tmp));  // restore v
+        v.state_ = detail::expected_state::value;
+        e.state_ = detail::expected_state::error;
         throw;
       }
 #endif
       e.error_ptr()->~E();
       ::new (e.storage_addr()) T(static_cast<T&&>(tmp));
     }
-    v.has_value_ = false;
-    e.has_value_ = true;
+    v.state_ = detail::expected_state::error;
+    e.state_ = detail::expected_state::value;
   }
 
   // NOTE: value/error live in laundered aligned storage, which is not
@@ -973,7 +1057,7 @@ class expected {
     alignas(storage_align) unsigned char bytes[storage_size];
   } storage_;
 
-  bool has_value_;
+  detail::expected_state state_;
 };
 
 // =============================================================================
@@ -986,6 +1070,8 @@ class expected {
 /// @tparam E The error type.
 /// @note `value()` and `operator*` return void and ASSERT (abort by default) in
 /// the error state; `error()` asserts in the success state. Neither throws.
+/// @pre `E`'s destructor does not change the expected that holds it; see the
+///      primary template (#374).
 template <typename E>
 class expected<void, E> {
   static_assert(std::is_object_v<E> && !std::is_array_v<E>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
@@ -1001,49 +1087,52 @@ class expected<void, E> {
   // ---- Constructors --------------------------------------------------------
 
   /// @brief Constructs a success-state expected<void, E>.
-  constexpr expected() noexcept : has_value_(true) {}
+  constexpr expected() noexcept : state_(detail::expected_state::value) {}
 
   /// @brief Constructs a success-state expected<void, E> (no value to build).
   // in_place_t: produces a value-state expected<void, E> (no T to construct).
-  constexpr explicit expected(in_place_t) noexcept : has_value_(true) {}
+  constexpr explicit expected(in_place_t) noexcept : state_(detail::expected_state::value) {}
 
   /// @brief Constructs an error-state expected, building `E` in place.
   /// @tparam Args Constructor argument types forwarded to `E`.
   /// @param args Arguments forwarded to `E`'s constructor.
   template <typename... Args, typename = std::enable_if_t<std::is_constructible_v<E, Args...>>>
-  constexpr explicit expected(unexpect_t, Args&&... args) : has_value_(false) {
+  constexpr explicit expected(unexpect_t, Args&&... args) : state_(detail::expected_state::error) {
     construct_error(std::forward<Args>(args)...);
   }
 
   /// @brief Constructs an error-state expected from an unexpected wrapper.
   template <typename G = E, typename = std::enable_if_t<std::is_constructible_v<E, const G&>>>
-  expected(const unexpected<G>& u) : has_value_(false) {
+  expected(const unexpected<G>& u) : state_(detail::expected_state::error) {
     construct_error(u.error());
   }
 
   template <typename G = E, typename = std::enable_if_t<std::is_constructible_v<E, G&&>>>
-  expected(unexpected<G>&& u) : has_value_(false) {
+  expected(unexpected<G>&& u) : state_(detail::expected_state::error) {
     construct_error(static_cast<G&&>(u.error()));
   }
 
   /// @brief Copy constructor; copies the error if in the error state.
-  expected(const expected& other) : has_value_(other.has_value_) {
-    if (!has_value_) {
+  expected(const expected& other) : state_(other.state_) {
+    other.require_settled();
+    if (!holds_value()) {
       construct_error(*other.error_ptr());
     }
   }
 
   /// @brief Move constructor; moves the error if in the error state.
-  expected(expected&& other) noexcept(std::is_nothrow_move_constructible_v<E>)
-      : has_value_(other.has_value_) {
-    if (!has_value_) {
+  expected(expected&& other) noexcept(std::is_nothrow_move_constructible_v<E>) : state_(other.state_) {
+    other.require_settled();
+    if (!holds_value()) {
       construct_error(static_cast<E&&>(*other.error_ptr()));
     }
   }
 
   /// @brief Destroys the error if in the error state.
   ~expected() {
-    if (!has_value_) {
+    require_settled();
+    if (!holds_value()) {
+      state_ = detail::expected_state::switching;
       error_ptr()->~E();
     }
   }
@@ -1052,19 +1141,22 @@ class expected<void, E> {
 
   /// @brief Copy-assigns, switching between success and error as needed.
   expected& operator=(const expected& other) {
+    require_settled();
+    other.require_settled();
     if (this == &other) {
       return *this;
     }
 
-    if (other.has_value_) {
-      if (!has_value_) {
+    if (other.holds_value()) {
+      if (!holds_value()) {
+        state_ = detail::expected_state::switching;
         error_ptr()->~E();
-        has_value_ = true;
+        state_ = detail::expected_state::value;
       }
     } else {
-      if (has_value_) {
+      if (holds_value()) {
         construct_error(*other.error_ptr());
-        has_value_ = false;
+        state_ = detail::expected_state::error;
       } else {
         *error_ptr() = *other.error_ptr();
       }
@@ -1075,19 +1167,22 @@ class expected<void, E> {
   /// @brief Move-assigns, switching between success and error as needed.
   expected& operator=(expected&& other) noexcept(std::is_nothrow_move_constructible_v<E> &&
                                                  std::is_nothrow_move_assignable_v<E>) {
+    require_settled();
+    other.require_settled();
     if (this == &other) {
       return *this;
     }
 
-    if (other.has_value_) {
-      if (!has_value_) {
+    if (other.holds_value()) {
+      if (!holds_value()) {
+        state_ = detail::expected_state::switching;
         error_ptr()->~E();
-        has_value_ = true;
+        state_ = detail::expected_state::value;
       }
     } else {
-      if (has_value_) {
+      if (holds_value()) {
         construct_error(static_cast<E&&>(*other.error_ptr()));
-        has_value_ = false;
+        state_ = detail::expected_state::error;
       } else {
         *error_ptr() = static_cast<E&&>(*other.error_ptr());
       }
@@ -1100,9 +1195,10 @@ class expected<void, E> {
       typename G = E,
       typename = std::enable_if_t<std::is_constructible_v<E, const G&> && std::is_assignable_v<E&, const G&>>>
   expected& operator=(const unexpected<G>& error) {
-    if (has_value_) {
+    require_settled();
+    if (holds_value()) {
       construct_error(error.error());
-      has_value_ = false;
+      state_ = detail::expected_state::error;
     } else {
       *error_ptr() = error.error();
     }
@@ -1113,9 +1209,10 @@ class expected<void, E> {
   template <typename G = E,
             typename = std::enable_if_t<std::is_constructible_v<E, G&&> && std::is_assignable_v<E&, G&&>>>
   expected& operator=(unexpected<G>&& error) {
-    if (has_value_) {
+    require_settled();
+    if (holds_value()) {
       construct_error(static_cast<G&&>(error.error()));
-      has_value_ = false;
+      state_ = detail::expected_state::error;
     } else {
       *error_ptr() = static_cast<G&&>(error.error());
     }
@@ -1125,31 +1222,31 @@ class expected<void, E> {
   // ---- Observers -----------------------------------------------------------
 
   /// @brief Returns true if in the success state (not an error).
-  METL_NODISCARD constexpr explicit operator bool() const noexcept { return has_value_; }
+  METL_NODISCARD constexpr explicit operator bool() const noexcept { return holds_value(); }
   /// @brief Returns true if in the success state (not an error).
-  METL_NODISCARD constexpr bool has_value() const noexcept { return has_value_; }
+  METL_NODISCARD constexpr bool has_value() const noexcept { return holds_value(); }
 
   /// @brief Verifies the success state (returns void).
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
   // value() returns void; asserts on error state.
-  void value() const& noexcept { METL_ASSERT(has_value_); }
+  void value() const& noexcept { METL_ASSERT(holds_value()); }
   /// @brief Verifies the success state (returns void).
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
-  void value() && noexcept { METL_ASSERT(has_value_); }
+  void value() && noexcept { METL_ASSERT(holds_value()); }
 
   /// @brief Verifies the success state (returns void).
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
   // operator*() returns void.
-  void operator*() const noexcept { METL_ASSERT(has_value_); }
+  void operator*() const noexcept { METL_ASSERT(holds_value()); }
 
   /// @brief Returns a reference to the contained error.
   /// @pre !has_value()
   /// @warning Asserts (aborts by default) in the success state; it does not throw.
   METL_NODISCARD E& error() & noexcept {
-    METL_ASSERT(!has_value_);
+    METL_ASSERT(holds_error());
     return *error_ptr();
   }
 
@@ -1157,7 +1254,7 @@ class expected<void, E> {
   /// @pre !has_value()
   /// @warning Asserts (aborts by default) in the success state; it does not throw.
   METL_NODISCARD const E& error() const& noexcept {
-    METL_ASSERT(!has_value_);
+    METL_ASSERT(holds_error());
     return *error_ptr();
   }
 
@@ -1165,7 +1262,7 @@ class expected<void, E> {
   /// @pre !has_value()
   /// @warning Asserts (aborts by default) in the success state; it does not throw.
   METL_NODISCARD E&& error() && noexcept {
-    METL_ASSERT(!has_value_);
+    METL_ASSERT(holds_error());
     return static_cast<E&&>(*error_ptr());
   }
 
@@ -1173,29 +1270,31 @@ class expected<void, E> {
   /// @pre !has_value()
   /// @warning Asserts (aborts by default) in the success state; it does not throw.
   METL_NODISCARD const E&& error() const&& noexcept {
-    METL_ASSERT(!has_value_);
+    METL_ASSERT(holds_error());
     return static_cast<const E&&>(*error_ptr());
   }
 
   /// @brief Returns the error if present, else `default_value`. Never asserts.
   template <typename G>
   METL_NODISCARD E error_or(G&& default_value) const& {
-    return has_value_ ? static_cast<E>(std::forward<G>(default_value)) : *error_ptr();
+    return holds_error() ? *error_ptr() : static_cast<E>(std::forward<G>(default_value));
   }
 
   /// @brief Returns the error if present, else `default_value`. Never asserts.
   template <typename G>
   METL_NODISCARD E error_or(G&& default_value) && {
-    return has_value_ ? static_cast<E>(std::forward<G>(default_value)) : static_cast<E&&>(*error_ptr());
+    return holds_error() ? static_cast<E&&>(*error_ptr()) : static_cast<E>(std::forward<G>(default_value));
   }
 
   // ---- Modifiers -----------------------------------------------------------
 
   /// @brief Sets the success state, destroying any current error.
   void emplace() noexcept {
-    if (!has_value_) {
+    require_settled();
+    if (!holds_value()) {
+      state_ = detail::expected_state::switching;
       error_ptr()->~E();
-      has_value_ = true;
+      state_ = detail::expected_state::value;
     }
   }
 
@@ -1205,12 +1304,13 @@ class expected<void, E> {
   /// @return Reference to the newly constructed error.
   template <typename... Args>
   E& emplace_error(Args&&... args) {
-    if (has_value_) {
+    require_settled();
+    if (holds_value()) {
       construct_error(std::forward<Args>(args)...);
-      has_value_ = false;
+      state_ = detail::expected_state::error;
     } else {
       // Same hazard as the primary template's emplace.
-      detail::replace_live(error_ptr(), std::forward<Args>(args)...);
+      detail::replace_live(error_ptr(), state_, detail::expected_state::error, std::forward<Args>(args)...);
     }
     return *error_ptr();
   }
@@ -1218,16 +1318,19 @@ class expected<void, E> {
   /// @brief Swaps contents and state with another expected<void, E>.
   void swap(expected& other) noexcept(std::is_nothrow_move_constructible_v<E> &&
                                       std::is_nothrow_move_assignable_v<E>) {
-    if (has_value_ && other.has_value_) {
+    require_settled();
+    other.require_settled();
+    if (holds_value() && other.holds_value()) {
       // nothing to swap.
-    } else if (!has_value_ && !other.has_value_) {
+    } else if (!holds_value() && !other.holds_value()) {
       using std::swap;
       swap(*error_ptr(), *other.error_ptr());
-    } else if (has_value_ && !other.has_value_) {
+    } else if (holds_value() && !other.holds_value()) {
       construct_error(static_cast<E&&>(*other.error_ptr()));
+      state_ = detail::expected_state::error;
+      other.state_ = detail::expected_state::switching;
       other.error_ptr()->~E();
-      has_value_ = false;
-      other.has_value_ = true;
+      other.state_ = detail::expected_state::value;
     } else {
       other.swap(*this);
     }
@@ -1243,9 +1346,10 @@ class expected<void, E> {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
     static_assert(detail::is_metl_expected_with_error<result_t, E>::value,
                   "expected<void, E>::and_then(F): F must return a metl::expected<U, E>");
-    if (has_value_) {
+    if (holds_value()) {
       return std::forward<F>(f)();
     }
+    METL_ASSERT(holds_error());
     return result_t(unexpected<E>(*error_ptr()));
   }
 
@@ -1254,9 +1358,10 @@ class expected<void, E> {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
     static_assert(detail::is_metl_expected_with_error<result_t, E>::value,
                   "expected<void, E>::and_then(F): F must return a metl::expected<U, E>");
-    if (has_value_) {
+    if (holds_value()) {
       return std::forward<F>(f)();
     }
+    METL_ASSERT(holds_error());
     return result_t(unexpected<E>(*error_ptr()));
   }
 
@@ -1265,9 +1370,10 @@ class expected<void, E> {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
     static_assert(detail::is_metl_expected_with_error<result_t, E>::value,
                   "expected<void, E>::and_then(F): F must return a metl::expected<U, E>");
-    if (has_value_) {
+    if (holds_value()) {
       return std::forward<F>(f)();
     }
+    METL_ASSERT(holds_error());
     return result_t(unexpected<E>(static_cast<E&&>(*error_ptr())));
   }
 
@@ -1276,9 +1382,10 @@ class expected<void, E> {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
     static_assert(detail::is_metl_expected_with_error<result_t, E>::value,
                   "expected<void, E>::and_then(F): F must return a metl::expected<U, E>");
-    if (has_value_) {
+    if (holds_value()) {
       return std::forward<F>(f)();
     }
+    METL_ASSERT(holds_error());
     return result_t(unexpected<E>(static_cast<const E&&>(*error_ptr())));
   }
 
@@ -1289,15 +1396,17 @@ class expected<void, E> {
   METL_NODISCARD auto transform(F&& f) & {
     using result_value_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
     if constexpr (std::is_void_v<result_value_t>) {
-      if (has_value_) {
+      if (holds_value()) {
         std::forward<F>(f)();
         return expected<void, E>();
       }
+      METL_ASSERT(holds_error());
       return expected<void, E>(unexpect, *error_ptr());
     } else {
-      if (has_value_) {
+      if (holds_value()) {
         return expected<result_value_t, E>(in_place, std::forward<F>(f)());
       }
+      METL_ASSERT(holds_error());
       return expected<result_value_t, E>(unexpect, *error_ptr());
     }
   }
@@ -1306,15 +1415,17 @@ class expected<void, E> {
   METL_NODISCARD auto transform(F&& f) const& {
     using result_value_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
     if constexpr (std::is_void_v<result_value_t>) {
-      if (has_value_) {
+      if (holds_value()) {
         std::forward<F>(f)();
         return expected<void, E>();
       }
+      METL_ASSERT(holds_error());
       return expected<void, E>(unexpect, *error_ptr());
     } else {
-      if (has_value_) {
+      if (holds_value()) {
         return expected<result_value_t, E>(in_place, std::forward<F>(f)());
       }
+      METL_ASSERT(holds_error());
       return expected<result_value_t, E>(unexpect, *error_ptr());
     }
   }
@@ -1323,15 +1434,17 @@ class expected<void, E> {
   METL_NODISCARD auto transform(F&& f) && {
     using result_value_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
     if constexpr (std::is_void_v<result_value_t>) {
-      if (has_value_) {
+      if (holds_value()) {
         std::forward<F>(f)();
         return expected<void, E>();
       }
+      METL_ASSERT(holds_error());
       return expected<void, E>(unexpect, static_cast<E&&>(*error_ptr()));
     } else {
-      if (has_value_) {
+      if (holds_value()) {
         return expected<result_value_t, E>(in_place, std::forward<F>(f)());
       }
+      METL_ASSERT(holds_error());
       return expected<result_value_t, E>(unexpect, static_cast<E&&>(*error_ptr()));
     }
   }
@@ -1340,15 +1453,17 @@ class expected<void, E> {
   METL_NODISCARD auto transform(F&& f) const&& {
     using result_value_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)())>>;
     if constexpr (std::is_void_v<result_value_t>) {
-      if (has_value_) {
+      if (holds_value()) {
         std::forward<F>(f)();
         return expected<void, E>();
       }
+      METL_ASSERT(holds_error());
       return expected<void, E>(unexpect, static_cast<const E&&>(*error_ptr()));
     } else {
-      if (has_value_) {
+      if (holds_value()) {
         return expected<result_value_t, E>(in_place, std::forward<F>(f)());
       }
+      METL_ASSERT(holds_error());
       return expected<result_value_t, E>(unexpect, static_cast<const E&&>(*error_ptr()));
     }
   }
@@ -1361,9 +1476,10 @@ class expected<void, E> {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(*error_ptr()))>>;
     static_assert(detail::is_metl_expected_with_value<result_t, void>::value,
                   "expected<void, E>::or_else(F): F must return a metl::expected<void, G>");
-    if (has_value_) {
+    if (holds_value()) {
       return result_t();
     }
+    METL_ASSERT(holds_error());
     return std::forward<F>(f)(*error_ptr());
   }
 
@@ -1372,9 +1488,10 @@ class expected<void, E> {
     using result_t = std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(*error_ptr()))>>;
     static_assert(detail::is_metl_expected_with_value<result_t, void>::value,
                   "expected<void, E>::or_else(F): F must return a metl::expected<void, G>");
-    if (has_value_) {
+    if (holds_value()) {
       return result_t();
     }
+    METL_ASSERT(holds_error());
     return std::forward<F>(f)(*error_ptr());
   }
 
@@ -1384,9 +1501,10 @@ class expected<void, E> {
         std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<E&&>(*error_ptr())))>>;
     static_assert(detail::is_metl_expected_with_value<result_t, void>::value,
                   "expected<void, E>::or_else(F): F must return a metl::expected<void, G>");
-    if (has_value_) {
+    if (holds_value()) {
       return result_t();
     }
+    METL_ASSERT(holds_error());
     return std::forward<F>(f)(static_cast<E&&>(*error_ptr()));
   }
 
@@ -1396,9 +1514,10 @@ class expected<void, E> {
         std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<const E&&>(*error_ptr())))>>;
     static_assert(detail::is_metl_expected_with_value<result_t, void>::value,
                   "expected<void, E>::or_else(F): F must return a metl::expected<void, G>");
-    if (has_value_) {
+    if (holds_value()) {
       return result_t();
     }
+    METL_ASSERT(holds_error());
     return std::forward<F>(f)(static_cast<const E&&>(*error_ptr()));
   }
 
@@ -1409,9 +1528,10 @@ class expected<void, E> {
   METL_NODISCARD constexpr auto transform_error(F&& f) & {
     using result_error_t =
         std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(*error_ptr()))>>;
-    if (has_value_) {
+    if (holds_value()) {
       return expected<void, result_error_t>();
     }
+    METL_ASSERT(holds_error());
     return expected<void, result_error_t>(unexpect, std::forward<F>(f)(*error_ptr()));
   }
 
@@ -1419,9 +1539,10 @@ class expected<void, E> {
   METL_NODISCARD constexpr auto transform_error(F&& f) const& {
     using result_error_t =
         std::remove_cv_t<std::remove_reference_t<decltype(std::forward<F>(f)(*error_ptr()))>>;
-    if (has_value_) {
+    if (holds_value()) {
       return expected<void, result_error_t>();
     }
+    METL_ASSERT(holds_error());
     return expected<void, result_error_t>(unexpect, std::forward<F>(f)(*error_ptr()));
   }
 
@@ -1429,9 +1550,10 @@ class expected<void, E> {
   METL_NODISCARD constexpr auto transform_error(F&& f) && {
     using result_error_t = std::remove_cv_t<
         std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<E&&>(*error_ptr())))>>;
-    if (has_value_) {
+    if (holds_value()) {
       return expected<void, result_error_t>();
     }
+    METL_ASSERT(holds_error());
     return expected<void, result_error_t>(unexpect, std::forward<F>(f)(static_cast<E&&>(*error_ptr())));
   }
 
@@ -1439,15 +1561,21 @@ class expected<void, E> {
   METL_NODISCARD constexpr auto transform_error(F&& f) const&& {
     using result_error_t = std::remove_cv_t<
         std::remove_reference_t<decltype(std::forward<F>(f)(static_cast<const E&&>(*error_ptr())))>>;
-    if (has_value_) {
+    if (holds_value()) {
       return expected<void, result_error_t>();
     }
+    METL_ASSERT(holds_error());
     return expected<void, result_error_t>(unexpect, std::forward<F>(f)(static_cast<const E&&>(*error_ptr())));
   }
 
  private:
   E* error_ptr() noexcept { return error_storage_.ptr(); }
   const E* error_ptr() const noexcept { return error_storage_.ptr(); }
+
+  constexpr bool holds_value() const noexcept { return state_ == detail::expected_state::value; }
+  constexpr bool holds_error() const noexcept { return state_ == detail::expected_state::error; }
+  // A change while the error is being destroyed would destroy it again.
+  void require_settled() const noexcept { METL_HARDEN(state_ != detail::expected_state::switching); }
 
   template <typename... Args>
   void construct_error(Args&&... args) {
@@ -1457,7 +1585,7 @@ class expected<void, E> {
   // storage_for<E> is a raw byte buffer with correct alignment; leaving it
   // uninitialized in the value state is OK (no E construction required).
   storage_for<E> error_storage_;
-  bool has_value_;
+  detail::expected_state state_;
 };
 
 // =============================================================================
