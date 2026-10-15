@@ -22,7 +22,9 @@ Checks (the default):
       shared list this replaces.
   C3  with --base: a branch that changes code under include/ adds a fragment.
       Lines that are only comments do not count, so a documentation fix in a
-      header does not need one.
+      header does not need one. Nor does the release's bump of the version
+      constants in include/metl/config.hpp, when the same branch adds the
+      CHANGELOG section of that version (#401).
 
 At release, `--assemble X.Y.Z` writes the fragments under `## [X.Y.Z] - <date>`
 in Keep a Changelog order and deletes them. The highlights and upgrade notes
@@ -54,6 +56,9 @@ TYPES = ["added", "changed", "deprecated", "removed", "fixed", "security"]
 INTERNAL = "internal"
 FRAGMENT_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*\.(" + "|".join(TYPES + [INTERNAL]) + r")\.md$")
 UNRELEASED = "## [Unreleased]"
+# The release bumps these; see C3.
+VERSION_FILE = "include/metl/config.hpp"
+VERSION_LINE = re.compile(r"^inline constexpr int version_(major|minor|patch) = (\d+);$")
 
 
 def fragments(root):
@@ -82,15 +87,44 @@ def is_comment_or_blank(line):
             or content == "*" or content.startswith("* "))
 
 
+def releases(root, merge_base):
+    """True if this branch adds the CHANGELOG section of the version VERSION_FILE names."""
+    path = root / VERSION_FILE
+    if not path.is_file():
+        return False
+    parts = dict(match.groups() for match in map(VERSION_LINE.match, path.read_text(encoding="utf-8").splitlines())
+                 if match)
+    if set(parts) != {"major", "minor", "patch"}:
+        return False
+    heading = f"+## [{parts['major']}.{parts['minor']}.{parts['patch']}]"
+    diff = subprocess.run(["git", "diff", "-U0", merge_base, "--", CHANGELOG], cwd=root,
+                          capture_output=True, text=True, check=True).stdout
+    return any(line.startswith(heading) for line in diff.splitlines())
+
+
 def code_lines_changed(root, base):
-    """The added or removed lines under include/ that are not only comments."""
+    """The added or removed lines under include/ that are not only comments.
+
+    A release PR's bump of the version constants is not counted, so it needs no
+    fragment, when the same branch adds that version's CHANGELOG section.
+    """
     merge_base = subprocess.run(["git", "merge-base", base, "HEAD"], cwd=root,
                                 capture_output=True, text=True, check=True).stdout.strip()
     diff = subprocess.run(["git", "diff", "-U0", merge_base, "--", "include/"], cwd=root,
                           capture_output=True, text=True, check=True).stdout
+    released = releases(root, merge_base)
     changed = []
+    path = None
     for line in diff.splitlines():
-        if line.startswith(("+++", "---")) or not line.startswith(("+", "-")):
+        if line.startswith("+++ "):
+            path = line[len("+++ b/"):] if line.startswith("+++ b/") else path
+            continue
+        if line.startswith("--- "):
+            path = line[len("--- a/"):] if line.startswith("--- a/") else None
+            continue
+        if not line.startswith(("+", "-")):
+            continue
+        if released and path == VERSION_FILE and VERSION_LINE.match(line[1:]):
             continue
         if not is_comment_or_blank(line[1:]):
             changed.append(line)
@@ -133,7 +167,7 @@ def assemble(root, version, date):
         match = FRAGMENT_NAME.match(path.name)
         if match and match.group(1) != INTERNAL:
             by_type[match.group(1)].append(path.read_text(encoding="utf-8").strip())
-    sections = [f"### {kind.capitalize()}\n\n" + "\n\n".join(entries)
+    sections = [f"### {kind.capitalize()}\n\n" + "\n".join(entries)
                 for kind, entries in by_type.items() if entries]
     if not sections:
         raise SystemExit(f"::error::{FRAGMENTS}/ holds no fragments; nothing to release")
@@ -219,12 +253,15 @@ def self_test():
         (root / FRAGMENTS / "1-f-returns-long.changed.md").write_text("- `f` returns `long`.\n")
         (root / FRAGMENTS / "2-g.fixed.md").write_text("- `g` no longer crashes.\n")
         (root / FRAGMENTS / "3-h.added.md").write_text("- `h`.\n")
+        (root / FRAGMENTS / "4-k.fixed.md").write_text("- `k` no longer leaks.\n")
         count = assemble(root, "1.1.0", "2026-02-02")
         text = (root / CHANGELOG).read_text()
         order = [text.find(s) for s in ("## [1.1.0] - 2026-02-02", "### Added", "### Changed", "### Fixed",
                                         "## [1.0.0]")]
-        if count != 3 or -1 in order or order != sorted(order):
+        if count != 4 or -1 in order or order != sorted(order):
             failures.append(f"--assemble should write Added, Changed, Fixed under 1.1.0 in that order:\n{text}")
+        if "- `g` no longer crashes.\n- `k` no longer leaks.\n" not in text:
+            failures.append(f"--assemble should keep one section's entries a tight list, one per line (#400):\n{text}")
         if [p.name for p in (root / FRAGMENTS).iterdir()] != ["README.md"]:
             failures.append("--assemble should delete the fragments it used, and only those")
         if "Only the declaration moved" in text or "### Internal" in text:
@@ -232,12 +269,44 @@ def self_test():
         if check(root):
             failures.append(f"the assembled changelog should pass: {check(root)}")
 
+    # C3 and a release (#401): the release PR bumps the version constants and
+    # deletes the fragments. The bump needs no fragment when the same branch
+    # adds the section of the version it names; other code still does.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / FRAGMENTS).mkdir()
+        (root / "include" / "metl").mkdir(parents=True)
+        config = root / VERSION_FILE
+        version = "inline constexpr int version_major = 1;\ninline constexpr int version_minor = {};\n" \
+                  "inline constexpr int version_patch = 0;\n"
+        config.write_text(version.format(0))
+        (root / CHANGELOG).write_text(f"# Changelog\n\n{UNRELEASED}\n\n## [1.0.0] - 2026-01-01\n\n- old\n")
+        (root / FRAGMENTS / "1-g.fixed.md").write_text("- `g` no longer crashes.\n")
+        git(root, "init", "-q", "-b", "main")
+        git(root, "add", "-A")
+        git(root, "commit", "-q", "-m", "base")
+        git(root, "checkout", "-q", "-b", "release")
+        config.write_text(version.format(1))
+        if [rule for rule, _ in check(root, base="main")] != ["C3"]:
+            failures.append(f"a version bump without its section should still need a fragment: "
+                            f"{check(root, base='main')}")
+        assemble(root, "1.0.1", "2026-02-02")
+        if [rule for rule, _ in check(root, base="main")] != ["C3"]:
+            failures.append(f"a section for another version should not excuse the bump: {check(root, base='main')}")
+        (root / CHANGELOG).write_text((root / CHANGELOG).read_text().replace("## [1.0.1]", "## [1.1.0]"))
+        if check(root, base="main"):
+            failures.append(f"a version bump with its section should need no fragment: {check(root, base='main')}")
+        config.write_text(version.format(1) + "int f();\n")
+        if [rule for rule, _ in check(root, base="main")] != ["C3"]:
+            failures.append(f"a release should still need a fragment for other code: {check(root, base='main')}")
+
     if failures:
         for failure in failures:
             print(f"::error::self-test: {failure}", file=sys.stderr)
         return 1
     print("self-test passed: bad fragment names, empty fragments, entries under Unreleased and a code "
-          "change without a fragment are rejected; comments need none; an internal fragment satisfies C3 and is dropped by --assemble, which orders and cleans up")
+          "change without a fragment are rejected; comments need none; an internal fragment satisfies C3 and is dropped by --assemble, which orders and cleans up; "
+          "a version bump needs no fragment only beside its own release section")
     return 0
 
 

@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-15
+
+**Highlights.** This release is about tests. A conformance suite now checks
+each property, such as failure atomicity, invalidation rules, copying a type's
+own element, constant initialization and agreement with the std counterpart,
+across every type it applies to, so a bug class fixed in one type cannot stay
+in another. Mutants check that each test fails when the code it guards breaks,
+now also under QEMU for the Cortex-M-only paths. The new tests found the four
+bugs fixed below. Every container now documents what invalidates its iterators
+and references.
+
+### Upgrading from 1.2.3
+
+No code change is needed. Two things differ:
+
+- A change, copy or move made to an `expected` from the destructor of its own
+  member now fails `METL_HARDEN`. It used to destroy the old member twice; see
+  Fixed.
+- A namespace-scope `object_pool` built as C++20 is constant-initialized, so it
+  is ready before any dynamic initializer runs, and `constinit` accepts it; see
+  Fixed.
+
+### Added
+
+- **Every container states its iterator and reference invalidation rules
+  (#340).** Each type checked by the conformance suite has an "Iterator
+  invalidation" or "Reference invalidation" paragraph in its class
+  documentation, saying which operations move or end the elements already
+  held. The conformance suite checks that adding and removing behave as each
+  paragraph says.
+
+### Fixed
+
+- **`expected` no longer destroys a member twice when the member's destructor
+  changes it (#374).** Switching between a value and an error destroyed the old
+  member while `has_value()` still named it, so a destructor that reached back
+  into the same `expected` and changed it destroyed the old member again. The
+  state now reads "switching" while a member is being destroyed, by any path,
+  and a change, copy or move made from that destructor fails `METL_HARDEN`.
+  This precondition is stated on both templates. `sizeof` is unchanged.
+- **Allocating from `arena_allocator<0>` builds under GCC `-Wall -Werror`
+  (#379).** GCC at `-O1` and above reported the record store into the
+  zero-byte arena's placeholder as out of bounds. A zero-byte arena now returns
+  null before touching that storage.
+- **Emplacing an object larger than a static `arena_allocator` builds under GCC
+  `-O2 -Wall -Werror` (#380).** GCC reported three `-Warray-bounds` errors for
+  an arena in static storage, the usual embedded placement. `try_emplace` now
+  returns null at compile time for an object that can never fit.
+- **A namespace-scope `object_pool` is constant-initialized since C++20
+  (#394).** Its default constructor was declared `constexpr` but left the slot
+  storage uninitialized, so no pool could be constant-initialized: a global one
+  was built at startup, in link order, and `constinit` on one failed to
+  compile. It now zeroes the storage during constant evaluation only, as the
+  containers do, so a local pool still stores nothing to it.
+
 ## [1.2.3] - 2026-10-13
 
 **Highlights.** METL now builds with the minimum compilers the README states,

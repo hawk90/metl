@@ -38,6 +38,12 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 # {tag: {old test source or ctest name: "why it may break (#issue)"}}
 EXPECTED_BREAKS = {}
 
+# Where a tree states its own version: (file, pattern whose group 2 is the version).
+VERSION_STAMPS = [
+    ("CMakeLists.txt", re.compile(r"(\n  VERSION )([0-9]+\.[0-9]+\.[0-9]+)(\n)")),
+    ("components/metl/idf_component.yml", re.compile(r"(\nversion: \")([0-9.]+)(\"\n)")),
+]
+
 # make, on a failed object or link step. GNU make 4 puts the makefile and line
 # before the target; make 3.81 (macOS) does not:
 #   make[2]: *** [CMakeFiles/metl_x_test.dir/build.make:79: CMakeFiles/metl_x_test.dir/tests/x_test.cpp.o] Error 1
@@ -77,7 +83,27 @@ def stage(tag, root):
                          f"such as {missing[0]}; export-ignore in .gitattributes?")
     shutil.rmtree(tree / "include")
     shutil.copytree(REPO / "include", tree / "include")
+    restamp(tree)
     return tree
+
+
+def restamp(tree):
+    """Give the staged tree the version of the headers it now holds (#403).
+
+    tests/core/version_test.cpp checks that metl::version matches the
+    CMakeLists project(VERSION), and the CMakeLists checks the ESP-IDF manifest
+    against it. Left at the tag's version, the old test fails on every release
+    PR, though the version stamps are no API promise.
+    """
+    for name, stamp in VERSION_STAMPS:
+        current = stamp.search((REPO / name).read_text(encoding="utf-8"))
+        path = tree / name
+        text = path.read_text(encoding="utf-8")
+        if current is None or not stamp.search(text):
+            raise SystemExit(f"::error::no version stamp in {name}; update VERSION_STAMPS in "
+                             f"{pathlib.Path(__file__).name}")
+        path.write_text(stamp.sub(lambda match: match.group(1) + current.group(2) + match.group(3), text, count=1),
+                        encoding="utf-8")
 
 
 def build_and_test(tree, build, targets=None, compiler=None):
@@ -152,6 +178,13 @@ def self_test(tag, compiler=None):
     root = pathlib.Path(tempfile.mkdtemp(prefix="metl-compat-self-test-"))
     try:
         tree = stage(tag, root)
+        for name, stamp in VERSION_STAMPS:
+            staged = stamp.search((tree / name).read_text(encoding="utf-8")).group(2)
+            current = stamp.search((REPO / name).read_text(encoding="utf-8")).group(2)
+            if staged != current:
+                print(f"::error::self-test: the staged {name} says {staged}, but the headers it builds "
+                      f"are {current}", file=sys.stderr)
+                return 1
         header = tree / "include" / "metl" / "fixed_vector.hpp"
         text = header.read_text()
         if "bool try_push_back(" not in text:
