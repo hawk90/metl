@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(
   metl
-  VERSION 1.2.3
+  VERSION 1.3.0
   DESCRIPTION "Modern Embedded Template Library"
   HOMEPAGE_URL "https://github.com/hawk90/metl"
   LANGUAGES CXX

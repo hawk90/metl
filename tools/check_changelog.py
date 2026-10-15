@@ -133,7 +133,7 @@ def assemble(root, version, date):
         match = FRAGMENT_NAME.match(path.name)
         if match and match.group(1) != INTERNAL:
             by_type[match.group(1)].append(path.read_text(encoding="utf-8").strip())
-    sections = [f"### {kind.capitalize()}\n\n" + "\n\n".join(entries)
+    sections = [f"### {kind.capitalize()}\n\n" + "\n".join(entries)
                 for kind, entries in by_type.items() if entries]
     if not sections:
         raise SystemExit(f"::error::{FRAGMENTS}/ holds no fragments; nothing to release")
@@ -219,12 +219,15 @@ def self_test():
         (root / FRAGMENTS / "1-f-returns-long.changed.md").write_text("- `f` returns `long`.\n")
         (root / FRAGMENTS / "2-g.fixed.md").write_text("- `g` no longer crashes.\n")
         (root / FRAGMENTS / "3-h.added.md").write_text("- `h`.\n")
+        (root / FRAGMENTS / "4-k.fixed.md").write_text("- `k` no longer leaks.\n")
         count = assemble(root, "1.1.0", "2026-02-02")
         text = (root / CHANGELOG).read_text()
         order = [text.find(s) for s in ("## [1.1.0] - 2026-02-02", "### Added", "### Changed", "### Fixed",
                                         "## [1.0.0]")]
-        if count != 3 or -1 in order or order != sorted(order):
+        if count != 4 or -1 in order or order != sorted(order):
             failures.append(f"--assemble should write Added, Changed, Fixed under 1.1.0 in that order:\n{text}")
+        if "- `g` no longer crashes.\n- `k` no longer leaks.\n" not in text:
+            failures.append(f"--assemble should keep one section's entries a tight list, one per line (#400):\n{text}")
         if [p.name for p in (root / FRAGMENTS).iterdir()] != ["README.md"]:
             failures.append("--assemble should delete the fragments it used, and only those")
         if "Only the declaration moved" in text or "### Internal" in text:
