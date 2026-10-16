@@ -1,369 +1,369 @@
 _ZN9metl_fuzz11byte_readerC2EPKhm:
-   42|    341|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
+   42|    325|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
 _ZNK9metl_fuzz11byte_reader5emptyEv:
-   45|  14.7k|  bool empty() const noexcept { return remaining() == 0; }
+   45|  11.7k|  bool empty() const noexcept { return remaining() == 0; }
 _ZNK9metl_fuzz11byte_reader9remainingEv:
-   44|  14.7k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
+   44|  11.7k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
   ------------------
-  |  Branch (44:51): [True: 14.4k, False: 341]
+  |  Branch (44:51): [True: 11.4k, False: 325]
   ------------------
 _ZN9metl_fuzz11byte_reader4byteEv:
-   48|  43.2k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
+   48|  34.4k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
   ------------------
-  |  Branch (48:41): [True: 42.9k, False: 249]
+  |  Branch (48:41): [True: 34.1k, False: 244]
   ------------------
 _ZN9metl_fuzz11byte_reader7integerItEET_v:
-   52|  14.4k|  UInt integer() noexcept {
-   53|  14.4k|    UInt value = 0;
-   54|  43.2k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
+   52|  11.4k|  UInt integer() noexcept {
+   53|  11.4k|    UInt value = 0;
+   54|  34.4k|    for (std::size_t i = 0; i < sizeof(UInt); ++i) {
   ------------------
-  |  Branch (54:29): [True: 28.8k, False: 14.4k]
+  |  Branch (54:29): [True: 22.9k, False: 11.4k]
   ------------------
-   55|  28.8k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
-   56|  28.8k|    }
-   57|  14.4k|    return value;
-   58|  14.4k|  }
+   55|  22.9k|      value = static_cast<UInt>(value | (static_cast<UInt>(byte()) << (8u * i)));
+   56|  22.9k|    }
+   57|  11.4k|    return value;
+   58|  11.4k|  }
 
 LLVMFuzzerTestOneInput:
-   57|    341|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
-   58|    341|  metl_fuzz::byte_reader in(data, size);
-   59|    341|  set_type set;
+   57|    325|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
+   58|    325|  metl_fuzz::byte_reader in(data, size);
+   59|    325|  set_type set;
    60|       |
-   61|  14.7k|  while (!in.empty()) {
+   61|  11.7k|  while (!in.empty()) {
   ------------------
-  |  Branch (61:10): [True: 14.4k, False: 341]
+  |  Branch (61:10): [True: 11.4k, False: 325]
   ------------------
    62|       |    // A small key space on purpose: collisions and repeated keys are what
    63|       |    // exercise probing and tombstones, and a full 16-bit key space would make
    64|       |    // both rare.
-   65|  14.4k|    const auto key = static_cast<std::uint16_t>(in.integer<std::uint16_t>() % 64u);
+   65|  11.4k|    const auto key = static_cast<std::uint16_t>(in.integer<std::uint16_t>() % 64u);
    66|       |
-   67|  14.4k|    switch (in.byte() % 5u) {
-   68|  5.13k|      case 0: {  // try_emplace
+   67|  11.4k|    switch (in.byte() % 5u) {
+   68|  3.60k|      case 0: {  // try_emplace
   ------------------
-  |  Branch (68:7): [True: 5.13k, False: 9.26k]
+  |  Branch (68:7): [True: 3.60k, False: 7.86k]
   ------------------
-   69|  5.13k|        const bool present_before = set.contains(key);
-   70|  5.13k|        const std::size_t size_before = set.size();
-   71|  5.13k|        const bool inserted = set.try_emplace(std::uint16_t{key});
-   72|  5.13k|        if (inserted) {
+   69|  3.60k|        const bool present_before = set.contains(key);
+   70|  3.60k|        const std::size_t size_before = set.size();
+   71|  3.60k|        const bool inserted = set.try_emplace(std::uint16_t{key});
+   72|  3.60k|        if (inserted) {
   ------------------
-  |  Branch (72:13): [True: 2.42k, False: 2.71k]
+  |  Branch (72:13): [True: 1.71k, False: 1.89k]
   ------------------
-   73|  2.42k|          if (present_before) {
+   73|  1.71k|          if (present_before) {
   ------------------
-  |  Branch (73:15): [True: 0, False: 2.42k]
+  |  Branch (73:15): [True: 0, False: 1.71k]
   ------------------
    74|      0|            METL_FUZZ_TRAP();
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
    75|      0|          }
-   76|  2.42k|          if (set.size() != size_before + 1 || !set.contains(key)) {
+   76|  1.71k|          if (set.size() != size_before + 1 || !set.contains(key)) {
   ------------------
-  |  Branch (76:15): [True: 0, False: 2.42k]
-  |  Branch (76:48): [True: 0, False: 2.42k]
+  |  Branch (76:15): [True: 0, False: 1.71k]
+  |  Branch (76:48): [True: 0, False: 1.71k]
   ------------------
    77|      0|            METL_FUZZ_TRAP();
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
    78|      0|          }
-   79|  2.71k|        } else {
+   79|  1.89k|        } else {
    80|       |          // Refused: either a duplicate, or the table is full. Either way the
    81|       |          // set must be unchanged.
-   82|  2.71k|          if (set.size() != size_before) {
+   82|  1.89k|          if (set.size() != size_before) {
   ------------------
-  |  Branch (82:15): [True: 0, False: 2.71k]
+  |  Branch (82:15): [True: 0, False: 1.89k]
   ------------------
    83|      0|            METL_FUZZ_TRAP();
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
    84|      0|          }
-   85|  2.71k|          if (!present_before && set.size() < kCapacity) {
+   85|  1.89k|          if (!present_before && set.size() < kCapacity) {
   ------------------
-  |  Branch (85:15): [True: 1.64k, False: 1.07k]
-  |  Branch (85:34): [True: 0, False: 1.64k]
+  |  Branch (85:15): [True: 1.16k, False: 732]
+  |  Branch (85:34): [True: 0, False: 1.16k]
   ------------------
    86|      0|            METL_FUZZ_TRAP();  // refused a new key while there was room
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
    87|      0|          }
-   88|  2.71k|        }
-   89|  5.13k|        break;
-   90|  5.13k|      }
-   91|  5.13k|      case 1: {  // erase -- the operation that can break a probe chain
+   88|  1.89k|        }
+   89|  3.60k|        break;
+   90|  3.60k|      }
+   91|  3.60k|      case 1: {  // erase -- the operation that can break a probe chain
   ------------------
-  |  Branch (91:7): [True: 2.35k, False: 12.0k]
+  |  Branch (91:7): [True: 1.30k, False: 10.1k]
   ------------------
-   92|  2.35k|        const bool present_before = set.contains(key);
-   93|  2.35k|        const std::size_t size_before = set.size();
-   94|  2.35k|        const bool erased = set.erase(key);
-   95|  2.35k|        if (erased != present_before) {
+   92|  1.30k|        const bool present_before = set.contains(key);
+   93|  1.30k|        const std::size_t size_before = set.size();
+   94|  1.30k|        const bool erased = set.erase(key);
+   95|  1.30k|        if (erased != present_before) {
   ------------------
-  |  Branch (95:13): [True: 0, False: 2.35k]
+  |  Branch (95:13): [True: 0, False: 1.30k]
   ------------------
    96|      0|          METL_FUZZ_TRAP();
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
    97|      0|        }
-   98|  2.35k|        if (set.size() != size_before - (erased ? 1u : 0u)) {
+   98|  1.30k|        if (set.size() != size_before - (erased ? 1u : 0u)) {
   ------------------
-  |  Branch (98:13): [True: 0, False: 2.35k]
-  |  Branch (98:42): [True: 828, False: 1.53k]
+  |  Branch (98:13): [True: 0, False: 1.30k]
+  |  Branch (98:42): [True: 399, False: 903]
   ------------------
    99|      0|          METL_FUZZ_TRAP();
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
   100|      0|        }
-  101|  2.35k|        if (set.contains(key)) {
+  101|  1.30k|        if (set.contains(key)) {
   ------------------
-  |  Branch (101:13): [True: 0, False: 2.35k]
+  |  Branch (101:13): [True: 0, False: 1.30k]
   ------------------
   102|      0|          METL_FUZZ_TRAP();
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
   103|      0|        }
-  104|  2.35k|        break;
-  105|  2.35k|      }
-  106|  2.35k|      case 2: {  // find / contains must agree
+  104|  1.30k|        break;
+  105|  1.30k|      }
+  106|  1.30k|      case 2: {  // find / contains must agree
   ------------------
-  |  Branch (106:7): [True: 807, False: 13.5k]
+  |  Branch (106:7): [True: 811, False: 10.6k]
   ------------------
-  107|    807|        if ((set.find(key) != nullptr) != set.contains(key)) {
+  107|    811|        if ((set.find(key) != nullptr) != set.contains(key)) {
   ------------------
-  |  Branch (107:13): [True: 0, False: 807]
+  |  Branch (107:13): [True: 0, False: 811]
   ------------------
   108|      0|          METL_FUZZ_TRAP();
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
   109|      0|        }
-  110|    807|        break;
-  111|    807|      }
-  112|  5.01k|      case 3: {  // fill to the brim, then drain -- the tombstone-heavy path
+  110|    811|        break;
+  111|    811|      }
+  112|  4.72k|      case 3: {  // fill to the brim, then drain -- the tombstone-heavy path
   ------------------
-  |  Branch (112:7): [True: 5.01k, False: 9.38k]
+  |  Branch (112:7): [True: 4.72k, False: 6.74k]
   ------------------
-  113|  70.6k|        for (std::uint16_t k = 0; k < 64 && set.size() < kCapacity; ++k) {
+  113|  70.0k|        for (std::uint16_t k = 0; k < 64 && set.size() < kCapacity; ++k) {
   ------------------
-  |  Branch (113:35): [True: 70.6k, False: 0]
-  |  Branch (113:45): [True: 65.5k, False: 5.01k]
+  |  Branch (113:35): [True: 70.0k, False: 0]
+  |  Branch (113:45): [True: 65.2k, False: 4.72k]
   ------------------
-  114|  65.5k|          (void)set.try_emplace(std::uint16_t{k});
-  115|  65.5k|        }
-  116|  5.01k|        if (set.size() != kCapacity) {
+  114|  65.2k|          (void)set.try_emplace(std::uint16_t{k});
+  115|  65.2k|        }
+  116|  4.72k|        if (set.size() != kCapacity) {
   ------------------
-  |  Branch (116:13): [True: 0, False: 5.01k]
+  |  Branch (116:13): [True: 0, False: 4.72k]
   ------------------
   117|      0|          METL_FUZZ_TRAP();  // could not fill a table that reports room
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
   118|      0|        }
-  119|   165k|        for (std::uint16_t k = 0; k < 64; k += 2) {
+  119|   155k|        for (std::uint16_t k = 0; k < 64; k += 2) {
   ------------------
-  |  Branch (119:35): [True: 160k, False: 5.01k]
+  |  Branch (119:35): [True: 151k, False: 4.72k]
   ------------------
-  120|   160k|          (void)set.erase(k);
-  121|   160k|        }
+  120|   151k|          (void)set.erase(k);
+  121|   151k|        }
   122|       |        // Everything still present must still be reachable after that many
   123|       |        // tombstones -- this is the reclaim path's actual job.
-  124|  5.01k|        check_invariants(set);
-  125|  5.01k|        break;
-  126|  5.01k|      }
-  127|  1.08k|      default: {
+  124|  4.72k|        check_invariants(set);
+  125|  4.72k|        break;
+  126|  4.72k|      }
+  127|  1.03k|      default: {
   ------------------
-  |  Branch (127:7): [True: 1.08k, False: 13.3k]
+  |  Branch (127:7): [True: 1.03k, False: 10.4k]
   ------------------
-  128|  1.08k|        set.clear();
-  129|  1.08k|        if (!set.empty() || set.size() != 0) {
+  128|  1.03k|        set.clear();
+  129|  1.03k|        if (!set.empty() || set.size() != 0) {
   ------------------
-  |  Branch (129:13): [True: 0, False: 1.08k]
-  |  Branch (129:29): [True: 0, False: 1.08k]
+  |  Branch (129:13): [True: 0, False: 1.03k]
+  |  Branch (129:29): [True: 0, False: 1.03k]
   ------------------
   130|      0|          METL_FUZZ_TRAP();
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
   131|      0|        }
-  132|  1.08k|        break;
-  133|  1.08k|      }
-  134|  14.4k|    }
-  135|  14.4k|    check_invariants(set);
-  136|  14.4k|  }
+  132|  1.03k|        break;
+  133|  1.03k|      }
+  134|  11.4k|    }
+  135|  11.4k|    check_invariants(set);
+  136|  11.4k|  }
   137|       |
-  138|    341|  return 0;
-  139|    341|}
+  138|    325|  return 0;
+  139|    325|}
 fuzz_unordered_set.cpp:_ZN12_GLOBAL__N_116check_invariantsERKN4metl20static_unordered_setItLm16ENSt3__14hashItEENS2_8equal_toItEEEE:
-   39|  19.4k|void check_invariants(const set_type& set) {
-   40|  19.4k|  if (set.size() > kCapacity) {
+   39|  16.1k|void check_invariants(const set_type& set) {
+   40|  16.1k|  if (set.size() > kCapacity) {
   ------------------
-  |  Branch (40:7): [True: 0, False: 19.4k]
+  |  Branch (40:7): [True: 0, False: 16.1k]
   ------------------
    41|      0|    METL_FUZZ_TRAP();
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
    42|      0|  }
-   43|  19.4k|  std::size_t seen = 0;
-   44|   167k|  for (const auto& key : set) {
+   43|  16.1k|  std::size_t seen = 0;
+   44|   129k|  for (const auto& key : set) {
   ------------------
-  |  Branch (44:24): [True: 167k, False: 19.4k]
+  |  Branch (44:24): [True: 129k, False: 16.1k]
   ------------------
-   45|   167k|    if (!set.contains(key)) {
+   45|   129k|    if (!set.contains(key)) {
   ------------------
-  |  Branch (45:9): [True: 0, False: 167k]
+  |  Branch (45:9): [True: 0, False: 129k]
   ------------------
    46|      0|      METL_FUZZ_TRAP();  // present in storage, unreachable by lookup
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
    47|      0|    }
-   48|   167k|    ++seen;
-   49|   167k|  }
-   50|  19.4k|  if (seen != set.size()) {
+   48|   129k|    ++seen;
+   49|   129k|  }
+   50|  16.1k|  if (seen != set.size()) {
   ------------------
-  |  Branch (50:7): [True: 0, False: 19.4k]
+  |  Branch (50:7): [True: 0, False: 16.1k]
   ------------------
    51|      0|    METL_FUZZ_TRAP();
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
    52|      0|  }
-   53|  19.4k|}
+   53|  16.1k|}
 
 _ZN4metl6detail8hash_mixEm:
-  112|   454k|METL_NODISCARD constexpr std::size_t hash_mix(std::size_t x) noexcept {
-  113|   454k|  x ^= x >> active_hash_mix::s1;
-  114|   454k|  x *= active_hash_mix::m1;
-  115|   454k|  x ^= x >> active_hash_mix::s2;
-  116|   454k|  x *= active_hash_mix::m2;
-  117|   454k|  x ^= x >> active_hash_mix::s3;
-  118|   454k|  return x;
-  119|   454k|}
+  112|   399k|METL_NODISCARD constexpr std::size_t hash_mix(std::size_t x) noexcept {
+  113|   399k|  x ^= x >> active_hash_mix::s1;
+  114|   399k|  x *= active_hash_mix::m1;
+  115|   399k|  x ^= x >> active_hash_mix::s2;
+  116|   399k|  x *= active_hash_mix::m2;
+  117|   399k|  x ^= x >> active_hash_mix::s3;
+  118|   399k|  return x;
+  119|   399k|}
 
 _ZNK4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE5beginEv:
-  340|  19.4k|  METL_NODISCARD const_iterator begin() const noexcept { return const_iterator(this, 0); }
+  340|  16.1k|  METL_NODISCARD const_iterator begin() const noexcept { return const_iterator(this, 0); }
 _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE14const_iteratorC2EPKS6_m:
-  245|  38.8k|    const_iterator(const static_unordered_set* set, size_type index) noexcept : set_(set), index_(index) {
-  246|  38.8k|      skip_to_occupied();
-  247|  38.8k|    }
+  245|  32.3k|    const_iterator(const static_unordered_set* set, size_type index) noexcept : set_(set), index_(index) {
+  246|  32.3k|      skip_to_occupied();
+  247|  32.3k|    }
 _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE14const_iterator16skip_to_occupiedEv:
-  249|   206k|    void skip_to_occupied() noexcept {
-  250|   206k|      if (set_ == nullptr) {
+  249|   161k|    void skip_to_occupied() noexcept {
+  250|   161k|      if (set_ == nullptr) {
   ------------------
-  |  Branch (250:11): [True: 0, False: 206k]
+  |  Branch (250:11): [True: 0, False: 161k]
   ------------------
   251|      0|        return;
   252|      0|      }
   253|       |
-  254|   660k|      while (index_ < bucket_count && set_->states_[index_] != slot_state::occupied) {
+  254|   550k|      while (index_ < bucket_count && set_->states_[index_] != slot_state::occupied) {
   ------------------
-  |  Branch (254:14): [True: 621k, False: 38.8k]
-  |  Branch (254:39): [True: 453k, False: 167k]
+  |  Branch (254:14): [True: 518k, False: 32.3k]
+  |  Branch (254:39): [True: 389k, False: 129k]
   ------------------
-  255|   453k|        ++index_;
-  256|   453k|      }
-  257|   206k|    }
+  255|   389k|        ++index_;
+  256|   389k|      }
+  257|   161k|    }
 _ZNK4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE3endEv:
-  345|  19.4k|  METL_NODISCARD const_iterator end() const noexcept { return const_iterator(this, bucket_count); }
+  345|  16.1k|  METL_NODISCARD const_iterator end() const noexcept { return const_iterator(this, bucket_count); }
 _ZN4metlneERKNS_20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE14const_iteratorES9_:
-  238|   187k|    friend bool operator!=(const const_iterator& lhs, const const_iterator& rhs) noexcept {
-  239|   187k|      return !(lhs == rhs);
-  240|   187k|    }
+  238|   145k|    friend bool operator!=(const const_iterator& lhs, const const_iterator& rhs) noexcept {
+  239|   145k|      return !(lhs == rhs);
+  240|   145k|    }
 _ZN4metleqERKNS_20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE14const_iteratorES9_:
-  234|   187k|    friend bool operator==(const const_iterator& lhs, const const_iterator& rhs) noexcept {
-  235|   187k|      return lhs.set_ == rhs.set_ && lhs.index_ == rhs.index_;
+  234|   145k|    friend bool operator==(const const_iterator& lhs, const const_iterator& rhs) noexcept {
+  235|   145k|      return lhs.set_ == rhs.set_ && lhs.index_ == rhs.index_;
   ------------------
-  |  Branch (235:14): [True: 187k, False: 0]
-  |  Branch (235:38): [True: 19.4k, False: 167k]
+  |  Branch (235:14): [True: 145k, False: 0]
+  |  Branch (235:38): [True: 16.1k, False: 129k]
   ------------------
-  236|   187k|    }
+  236|   145k|    }
 _ZNK4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE14const_iteratordeEv:
-  219|   167k|    reference operator*() const noexcept { return *set_->slot_value(index_); }
+  219|   129k|    reference operator*() const noexcept { return *set_->slot_value(index_); }
 _ZNK4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE10slot_valueEm:
-  628|   719k|  const value_type* slot_value(size_type index) const noexcept { return storage_[index].ptr(); }
+  628|   564k|  const value_type* slot_value(size_type index) const noexcept { return storage_[index].ptr(); }
 _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE14const_iteratorppEv:
-  222|   167k|    const_iterator& operator++() noexcept {
-  223|   167k|      ++index_;
-  224|   167k|      skip_to_occupied();
-  225|   167k|      return *this;
-  226|   167k|    }
+  222|   129k|    const_iterator& operator++() noexcept {
+  223|   129k|      ++index_;
+  224|   129k|      skip_to_occupied();
+  225|   129k|      return *this;
+  226|   129k|    }
 _ZNK4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE4sizeEv:
-  353|   132k|  METL_NODISCARD size_type size() const noexcept { return size_; }
+  353|   119k|  METL_NODISCARD size_type size() const noexcept { return size_; }
 _ZNK4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE8containsERKt:
-  358|   180k|  METL_NODISCARD bool contains(const key_type& key) const noexcept(lookup_cannot_throw<key_type>) {
-  359|   180k|    return find(key) != nullptr;
-  360|   180k|  }
+  358|   137k|  METL_NODISCARD bool contains(const key_type& key) const noexcept(lookup_cannot_throw<key_type>) {
+  359|   137k|    return find(key) != nullptr;
+  360|   137k|  }
 _ZNK4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE4findERKt:
-  369|   180k|  METL_NODISCARD const value_type* find(const key_type& key) const noexcept(lookup_cannot_throw<key_type>) {
-  370|   180k|    const size_type index = find_existing_index(key);
-  371|   180k|    return index == npos ? nullptr : slot_value(index);
+  369|   137k|  METL_NODISCARD const value_type* find(const key_type& key) const noexcept(lookup_cannot_throw<key_type>) {
+  370|   137k|    const size_type index = find_existing_index(key);
+  371|   137k|    return index == npos ? nullptr : slot_value(index);
   ------------------
-  |  Branch (371:12): [True: 8.52k, False: 172k]
+  |  Branch (371:12): [True: 5.64k, False: 132k]
   ------------------
-  372|   180k|  }
+  372|   137k|  }
 _ZNK4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE19find_existing_indexItEEmRKT_:
-  638|   344k|  size_type find_existing_index(const K& key) const noexcept(lookup_cannot_throw<K>) {
-  639|   344k|    if (Capacity == 0) {
+  638|   291k|  size_type find_existing_index(const K& key) const noexcept(lookup_cannot_throw<K>) {
+  639|   291k|    if (Capacity == 0) {
   ------------------
-  |  Branch (639:9): [Folded, False: 344k]
+  |  Branch (639:9): [Folded, False: 291k]
   ------------------
   640|      0|      return npos;
   641|      0|    }
   642|       |
-  643|   344k|    const size_type start = bucket_index(key);
-  644|   495k|    for (size_type probe = 0; probe < bucket_count; ++probe) {
+  643|   291k|    const size_type start = bucket_index(key);
+  644|   403k|    for (size_type probe = 0; probe < bucket_count; ++probe) {
   ------------------
-  |  Branch (644:31): [True: 495k, False: 0]
+  |  Branch (644:31): [True: 403k, False: 0]
   ------------------
-  645|   495k|      const size_type index = (start + probe) & (bucket_count - 1);
-  646|   495k|      if (states_[index] == slot_state::empty) {
+  645|   403k|      const size_type index = (start + probe) & (bucket_count - 1);
+  646|   403k|      if (states_[index] == slot_state::empty) {
   ------------------
-  |  Branch (646:11): [True: 135k, False: 359k]
+  |  Branch (646:11): [True: 123k, False: 280k]
   ------------------
-  647|   135k|        return npos;
-  648|   135k|      }
-  649|   359k|      if (states_[index] == slot_state::occupied && key_equal_(*slot_value(index), key)) {
+  647|   123k|        return npos;
+  648|   123k|      }
+  649|   280k|      if (states_[index] == slot_state::occupied && key_equal_(*slot_value(index), key)) {
   ------------------
-  |  Branch (649:11): [True: 328k, False: 31.0k]
-  |  Branch (649:53): [True: 208k, False: 119k]
+  |  Branch (649:11): [True: 256k, False: 23.8k]
+  |  Branch (649:53): [True: 167k, False: 88.2k]
   ------------------
-  650|   208k|        return index;
-  651|   208k|      }
-  652|   359k|    }
+  650|   167k|        return index;
+  651|   167k|      }
+  652|   280k|    }
   653|      0|    return npos;
-  654|   344k|  }
+  654|   291k|  }
 _ZNK4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE12bucket_indexItEEmRKT_:
-  631|   454k|  size_type bucket_index(const K& key) const noexcept(lookup_cannot_throw<K>) {
+  631|   399k|  size_type bucket_index(const K& key) const noexcept(lookup_cannot_throw<K>) {
   632|       |    // Finalize/avalanche the hash so high-entropy bits reach the low bits that the mask keeps.
   633|       |    // insert and lookup both route through here, so they always agree on the bucket.
-  634|   454k|    return static_cast<size_type>(detail::hash_mix(hasher_(key))) & (bucket_count - 1);
-  635|   454k|  }
+  634|   399k|    return static_cast<size_type>(detail::hash_mix(hasher_(key))) & (bucket_count - 1);
+  635|   399k|  }
 _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEEC2Ev:
-  270|    341|      : size_(0), hasher_(), key_equal_() {
-  271|    341|    initialize_states();
-  272|    341|  }
+  270|    325|      : size_(0), hasher_(), key_equal_() {
+  271|    325|    initialize_states();
+  272|    325|  }
 _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE17initialize_statesEv:
-  620|    341|  void initialize_states() noexcept {
-  621|  11.2k|    for (size_type i = 0; i < bucket_count; ++i) {
+  620|    325|  void initialize_states() noexcept {
+  621|  10.7k|    for (size_type i = 0; i < bucket_count; ++i) {
   ------------------
-  |  Branch (621:27): [True: 10.9k, False: 341]
+  |  Branch (621:27): [True: 10.4k, False: 325]
   ------------------
-  622|  10.9k|      states_[i] = slot_state::empty;
-  623|  10.9k|    }
-  624|    341|    tombstones_ = 0;
-  625|    341|  }
+  622|  10.4k|      states_[i] = slot_state::empty;
+  623|  10.4k|    }
+  624|    325|    tombstones_ = 0;
+  625|    325|  }
 _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEED2Ev:
-  303|    341|  ~static_unordered_set() { clear(); }
+  303|    325|  ~static_unordered_set() { clear(); }
 _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE11try_emplaceItEEbOT_:
-  469|  70.7k|  METL_NODISCARD bool try_emplace(K&& key) {
+  469|  68.8k|  METL_NODISCARD bool try_emplace(K&& key) {
   470|       |    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
   471|       |      // Convert first, so the position, the duplicate check and the stored
   472|       |      // key all come from the same value; a narrowing conversion would
@@ -372,83 +372,83 @@ _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE11try_emp
   475|       |      // warning a narrowing key deserves.
   476|       |      key_type converted(std::forward<K>(key));
   477|       |      return try_emplace(static_cast<key_type&&>(converted));
-  478|  70.7k|    } else {
-  479|  70.7k|      size_type index = npos;
-  480|  70.7k|      if (!locate_insert_index(key, &index)) {
+  478|  68.8k|    } else {
+  479|  68.8k|      size_type index = npos;
+  480|  68.8k|      if (!locate_insert_index(key, &index)) {
   ------------------
-  |  Branch (480:11): [True: 0, False: 70.7k]
+  |  Branch (480:11): [True: 0, False: 68.8k]
   ------------------
   481|      0|        return false;
   482|      0|      }
   483|       |
-  484|  70.7k|      if (states_[index] == slot_state::occupied) {
+  484|  68.8k|      if (states_[index] == slot_state::occupied) {
   ------------------
-  |  Branch (484:11): [True: 28.9k, False: 41.7k]
+  |  Branch (484:11): [True: 28.7k, False: 40.1k]
   ------------------
-  485|  28.9k|        return false;
-  486|  28.9k|      }
+  485|  28.7k|        return false;
+  486|  28.7k|      }
   487|       |
   488|       |      // Capacity is the user-requested element ceiling; bucket_count is the (larger) table size.
   489|       |      // Refuse insertion past Capacity even when an empty/tombstone slot is still available.
-  490|  41.7k|      if (size_ >= Capacity) {
+  490|  40.1k|      if (size_ >= Capacity) {
   ------------------
-  |  Branch (490:11): [True: 1.64k, False: 40.1k]
+  |  Branch (490:11): [True: 1.16k, False: 39.0k]
   ------------------
-  491|  1.64k|        return false;
-  492|  1.64k|      }
+  491|  1.16k|        return false;
+  492|  1.16k|      }
   493|       |
-  494|  40.1k|      (void)construct_at(index, std::forward<K>(key));
-  495|  40.1k|      return true;
-  496|  41.7k|    }
-  497|  70.7k|  }
+  494|  39.0k|      (void)construct_at(index, std::forward<K>(key));
+  495|  39.0k|      return true;
+  496|  40.1k|    }
+  497|  68.8k|  }
 _ZNK4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE19locate_insert_indexItEEbRKT_Pm:
-  657|  74.9k|  bool locate_insert_index(const K& key, size_type* index_out) const noexcept(lookup_cannot_throw<K>) {
-  658|  74.9k|    if (Capacity == 0) {
+  657|  73.1k|  bool locate_insert_index(const K& key, size_type* index_out) const noexcept(lookup_cannot_throw<K>) {
+  658|  73.1k|    if (Capacity == 0) {
   ------------------
-  |  Branch (658:9): [Folded, False: 74.9k]
+  |  Branch (658:9): [Folded, False: 73.1k]
   ------------------
   659|      0|      return false;
   660|      0|    }
   661|       |
-  662|  74.9k|    size_type first_tombstone = npos;
-  663|  74.9k|    const size_type start = bucket_index(key);
-  664|   105k|    for (size_type probe = 0; probe < bucket_count; ++probe) {
+  662|  73.1k|    size_type first_tombstone = npos;
+  663|  73.1k|    const size_type start = bucket_index(key);
+  664|  97.6k|    for (size_type probe = 0; probe < bucket_count; ++probe) {
   ------------------
-  |  Branch (664:31): [True: 105k, False: 0]
+  |  Branch (664:31): [True: 97.6k, False: 0]
   ------------------
-  665|   105k|      const size_type index = (start + probe) & (bucket_count - 1);
-  666|   105k|      if (states_[index] == slot_state::empty) {
+  665|  97.6k|      const size_type index = (start + probe) & (bucket_count - 1);
+  666|  97.6k|      if (states_[index] == slot_state::empty) {
   ------------------
-  |  Branch (666:11): [True: 45.9k, False: 59.0k]
+  |  Branch (666:11): [True: 44.4k, False: 53.1k]
   ------------------
-  667|  45.9k|        *index_out = first_tombstone != npos ? first_tombstone : index;
+  667|  44.4k|        *index_out = first_tombstone != npos ? first_tombstone : index;
   ------------------
-  |  Branch (667:22): [True: 7.50k, False: 38.4k]
+  |  Branch (667:22): [True: 6.19k, False: 38.2k]
   ------------------
-  668|  45.9k|        return true;
-  669|  45.9k|      }
+  668|  44.4k|        return true;
+  669|  44.4k|      }
   670|       |
-  671|  59.0k|      if (states_[index] == slot_state::tombstone) {
+  671|  53.1k|      if (states_[index] == slot_state::tombstone) {
   ------------------
-  |  Branch (671:11): [True: 8.12k, False: 50.9k]
+  |  Branch (671:11): [True: 6.68k, False: 46.5k]
   ------------------
-  672|  8.12k|        if (first_tombstone == npos) {
+  672|  6.68k|        if (first_tombstone == npos) {
   ------------------
-  |  Branch (672:13): [True: 7.50k, False: 627]
+  |  Branch (672:13): [True: 6.19k, False: 490]
   ------------------
-  673|  7.50k|          first_tombstone = index;
-  674|  7.50k|        }
-  675|  8.12k|        continue;
-  676|  8.12k|      }
+  673|  6.19k|          first_tombstone = index;
+  674|  6.19k|        }
+  675|  6.68k|        continue;
+  676|  6.68k|      }
   677|       |
-  678|  50.9k|      if (key_equal_(*slot_value(index), key)) {
+  678|  46.5k|      if (key_equal_(*slot_value(index), key)) {
   ------------------
-  |  Branch (678:11): [True: 28.9k, False: 21.9k]
+  |  Branch (678:11): [True: 28.7k, False: 17.7k]
   ------------------
-  679|  28.9k|        *index_out = index;
-  680|  28.9k|        return true;
-  681|  28.9k|      }
-  682|  50.9k|    }
+  679|  28.7k|        *index_out = index;
+  680|  28.7k|        return true;
+  681|  28.7k|      }
+  682|  46.5k|    }
   683|       |
   684|      0|    if (first_tombstone != npos) {
   ------------------
@@ -461,16 +461,16 @@ _ZNK4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE19locate
   689|      0|    return false;
   690|      0|  }
 _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE12construct_atItEEmmOT_:
-  696|  40.1k|  METL_NODISCARD size_type construct_at(size_type index, K&& key) {
+  696|  39.0k|  METL_NODISCARD size_type construct_at(size_type index, K&& key) {
   697|       |    // Tombstones past ~1/8 of the table: rebuild before placing the new key, so
   698|       |    // negative lookups keep stopping early at an empty slot.
-  699|  40.1k|    if (rebuild_cannot_throw && tombstones_ > bucket_count / 8) {
+  699|  39.0k|    if (rebuild_cannot_throw && tombstones_ > bucket_count / 8) {
   ------------------
-  |  Branch (699:9): [True: 40.1k, Folded]
-  |  Branch (699:33): [True: 4.22k, False: 35.9k]
+  |  Branch (699:9): [True: 39.0k, Folded]
+  |  Branch (699:33): [True: 4.24k, False: 34.7k]
   ------------------
-  700|  4.22k|      value_type entry(std::forward<K>(key));
-  701|  4.22k|      rehash_in_place();
+  700|  4.24k|      value_type entry(std::forward<K>(key));
+  701|  4.24k|      rehash_in_place();
   702|       |      // The tombstones that triggered the rebuild are empty slots after it,
   703|       |      // so a slot always exists and no input reaches this guard: it is
   704|       |      // defence in depth against a rebuild bug, and no test can cover it.
@@ -478,38 +478,38 @@ _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE12constru
   706|       |      // string is shared with place_at's, not a new one in .rodata.
   707|       |      // (index == npos cannot get this far: locate fails only when there are no
   708|       |      // tombstones, and then this branch is not taken. place_at guards that.)
-  709|  4.22k|      index = npos;
-  710|  4.22k|      (void)locate_insert_index(entry, &index);
-  711|  4.22k|      METL_HARDEN(index < bucket_count);
+  709|  4.24k|      index = npos;
+  710|  4.24k|      (void)locate_insert_index(entry, &index);
+  711|  4.24k|      METL_HARDEN(index < bucket_count);
   ------------------
-  |  |  140|  4.22k|  do {                                                             \
-  |  |  141|  4.22k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  140|  4.24k|  do {                                                             \
+  |  |  141|  4.24k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|  4.22k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  4.24k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 4.22k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 4.24k]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |  142|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |  143|      0|    }                                                              \
-  |  |  144|  4.22k|  } while (false)
+  |  |  144|  4.24k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (144:12): [Folded, False: 4.22k]
+  |  |  |  Branch (144:12): [Folded, False: 4.24k]
   |  |  ------------------
   ------------------
-  712|  4.22k|      ::new (storage_[index].addr()) value_type(static_cast<value_type&&>(entry));
-  713|  4.22k|      states_[index] = slot_state::occupied;
-  714|  4.22k|      ++size_;
-  715|  4.22k|      return index;
-  716|  4.22k|    }
-  717|  35.9k|    place_at(index, std::forward<K>(key));
-  718|  35.9k|    return index;
-  719|  40.1k|  }
+  712|  4.24k|      ::new (storage_[index].addr()) value_type(static_cast<value_type&&>(entry));
+  713|  4.24k|      states_[index] = slot_state::occupied;
+  714|  4.24k|      ++size_;
+  715|  4.24k|      return index;
+  716|  4.24k|    }
+  717|  34.7k|    place_at(index, std::forward<K>(key));
+  718|  34.7k|    return index;
+  719|  39.0k|  }
 _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE15rehash_in_placeEv:
-  763|  4.22k|  void rehash_in_place() noexcept(hash_cannot_throw) {
-  764|  4.22k|    if (Capacity == 0) {
+  763|  4.24k|  void rehash_in_place() noexcept(hash_cannot_throw) {
+  764|  4.24k|    if (Capacity == 0) {
   ------------------
-  |  Branch (764:9): [Folded, False: 4.22k]
+  |  Branch (764:9): [Folded, False: 4.24k]
   ------------------
   765|      0|      return;
   766|      0|    }
@@ -519,71 +519,71 @@ _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE15rehash_
   770|       |    // the rebuild no genuine tombstones exist, so this reuse is unambiguous.
   771|   139k|    for (size_type i = 0; i < bucket_count; ++i) {
   ------------------
-  |  Branch (771:27): [True: 135k, False: 4.22k]
+  |  Branch (771:27): [True: 135k, False: 4.24k]
   ------------------
   772|   135k|      states_[i] = (states_[i] == slot_state::occupied) ? slot_state::tombstone : slot_state::empty;
   ------------------
-  |  Branch (772:20): [True: 35.6k, False: 99.5k]
+  |  Branch (772:20): [True: 35.2k, False: 100k]
   ------------------
   773|   135k|    }
-  774|  4.22k|    tombstones_ = 0;
+  774|  4.24k|    tombstones_ = 0;
   775|       |
   776|       |    // Phase 2: place each unplaced element at the first slot in its probe run
   777|       |    // that is not already occupied, cascading through any element it displaces.
-  778|  4.22k|    storage_for<value_type> carry;
+  778|  4.24k|    storage_for<value_type> carry;
   779|   139k|    for (size_type i = 0; i < bucket_count; ++i) {
   ------------------
-  |  Branch (779:27): [True: 135k, False: 4.22k]
+  |  Branch (779:27): [True: 135k, False: 4.24k]
   ------------------
   780|   135k|      if (states_[i] != slot_state::tombstone) {
   ------------------
-  |  Branch (780:11): [True: 100k, False: 35.1k]
+  |  Branch (780:11): [True: 101k, False: 34.6k]
   ------------------
-  781|   100k|        continue;
-  782|   100k|      }
+  781|   101k|        continue;
+  782|   101k|      }
   783|       |
-  784|  35.1k|      ::new (carry.addr()) value_type(static_cast<value_type&&>(*slot_value(i)));
-  785|  35.1k|      slot_value(i)->~value_type();
-  786|  35.1k|      states_[i] = slot_state::empty;
+  784|  34.6k|      ::new (carry.addr()) value_type(static_cast<value_type&&>(*slot_value(i)));
+  785|  34.6k|      slot_value(i)->~value_type();
+  786|  34.6k|      states_[i] = slot_state::empty;
   787|       |
-  788|  35.6k|      for (;;) {
-  789|  35.6k|        size_type target = bucket_during_rebuild(carry);
-  790|  37.6k|        while (states_[target] == slot_state::occupied) {
+  788|  35.2k|      for (;;) {
+  789|  35.2k|        size_type target = bucket_during_rebuild(carry);
+  790|  36.8k|        while (states_[target] == slot_state::occupied) {
   ------------------
-  |  Branch (790:16): [True: 2.00k, False: 35.6k]
+  |  Branch (790:16): [True: 1.57k, False: 35.2k]
   ------------------
-  791|  2.00k|          target = (target + 1) & (bucket_count - 1);
-  792|  2.00k|        }
+  791|  1.57k|          target = (target + 1) & (bucket_count - 1);
+  792|  1.57k|        }
   793|       |
-  794|  35.6k|        if (states_[target] == slot_state::empty) {
+  794|  35.2k|        if (states_[target] == slot_state::empty) {
   ------------------
-  |  Branch (794:13): [True: 35.1k, False: 479]
+  |  Branch (794:13): [True: 34.6k, False: 559]
   ------------------
-  795|  35.1k|          ::new (storage_[target].addr()) value_type(static_cast<value_type&&>(carry.ref()));
-  796|  35.1k|          carry.ptr()->~value_type();
-  797|  35.1k|          states_[target] = slot_state::occupied;
-  798|  35.1k|          break;
-  799|  35.1k|        }
+  795|  34.6k|          ::new (storage_[target].addr()) value_type(static_cast<value_type&&>(carry.ref()));
+  796|  34.6k|          carry.ptr()->~value_type();
+  797|  34.6k|          states_[target] = slot_state::occupied;
+  798|  34.6k|          break;
+  799|  34.6k|        }
   800|       |
   801|       |        // states_[target] is an unplaced element: settle carry here and continue
   802|       |        // placing the element it displaced.
-  803|    479|        storage_for<value_type> displaced;
-  804|    479|        ::new (displaced.addr()) value_type(static_cast<value_type&&>(*slot_value(target)));
-  805|    479|        slot_value(target)->~value_type();
-  806|    479|        ::new (storage_[target].addr()) value_type(static_cast<value_type&&>(carry.ref()));
-  807|    479|        carry.ptr()->~value_type();
-  808|    479|        states_[target] = slot_state::occupied;
-  809|    479|        ::new (carry.addr()) value_type(static_cast<value_type&&>(displaced.ref()));
-  810|    479|        displaced.ptr()->~value_type();
-  811|    479|      }
-  812|  35.1k|    }
-  813|  4.22k|  }
+  803|    559|        storage_for<value_type> displaced;
+  804|    559|        ::new (displaced.addr()) value_type(static_cast<value_type&&>(*slot_value(target)));
+  805|    559|        slot_value(target)->~value_type();
+  806|    559|        ::new (storage_[target].addr()) value_type(static_cast<value_type&&>(carry.ref()));
+  807|    559|        carry.ptr()->~value_type();
+  808|    559|        states_[target] = slot_state::occupied;
+  809|    559|        ::new (carry.addr()) value_type(static_cast<value_type&&>(displaced.ref()));
+  810|    559|        displaced.ptr()->~value_type();
+  811|    559|      }
+  812|  34.6k|    }
+  813|  4.24k|  }
 _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE10slot_valueEm:
-  627|   111k|  value_type* slot_value(size_type index) noexcept { return storage_[index].ptr(); }
+  627|   109k|  value_type* slot_value(size_type index) noexcept { return storage_[index].ptr(); }
 _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE21bucket_during_rebuildERNS_11storage_forItEE:
-  579|  35.6k|  size_type bucket_during_rebuild(storage_for<value_type>& carry) noexcept(hash_cannot_throw) {
-  580|  35.6k|    if constexpr (hash_cannot_throw) {
-  581|  35.6k|      return bucket_index(carry.ref());
+  579|  35.2k|  size_type bucket_during_rebuild(storage_for<value_type>& carry) noexcept(hash_cannot_throw) {
+  580|  35.2k|    if constexpr (hash_cannot_throw) {
+  581|  35.2k|      return bucket_index(carry.ref());
   582|       |    } else {
   583|       |#if METL_NO_EXCEPTIONS
   584|       |      return bucket_index(carry.ref());
@@ -604,103 +604,103 @@ _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE21bucket_
   599|       |      }
   600|       |#endif
   601|       |    }
-  602|  35.6k|  }
+  602|  35.2k|  }
 _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE8place_atItEEvmOT_:
-  722|  35.9k|  void place_at(size_type index, K&& key) {
+  722|  34.7k|  void place_at(size_type index, K&& key) {
   723|       |    // Always-on hard guard mirroring static_unordered_map: locate_insert_index
   724|       |    // leaves index == npos only on a full table, and this must never escalate
   725|       |    // into a wild out-of-bounds construct_at even at METL_HARDENING_NONE or with
   726|       |    // a user-disabled METL_ASSERT.
-  727|  35.9k|    METL_HARDEN(index < bucket_count);
+  727|  34.7k|    METL_HARDEN(index < bucket_count);
   ------------------
-  |  |  140|  35.9k|  do {                                                             \
-  |  |  141|  35.9k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
+  |  |  140|  34.7k|  do {                                                             \
+  |  |  141|  34.7k|    if (METL_PREDICT_FALSE(!(expr))) {                             \
   |  |  ------------------
-  |  |  |  |   25|  35.9k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  34.7k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 35.9k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 34.7k]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |  142|      0|      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
   |  |  143|      0|    }                                                              \
-  |  |  144|  35.9k|  } while (false)
+  |  |  144|  34.7k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (144:12): [Folded, False: 35.9k]
+  |  |  |  Branch (144:12): [Folded, False: 34.7k]
   |  |  ------------------
   ------------------
-  728|  35.9k|    ::new (storage_[index].addr()) value_type(std::forward<K>(key));
+  728|  34.7k|    ::new (storage_[index].addr()) value_type(std::forward<K>(key));
   729|       |    // Reusing a tombstone slot reclaims it: keep the tombstone count accurate
   730|       |    // so the reclamation threshold reflects only live tombstones. Counted after
   731|       |    // the construction succeeds -- before it, each throwing insert onto the same
   732|       |    // tombstone decremented again, and the count wrapped.
-  733|  35.9k|    if (states_[index] == slot_state::tombstone) {
+  733|  34.7k|    if (states_[index] == slot_state::tombstone) {
   ------------------
-  |  Branch (733:9): [True: 2.58k, False: 33.3k]
+  |  Branch (733:9): [True: 1.27k, False: 33.4k]
   ------------------
-  734|  2.58k|      --tombstones_;
-  735|  2.58k|    }
-  736|  35.9k|    states_[index] = slot_state::occupied;
-  737|  35.9k|    ++size_;
-  738|  35.9k|  }
+  734|  1.27k|      --tombstones_;
+  735|  1.27k|    }
+  736|  34.7k|    states_[index] = slot_state::occupied;
+  737|  34.7k|    ++size_;
+  738|  34.7k|  }
 _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE5eraseERKt:
-  534|   162k|  bool erase(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
-  535|   162k|    const size_type index = find_existing_index(key);
-  536|   162k|    if (index == npos) {
+  534|   152k|  bool erase(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
+  535|   152k|    const size_type index = find_existing_index(key);
+  536|   152k|    if (index == npos) {
   ------------------
-  |  Branch (536:9): [True: 126k, False: 36.2k]
+  |  Branch (536:9): [True: 117k, False: 35.4k]
   ------------------
-  537|   126k|      return false;
-  538|   126k|    }
+  537|   117k|      return false;
+  538|   117k|    }
   539|       |
-  540|  36.2k|    destroy_at(index, slot_state::tombstone);
-  541|  36.2k|    return true;
-  542|   162k|  }
+  540|  35.4k|    destroy_at(index, slot_state::tombstone);
+  541|  35.4k|    return true;
+  542|   152k|  }
 _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE10destroy_atEmNS6_10slot_stateE:
-  743|  40.1k|  void destroy_at(size_type index, slot_state next_state) noexcept {
-  744|  40.1k|    states_[index] = next_state;
-  745|  40.1k|    --size_;
-  746|  40.1k|    if (next_state == slot_state::tombstone) {
+  743|  39.0k|  void destroy_at(size_type index, slot_state next_state) noexcept {
+  744|  39.0k|    states_[index] = next_state;
+  745|  39.0k|    --size_;
+  746|  39.0k|    if (next_state == slot_state::tombstone) {
   ------------------
-  |  Branch (746:9): [True: 36.2k, False: 3.91k]
+  |  Branch (746:9): [True: 35.4k, False: 3.58k]
   ------------------
-  747|  36.2k|      ++tombstones_;
-  748|  36.2k|    }
-  749|  40.1k|    slot_value(index)->~value_type();
-  750|  40.1k|  }
+  747|  35.4k|      ++tombstones_;
+  748|  35.4k|    }
+  749|  39.0k|    slot_value(index)->~value_type();
+  750|  39.0k|  }
 _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE4findERKt:
-  364|    807|  METL_NODISCARD value_type* find(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
-  365|    807|    const size_type index = find_existing_index(key);
-  366|    807|    return index == npos ? nullptr : slot_value(index);
+  364|    811|  METL_NODISCARD value_type* find(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
+  365|    811|    const size_type index = find_existing_index(key);
+  366|    811|    return index == npos ? nullptr : slot_value(index);
   ------------------
-  |  Branch (366:12): [True: 573, False: 234]
+  |  Branch (366:12): [True: 571, False: 240]
   ------------------
-  367|    807|  }
+  367|    811|  }
 _ZN4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE5clearEv:
-  561|  1.42k|  void clear() noexcept {
-  562|  47.0k|    for (size_type i = 0; i < bucket_count; ++i) {
+  561|  1.35k|  void clear() noexcept {
+  562|  44.7k|    for (size_type i = 0; i < bucket_count; ++i) {
   ------------------
-  |  Branch (562:27): [True: 45.6k, False: 1.42k]
+  |  Branch (562:27): [True: 43.3k, False: 1.35k]
   ------------------
-  563|  45.6k|      if (states_[i] == slot_state::occupied) {
+  563|  43.3k|      if (states_[i] == slot_state::occupied) {
   ------------------
-  |  Branch (563:11): [True: 3.91k, False: 41.7k]
+  |  Branch (563:11): [True: 3.58k, False: 39.8k]
   ------------------
-  564|  3.91k|        destroy_at(i, slot_state::empty);
-  565|  41.7k|      } else {
-  566|  41.7k|        states_[i] = slot_state::empty;
-  567|  41.7k|      }
-  568|  45.6k|    }
-  569|  1.42k|    tombstones_ = 0;
-  570|  1.42k|  }
+  564|  3.58k|        destroy_at(i, slot_state::empty);
+  565|  39.8k|      } else {
+  566|  39.8k|        states_[i] = slot_state::empty;
+  567|  39.8k|      }
+  568|  43.3k|    }
+  569|  1.35k|    tombstones_ = 0;
+  570|  1.35k|  }
 _ZNK4metl20static_unordered_setItLm16ENSt3__14hashItEENS1_8equal_toItEEE5emptyEv:
-  349|  1.08k|  METL_NODISCARD bool empty() const noexcept { return size_ == 0; }
+  349|  1.03k|  METL_NODISCARD bool empty() const noexcept { return size_ == 0; }
 
 _ZNK4metl11storage_forItE3ptrEv:
-   26|   719k|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
+   26|   564k|  const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
 _ZN4metl11storage_forItE3refEv:
-   29|  71.8k|  T& ref() noexcept { return *ptr(); }
+   29|  71.0k|  T& ref() noexcept { return *ptr(); }
 _ZN4metl11storage_forItE3ptrEv:
-   24|   219k|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
+   24|   216k|  T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
 _ZN4metl11storage_forItE4addrEv:
-   34|   111k|  void* addr() noexcept { return &bytes[0]; }
+   34|   110k|  void* addr() noexcept { return &bytes[0]; }
 
