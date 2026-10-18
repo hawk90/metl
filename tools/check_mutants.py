@@ -153,6 +153,19 @@ def apply_mutant(mutant):
     return original
 
 
+# What ThreadSanitizer prints when it finds a race; a tsan: kill must show it.
+TSAN_REPORT = "WARNING: ThreadSanitizer"
+
+
+def run_tsan_ctest(build_dir, target):
+    """Runs `target` in the ThreadSanitizer tree, with its output on failure:
+    without it, ctest prints no report to look for."""
+    return subprocess.run(["ctest", "--test-dir", tsan_build_dir(build_dir), "-R", f"^{target}$",
+                           "--timeout", str(CTEST_TIMEOUT_SECONDS), "--no-tests=error",
+                           "--output-on-failure"],
+                          capture_output=True, text=True, cwd=REPO)
+
+
 def tsan_build_dir(build_dir):
     return f"{build_dir}-tsan"
 
@@ -213,10 +226,16 @@ def run_gate(spec, build_dir, build=True):
         build = build_tsan_target(build_dir, rest)
         if build.returncode != 0:
             return None, f"the tree did not build under ThreadSanitizer: {first_error(build)}"
-        result = subprocess.run(["ctest", "--test-dir", tsan_build_dir(build_dir), "-R", f"^{rest}$",
-                                 "--timeout", str(CTEST_TIMEOUT_SECONDS), "--no-tests=error"],
-                                capture_output=True, text=True, cwd=REPO)
-        return result.returncode != 0, result.stdout[-800:]
+        result = run_tsan_ctest(build_dir, rest)
+        output = result.stdout + result.stderr
+        if result.returncode == 0:
+            return False, output[-800:]
+        # The kill is the race report. A threaded test can fail for other
+        # reasons -- a crash, a timeout, a ThreadSanitizer that cannot map its
+        # shadow memory -- and none of those shows the weakened order races.
+        if TSAN_REPORT not in output:
+            return None, f"{rest} failed without a ThreadSanitizer report: {output.strip()[-300:]}"
+        return True, output[output.index(TSAN_REPORT):][:800]
     if kind == "ctest":
         if build:
             built = cmake_build(build_dir)
@@ -477,6 +496,31 @@ def self_test():
             finally:
                 globals()["cmake_build"], globals()["run_ctest"] = original_build, original_ctest
 
+            # A tsan: gate kills only with a ThreadSanitizer report. A test that
+            # fails without one -- a crash, a timeout, an assertion -- did not
+            # show that the weakened ordering races, so it is BROKEN.
+            original_tsan = globals()["build_tsan_target"], globals()["run_tsan_ctest"]
+
+            def fake_tsan(output):
+                def run(_build_dir, _target):
+                    if fake.read_text() == "int marker = 1;\n":
+                        return subprocess.CompletedProcess([], 0, "1 tests passed", "")
+                    return subprocess.CompletedProcess([], 8, output, "")
+                return run
+
+            tsan_mutant = dict(survivor, name="fixture_tsan", kills="tsan:fixture_threaded_test")
+            try:
+                globals()["build_tsan_target"] = lambda _b, _t: subprocess.CompletedProcess([], 0, "", "")
+                for output, want, label in (
+                        ("WARNING: ThreadSanitizer: data race (pid=1)", 0, "a ThreadSanitizer report"),
+                        ("Segmentation fault", 1, "a failure without a ThreadSanitizer report")):
+                    globals()["run_tsan_ctest"] = fake_tsan(output)
+                    if attempt(label, [tsan_mutant]) != want:
+                        failures.append(f"a tsan: gate failing with {label} gave the wrong verdict "
+                                        f"(wanted exit {want})")
+            finally:
+                globals()["build_tsan_target"], globals()["run_tsan_ctest"] = original_tsan
+
             # A qemu: gate that cannot run -- no toolchain or QEMU -- must fail
             # the run before mutating anything, never read as a kill; and one
             # whose test already fails on the unmutated tree must too.
@@ -523,7 +567,8 @@ def self_test():
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
     print("self-test passed: survivors, stale anchors, broken builds, gates that fail or "
-          "cannot run on the unmutated tree, empty runs and malformed mutant files are "
+          "cannot run on the unmutated tree, tsan: failures without a race report, empty "
+          "runs and malformed mutant files are "
           "rejected, killed mutants pass, mutated and restored files are stamped newer "
           "than the build, and the tree is restored in every case")
     return 0
