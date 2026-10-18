@@ -601,7 +601,7 @@ def main():
         entry["flags"] = args.flags
         if args.record:
             update_record(args.record, args.cpu, artifact, entry, args.su_dir)
-    except (ElfError, OSError, ValueError) as error:
+    except (ElfError, OSError, ValueError, KeyError, TypeError) as error:
         # A traceback here would be read as a broken script rather than as a
         # broken measurement, and the job would need someone to go and look.
         print(f"::error::{error}", file=sys.stderr)
@@ -670,7 +670,7 @@ def main():
 # Synthetic ELF files for the self-test, so it needs no toolchain.
 # ---------------------------------------------------------------------------
 def build_elf(sections, segments=(), symbols=None, comment=None,
-              is64=False, big=False, machine=EM_ARM, elf_type=1):
+              is64=False, big=False, machine=EM_ARM, elf_type=1, extended=False):
     """Bytes of an ELF file with these sections (name, type, flags, size[, entsize]).
 
     Section contents are not written: the tool never reads them, except
@@ -720,13 +720,19 @@ def build_elf(sections, segments=(), symbols=None, comment=None,
 
     out = bytearray(b"\x7fELF" + bytes([2 if is64 else 1, 2 if big else 1, 1]) + bytes(9))
     header = "HHIQQQIHHHHHH" if is64 else "HHIIIIIHHHHHH"
+    if extended:
+        # gABI extended numbering: e_shnum = 0 and e_shstrndx = SHN_XINDEX,
+        # the real values in section 0's sh_size and sh_link.
+        table[0] = (0, 0, 0, 0, len(table), shstrndx, 0, 0)
     out += struct.pack(end + header, elf_type, machine, 1, 0,
                        ehsize if segments else 0, shoff, 0, ehsize, phentsize,
-                       len(segments), shentsize, len(table), shstrndx)
-    for vaddr, paddr, filesz, memsz in segments:
-        out += (struct.pack(end + "IIQQQQQQ", PT_LOAD, 0, 0, vaddr, paddr, filesz, memsz, 0)
+                       len(segments), shentsize, 0 if extended else len(table),
+                       0xFFFF if extended else shstrndx)
+    for vaddr, paddr, filesz, memsz, *kind in segments:
+        kind = kind[0] if kind else PT_LOAD
+        out += (struct.pack(end + "IIQQQQQQ", kind, 0, 0, vaddr, paddr, filesz, memsz, 0)
                 if is64 else
-                struct.pack(end + "IIIIIIII", PT_LOAD, 0, vaddr, paddr, filesz, memsz, 0, 0))
+                struct.pack(end + "IIIIIIII", kind, 0, vaddr, paddr, filesz, memsz, 0, 0))
     out += blobs + names
     for name, kind, flags, offset, size, link, entsize, addr in table:
         out += (struct.pack(end + "IIQQQQIIQQ", name, kind, flags, addr, offset, size,
@@ -814,6 +820,19 @@ def self_test():
         if any(s["name"] in (".ARM.attributes", ".rel.text.f") for s in listed):
             failures.append(f"{tag}: a non-ALLOC section was classified")
 
+    # Extended numbering (gABI): e_shnum = 0 and e_shstrndx = SHN_XINDEX put
+    # the counts in section 0. Read wrongly, the file has no sections and
+    # every class is 0.
+    for is64 in (False, True):
+        totals, listed = classify(Elf(build_elf(PROBE_SECTIONS, is64=is64, extended=True)))
+        expect(f"extended numbering ELF{64 if is64 else 32}: ram", totals["ram"], 4 + 8 + 64 + 128)
+        expect(f"extended numbering ELF{64 if is64 else 32}: names",
+               sorted(s["name"] for s in listed)[0], ".ARM.exidx.text.f")
+
+    # sh_entsize, when set, sizes an init_array entry; 0 falls back to a word.
+    totals, _ = classify(Elf(build_elf([(".init_array", SHT_INIT_ARRAY, WA, 16, 8)])))
+    expect("init_array entries by sh_entsize", totals["init_array_entries"], 2)
+
     # What the name-prefix sum this replaced would have missed on the same rows.
     by_name = sum(s[3] for s in PROBE_SECTIONS
                   if s[0].startswith((".bss.", ".data.")) or s[0] in (".bss", ".data"))
@@ -854,6 +873,14 @@ def self_test():
                           symbols=region_symbols, is64=is64, big=big, elf_type=2)
         expect(f"linked ELF{64 if is64 else 32} regions", regions(Elf(image)),
                {"flash": text + data, "ram": data + bss})
+
+    # Only PT_LOAD is placed. A linked ARM image also has PT_ARM_EXIDX inside
+    # flash and PT_TLS: counting them would count those bytes twice.
+    image = build_elf([(".text", SHT_PROGBITS, AX, text)],
+                      segments=[(0x0, 0x0, text, text), (0x100, 0x100, 8, 8, 0x70000001),
+                                (0x20000000, 0x20000000, 0, 4, 7)],
+                      symbols=region_symbols, elf_type=2)
+    expect("non-PT_LOAD segments are not placed", regions(Elf(image)), {"flash": text, "ram": 0})
 
     for label, segment in (("a segment outside both regions", (0x10000000, 0x10000000, 4, 4)),
                            ("a segment straddling the end of RAM", (0x20000FF0, 0x0, 0, 0x20)),
@@ -907,7 +934,13 @@ def self_test():
         if "not measured" not in summary(one):
             failures.append("the summary shows an unmeasured value as something else")
 
-        commit = one["commit"]
+        # A fixed commit, not current_commit(): outside a git checkout and
+        # without GITHUB_SHA that is None, and merge_records skips the commit
+        # check for a None expect_commit, so "another commit" would be released.
+        commit = "c" * 40
+        for path in paths:
+            path.write_text(json.dumps(dict(json.loads(path.read_text()), commit=commit)))
+        one = json.loads(paths[0].read_text())
         try:
             merged = merge_records(paths, commit)
             expect("merged cpus", sorted(merged["records"]), sorted(RAM_BUDGETS))
