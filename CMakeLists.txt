@@ -98,10 +98,15 @@ if(METL_BUILD_TESTS)
     # -O0 -g on purpose: an optimized build merges and reorders branches, so the
     # report describes code the compiler produced rather than code that was
     # written, and a branch that was inlined away reads as covered.
+    #
+    # Each test binary writes its profile under its own name: tools/coverage.py
+    # reads every binary with only its own profile, because the test programs
+    # share function names that a merged profile cannot tell apart.
     if(METL_ENABLE_COVERAGE)
       if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
         target_compile_options(metl_test_options INTERFACE
-          -fprofile-instr-generate -fcoverage-mapping -O0 -g)
+          -fprofile-instr-generate=${CMAKE_BINARY_DIR}/profraw/$<TARGET_PROPERTY:NAME>-%p.profraw
+          -fcoverage-mapping -O0 -g)
         target_link_options(metl_test_options INTERFACE -fprofile-instr-generate)
         if(METL_ENABLE_COVERAGE_MCDC)
           target_compile_options(metl_test_options INTERFACE -fcoverage-mcdc)
