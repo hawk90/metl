@@ -94,6 +94,31 @@ jobs:
           fi
           echo "version=${tag_version}" >> "$GITHUB_ENV"
 
+      # The measurements main's CI made of this commit (#405): code, const, RAM
+      # and TLS per Cortex-M target, every section, and the stack figures. CI
+      # keeps them as artifacts for 90 days; a release asset keeps them for as
+      # long as the release exists, so a later release can be compared with
+      # this one. The run is the push run on main for this commit -- the one
+      # whose `ci-gate` tools/release_gate.py has just verified. No record, no
+      # release: a gap here would be found only when someone needed it.
+      - name: Fetch main's measurement records for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id="$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow ci.yml \
+            --commit "${GITHUB_SHA}" --event push --status success --limit 1 \
+            --json databaseId --jq '.[0].databaseId // empty')"
+          if [[ -z "${run_id}" ]]; then
+            echo "::error::no successful push run of ci.yml on ${GITHUB_SHA} to take the measurement records from" >&2
+            exit 1
+          fi
+          gh run download "${run_id}" --repo "${GITHUB_REPOSITORY}" \
+            --pattern 'measurements-*' --dir measurements
+          shopt -s nullglob
+          records=(measurements/*/*.json)
+          tools/check_size.py --merge-records "metl-${version}-measurements.json" \
+            --expect-commit "${GITHUB_SHA}" "${records[@]}"
+
       - name: Build and verify the tree
         env:
           CC: clang
@@ -179,6 +204,13 @@ jobs:
             echo "  --bundle metl-${version}-single.hpp.intoto.jsonl \\"
             echo "  --repo ${GITHUB_REPOSITORY}"
             echo "\`\`\`"
+            echo ""
+            echo "### Measurements"
+            echo ""
+            echo "\`metl-${version}-measurements.json\` holds what main's CI measured for this"
+            echo "commit on each Cortex-M target: code, constants, RAM and thread-local"
+            echo "storage of the size probes, section by section, and the stack figures."
+            echo "A value that was not measured is \`null\`."
           } >> release-notes.md
 
       # Build provenance: a signed statement that THIS file came out of THIS
@@ -218,4 +250,5 @@ jobs:
             --notes-file release-notes.md \
             ${prerelease} \
             "metl-${version}-single.hpp" \
-            "metl-${version}-single.hpp.intoto.jsonl"
+            "metl-${version}-single.hpp.intoto.jsonl" \
+            "metl-${version}-measurements.json"
