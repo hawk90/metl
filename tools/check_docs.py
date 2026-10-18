@@ -74,7 +74,7 @@ DOCS = ["README.md", "docs/COOKBOOK.md", "docs/CHOOSING.md", "docs/SCOPE.md",
 # symbols. Each carries its reason, so a reader sees a decision.
 NOT_A_SYMBOL = {
     "bad_": "prose about the `metl::bad_*_access` exceptions METL does NOT have",
-    "exp": "the planned Tier 2 opt-in namespace `metl::exp::`, not a type",
+    "exp": "the Tier 2 opt-in namespace `metl::exp::`, not a type",
 }
 
 # D5: a byte figure attributed to a Cortex-M target -- `cortex-m3 9999`,

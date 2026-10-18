@@ -65,6 +65,17 @@ def multi_tu_sources(cmake_text):
     return tests
 
 
+TIER2_INCLUDE = re.compile(r'^\s*#\s*include\s*[<"]metl/exp/', re.M)
+
+
+def tier2_tests(tests):
+    """The tests that include a Tier 2 header. The single header is built from
+    the umbrella, which holds no Tier 2 type (docs/SCOPE.md section 3), so these
+    cannot build against it; they are left out and listed, never skipped
+    silently."""
+    return [t for t in tests if TIER2_INCLUDE.search(t.read_text(encoding="utf-8"))]
+
+
 def run_test(cxx, shim_root, out_dir, test, sources=None):
     """Returns ("pass" | "skip" | "build" | "fail", detail)."""
     name = test.relative_to(REPO).as_posix() if test.is_relative_to(REPO) else test.name
@@ -159,6 +170,13 @@ def self_test(cxx):
         got, _ = run_test(cxx, shim_root, scratch, main_tu)
         if got != "build":
             failures.append(f"a two-TU test built alone was classified {got!r}")
+    with tempfile.TemporaryDirectory() as scratch:
+        tier2 = Path(scratch) / "exp_test.cpp"
+        tier2.write_text('#include <metl/exp/bitset.hpp>\nint main() { return 0; }\n')
+        core = Path(scratch) / "core_test.cpp"
+        core.write_text('// mentions metl/exp/ in a comment only\n#include <metl/span.hpp>\n')
+        if tier2_tests([tier2, core]) != [tier2]:
+            failures.append("a test including a Tier 2 header was not told apart")
     for failure in failures:
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
@@ -187,6 +205,10 @@ def main():
     if not tests:
         print("error: no tests found", file=sys.stderr)
         return 2
+    left_out = tier2_tests(tests)
+    for test in left_out:
+        print(f"not in the single header (Tier 2): {test.relative_to(REPO).as_posix()}")
+    tests = [t for t in tests if t not in left_out]
 
     multi_tu = multi_tu_sources((REPO / "CMakeLists.txt").read_text(encoding="utf-8"))
     if args.header is not None:

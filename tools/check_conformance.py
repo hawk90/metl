@@ -17,6 +17,10 @@ of three places:
   PENDING     owns user objects and has no adapter yet. This list may only
               SHRINK, and an entry that gets registered must leave it.
 
+Tier 2 headers under exp/ follow the same rule, with no blanket exemption: an
+experimental type that holds user objects is registered like any other, so a
+bug class the suite checks cannot come back through the experimental door.
+
 It also checks each known gap (`gap_<property> = "#NNN"` in an adapter): it must
 name an issue, and the property must exist in a test. The suite itself fails
 when a gap starts passing, so the gaps cannot go stale silently.
@@ -81,6 +85,7 @@ EXEMPT = {
     "static_allocator.hpp": "hands out storage; constructs nothing",
     "scope_exit.hpp": "holds one callable for its whole lifetime; nothing is added or removed",
     "lock.hpp": "guarded<T> holds one T for its whole lifetime; nothing is added or removed",
+    "exp/bitset.hpp": "holds bits, not objects",
 }
 
 # Own user objects, no adapter yet. MAY ONLY SHRINK.
