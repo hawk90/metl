@@ -22,6 +22,7 @@ Usage:
 
 import argparse
 import concurrent.futures
+import contextlib
 import os
 import re
 import subprocess
@@ -159,6 +160,14 @@ def self_test(cxx):
         got, _ = run_test(cxx, shim_root, scratch, main_tu)
         if got != "build":
             failures.append(f"a two-TU test built alone was classified {got!r}")
+    # The verdict: a failure or a build failure fails the run, a skip does not.
+    fixture = {REPO / "tests" / f"{kind}_test.cpp": (kind, "") for kind in ("pass", "skip")}
+    with open(os.devnull, "w") as quiet, contextlib.redirect_stdout(quiet), \
+            contextlib.redirect_stderr(quiet):
+        verdicts = {kind: report({**fixture, REPO / "tests" / "x_test.cpp": (kind, "detail")})
+                    for kind in ("pass", "skip", "build", "fail")}
+    if verdicts != {"pass": 0, "skip": 0, "build": 1, "fail": 1}:
+        failures.append(f"report() exit codes were {verdicts}")
     for failure in failures:
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
@@ -190,6 +199,9 @@ def main():
 
     multi_tu = multi_tu_sources((REPO / "CMakeLists.txt").read_text(encoding="utf-8"))
     if args.header is not None:
+        if not args.header.is_file():
+            print(f"::error::{args.header}: no such amalgamated header", file=sys.stderr)
+            return 2
         return report(check(args.header.resolve(), args.cxx, args.jobs, tests, multi_tu))
     with tempfile.TemporaryDirectory(prefix="metl-amalgamate-") as scratch:
         header = Path(scratch) / "metl-single.hpp"
