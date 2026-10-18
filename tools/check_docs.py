@@ -125,8 +125,42 @@ EXAMPLE_REF = re.compile(r"examples/([a-zA-Z_0-9]+)\.cpp")
 
 
 def public_header_text(root):
-    return "\n".join(p.read_text(encoding="utf-8")
+    """Every public header, comments removed: a name a comment still mentions
+    after its declaration was deleted is exactly the drift D1 exists for."""
+    text = "\n".join(p.read_text(encoding="utf-8")
                      for p in sorted(pathlib.Path(root).rglob("*.hpp")))
+    return re.sub(r"//[^\n]*", "", re.sub(r"/\*.*?\*/", "", text, flags=re.S))
+
+
+# Words that end a statement's head rather than a return type: `return
+# name(...)` is a call, not a declaration.
+_STATEMENT_WORDS = {"return", "co_return", "else", "case", "throw", "new", "delete", "sizeof",
+                    "not", "and", "or", "if", "while", "for", "switch"}
+
+
+def declares(name, headers):
+    """True if `headers` declares `name`: a type, namespace, alias, variable or
+    function -- not merely a word that contains or mentions it."""
+    word = re.escape(name)
+    shapes = (
+        rf"\b(?:class|struct|union|enum|namespace|concept)\s+(?:class\s+|struct\s+)?{word}\b",
+        rf"\busing\s+{word}\s*=",
+        rf"\bconstexpr\b[^;=(){{}}]*[\s*&>]{word}\s*[={{\[]",
+    )
+    if any(re.search(shape, headers) for shape in shapes):
+        return True
+    # A function: the name, an optional explicit template argument list, `(`,
+    # after a return type -- which ends in a word, `>`, `)`, `*` or `&`, possibly
+    # on the line above. A call follows `(`, `,`, `=`, `.` or a statement word.
+    for match in re.finditer(rf"(?<![\w.>:]){word}\s*(?:<[^;{{}}()]*>)?\s*\(", headers):
+        before = headers[max(0, match.start() - 256):match.start()].rstrip()
+        if not before or before[-1] not in "_>)*&" and not before[-1].isalnum():
+            continue
+        last = re.search(r"(\w+)$", before)
+        if last and last.group(1) in _STATEMENT_WORDS:
+            continue
+        return True
+    return False
 
 
 def registered_examples(cmake_path):
@@ -254,7 +288,7 @@ def check(repo_root="."):
         for name in sorted(set(QUALIFIED.findall(text))):
             if name in NOT_A_SYMBOL:
                 continue
-            if not re.search(rf"\b{re.escape(name)}\b", headers):
+            if not declares(name, headers):
                 problems.append(("D1", f"{doc}: uses `metl::{name}`, which no public "
                                        f"header defines"))
 
@@ -326,7 +360,12 @@ def check(repo_root="."):
         if not on_disk:
             problems.append(("D6", "no tools/check_*.py found at all -- a check over "
                                    "nothing would report success"))
-        listed = set(re.findall(r"\.\./tools/(check_[a-z_]+\.py)", scope_text))
+        # Section 8 only: a link from elsewhere in SCOPE.md is not a table row.
+        table = re.search(r"^## 8\..*?(?=^## |\Z)", scope_text, re.M | re.S)
+        if table is None:
+            problems.append(("D6", "docs/SCOPE.md has no `## 8.` section; the gate table "
+                                   "lives there"))
+        listed = set(re.findall(r"\.\./tools/(check_[a-z_]+\.py)", table.group(0) if table else ""))
         for tool in sorted(on_disk - listed):
             problems.append(("D6", f"tools/{tool} is not in the gate table in "
                                    f"docs/SCOPE.md section 8. A gate nobody lists is "
@@ -368,7 +407,19 @@ def self_test():
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
         (root / "include" / "metl").mkdir(parents=True)
-        (root / "include" / "metl" / "real.hpp").write_text("class fixed_vector {};\n")
+        # D1 wants a declaration, not the word: `object_pool` here is only a
+        # comment and a parameter name, as a deleted type's name lingers in
+        # the headers that used to mention it.
+        (root / "include" / "metl" / "real.hpp").write_text(
+            "class fixed_vector {};\n"
+            "// object_pool was removed in favour of fixed_vector.\n"
+            "void reserve(int object_pool_size);\n"
+            "namespace coro {}\n"
+            "enum class hex_case { lower };\n"
+            "using byte_view = fixed_vector;\n"
+            "inline constexpr hex_case default_case{};\n"
+            "template <typename T> constexpr T* parse_it(T* text) noexcept;\n"
+            "METL_NODISCARD inline bool\nformat_it(char* out) noexcept;\n")
         (root / "examples").mkdir()
         # The comment on the first entry closes a paren on purpose: that is the
         # bug this checker shipped with, and the fixture keeps it from coming back.
@@ -394,6 +445,7 @@ def self_test():
         (root / "docs").mkdir()
         (root / "README.md").write_text(
             "`metl::fixed_vector` is fine and `metl::ghost_type` is not.\n"
+            "`metl::object_pool` is gone; only a comment still names it.\n"
             "[missing](docs/nope.md)\n"
             "<img src=\"docs/nope.svg\" alt=\"\">\n"
             "[unbuilt](examples/never.cpp)\n")
@@ -402,9 +454,13 @@ def self_test():
             (root / extra).write_text("nothing here\n")
         # SCOPE.md carries the gate table D6 reads. It lists one tool that
         # exists, one that does not, and omits one that does.
+        # check_forgotten.py is linked from another section only: the table
+        # in section 8 still omits it.
         (root / "docs" / "SCOPE.md").write_text(
+            "## 7. Before\n\nSee [`check_forgotten.py`](../tools/check_forgotten.py).\n\n"
+            "## 8. The gates\n\n"
             "| [`check_listed.py`](../tools/check_listed.py) | x | y |\n"
-            "| [`check_ghost.py`](../tools/check_ghost.py) | x | y |\n")
+            "| [`check_ghost.py`](../tools/check_ghost.py) | x | y |\n\n## 9. After\n")
 
         # D6 fixture: one checker on disk that the gate table omits, and one the
         # table names that does not exist. Both directions in one tree.
@@ -414,6 +470,7 @@ def self_test():
 
         # D7 fixture: the README below states a test count.
         readme_broken = ("`metl::fixed_vector` is fine and `metl::ghost_type` is not.\n"
+                         "`metl::object_pool` is gone; only a comment still names it.\n"
                          "[missing](docs/nope.md)\n"
                          "<img src=\"docs/nope.svg\" alt=\"\">\n"
                          "[unbuilt](examples/never.cpp)\n"
@@ -430,6 +487,12 @@ def self_test():
             "metl_cc_test(NAME t SRCS tests/a/wired_test.cpp)\n")
 
         found = {rule for rule, _ in check(root)}
+        d1 = [message for rule, message in check(root) if rule == "D1"]
+        if not any("metl::object_pool" in message for message in d1):
+            failures.append(f"D1 took a name in a comment for a declaration: {d1}")
+        d6 = [message for rule, message in check(root) if rule == "D6"]
+        if not any("check_forgotten.py is not in the gate table" in message for message in d6):
+            failures.append(f"D6 took a link outside section 8 for a table row: {d6}")
         d8 = sorted(message for rule, message in check(root) if rule == "D8")
         if len(d8) != 2 or "orphan" not in d8[1] or "a/gone" not in d8[0]:
             failures.append(f"D8 should flag exactly the orphan and the vanished test: {d8}")
@@ -449,6 +512,9 @@ def self_test():
 
         # And the clean case must stay clean.
         (root / "README.md").write_text("`metl::fixed_vector` is fine.\n"
+                                        "`metl::coro`, `metl::hex_case`, `metl::byte_view`, "
+                                        "`metl::default_case`, `metl::parse_it` and "
+                                        "`metl::format_it` are declared.\n"
                                         "runs every test except the deny-list\n")
         (root / "examples" / "orphan.cpp").unlink()
         (root / "tests" / "a" / "orphan_test.cpp").unlink()
@@ -482,6 +548,7 @@ def self_test():
             'FUZZERS="\nfuzz_kept\nfuzz_dropped\n"\n')
         # D6's clean case: the table names exactly the tools that exist.
         (root / "docs" / "SCOPE.md").write_text(
+            "## 8. The gates\n\n"
             "| [`check_listed.py`](../tools/check_listed.py) | x | y |\n"
             "| [`check_forgotten.py`](../tools/check_forgotten.py) | x | y |\n")
         remaining = check(root)
