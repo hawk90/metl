@@ -277,8 +277,10 @@ def check(root):
                                    f"{workflow} is not triggered by "
                                    f"`pull_request` -- it cannot report on a PR"))
         condition = re.search(r"^    if:\s*(.+?)\s*$", body, re.M)
-        if condition and ("github.event_name" in condition.group(1)
-                          or "refs/heads/main" in condition.group(1)):
+        # github.ref and github.ref_name are refs/pull/N/merge and N/merge on a
+        # pull request, so any test of them is a test a PR fails.
+        if condition and re.search(r"github\.event_name|github\.ref\b|github\.ref_name|refs/heads/",
+                                   condition.group(1)):
             problems.append(("G5", f"{REQUIRED_LIST} requires `{context}`, whose "
                                    f"job `{job_id}` is gated on "
                                    f"`{condition.group(1)}`. It is skipped on "
@@ -508,6 +510,15 @@ jobs:
         if "G5" not in fired(root):
             failures.append("G5 did not fire on a required context that is "
                             "skipped on every pull request")
+
+    # G5: the same shape spelled with github.ref_name -- skipped on every PR,
+    # whose ref is refs/pull/N/merge.
+    with tempfile.TemporaryDirectory() as stack:
+        root = tree(stack, required="ci-gate\npublish\n", extra={
+            "publish.yml": cflite.replace("    name: cflite-pr\n",
+                                          "    name: publish\n    if: github.ref_name == 'main'\n")})
+        if "G5" not in fired(root):
+            failures.append("G5 did not fire on a required job gated on github.ref_name")
 
     # G6: a workflow without the bash default, so its pipes lack pipefail.
     with tempfile.TemporaryDirectory() as stack:
