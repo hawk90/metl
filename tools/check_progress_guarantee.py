@@ -38,6 +38,7 @@ Usage:
 import argparse
 import pathlib
 import re
+import subprocess
 import sys
 import tempfile
 
@@ -77,6 +78,38 @@ def doc_comment_text(text):
     return "\n".join(line for line in text.splitlines() if line.lstrip().startswith("///"))
 
 
+# A word that turns the term after it into its opposite: "not lock-free".
+NEGATION = re.compile(r"\b(?:not|never|no|nor|isn't|aren't|non)\b[^.;|]{0,24}$|non-$", re.I)
+
+
+def guarantee_sections(text):
+    """The doc-comment blocks that open with a progress-guarantee heading: the
+    heading line and the `///` lines after it, up to the first line that is not
+    one. A table under the heading belongs to it; a later comment does not."""
+    lines = text.splitlines()
+    sections = []
+    for index, line in enumerate(lines):
+        if HEADING.match(line):
+            block = [line]
+            for following in lines[index + 1:]:
+                if not following.lstrip().startswith("///"):
+                    break
+                block.append(following)
+            sections.append("\n".join(block))
+    return sections
+
+
+def declared_terms(text):
+    """Vocabulary terms a guarantee section states, skipping negated ones."""
+    terms = []
+    for section in guarantee_sections(text):
+        for match in VOCABULARY.finditer(section):
+            line_start = section.rfind("\n", 0, match.start()) + 1
+            if not NEGATION.search(section[line_start:match.start()]):
+                terms.append(match.group(0))
+    return terms
+
+
 def check_text(text, path="<memory>"):
     """Return a list of (path, rule, message)."""
     violations = []
@@ -89,22 +122,23 @@ def check_text(text, path="<memory>"):
                            "lists as not acceptable in METL"))
 
     has_heading = HEADING.search(doc) is not None
-    has_vocabulary = VOCABULARY.search(doc) is not None
+    has_vocabulary = bool(declared_terms(text))
 
     if not has_heading:
         violations.append((path, "I3-missing",
                            'no "Progress guarantee" section in the header doc comment'))
     elif not has_vocabulary:
         violations.append((path, "I3-vocabulary",
-                           'has a "Progress guarantee" section but does not use SCOPE.md '
-                           "section 1's vocabulary (wait-free, bounded / lock-free / "
-                           "blocking, bounded)"))
+                           'has a "Progress guarantee" section, but the section does not '
+                           "declare a guarantee in SCOPE.md section 1's vocabulary "
+                           "(wait-free, bounded / lock-free / blocking, bounded) -- a "
+                           "negated term (\"not lock-free\") or one outside the section "
+                           "does not count"))
     return violations
 
 
 def states_guarantee(text):
-    return HEADING.search(doc_comment_text(text)) is not None and \
-        VOCABULARY.search(doc_comment_text(text)) is not None
+    return HEADING.search(doc_comment_text(text)) is not None and bool(declared_terms(text))
 
 
 def scan(include_dir, pending=None):
@@ -151,6 +185,17 @@ SELF_TEST_CASES = [
      "// wait-free, bounded\n/// A container.\nstruct x {};\n", True),
     ("forbidden",
      "/// Progress guarantee: blocking, unbounded.\nstruct x {};\n", True),
+    # The term must be the guarantee declared, not a word near the heading.
+    ("negated", "/// Progress guarantee: not lock-free.\nstruct x {};\n", True),
+    ("negated-never", "/// Progress guarantee: never wait-free, bounded.\nstruct x {};\n", True),
+    ("term-outside-the-section",
+     "/// Progress guarantee: see the notes.\nstruct x {};\n\n/// Unlike a lock-free queue, ...\n"
+     "struct y {};\n", True),
+    ("stated-in-a-table",
+     "/// Progress guarantees:\n///\n///   | Operation | Guarantee |\n///   |---|---|\n"
+     "///   | `push` | wait-free, bounded |\nstruct x {};\n", False),
+    ("stated-in-prose", "/// Progress guarantee: every operation is wait-free and bounded.\n"
+     "struct x {};\n", False),
 ]
 
 
@@ -179,7 +224,16 @@ def self_test():
     if overlap:
         print(f"SELF-TEST FAILED: {sorted(overlap)} is both EXEMPT and PENDING", file=sys.stderr)
         return 1
-    print("self-test passed: a missing, vague, or forbidden guarantee is rejected, and a PENDING entry that states one is reported")
+    # In CI a problem must reach the run's annotations: `::error::`, exit 1.
+    with tempfile.TemporaryDirectory() as tmp:
+        (pathlib.Path(tmp) / "x.hpp").write_text("/// A container.\nstruct x {};\n")
+        run = subprocess.run([sys.executable, __file__, "--include-dir", tmp],
+                             capture_output=True, text=True)
+        if run.returncode != 1 or "::error::x.hpp: I3-missing: " not in run.stderr:
+            print(f"SELF-TEST FAILED [annotation]: exit {run.returncode}, stderr {run.stderr[:200]!r}",
+                  file=sys.stderr)
+            return 1
+    print("self-test passed: a missing, vague, negated or misplaced guarantee is rejected, problems are ::error:: annotations, and a PENDING entry that states one is reported")
     return 0
 
 
@@ -200,17 +254,20 @@ def main():
     print(f"I3 progress guarantees: {counts['checked']} header(s) checked, "
           f"{counts['exempt']} exempt, {counts['pending']} pending")
 
+    # --report is advisory, so its findings are plain lines, not annotations.
+    prefix = "" if args.report else "::error::"
+    stream = sys.stdout if args.report else sys.stderr
     for path, rule, message in violations:
-        print(f"{path}: {rule}: {message}")
+        print(f"{prefix}{path}: {rule}: {message}", file=stream)
     for path in stale:
-        print(f"{path}: I3-stale: states a guarantee but is still listed in PENDING; "
-              f"delete the entry so the list stays true")
+        print(f"{prefix}{path}: I3-stale: states a guarantee but is still listed in PENDING; "
+              f"delete the entry so the list stays true", file=stream)
 
     if args.report:
         return 0
     if violations or stale:
         print(f"\n{len(violations) + len(stale)} problem(s). "
-              f"See docs/SCOPE.md section 1 for the vocabulary.")
+              f"See docs/SCOPE.md section 1 for the vocabulary.", file=sys.stderr)
         return 1
     print("all checked headers state a progress guarantee")
     return 0
