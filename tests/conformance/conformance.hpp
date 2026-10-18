@@ -726,8 +726,7 @@ struct static_unordered_map_adapter {
   // erase(iterator) that skipped the next slot would still find the right
   // element (conformance_std_parity_test.cpp).
   static std::array<int, 3> parity_ids() { return colliding_ids<capacity>(); }
-  static constexpr constant_init constant_init_level = constant_init::never;
-  static constexpr const char* constant_init_refused = "its constructor marks every slot empty at run time";
+  static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace(id, probe(id));
@@ -796,8 +795,7 @@ struct static_unordered_set_adapter {
   // erase(iterator) that skipped the next slot would still find the right
   // element (conformance_std_parity_test.cpp).
   static std::array<int, 3> parity_ids() { return colliding_ids<capacity>(); }
-  static constexpr constant_init constant_init_level = constant_init::never;
-  static constexpr const char* constant_init_refused = "its constructor marks every slot empty at run time";
+  static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace(probe(id));
