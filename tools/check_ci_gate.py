@@ -181,6 +181,19 @@ def _triggers(text):
                           r"workflow_call|release):", head, re.M))
 
 
+def _pull_request_filters(text):
+    """`paths` / `paths-ignore` under a workflow's pull_request trigger."""
+    head = text.split("\njobs:")[0]
+    block = re.search(r"^  pull_request:[^\n]*\n((?:(?:    [^\n]*|\s*)\n)*)", head, re.M)
+    return re.findall(r"^    (paths|paths-ignore):", block.group(1), re.M) if block else []
+
+
+def _workflow_files(root):
+    """Every workflow GitHub reads: *.yml and *.yaml."""
+    directory = pathlib.Path(root) / WORKFLOW_DIR
+    return sorted([*directory.glob("*.yml"), *directory.glob("*.yaml")])
+
+
 def _required_contexts(root):
     path = pathlib.Path(root) / REQUIRED_LIST
     if not path.is_file():
@@ -250,48 +263,54 @@ def check(root):
         problems.append(("G4", f"{REQUIRED_LIST} names no contexts -- an empty "
                                f"required list is no protection at all"))
 
-    # Where each context could come from: every job of every workflow, keyed by
-    # the name it reports under. Matrix jobs report `name (value)` per leg, so a
-    # context is matched by its stem too.
+    # Where each context could come from: every job of every workflow, as
+    # (workflow, job id), with the name it reports under. Two jobs may report
+    # the same name, so a context maps to all of them. Matrix jobs report
+    # `name (value)` per leg, so a context is matched by its stem too.
     catalogue = {}
-    for path in sorted((root / WORKFLOW_DIR).glob("*.yml")):
+    for path in _workflow_files(root):
         text = path.read_text()
-        events = _triggers(text)
+        events, filters = _triggers(text), _pull_request_filters(text)
         for job_id, body in _workflow_jobs(text).items():
-            catalogue[_job_name(body, job_id)] = (path.name, job_id, body, events)
+            catalogue.setdefault(_job_name(body, job_id), []).append(
+                (path.name, job_id, body, events, filters))
 
     for context in contexts:
-        entry = catalogue.get(context)
-        if entry is None:
-            stem = re.sub(r"\s*\([^)]*\)$", "", context)
-            entry = catalogue.get(stem)
-        if entry is None:
+        entries = catalogue.get(context) or catalogue.get(re.sub(r"\s*\([^)]*\)$", "", context))
+        if not entries:
             problems.append(("G4", f"{REQUIRED_LIST} requires `{context}`, which "
                                    f"no job in {WORKFLOW_DIR} reports under. A "
                                    f"required context that never reports leaves "
                                    f"every PR pending forever"))
             continue
-        workflow, job_id, body, events = entry
-        if "pull_request" not in events:
-            problems.append(("G4", f"{REQUIRED_LIST} requires `{context}`, but "
-                                   f"{workflow} is not triggered by "
-                                   f"`pull_request` -- it cannot report on a PR"))
-        condition = re.search(r"^    if:\s*(.+?)\s*$", body, re.M)
-        # github.ref and github.ref_name are refs/pull/N/merge and N/merge on a
-        # pull request, so any test of them is a test a PR fails.
-        if condition and re.search(r"github\.event_name|github\.ref\b|github\.ref_name|refs/heads/",
-                                   condition.group(1)):
-            problems.append(("G5", f"{REQUIRED_LIST} requires `{context}`, whose "
-                                   f"job `{job_id}` is gated on "
-                                   f"`{condition.group(1)}`. It is skipped on "
-                                   f"pull requests, and a skipped required check "
-                                   f"passes -- requiring it requires nothing"))
+        # G4: some job reporting it runs on every pull request.
+        if not any("pull_request" in events and not filters for _, _, _, events, filters in entries):
+            reasons = "; ".join(
+                f"{workflow} is not triggered by `pull_request`" if "pull_request" not in events else
+                f"{workflow} filters its `pull_request` trigger with {', '.join(filters)}, so it "
+                f"does not run on a PR outside those paths"
+                for workflow, _, _, events, filters in entries)
+            problems.append(("G4", f"{REQUIRED_LIST} requires `{context}`, but no job reporting "
+                                   f"it runs on every pull request: {reasons}"))
+        # G5: no job reporting it is skipped on a pull request -- a skipped
+        # check reports, and GitHub counts it as passing.
+        for workflow, job_id, body, events, _ in entries:
+            condition = re.search(r"^    if:\s*(.+?)\s*$", body, re.M)
+            # github.ref and github.ref_name are refs/pull/N/merge and N/merge
+            # on a pull request, so any test of them is a test a PR fails.
+            if "pull_request" in events and condition and re.search(
+                    r"github\.event_name|github\.ref\b|github\.ref_name|refs/heads/", condition.group(1)):
+                problems.append(("G5", f"{REQUIRED_LIST} requires `{context}`, whose "
+                                       f"job `{job_id}` in {workflow} is gated on "
+                                       f"`{condition.group(1)}`. It is skipped on "
+                                       f"pull requests, and a skipped required check "
+                                       f"passes -- requiring it requires nothing"))
 
     # G6: a pipe whose first stage fails must fail the step. A run step gets
     # `bash -eo pipefail` only through an explicit `shell: bash`; GitHub's
     # implicit default is `bash -e`, under which `gh api ... | sort` that
     # fails yields an empty list and the step carries on with it.
-    for path in sorted((root / WORKFLOW_DIR).glob("*.yml")):
+    for path in _workflow_files(root):
         if not re.search(r"^defaults:\n  run:\n    shell: bash\s*$", path.read_text(), re.M):
             problems.append(("G6", f"{WORKFLOW_DIR}/{path.name} does not set "
                                    f"`defaults: run: shell: bash`, so its run "
@@ -519,6 +538,39 @@ jobs:
                                           "    name: publish\n    if: github.ref_name == 'main'\n")})
         if "G5" not in fired(root):
             failures.append("G5 did not fire on a required job gated on github.ref_name")
+
+    # G4: a required workflow whose pull_request trigger is path-filtered does
+    # not run on a PR outside those paths, and its context stays pending.
+    for key in ("paths", "paths-ignore"):
+        with tempfile.TemporaryDirectory() as stack:
+            root = tree(stack, extra={"cflite-pr.yml": cflite.replace(
+                "  pull_request:\n    branches: [main]\n",
+                f"  pull_request:\n    branches: [main]\n    {key}:\n      - 'fuzz/**'\n")})
+            if "G4" not in fired(root):
+                failures.append(f"G4 did not fire on a required workflow whose pull_request has {key}:")
+
+    # G5 when two workflows report the same name: a skipped one still reports,
+    # and GitHub takes its `skipped` as the context passing. Every job that
+    # reports under a required name is checked, not the last one read.
+    with tempfile.TemporaryDirectory() as stack:
+        gated = cflite.replace("    name: cflite-pr\n",
+                               "    name: publish\n    if: github.ref == 'refs/heads/main'\n")
+        plain = cflite.replace("    name: cflite-pr\n", "    name: publish\n")
+        root = tree(stack, required="ci-gate\npublish\n",
+                    extra={"a-gated.yml": gated, "z-plain.yml": plain})
+        if "G5" not in fired(root):
+            failures.append("G5 missed a gated job because another workflow reports the same name")
+
+    # A .yaml workflow is a workflow: G6 reads it, and a context it reports counts.
+    with tempfile.TemporaryDirectory() as stack:
+        root = tree(stack, extra={"other.yaml": cflite.replace("defaults:\n  run:\n    shell: bash\n", "")})
+        if "G6" not in fired(root):
+            failures.append("G6 did not read a .yaml workflow")
+    with tempfile.TemporaryDirectory() as stack:
+        root = tree(stack, required="ci-gate\nyaml-check\n", extra={
+            "yaml.yaml": cflite.replace("    name: cflite-pr\n", "    name: yaml-check\n")})
+        if check(root):
+            failures.append(f"a context reported from a .yaml workflow was not found: {check(root)}")
 
     # G6: a workflow without the bash default, so its pipes lack pipefail.
     with tempfile.TemporaryDirectory() as stack:
