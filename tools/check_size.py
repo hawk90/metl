@@ -258,10 +258,14 @@ class Elf:
                 raw_sections.append({"name_offset": name, "type": kind, "flags": flags,
                                      "addr": addr, "offset": offset, "size": size,
                                      "link": link, "entsize": entsize})
-        names = raw_sections[shstrndx] if shstrndx < len(raw_sections) else None
+        if raw_sections and not 0 < shstrndx < len(raw_sections):
+            # SHN_UNDEF, or past the table: nothing to name the sections by,
+            # and `.comment` is found by name.
+            raise ElfError(f"no section-name string table: e_shstrndx is {shstrndx} "
+                           f"with {len(raw_sections)} sections")
         self.sections = []
         for section in raw_sections:
-            section["name"] = self._string(names, section["name_offset"]) if names else ""
+            section["name"] = self._string(raw_sections[shstrndx], section["name_offset"])
             self.sections.append(section)
 
         self.segments = []
@@ -283,11 +287,29 @@ class Elf:
             raise ElfError(f"truncated: a header at offset {offset} runs past the file")
         return struct.unpack_from(fmt, self.data, offset)
 
+    def _contents(self, section):
+        """A section's bytes; an error if they run past the end of the file."""
+        if section["type"] == SHT_NOBITS:
+            return b""
+        end = section["offset"] + section["size"]
+        if end > len(self.data):
+            raise ElfError(f"truncated: section {section.get('name') or '?'} at offset "
+                           f"{section['offset']} ({section['size']} bytes) runs past the "
+                           f"end of the {len(self.data)}-byte file")
+        return self.data[section["offset"]:end]
+
     def _string(self, table, offset):
+        # Bounds from _contents, but searched in place: slicing the table per
+        # name is quadratic on an object with tens of thousands of sections.
+        size = 0 if table["type"] == SHT_NOBITS else table["size"]
+        table_end = table["offset"] + size
+        if table_end > len(self.data):
+            self._contents(table)  # raises, naming the table
         start = table["offset"] + offset
-        end = self.data.find(b"\0", start, table["offset"] + table["size"])
-        if end < 0:
-            raise ElfError("a string table entry is not terminated")
+        end = self.data.find(b"\0", start, table_end)
+        if offset >= size or end < 0:
+            raise ElfError(f"string table offset {offset} is outside its "
+                           f"{size}-byte table or not terminated")
         return self.data[start:end].decode("utf-8", "replace")
 
     def symbols(self):
@@ -310,7 +332,7 @@ class Elf:
         """The toolchain identification strings in `.comment`, or None."""
         for section in self.sections:
             if section["name"] == ".comment" and section["type"] == SHT_PROGBITS:
-                blob = self.data[section["offset"]:section["offset"] + section["size"]]
+                blob = self._contents(section)
                 strings = [s.decode("utf-8", "replace") for s in blob.split(b"\0") if s]
                 return sorted(set(strings)) or None
         return None
@@ -425,8 +447,8 @@ def static_max_frame(su_dir):
 RECORD_SCHEMA = 1
 
 
-def empty_record(cpu):
-    return {"schema": RECORD_SCHEMA, "cpu": cpu, "commit": current_commit(),
+def empty_record(cpu, commit=None):
+    return {"schema": RECORD_SCHEMA, "cpu": cpu, "commit": commit,
             "artifacts": {},
             # Separate keys, never one "stack" number: the static figure is the
             # deepest single frame, the runtime ones are a high-water mark. No
@@ -443,12 +465,16 @@ def current_commit():
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-def update_record(path, cpu, artifact, entry, su_dir):
+def update_record(path, cpu, artifact, entry, su_dir, commit):
     """Merge one measurement into the record at `path`, creating it if needed."""
     record_path = pathlib.Path(path)
-    record = json.loads(record_path.read_text()) if record_path.exists() else empty_record(cpu)
+    record = json.loads(record_path.read_text()) if record_path.exists() else empty_record(cpu, commit)
     if record.get("cpu") != cpu:
         raise ElfError(f"{path} records {record.get('cpu')}, not {cpu}")
+    if record.get("commit") != commit or record.get("schema") != RECORD_SCHEMA:
+        # Left by a run of another commit (or schema): its artifacts were
+        # measured there, so start over rather than mix the two.
+        record = empty_record(cpu, commit)
     record["artifacts"][pathlib.Path(artifact).name] = entry
     if su_dir is not None:
         frame = static_max_frame(su_dir)
@@ -510,7 +536,10 @@ def merge_records(paths, expect_commit):
     if set(records) != wanted:
         raise ElfError(f"records for {sorted(records)}; a release needs exactly "
                        f"{sorted(wanted)}")
-    return {"schema": RECORD_SCHEMA, "commit": expect_commit, "records": records}
+    commits = {record.get("commit") for record in records.values()}
+    if None in commits or len(commits) != 1:
+        raise ElfError(f"the records do not agree on one known commit: {sorted(map(str, commits))}")
+    return {"schema": RECORD_SCHEMA, "commit": commits.pop(), "records": records}
 
 
 def compare(label, measured, budget, tolerance, cpu, report, key):
@@ -600,7 +629,8 @@ def main():
         entry = measure(artifact, linked=bool(args.elf))
         entry["flags"] = args.flags
         if args.record:
-            update_record(args.record, args.cpu, artifact, entry, args.su_dir)
+            update_record(args.record, args.cpu, artifact, entry, args.su_dir,
+                          current_commit())
     except (ElfError, OSError, ValueError, KeyError, TypeError) as error:
         # A traceback here would be read as a broken script rather than as a
         # broken measurement, and the job would need someone to go and look.
@@ -900,6 +930,29 @@ def self_test():
            Elf(build_elf([], comment=["GCC: (fixture) 14.2.0", "GCC: (fixture) 14.2.0"])).comment(),
            ["GCC: (fixture) 14.2.0"])
 
+    # A file whose section names cannot be read is an error, not a file of
+    # unnamed sections: e_shstrndx SHN_UNDEF, or an index past the table.
+    for label, index in (("SHN_UNDEF", 0), ("out of range", 0xFEFF)):
+        data = bytearray(build_elf(PROBE_SECTIONS))
+        struct.pack_into("<H", data, 50, index)  # e_shstrndx in an ELF32 header
+        try:
+            Elf(bytes(data))
+            failures.append(f"e_shstrndx {label} was read as unnamed sections")
+        except ElfError as error:
+            if "section-name string table" not in str(error):
+                failures.append(f"e_shstrndx {label} failed without saying why: {error}")
+
+    # A section whose contents run past the end of the file is an error, not a
+    # shorter section: here `.comment`, whose bytes name the toolchain.
+    data = bytearray(build_elf([], comment=["GCC: (fixture) 14.2.0"]))
+    shoff = struct.unpack_from("<I", data, 32)[0]  # e_shoff in an ELF32 header
+    struct.pack_into("<I", data, shoff + 40 + 20, 0x10000)  # section 1 (.comment) sh_size
+    try:
+        Elf(bytes(data)).comment()
+        failures.append("a .comment past the end of the file was read")
+    except ElfError:
+        pass
+
     # Truncated and foreign files are errors, not zeros.
     for label, data in (("a truncated file", build_elf(PROBE_SECTIONS)[:80]),
                         ("a file that is not ELF", b"\xcf\xfa\xed\xfe" + bytes(60))):
@@ -918,11 +971,14 @@ def self_test():
         elf.write_bytes(build_elf([(".text", SHT_PROGBITS, AX, 64)], segments=[(0, 0, 64, 64)],
                                   elf_type=2))
         (root / "stack_probe.su").write_text("probe.cpp:1:1:void f()\t40\tstatic\n")
+        # A fixed commit, never current_commit(): the self-test must not depend
+        # on the directory it runs in or on GITHUB_SHA.
+        commit = "c" * 40
         paths = []
         for cpu in sorted(RAM_BUDGETS):
             record = root / f"{cpu}.json"
-            update_record(record, cpu, elf, measure(elf, linked=True), None)
-            update_record(record, cpu, obj, measure(obj, linked=False), root)
+            update_record(record, cpu, elf, measure(elf, linked=True), None, commit=commit)
+            update_record(record, cpu, obj, measure(obj, linked=False), root, commit=commit)
             paths.append(record)
         one = json.loads(paths[0].read_text())
         expect("record: runtime stack is null", (one["stack"]["runtime_hwm"],
@@ -934,13 +990,6 @@ def self_test():
         if "not measured" not in summary(one):
             failures.append("the summary shows an unmeasured value as something else")
 
-        # A fixed commit, not current_commit(): outside a git checkout and
-        # without GITHUB_SHA that is None, and merge_records skips the commit
-        # check for a None expect_commit, so "another commit" would be released.
-        commit = "c" * 40
-        for path in paths:
-            path.write_text(json.dumps(dict(json.loads(path.read_text()), commit=commit)))
-        one = json.loads(paths[0].read_text())
         try:
             merged = merge_records(paths, commit)
             expect("merged cpus", sorted(merged["records"]), sorted(RAM_BUDGETS))
@@ -948,6 +997,8 @@ def self_test():
             failures.append(f"a complete set of records was refused: {error}")
         stale = root / "stale.json"
         stale.write_text(json.dumps(dict(one, commit="0" * 40)))
+        no_commit = root / "no_commit.json"
+        no_commit.write_text(json.dumps(dict(one, commit=None)))
         no_stack = root / "no_stack.json"
         no_stack.write_text(json.dumps(dict(one, stack=empty_record("x")["stack"])))
         for label, inputs, want in (("a missing CPU", paths[1:], commit),
@@ -962,10 +1013,32 @@ def self_test():
                 pass
         try:
             update_record(paths[0], "cortex-m3" if one["cpu"] != "cortex-m3" else "cortex-m0",
-                          obj, measure(obj, linked=False), None)
+                          obj, measure(obj, linked=False), None, commit=commit)
             failures.append("a record accepted a measurement for another CPU")
         except ElfError:
             pass
+
+        # Without --expect-commit the records must still agree on one commit,
+        # and a record that does not know its commit is never released.
+        for label, inputs in (("records of two commits", [stale] + paths[1:]),
+                              ("a record with no commit",
+                               [no_commit] + paths[1:])):
+            try:
+                merge_records(inputs, None)
+                failures.append(f"{label}: merged without --expect-commit")
+            except ElfError:
+                pass
+
+        # A record left by an earlier run of another commit is replaced, not
+        # added to: its commit and its artifacts both belong to that run.
+        rerun = root / "rerun.json"
+        update_record(rerun, "cortex-m3", obj, measure(obj, linked=False), None,
+                      commit="a" * 40)
+        update_record(rerun, "cortex-m3", elf, measure(elf, linked=True), None,
+                      commit="b" * 40)
+        again = json.loads(rerun.read_text())
+        expect("re-run record: commit", again["commit"], "b" * 40)
+        expect("re-run record: artifacts", sorted(again["artifacts"]), ["invariant_probe.elf"])
 
     for failure in failures:
         print(f"self-test FAILED: {failure}", file=sys.stderr)
