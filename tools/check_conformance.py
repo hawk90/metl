@@ -172,6 +172,12 @@ def self_test():
         ("gap without issue", ["a.hpp"], SELF_TEST_REGISTRY.replace('"#1"', '"later"'), {}, set(), True),
         ("gap for unknown property", ["a.hpp"], SELF_TEST_REGISTRY.replace("gap_p", "gap_q"), {}, set(), True),
         ("listed but gone", ["a.hpp"], SELF_TEST_REGISTRY, {"gone.hpp": "why"}, set(), True),
+        ("registered and exempt", ["a.hpp"], SELF_TEST_REGISTRY, {"a.hpp": "why"}, set(), True),
+        ("tagged twice", ["a.hpp"],
+         SELF_TEST_REGISTRY.replace("using registry",
+                                    "// conformance-header: a.hpp\nstruct a2_adapter {};\nusing registry")
+         .replace("std::tuple<a_adapter>", "std::tuple<a_adapter, a2_adapter>"), {}, set(), True),
+        ("no registry list", ["b.hpp"], "", {"b.hpp": "why"}, set(), True),
     ]
     for name, headers, registry_text, exempt, pending, expect in cases:
         got = bool(check(headers, registry_text, tests, exempt, pending))
@@ -212,7 +218,7 @@ def main():
     print(f"conformance registry: {registered} registered, {len(EXEMPT)} exempt, "
           f"{len(PENDING)} pending, of {len(headers)} public headers")
     for problem in problems:
-        print(problem)
+        print(f"::error::{problem}", file=sys.stderr)
     if problems:
         print(f"\n{len(problems)} problem(s). See tests/conformance/conformance.hpp.")
         return 1
