@@ -188,7 +188,22 @@ def self_test():
             if code == 0:
                 failures.append("S1 accepted 9000 bytes against a 100-byte budget")
 
+            # The deepest frame is the one compared, wherever it sits. A probe
+            # has dozens of frames over several files; every fixture above has
+            # one, so picking the first or the shallowest frame would pass them.
             (root / "over.su").unlink()
+            (root / "a.su").write_text("probe.cpp:1:5:small\t8\tstatic\n"
+                                       "probe.cpp:2:5:medium\t40\tstatic\n")
+            (root / "b.su").write_text("probe.cpp:3:5:tiny\t4\tstatic\n"
+                                       "probe.cpp:4:5:deep\t9000\tstatic\n"
+                                       "probe.cpp:5:5:small2\t16\tstatic\n")
+            code, out = check(collect(root), "self-test-cpu", report=False)
+            if code == 0 or not any("9000 bytes in probe.cpp:4:5:deep" in line for line in out):
+                failures.append("S1 did not judge the deepest of several frames in "
+                                "several files")
+            (root / "a.su").unlink()
+            (root / "b.su").unlink()
+
             (root / "ok.su").write_text("probe.cpp:1:5:small\t100\tstatic\n")
             code, _ = check(collect(root), "self-test-cpu", report=False)
             if code != 0:
