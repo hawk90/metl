@@ -20,6 +20,7 @@
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
+#include "metl/detail/construct.hpp"
 #include "metl/in_place.hpp"
 
 #include <cstddef>
@@ -59,31 +60,6 @@ class variant;
 namespace detail {
 
 // ---------- Compile-time pack utilities ----------
-
-template <typename... Ts>
-struct max_sizeof;
-
-template <typename T>
-struct max_sizeof<T> : std::integral_constant<std::size_t, sizeof(T)> {};
-
-template <typename T, typename U, typename... Rest>
-struct max_sizeof<T, U, Rest...>
-    : std::integral_constant<std::size_t,
-                             (sizeof(T) > max_sizeof<U, Rest...>::value ? sizeof(T)
-                                                                        : max_sizeof<U, Rest...>::value)> {};
-
-template <typename... Ts>
-struct max_alignof;
-
-template <typename T>
-struct max_alignof<T> : std::integral_constant<std::size_t, alignof(T)> {};
-
-template <typename T, typename U, typename... Rest>
-struct max_alignof<T, U, Rest...>
-    : std::integral_constant<std::size_t,
-                             (alignof(T) > max_alignof<U, Rest...>::value ? alignof(T)
-                                                                          : max_alignof<U, Rest...>::value)> {
-};
 
 template <std::size_t Index, typename... Ts>
 struct nth_type;
@@ -156,12 +132,40 @@ template <typename... Ts>
 using all_nothrow_destructible = all_of<std::is_nothrow_destructible_v<Ts>...>;
 
 // ---------- Storage helpers ----------
-// Replacement for std::aligned_storage (deprecated in C++23).
-// alignas(max alignof) + array of max sizeof unsigned char bytes.
-// Accessors apply std::launder for strict-aliasing safety.
+struct variant_empty {};
+
+// The storage of variant<Ts...>: a recursive union, so a constructor builds the
+// alternative at index I in a member initializer. A constant expression allows
+// that, and never allows placement new, so a namespace-scope variant is
+// constant-initialized. Its size is the largest alternative's, rounded up to the
+// largest alignment.
+//
+// Everything after construction reaches the active alternative through the
+// union's address, laundered: a union and each of its members are
+// pointer-interconvertible, so at every depth that address is the
+// alternative's. Members are unqualified, as in optional.
 template <typename... Ts>
-struct alternative_storage {
-  alignas(max_alignof<Ts...>::value) unsigned char bytes[max_sizeof<Ts...>::value];
+union alternative_storage {
+  variant_empty empty_;
+
+  constexpr alternative_storage() noexcept : empty_{} {}
+};
+
+template <typename T, typename... Rest>
+union alternative_storage<T, Rest...> {
+  variant_empty empty_;
+  std::remove_cv_t<T> head_;
+  alternative_storage<Rest...> tail_;
+
+  constexpr alternative_storage() noexcept : empty_{} {}
+  template <typename... Args>
+  constexpr explicit alternative_storage(in_place_index_t<0>, Args&&... args)
+      : head_(std::forward<Args>(args)...) {}
+  template <std::size_t I, typename... Args>
+  constexpr explicit alternative_storage(in_place_index_t<I>, Args&&... args)
+      : tail_(in_place_index<I - 1>, std::forward<Args>(args)...) {}
+  // variant ends the active alternative itself.
+  METL_CONSTEXPR20 ~alternative_storage() {}
 };
 
 template <typename T>
@@ -269,10 +273,18 @@ using variant_alternative_t = typename variant_alternative<I, V>::type;
 
 /// @brief A fixed-storage tagged union holding one of `Ts...` (in-place, no heap).
 ///
-/// Stores the active alternative inline in an aligned byte buffer sized/aligned
-/// for the largest alternative; it never allocates. Copyable when all
+/// Stores the active alternative inline in a union sized and aligned for the
+/// largest alternative; it never allocates. Copyable when all
 /// alternatives are, but never *trivially* copyable (user-provided copy
 /// constructor and destructor).
+/// @par Constant initialization
+/// The default, converting, `in_place_type` and `in_place_index` constructors
+/// are constant-evaluable in every standard, C++17 included, whenever the
+/// alternative's constructor they call is. A namespace-scope variant built by
+/// one is then constant-initialized (it can be declared `constinit`), so nothing
+/// that runs before `main()` sees it before its constructor ran. The copy and
+/// move constructors, assignment, `emplace` and the observers are not
+/// constant-evaluable.
 /// @par Reference invalidation
 /// A reference to the active alternative stays valid until it ends: `emplace`
 /// of any alternative, assignment of a different alternative, a throw that
@@ -298,10 +310,7 @@ class variant {
   // Default constructor: requires first alternative to be default-constructible.
   template <typename First = first_type, typename = std::enable_if_t<std::is_default_constructible_v<First>>>
   constexpr variant() noexcept(std::is_nothrow_default_constructible_v<First>)
-      : storage_{}, index_(variant_npos) {
-    ::new (raw_addr()) first_type();
-    index_ = 0;
-  }
+      : storage_(in_place_index<0>), index_(0) {}
 
   /// @brief Constructs by selecting the unique alternative matching `value`.
   /// @param value The value forwarded into the matching alternative.
@@ -311,10 +320,9 @@ class variant {
             typename = std::enable_if_t<!std::is_same_v<Decayed, variant>>,
             typename = std::enable_if_t<(detail::index_of_type<Decayed, Ts...>::value != variant_npos)>,
             typename = std::enable_if_t<(detail::count_of_type<Decayed, Ts...>::value == 1)>>
-  variant(T&& value) noexcept(std::is_nothrow_constructible_v<Decayed, T&&>)
-      : storage_{}, index_(variant_npos) {
-    construct<Decayed>(std::forward<T>(value));
-  }
+  constexpr variant(T&& value) noexcept(std::is_nothrow_constructible_v<Decayed, T&&>)
+      : storage_(in_place_index<detail::index_of_type<Decayed, Ts...>::value>, std::forward<T>(value)),
+        index_(detail::index_of_type<Decayed, Ts...>::value) {}
 
   /// @brief Constructs the alternative of type `T` in place.
   /// @tparam T The (unique) alternative type to activate.
@@ -326,10 +334,10 @@ class variant {
             typename = std::enable_if_t<(detail::index_of_type<T, Ts...>::value != variant_npos)>,
             typename = std::enable_if_t<(detail::count_of_type<T, Ts...>::value == 1)>,
             typename = std::enable_if_t<std::is_constructible_v<T, Args&&...>>>
-  explicit variant(in_place_type_t<T>, Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>)
-      : storage_{}, index_(variant_npos) {
-    construct<T>(std::forward<Args>(args)...);
-  }
+  constexpr explicit variant(in_place_type_t<T>,
+                             Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>)
+      : storage_(in_place_index<detail::index_of_type<T, Ts...>::value>, std::forward<Args>(args)...),
+        index_(detail::index_of_type<T, Ts...>::value) {}
 
   /// @brief Constructs the alternative at index `I` in place.
   /// @tparam I The zero-based alternative index to activate.
@@ -341,13 +349,9 @@ class variant {
             typename = std::enable_if_t<(I < sizeof...(Ts))>,
             typename = std::enable_if_t<
                 std::is_constructible_v<typename detail::nth_type<I, Ts...>::type, Args&&...>>>
-  explicit variant(in_place_index_t<I>, Args&&... args) noexcept(
+  constexpr explicit variant(in_place_index_t<I>, Args&&... args) noexcept(
       std::is_nothrow_constructible_v<typename detail::nth_type<I, Ts...>::type, Args&&...>)
-      : storage_{}, index_(variant_npos) {
-    using target_type = typename detail::nth_type<I, Ts...>::type;
-    ::new (raw_addr()) target_type(std::forward<Args>(args)...);
-    index_ = I;
-  }
+      : storage_(in_place_index<I>, std::forward<Args>(args)...), index_(I) {}
 
   /// @brief Copy constructor; copies the active alternative.
   variant(const variant& other) noexcept(detail::all_nothrow_copy_constructible<Ts...>::value)
@@ -640,12 +644,12 @@ class variant {
 
   bool points_into_storage(const volatile void* address) const noexcept {
     const std::uintptr_t at = address_value(address);
-    const std::uintptr_t begin = address_value(&storage_.bytes[0]);
-    return at >= begin && at < begin + sizeof(storage_.bytes);
+    const std::uintptr_t begin = address_value(detail::addressof(storage_));
+    return at >= begin && at < begin + sizeof(storage_);
   }
 
-  void* raw_addr() noexcept { return static_cast<void*>(&storage_.bytes[0]); }
-  const void* raw_addr() const noexcept { return static_cast<const void*>(&storage_.bytes[0]); }
+  void* raw_addr() noexcept { return static_cast<void*>(detail::addressof(storage_)); }
+  const void* raw_addr() const noexcept { return static_cast<const void*>(detail::addressof(storage_)); }
 
   // Inlined into the helpers above, so MSVC reports the same C4702 here.
   METL_DETAIL_VARIANT_UNREACHABLE_OK_BEGIN
@@ -659,13 +663,6 @@ class variant {
     }
   }
   METL_DETAIL_VARIANT_UNREACHABLE_OK_END
-
-  template <typename T, typename... Args>
-  T& construct(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>) {
-    ::new (raw_addr()) T(std::forward<Args>(args)...);
-    index_ = detail::index_of_type<T, Ts...>::value;
-    return *std::launder(static_cast<T*>(raw_addr()));
-  }
 
   // Assignment from another variant, in two cases:
   // - Same alternative: assign in place with T's own operator=, as
@@ -726,11 +723,10 @@ class variant {
     assign_through_backup(std::move(other));
   }
 
-  // NOTE: alternatives live in laundered aligned storage, which is not
-  // constant-evaluable, so the constexpr labels here are effective only outside
-  // constant evaluation. Genuine constexpr (cf. metl::optional via
-  // metl/detail/construct.hpp) would require a recursive union rewrite;
-  // deferred.
+  // The constructors are constant-evaluable (detail::alternative_storage); the
+  // rest reaches the alternatives through laundered pointers, which a constant
+  // expression does not allow, so their constexpr labels take effect only at
+  // run time.
   storage_type storage_;
   std::size_t index_;
 };

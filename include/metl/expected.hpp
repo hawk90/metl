@@ -18,6 +18,8 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/addressof.hpp"
+#include "metl/detail/construct.hpp"
 #include "metl/in_place.hpp"
 #include "metl/type_traits.hpp"
 
@@ -158,6 +160,40 @@ struct is_metl_expected_with_value<expected<T, G>, T> : true_type {};
 // than destroying the old member a second time (#374).
 enum class expected_state : unsigned char { error, value, switching };
 
+struct expected_empty {};
+
+// The storage of expected<T, E>: a union, so a constructor builds the value or
+// the error in a member initializer. A constant expression allows that, and
+// never allows placement new, so a namespace-scope expected is
+// constant-initialized. Members are unqualified, as in optional: a const one is
+// built through a non-const pointer and handed out as const.
+template <typename T, typename E>
+union expected_union {
+  expected_empty empty_;
+  std::remove_cv_t<T> value_;
+  std::remove_cv_t<E> error_;
+
+  constexpr expected_union() noexcept : empty_{} {}
+  template <typename... Args>
+  constexpr explicit expected_union(in_place_t, Args&&... args) : value_(std::forward<Args>(args)...) {}
+  template <typename... Args>
+  constexpr explicit expected_union(unexpect_t, Args&&... args) : error_(std::forward<Args>(args)...) {}
+  // expected ends the active member itself.
+  METL_CONSTEXPR20 ~expected_union() {}
+};
+
+// The storage of expected<void, E>: the error, or nothing.
+template <typename E>
+union expected_error_union {
+  expected_empty empty_;
+  std::remove_cv_t<E> error_;
+
+  constexpr expected_error_union() noexcept : empty_{} {}
+  template <typename... Args>
+  constexpr explicit expected_error_union(unexpect_t, Args&&... args) : error_(std::forward<Args>(args)...) {}
+  METL_CONSTEXPR20 ~expected_error_union() {}
+};
+
 // Replaces the live `U` at `slot` with one built from `args`. `args` may refer
 // into `*slot` (`e.emplace(e.value())`), so a movable `U` is always built
 // before the old one is touched. If anything throws, `slot`
@@ -209,6 +245,13 @@ void replace_live(U* slot, expected_state& state, expected_state settled, Args&&
 /// Holds either a value `T` or an error `E` in an internal union; it never
 /// allocates. Copyable when both `T` and `E` are, but never *trivially* copyable
 /// (user-provided copy constructor and destructor).
+/// @par Constant initialization
+/// The default, value, error, `unexpected` and in-place constructors are
+/// constant-evaluable in every standard, C++17 included, whenever the
+/// constructor of `T` or `E` they call is. A namespace-scope expected built by
+/// one is then constant-initialized (it can be declared `constinit`), so nothing
+/// that runs before `main()` sees it before its constructor ran. The copy and
+/// move constructors, assignment and the observers are not constant-evaluable.
 /// @par Reference invalidation
 /// A reference to the value or the error stays valid until that member ends:
 /// a switch between value and error (by assignment, `emplace`/`emplace_error`
@@ -244,43 +287,38 @@ class expected {
   /// @brief Constructs a value-state expected by default-constructing `T`.
   // Default constructor (requires T default-constructible).
   template <typename U = T, typename = std::enable_if_t<std::is_default_constructible_v<U>>>
-  constexpr expected() : state_(detail::expected_state::value) {
-    construct_value();
-  }
+  constexpr expected() : storage_(in_place), state_(detail::expected_state::value) {}
 
   /// @brief Constructs a value-state expected from a copied value.
-  expected(const T& value) : state_(detail::expected_state::value) { construct_value(value); }
+  constexpr expected(const T& value) : storage_(in_place, value), state_(detail::expected_state::value) {}
   /// @brief Constructs a value-state expected from a moved value.
-  expected(T&& value) : state_(detail::expected_state::value) { construct_value(static_cast<T&&>(value)); }
+  constexpr expected(T&& value)
+      : storage_(in_place, static_cast<T&&>(value)), state_(detail::expected_state::value) {}
 
   /// @brief Constructs an error-state expected from an unexpected wrapper.
   // unexpected conversion constructors.
   template <typename G = E, typename = std::enable_if_t<std::is_constructible_v<E, const G&>>>
-  expected(const unexpected<G>& u) : state_(detail::expected_state::error) {
-    construct_error(u.error());
-  }
+  constexpr expected(const unexpected<G>& u)
+      : storage_(unexpect, u.error()), state_(detail::expected_state::error) {}
 
   template <typename G = E, typename = std::enable_if_t<std::is_constructible_v<E, G&&>>>
-  expected(unexpected<G>&& u) : state_(detail::expected_state::error) {
-    construct_error(static_cast<G&&>(u.error()));
-  }
+  constexpr expected(unexpected<G>&& u)
+      : storage_(unexpect, static_cast<G&&>(u.error())), state_(detail::expected_state::error) {}
 
   /// @brief Constructs a value-state expected, building `T` in place.
   /// @tparam Args Constructor argument types forwarded to `T`.
   /// @param args Arguments forwarded to `T`'s constructor.
   // in_place_t and unexpect_t tag constructors.
   template <typename... Args, typename = std::enable_if_t<std::is_constructible_v<T, Args...>>>
-  constexpr explicit expected(in_place_t, Args&&... args) : state_(detail::expected_state::value) {
-    construct_value(std::forward<Args>(args)...);
-  }
+  constexpr explicit expected(in_place_t, Args&&... args)
+      : storage_(in_place, std::forward<Args>(args)...), state_(detail::expected_state::value) {}
 
   /// @brief Constructs an error-state expected, building `E` in place.
   /// @tparam Args Constructor argument types forwarded to `E`.
   /// @param args Arguments forwarded to `E`'s constructor.
   template <typename... Args, typename = std::enable_if_t<std::is_constructible_v<E, Args...>>>
-  constexpr explicit expected(unexpect_t, Args&&... args) : state_(detail::expected_state::error) {
-    construct_error(std::forward<Args>(args)...);
-  }
+  constexpr explicit expected(unexpect_t, Args&&... args)
+      : storage_(unexpect, std::forward<Args>(args)...), state_(detail::expected_state::error) {}
 
   /// @brief Copy constructor; copies the active value or error.
   expected(const expected& other) : state_(other.state_) {
@@ -785,13 +823,14 @@ class expected {
   }
 
  private:
-  void* storage_addr() noexcept { return &storage_.bytes[0]; }
+  // Laundered: emplace and assignment can end a member and build a new one in
+  // its place, which C++17 [basic.life]/8 does not let the member's name reach
+  // when T or E has a const or reference member.
+  T* value_ptr() noexcept { return std::launder(detail::addressof(storage_.value_)); }
+  const T* value_ptr() const noexcept { return std::launder(detail::addressof(storage_.value_)); }
 
-  T* value_ptr() noexcept { return std::launder(reinterpret_cast<T*>(&storage_.bytes[0])); }
-  const T* value_ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&storage_.bytes[0])); }
-
-  E* error_ptr() noexcept { return std::launder(reinterpret_cast<E*>(&storage_.bytes[0])); }
-  const E* error_ptr() const noexcept { return std::launder(reinterpret_cast<const E*>(&storage_.bytes[0])); }
+  E* error_ptr() noexcept { return std::launder(detail::addressof(storage_.error_)); }
+  const E* error_ptr() const noexcept { return std::launder(detail::addressof(storage_.error_)); }
 
   // Unchecked accessors used internally where active-member state is known.
   T& value_unchecked() noexcept { return *value_ptr(); }
@@ -809,12 +848,12 @@ class expected {
 
   template <typename... Args>
   void construct_value(Args&&... args) {
-    ::new (storage_addr()) T(std::forward<Args>(args)...);
+    detail::construct_at(detail::addressof(storage_.value_), std::forward<Args>(args)...);
   }
 
   template <typename... Args>
   void construct_error(Args&&... args) {
-    ::new (storage_addr()) E(std::forward<Args>(args)...);
+    detail::construct_at(detail::addressof(storage_.error_), std::forward<Args>(args)...);
   }
 
   // Only the destructor calls this; a member's destructor that reaches back
@@ -1008,15 +1047,15 @@ class expected {
       // so with `if constexpr` compiles the handler only where it can run,
       // which is what the code already meant.
 #if METL_NO_EXCEPTIONS
-      ::new (e.storage_addr()) T(static_cast<T&&>(*v.value_ptr()));
+      e.construct_value(static_cast<T&&>(*v.value_ptr()));
 #else
       if constexpr (std::is_nothrow_move_constructible_v<T>) {
-        ::new (e.storage_addr()) T(static_cast<T&&>(*v.value_ptr()));
+        e.construct_value(static_cast<T&&>(*v.value_ptr()));
       } else {
         try {
-          ::new (e.storage_addr()) T(static_cast<T&&>(*v.value_ptr()));
+          e.construct_value(static_cast<T&&>(*v.value_ptr()));
         } catch (...) {
-          ::new (e.storage_addr()) E(static_cast<E&&>(tmp));  // restore e
+          e.construct_error(static_cast<E&&>(tmp));  // restore e
           v.state_ = detail::expected_state::value;
           e.state_ = detail::expected_state::error;
           throw;
@@ -1024,47 +1063,31 @@ class expected {
       }
 #endif
       v.value_ptr()->~T();
-      ::new (v.storage_addr()) E(static_cast<E&&>(tmp));
+      v.construct_error(static_cast<E&&>(tmp));
     } else {
       T tmp(static_cast<T&&>(*v.value_ptr()));
       v.value_ptr()->~T();
 #if !METL_NO_EXCEPTIONS
       try {
 #endif
-        ::new (v.storage_addr()) E(static_cast<E&&>(*e.error_ptr()));
+        v.construct_error(static_cast<E&&>(*e.error_ptr()));
 #if !METL_NO_EXCEPTIONS
       } catch (...) {
-        ::new (v.storage_addr()) T(static_cast<T&&>(tmp));  // restore v
+        v.construct_value(static_cast<T&&>(tmp));  // restore v
         v.state_ = detail::expected_state::value;
         e.state_ = detail::expected_state::error;
         throw;
       }
 #endif
       e.error_ptr()->~E();
-      ::new (e.storage_addr()) T(static_cast<T&&>(tmp));
+      e.construct_value(static_cast<T&&>(tmp));
     }
     v.state_ = detail::expected_state::error;
     e.state_ = detail::expected_state::value;
   }
 
-  // NOTE: value/error live in laundered aligned storage, which is not
-  // constant-evaluable, so the constexpr labels here are effective only outside
-  // constant evaluation. Genuine constexpr (cf. metl::optional via
-  // metl/detail/construct.hpp) would require a union-of-{T,E} rewrite that also
-  // preserves the exception-safe reinit/swap paths; deferred.
-  //
-  // One byte buffer, not a union of storage_for<T> and storage_for<E>: no
-  // member of that union was ever made active, so every access to one was a
-  // member call on an object outside its lifetime ([basic.life]/7). Bytes
-  // provide storage for the T or E built in them, as in metl::variant.
-  // The size is rounded up to the alignment, so the alignment specifier adds no
-  // padding of its own (which MSVC reports as C4324).
-  static constexpr std::size_t storage_align = alignof(T) > alignof(E) ? alignof(T) : alignof(E);
-  static constexpr std::size_t storage_size =
-      ((sizeof(T) > sizeof(E) ? sizeof(T) : sizeof(E)) + storage_align - 1) / storage_align * storage_align;
-  struct storage_type {
-    alignas(storage_align) unsigned char bytes[storage_size];
-  } storage_;
+  // The larger member, rounded up to the larger alignment (detail::expected_union).
+  detail::expected_union<T, E> storage_;
 
   detail::expected_state state_;
 };
@@ -1096,30 +1119,27 @@ class expected<void, E> {
   // ---- Constructors --------------------------------------------------------
 
   /// @brief Constructs a success-state expected<void, E>.
-  constexpr expected() noexcept : state_(detail::expected_state::value) {}
+  constexpr expected() noexcept : storage_(), state_(detail::expected_state::value) {}
 
   /// @brief Constructs a success-state expected<void, E> (no value to build).
   // in_place_t: produces a value-state expected<void, E> (no T to construct).
-  constexpr explicit expected(in_place_t) noexcept : state_(detail::expected_state::value) {}
+  constexpr explicit expected(in_place_t) noexcept : storage_(), state_(detail::expected_state::value) {}
 
   /// @brief Constructs an error-state expected, building `E` in place.
   /// @tparam Args Constructor argument types forwarded to `E`.
   /// @param args Arguments forwarded to `E`'s constructor.
   template <typename... Args, typename = std::enable_if_t<std::is_constructible_v<E, Args...>>>
-  constexpr explicit expected(unexpect_t, Args&&... args) : state_(detail::expected_state::error) {
-    construct_error(std::forward<Args>(args)...);
-  }
+  constexpr explicit expected(unexpect_t, Args&&... args)
+      : storage_(unexpect, std::forward<Args>(args)...), state_(detail::expected_state::error) {}
 
   /// @brief Constructs an error-state expected from an unexpected wrapper.
   template <typename G = E, typename = std::enable_if_t<std::is_constructible_v<E, const G&>>>
-  expected(const unexpected<G>& u) : state_(detail::expected_state::error) {
-    construct_error(u.error());
-  }
+  constexpr expected(const unexpected<G>& u)
+      : storage_(unexpect, u.error()), state_(detail::expected_state::error) {}
 
   template <typename G = E, typename = std::enable_if_t<std::is_constructible_v<E, G&&>>>
-  expected(unexpected<G>&& u) : state_(detail::expected_state::error) {
-    construct_error(static_cast<G&&>(u.error()));
-  }
+  constexpr expected(unexpected<G>&& u)
+      : storage_(unexpect, static_cast<G&&>(u.error())), state_(detail::expected_state::error) {}
 
   /// @brief Copy constructor; copies the error if in the error state.
   expected(const expected& other) : state_(other.state_) {
@@ -1578,8 +1598,8 @@ class expected<void, E> {
   }
 
  private:
-  E* error_ptr() noexcept { return error_storage_.ptr(); }
-  const E* error_ptr() const noexcept { return error_storage_.ptr(); }
+  E* error_ptr() noexcept { return std::launder(detail::addressof(storage_.error_)); }
+  const E* error_ptr() const noexcept { return std::launder(detail::addressof(storage_.error_)); }
 
   constexpr bool holds_value() const noexcept { return state_ == detail::expected_state::value; }
   constexpr bool holds_error() const noexcept { return state_ == detail::expected_state::error; }
@@ -1589,12 +1609,12 @@ class expected<void, E> {
 
   template <typename... Args>
   void construct_error(Args&&... args) {
-    ::new (error_storage_.addr()) E(std::forward<Args>(args)...);
+    detail::construct_at(detail::addressof(storage_.error_), std::forward<Args>(args)...);
   }
 
-  // storage_for<E> is a raw byte buffer with correct alignment; leaving it
-  // uninitialized in the value state is OK (no E construction required).
-  storage_for<E> error_storage_;
+  // The success state leaves the empty member active: nothing to build, and a
+  // constant-initialized object has no indeterminate bytes.
+  detail::expected_error_union<E> storage_;
   detail::expected_state state_;
 };
 
