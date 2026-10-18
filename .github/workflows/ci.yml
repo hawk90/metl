@@ -103,6 +103,11 @@ jobs:
           # objects are interchangeable.
           key: clang-Debug-werror-${{ runner.os }}
           max-size: 300M
+          # Saved from main only. A PR's entries are readable by that PR alone
+          # and, at ~4 GB, pushed the repository past its 10 GB cache limit,
+          # where eviction can take the apt toolchain caches. A PR restores
+          # main's entries; nearly every compile is a hit either way.
+          save: ${{ github.event_name == 'push' }}
 
       - name: Install build deps
         uses: ./.github/actions/apt-install
@@ -167,6 +172,7 @@ jobs:
         if: runner.os != 'Windows'
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
+          save: ${{ github.event_name == 'push' }}
           key: ${{ github.job }}-${{ runner.os }}-${{ matrix.compiler.cc }}-${{ matrix.build_type }}
           max-size: 300M
 
@@ -254,6 +260,7 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
+          save: ${{ github.event_name == 'push' }}
           key: ${{ github.job }}-${{ runner.os }}-${{ matrix.compiler.cc }}
           max-size: 300M
 
@@ -302,6 +309,7 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
+          save: ${{ github.event_name == 'push' }}
           key: ${{ github.job }}-${{ runner.os }}
           max-size: 300M
 
@@ -368,6 +376,7 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
+          save: ${{ github.event_name == 'push' }}
           key: ${{ github.job }}-${{ runner.os }}-${{ matrix.san }}
           max-size: 300M
 
@@ -425,6 +434,7 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
+          save: ${{ github.event_name == 'push' }}
           key: ${{ github.job }}-${{ runner.os }}-${{ matrix.cpu }}
           max-size: 300M
 
@@ -568,7 +578,7 @@ jobs:
         uses: ./.github/actions/apt-install
         with:
           packages: ${{ matrix.apt_pkgs }}
-          cache-key: cross-${{ matrix.name }}
+          cache-key: cross-${{ matrix.apt_pkgs }}
 
       - name: Syntax-only compile over the public headers
         run: ${{ matrix.compile_cmd }}
@@ -1326,6 +1336,7 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
+          save: ${{ github.event_name == 'push' }}
           key: ${{ github.job }}-${{ runner.os }}-${{ matrix.name }}
           max-size: 300M
 
@@ -1409,6 +1420,7 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
+          save: ${{ github.event_name == 'push' }}
           key: ${{ github.job }}-${{ runner.os }}
           max-size: 300M
 
@@ -1470,6 +1482,7 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
+          save: ${{ github.event_name == 'push' }}
           # Shared with preflight: same compiler, build type and flags, so the
           # objects are interchangeable.
           key: clang-Debug-werror-${{ runner.os }}
@@ -1739,12 +1752,24 @@ jobs:
   # operation-count test, the always-true assert ONLY by the compile-failure
   # cases, and flat_set::nth ONLY by a fuzz harness's oracle. No layer dominates
   # another.
+  #
+  # Sharded: one job ran every mutant in turn for 18-41 minutes and was the
+  # last job of every run, while the rest finished in about 7. Each shard
+  # takes every mutant `--shard` deals it; the shards together hold each
+  # mutant exactly once (the tool's self-test checks that). The shard index and
+  # count come from the matrix itself, so the workflow and the tool cannot
+  # disagree about how many there are. ci-gate needs `mutants`, which waits for
+  # every shard. Four, not more: the account runs about 20 jobs at once.
   # ---------------------------------------------------------------------------
   mutants:
-    name: mutants
+    name: mutants / shard ${{ matrix.shard }}
     runs-on: ubuntu-26.04
     needs: preflight
-    timeout-minutes: 55
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
 
     steps:
       - name: Checkout
@@ -1753,21 +1778,26 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
+          save: ${{ github.event_name == 'push' }}
           key: ${{ github.job }}-${{ runner.os }}
           max-size: 300M
 
       - name: Install build deps
         uses: ./.github/actions/apt-install
         with:
-          packages: build-essential clang
-          cache-key: build-essential-clang
+          packages: build-essential clang ninja-build
+          cache-key: build-essential-clang-ninja
 
+      # Ninja, not Make: every mutant rebuilds the tree, and nearly every
+      # compile is a ccache hit, so the build tool's own per-target overhead
+      # is much of each rebuild. The driver's ten-second mtime bump keeps
+      # Ninja from reusing stale objects just as it does Make.
       - name: Configure
         env:
           CC: clang
           CXX: clang++
         run: |
-          cmake -B build-mutants -S . \
+          cmake -G Ninja -B build-mutants -S . \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=Debug \
             -DMETL_INSTALL=OFF
@@ -1791,10 +1821,13 @@ jobs:
         # One rebuild and ctest run per mutant; `check_mutants.py --list` counts
         # them. Not written here: a count in a comment went stale (#245 said 68
         # for 65). 47 took 13 minutes on CI.
-        timeout-minutes: 45
+        timeout-minutes: 25
         # The qemu: mutants need the ARM toolchain and QEMU; qemu-conformance
         # runs them.
-        run: tools/check_mutants.py --build-dir build-mutants --skip-kinds qemu
+        env:
+          PYTHONUNBUFFERED: "1"
+          SHARD: ${{ strategy.job-index }}/${{ strategy.job-total }}
+        run: tools/check_mutants.py --build-dir build-mutants --skip-kinds qemu --shard "$SHARD"
 
   # ---------------------------------------------------------------------------
   # clang-tidy (blocking deduplicated ratchet)
@@ -2005,6 +2038,7 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
+          save: ${{ github.event_name == 'push' }}
           key: ${{ github.job }}-${{ runner.os }}
           max-size: 300M
 
@@ -2120,6 +2154,7 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
+          save: ${{ github.event_name == 'push' }}
           key: ${{ github.job }}-${{ runner.os }}
           max-size: 300M
 
@@ -2223,6 +2258,7 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
+          save: ${{ github.event_name == 'push' }}
           key: ${{ github.job }}-${{ runner.os }}-${{ matrix.compiler.cc }}
           max-size: 300M
 
@@ -2303,6 +2339,7 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
+          save: ${{ github.event_name == 'push' }}
           key: ${{ github.job }}-${{ runner.os }}
           max-size: 300M
 
@@ -2646,6 +2683,7 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
+          save: ${{ github.event_name == 'push' }}
           key: ${{ github.job }}-${{ runner.os }}
           max-size: 300M
 

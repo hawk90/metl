@@ -114,6 +114,37 @@ def load_mutants(directory=MUTANT_DIR):
 MUTANTS = load_mutants()
 
 
+def shard(mutants, index, total):
+    """Shard `index` of `total` (0-based) of `mutants`, for a CI matrix.
+
+    Dealt round-robin within each gate kind, in name order, so a kind whose
+    mutants cost more (tsan: builds a second tree) spreads across shards
+    instead of landing in one. Deterministic: every shard computes the same
+    split, and the shards together hold every mutant exactly once."""
+    dealt = [[] for _ in range(total)]
+    by_kind = {}
+    for mutant in sorted(mutants, key=lambda m: m["name"]):
+        by_kind.setdefault(mutant["kills"].partition(":")[0], []).append(mutant)
+    turn = 0
+    for kind in sorted(by_kind):
+        for mutant in by_kind[kind]:
+            dealt[turn % total].append(mutant)
+            turn += 1
+    return dealt[index]
+
+
+def shard_spec(text):
+    """argparse type for --shard K/N."""
+    index, slash, total = text.partition("/")
+    try:
+        index, total = int(index), int(total)
+    except ValueError:
+        index = total = None
+    if not slash or index is None or total < 1 or not 0 <= index < total:
+        raise argparse.ArgumentTypeError(f"{text!r}: expected K/N with 0 <= K < N")
+    return index, total
+
+
 def force_rebuild(path):
     """Make `path` unambiguously newer than anything already built from it.
 
@@ -252,7 +283,7 @@ def check(mutants, build_dir, quiet=False):
         if quiet:
             return
         print(f"::error::{message}" if error else message,
-              file=sys.stderr if error else sys.stdout)
+              file=sys.stderr if error else sys.stdout, flush=True)
 
     survivors, broken = [], []
 
@@ -262,6 +293,7 @@ def check(mutants, build_dir, quiet=False):
     for mutant in mutants:
         path = REPO / mutant["file"]
         original = None
+        started = time.monotonic()
         try:
             original = apply_mutant(mutant)
             killed, detail = run_gate(mutant["kills"], build_dir)
@@ -276,14 +308,15 @@ def check(mutants, build_dir, quiet=False):
                         f"FAILED TO RESTORE {mutant['file']} after "
                         f"{mutant['name']} -- the working tree is MUTATED.")
 
+        elapsed = f"({time.monotonic() - started:.0f}s)"
         if killed is None:
             broken.append(f"{mutant['name']}: {detail}")
-            say(f"  BROKEN  {mutant['name']:38} ({detail})")
+            say(f"  BROKEN  {mutant['name']:38} ({detail}) {elapsed}")
         elif killed:
-            say(f"  killed  {mutant['name']:38} by {mutant['kills']}")
+            say(f"  killed  {mutant['name']:38} by {mutant['kills']} {elapsed}")
         else:
             survivors.append(mutant)
-            say(f"  SURVIVED {mutant['name']:37} {mutant['kills']} did not notice")
+            say(f"  SURVIVED {mutant['name']:37} {mutant['kills']} did not notice {elapsed}")
 
     # Leave the build directory consistent with the restored source. Without
     # this the last mutant's binaries stay on disk -- the tree reads clean and a
@@ -406,6 +439,24 @@ def self_test():
                 pass
             (directory / f"{bad_name}.py").unlink()
 
+    # --shard: the shards of any N hold every mutant exactly once, and each
+    # gate kind is spread rather than dealt to one shard.
+    names = sorted(m["name"] for m in MUTANTS)
+    for total in (1, 2, 3, 4, 7, len(MUTANTS) + 3):
+        shards = [shard(MUTANTS, index, total) for index in range(total)]
+        if sorted(m["name"] for part in shards for m in part) != names:
+            failures.append(f"--shard */{total} does not cover every mutant exactly once")
+        for kind in {m["kills"].partition(":")[0] for m in MUTANTS}:
+            counts = [sum(m["kills"].startswith(kind + ":") for m in part) for part in shards]
+            if max(counts) - min(counts) > 1:
+                failures.append(f"--shard */{total} deals {kind}: mutants unevenly: {counts}")
+    for bad in ("1", "2/2", "-1/4", "0/0", "a/4", "1/b", ""):
+        try:
+            shard_spec(bad)
+            failures.append(f"--shard {bad!r} was accepted")
+        except argparse.ArgumentTypeError:
+            pass
+
     if failures:
         for failure in failures:
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
@@ -424,6 +475,8 @@ def main():
                                         "files (an empty list selects none)")
     parser.add_argument("--kinds", help="comma-separated gate kinds: run only the mutants they kill")
     parser.add_argument("--skip-kinds", help="comma-separated gate kinds whose mutants to leave out")
+    parser.add_argument("--shard", type=shard_spec, metavar="K/N",
+                        help="run only shard K (0-based) of N, after the other selections")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
@@ -445,6 +498,9 @@ def main():
         if not selected:
             print(f"no mutant targets {sorted(wanted) or 'any changed file'}; nothing to run")
             return 0
+
+    if args.shard:
+        selected = shard(selected, *args.shard)
 
     if args.list:
         for mutant in selected:
