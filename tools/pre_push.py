@@ -83,7 +83,7 @@ GATES = [
     ["tools/check_api_contract.py"],
     ["tools/check_source_rules.py"],
     ["tools/check_progress_guarantee.py"],
-    ["tools/check_conformance.py"],
+    ["tools/check_conformance.py", "--base", "origin/main"],
     ["tools/check_ci_gate.py"],
     ["tools/check_compile_fail.py"],
     ["tools/check_changelog.py", "--base", "origin/main"],

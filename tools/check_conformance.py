@@ -21,14 +21,19 @@ It also checks each known gap (`gap_<property> = "#NNN"` in an adapter): it must
 name an issue, and the property must exist in a test. The suite itself fails
 when a gap starts passing, so the gaps cannot go stale silently.
 
+With --base, PENDING is compared with the merge base's: an entry the base
+does not have fails, which is what "may only SHRINK" needs to mean anything.
+
 Usage:
-    tools/check_conformance.py
+    tools/check_conformance.py [--base origin/main]
     tools/check_conformance.py --self-test   # prove the checker still bites
 """
 
 import argparse
+import ast
 import pathlib
 import re
+import subprocess
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -83,7 +88,8 @@ EXEMPT = {
     "lock.hpp": "guarded<T> holds one T for its whole lifetime; nothing is added or removed",
 }
 
-# Own user objects, no adapter yet. MAY ONLY SHRINK.
+# Own user objects, no adapter yet. MAY ONLY SHRINK: --base fails an entry the
+# merge base did not have.
 PENDING = set()
 
 TAG = re.compile(r"^// conformance-header:\s*(\S+)\s*\n(?://.*\n)*struct (\w+)", re.M)
@@ -92,6 +98,35 @@ GAP = re.compile(r"static constexpr const char\* gap_(\w+) = \"([^\"]*)\";")
 DECLARED = re.compile(r"METL_CONFORMANCE_DECLARE_GAP\((\w+)\)")
 ISSUE = re.compile(r"^#\d+$")
 INVALIDATION = re.compile(r"^/// @par (Iterator|Reference) invalidation$", re.M)
+
+
+def pending_in(text):
+    """The PENDING set a version of this file assigns. Raises ValueError if it
+    assigns none: a base whose PENDING cannot be read must not read as empty,
+    which would let any entry count as growth -- or, compared the other way,
+    let any growth pass."""
+    for node in ast.parse(text).body:
+        if isinstance(node, ast.Assign) and [getattr(t, "id", None) for t in node.targets] == ["PENDING"]:
+            value = node.value
+            if isinstance(value, ast.Call) and getattr(value.func, "id", None) == "set" and not value.args:
+                return set()
+            return set(ast.literal_eval(value))
+    raise ValueError("no `PENDING = ...` assignment")
+
+
+def pending_growth(pending, base_pending):
+    """Entries in `pending` the base did not have, sorted."""
+    return sorted(set(pending) - set(base_pending))
+
+
+def base_pending(base):
+    """PENDING as this file assigned it at the merge base of `base` and HEAD."""
+    merge_base = subprocess.run(["git", "merge-base", base, "HEAD"], cwd=REPO,
+                                capture_output=True, text=True, check=True).stdout.strip()
+    relative = pathlib.Path(__file__).resolve().relative_to(REPO).as_posix()
+    text = subprocess.run(["git", "show", f"{merge_base}:{relative}"], cwd=REPO,
+                          capture_output=True, text=True, check=True).stdout
+    return pending_in(text)
 
 
 def public_headers(include_dir):
@@ -191,12 +226,30 @@ def self_test():
         if got != expect:
             print(f"SELF-TEST FAILED [{name}]: expected a problem={expect}, got {got}", file=sys.stderr)
             return 1
+    # PENDING may only shrink: an entry the base does not have is growth.
+    base_text = 'PENDING = {"old.hpp", "kept.hpp"}\n'
+    if pending_growth({"kept.hpp"}, pending_in(base_text)):
+        print("SELF-TEST FAILED: PENDING shrinking was reported as growth", file=sys.stderr)
+        return 1
+    if pending_growth({"kept.hpp", "new.hpp"}, pending_in(base_text)) != ["new.hpp"]:
+        print("SELF-TEST FAILED: an entry added to PENDING was accepted -- the list may only shrink",
+              file=sys.stderr)
+        return 1
+    if pending_in("PENDING = set()\n") != set():
+        print("SELF-TEST FAILED: an empty PENDING was not read as empty", file=sys.stderr)
+        return 1
+    try:
+        pending_in("OTHER = 1\n")
+        print("SELF-TEST FAILED: a base with no PENDING was read as an empty one", file=sys.stderr)
+        return 1
+    except ValueError:
+        pass
     overlap = PENDING & set(EXEMPT)
     if overlap:
         print(f"SELF-TEST FAILED: {sorted(overlap)} is both EXEMPT and PENDING", file=sys.stderr)
         return 1
-    print("self-test passed: an unlisted header, a stray adapter, an unnamed gap or an unstated "
-          "invalidation rule is rejected")
+    print("self-test passed: an unlisted header, a stray adapter, an unnamed gap, an unstated "
+          "invalidation rule or a PENDING that grew is rejected")
     return 0
 
 
@@ -204,6 +257,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--base", help="git ref whose merge base's PENDING this one may not exceed")
     args = parser.parse_args()
     if args.self_test:
         return self_test()
@@ -213,6 +267,15 @@ def main():
     test_texts = [p.read_text(encoding="utf-8") for p in sorted(SUITE.glob("*_test.cpp"))]
     header_texts = {h: (INCLUDE / h).read_text(encoding="utf-8") for h in headers}
     problems = check(headers, registry_text, test_texts, EXEMPT, PENDING, header_texts)
+    if args.base:
+        try:
+            grown = pending_growth(PENDING, base_pending(args.base))
+        except (subprocess.CalledProcessError, ValueError) as error:
+            detail = error.stderr.strip() if isinstance(error, subprocess.CalledProcessError) else error
+            problems.append(f"PENDING could not be read at the merge base of {args.base}: {detail}")
+        else:
+            problems += [f"{header}: added to PENDING, which may only shrink. Write its adapter, "
+                         f"or say in EXEMPT why no property applies" for header in grown]
 
     registered = len(TAG.findall(registry_text))
     print(f"conformance registry: {registered} registered, {len(EXEMPT)} exempt, "
