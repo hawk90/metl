@@ -60,6 +60,8 @@ CATEGORIES: dict[str, list[tuple[str, str]]] = {
         (r"^__cxa_(begin|end)_catch$", "catch path"),
         (r"^_Unwind_", "unwinder"),
         (r"^__gxx_personality", "personality routine"),
+        (r"^__aeabi_unwind_cpp_pr\d+$", "ARM EHABI personality routine"),
+        (r"^__cxa_end_cleanup$", "cleanup path"),
     ],
     "rtti": [
         (r"^__dynamic_cast$", "dynamic_cast"),
@@ -190,6 +192,10 @@ SELF_TEST_HITS = {
         "__cxa_begin_catch", "__cxa_end_catch",
         "_Unwind_RaiseException", "_Unwind_Resume",
         "__gxx_personality_v0",
+        # ARM EHABI: clang and GCC reference these from any frame with an
+        # unwind table (C with -funwind-tables, C++ with only cleanups).
+        "__aeabi_unwind_cpp_pr0", "__aeabi_unwind_cpp_pr1",
+        "__cxa_end_cleanup",
     ],
     "rtti": [
         "__dynamic_cast",
@@ -208,6 +214,8 @@ SELF_TEST_MISSES = [
     "free_list_init",     # ^free$ likewise
     "my_memalign",        # ^memalign$ likewise
     "sbrk_bytes_used",    # ^_?sbrk$ likewise -- a counter, not the syscall
+    "__aeabi_uidiv",      # an EABI helper, not an unwind routine
+    "__cxa_end_cleanup_count",  # ^__cxa_end_cleanup$ is anchored
     "_ZN4metl11fixed_arrayE",  # a normal mangled name: _ZN, not _Znw
     "_ZdvSomething",      # _Zd[la] wants delete, not divide
     "_ZTVN4metlE",        # a vtable is not a typeinfo (_ZTV, not _ZTI/_ZTS)
