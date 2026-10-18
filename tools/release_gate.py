@@ -7,7 +7,10 @@ sanitizers, ARM size/stack/RAM budgets, QEMU on four Cortex-M cores, Zephyr,
 ESP-IDF) and `analyze / c-cpp` (CodeQL). A tag releases a commit only when
 
   * the commit is on main, and
-  * every check in REQUIRED has a successful run on that commit.
+  * every check in REQUIRED has a successful run on that commit, from a push
+    to main in the workflow that produces it. A pull_request run reports on
+    its head commit too, but it tested a merge with an older base, and a
+    documentation-only pull request's ci-gate passes with every build skipped.
 
 A check still running is waited for (main's CI takes 10-25 minutes, most of it
 queueing for runners). A check that finished without success fails the release
@@ -69,7 +72,7 @@ def verdict(runs, minute, producing=False):
         return "fail:finished as " + ",".join(str(run.get("conclusion")) for run in runs)
     if not runs and not producing and minute >= NO_RUN_MINUTES:
         return (f"fail:never reported in {NO_RUN_MINUTES} minutes, and the workflow that "
-                f"produces it is not running -- main's CI did not run on this commit")
+                f"produces it is not running -- no push to main ran CI on this commit")
     return "wait"
 
 
@@ -83,17 +86,30 @@ def overall(verdicts):
     return "wait", {name: v for name, v in verdicts.items() if v == "wait"}
 
 
+def from_main_push(checks, workflow_runs, path):
+    """The check runs that a `push` to main ran, in the workflow at `path`."""
+    suites = {run.get("check_suite_id") for run in workflow_runs
+              if run.get("event") == "push" and run.get("head_branch") == "main"
+              and run.get("path") == path}
+    return [check for check in checks if (check.get("check_suite") or {}).get("id") in suites]
+
+
 def check_runs(repo, sha, name):
     runs = json.loads(run(["gh", "api", "-X", "GET", f"repos/{repo}/commits/{sha}/check-runs",
                            "-f", f"check_name={name}"]))["check_runs"]
     return [run for run in runs if (run.get("app") or {}).get("slug") == "github-actions"]
 
 
-def producing_workflows(repo, sha):
-    """Paths of the workflows with a run on `sha` that has not completed."""
-    runs = json.loads(run(["gh", "api", "-X", "GET", f"repos/{repo}/actions/runs",
+def workflow_runs_on(repo, sha):
+    """Every workflow run on `sha`: its path, event, branch, status and check suite."""
+    return json.loads(run(["gh", "api", "-X", "GET", f"repos/{repo}/actions/runs",
                            "-f", f"head_sha={sha}", "-f", "per_page=100"]))["workflow_runs"]
-    return {run["path"] for run in runs if run.get("status") != "completed"}
+
+
+def producing_workflows(workflow_runs):
+    """Paths of the workflows a push to main is still running on the commit."""
+    return {run["path"] for run in workflow_runs if run.get("status") != "completed"
+            and run.get("event") == "push" and run.get("head_branch") == "main"}
 
 
 def on_main(sha):
@@ -121,6 +137,20 @@ def self_test():
         if not got.startswith(want):
             failures.append(f"verdict({runs}, minute={minute}, producing={producing}) = {got}, "
                             f"want {want}")
+    # Only main's own run counts. A pull_request run reports on its head
+    # commit but tested a merge with the base of its day, and a docs-only PR's
+    # ci-gate passes with every build skipped.
+    workflow_runs = [
+        {"check_suite_id": 1, "event": "push", "head_branch": "main", "path": PRODUCER["ci-gate"]},
+        {"check_suite_id": 2, "event": "pull_request", "head_branch": "topic", "path": PRODUCER["ci-gate"]},
+        {"check_suite_id": 3, "event": "push", "head_branch": "topic", "path": PRODUCER["ci-gate"]},
+        {"check_suite_id": 4, "event": "push", "head_branch": "main", "path": ".github/workflows/other.yml"},
+    ]
+    for suite, want in ((1, True), (2, False), (3, False), (4, False)):
+        check = dict(ok, check_suite={"id": suite})
+        got = bool(from_main_push([check], workflow_runs, PRODUCER["ci-gate"]))
+        if got != want:
+            failures.append(f"a ci-gate run of suite {workflow_runs[suite - 1]} counted={got}, want {want}")
     combos = [
         ({"ci-gate": "pass", "analyze / c-cpp": "pass"}, "pass"),
         ({"ci-gate": "pass", "analyze / c-cpp": "wait"}, "wait"),
@@ -187,9 +217,11 @@ def main():
     failed_calls = 0
     for minute in range(WAIT_MINUTES + 1):
         try:
-            running = producing_workflows(args.repo, args.sha)
-            verdicts = {name: verdict(check_runs(args.repo, args.sha, name), minute,
-                                      PRODUCER[name] in running)
+            workflow_runs = workflow_runs_on(args.repo, args.sha)
+            running = producing_workflows(workflow_runs)
+            verdicts = {name: verdict(from_main_push(check_runs(args.repo, args.sha, name),
+                                                     workflow_runs, PRODUCER[name]),
+                                      minute, PRODUCER[name] in running)
                         for name in REQUIRED}
             failed_calls = 0
         except ApiError as error:
