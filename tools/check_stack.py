@@ -85,22 +85,21 @@ def parse_su(path):
     """Yield (function, bytes, qualifier) from one GCC .su file.
 
     Format is tab-separated: `file:line:column:function<TAB>size<TAB>qualifier`.
-    The function field itself contains colons, so the split is from the RIGHT.
+    The function field itself contains colons but never a tab. A line in any
+    other shape raises ValueError naming it: skipping it would drop a frame,
+    and the dropped one could be the deepest.
     """
     entries = []
-    for raw in pathlib.Path(path).read_text(encoding="utf-8").splitlines():
-        line = raw.rstrip("\n")
+    lines = pathlib.Path(path).read_text(encoding="utf-8").splitlines()
+    for number, line in enumerate(lines, start=1):
         if not line.strip():
             continue
         parts = line.split("\t")
-        if len(parts) < 3:
-            continue
-        location, size, qualifier = parts[0], parts[1], parts[2]
-        try:
-            size_bytes = int(size)
-        except ValueError:
-            continue
-        entries.append((location.strip(), size_bytes, qualifier.strip()))
+        size = parts[1].strip() if len(parts) == 3 else ""
+        if not size.isdigit() or not parts[0].strip() or not parts[2].strip():
+            raise ValueError(f"{path}:{number}: not `location<TAB>bytes<TAB>qualifier`: "
+                             f"{line!r}")
+        entries.append((parts[0].strip(), int(size), parts[2].strip()))
     return entries
 
 
@@ -233,6 +232,22 @@ def self_test():
         finally:
             del BUDGETS["self-test-cpu"]
 
+        # A line that is not `location<TAB>size<TAB>qualifier` is an error,
+        # not a frame to leave out: the frame it describes could be the deepest.
+        with tempfile.TemporaryDirectory() as odd:
+            for label, line in (("a size that is not a number", "probe.cpp:2:5:huge\t9k\tstatic"),
+                                ("a missing qualifier", "probe.cpp:2:5:huge\t9000"),
+                                ("an extra field", "probe.cpp:2:5:huge\t9000\tstatic\tx")):
+                (pathlib.Path(odd) / "odd.su").write_text(
+                    f"probe.cpp:1:5:small\t8\tstatic\n{line}\n")
+                try:
+                    collect(odd)
+                    failures.append(f"a .su line with {label} was skipped, not reported")
+                except ValueError as error:
+                    if "odd.su:2" not in str(error):
+                        failures.append(f"a .su line with {label} was reported without "
+                                        f"its file and line: {error}")
+
         # An empty measurement must fail, not pass. This is the failure mode
         # that makes a gate decorative: the flag gets dropped, no .su files are
         # written, and a check over nothing reports success.
@@ -267,7 +282,12 @@ def main():
         print("error: --su-dir and --cpu are required", file=sys.stderr)
         return 2
 
-    code, lines = check(collect(args.su_dir), args.cpu, args.report)
+    try:
+        entries = collect(args.su_dir)
+    except (OSError, UnicodeDecodeError, ValueError) as error:
+        print(f"::error::{error}")
+        return 1
+    code, lines = check(entries, args.cpu, args.report)
     for line in lines:
         print(line)
     return code
