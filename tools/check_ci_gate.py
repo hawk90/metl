@@ -585,6 +585,16 @@ jobs:
         if "G1" not in fired(root):
             failures.append("a ci.yml with no fan-in job at all was not flagged")
 
+    # In CI a problem must reach the run's annotations: `::error::` on stderr,
+    # and exit 1.
+    with tempfile.TemporaryDirectory() as stack:
+        root = tree(stack, ci=clean_ci.replace("    if: always()\n", ""))
+        run = subprocess.run([sys.executable, __file__, "--repo-root", str(root)],
+                             capture_output=True, text=True)
+        if run.returncode != 1 or "::error::G3: " not in run.stderr:
+            failures.append(f"a G3 problem was not an ::error:: annotation with exit 1: "
+                            f"exit {run.returncode}, stderr {run.stderr[:200]!r}")
+
     if failures:
         for failure in failures:
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
@@ -607,9 +617,9 @@ def main():
 
     problems = check(args.repo_root)
     for rule, message in problems:
-        print(f"{rule}: {message}")
+        print(f"::error::{rule}: {message}", file=sys.stderr)
     if problems:
-        print(f"\n{len(problems)} problem(s).")
+        print(f"\n{len(problems)} problem(s).", file=sys.stderr)
         return 1
 
     root = pathlib.Path(args.repo_root)
