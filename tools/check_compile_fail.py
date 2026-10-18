@@ -106,13 +106,7 @@ GUARD = "METL_COMPILE_FAIL"
 # calls get that message.
 #
 # So the floor is 5. Lowering it means changing the library, not adding a case.
-#
-# Two more have no case YET, and are counted since the census began requiring a
-# message to appear in its case's diagnostic: `first<Count>()`'s extent check
-# and try_insert's forward-iterator check. Each shared its EXPECT-ERROR text
-# with a sibling (last<Count>(), try_assign) whose case was all that fired.
-# #407 adds their cases and brings this back to 5.
-MAX_UNCOVERED = 7
+MAX_UNCOVERED = 5
 
 # A message is user-facing if a caller can trigger it: a `static_assert` in a
 # public header, outside `namespace detail`. Those inside are invariants the
