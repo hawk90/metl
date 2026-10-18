@@ -62,17 +62,34 @@ def read_header(include_dir: pathlib.Path, rel: str) -> list[str]:
     return path.read_text(encoding="utf-8").splitlines()
 
 
-def split_includes(lines: list[str]) -> tuple[list[str], list[str]]:
+def split_includes(rel: str, lines: list[str]) -> tuple[list[str], list[str]]:
     """Split internal includes into (dependencies, re-exports) by position.
 
     An include before the file's own code must be emitted first; one after it
     is a convenience re-export. See the module docstring.
+
+    An internal include inside a preprocessor conditional is refused. Every
+    header is emitted once, unconditionally, where the topological order puts
+    it -- so the condition would be dropped, and the header compiled for
+    targets it was guarded from. Keeping it conditional is not sound either:
+    another header may include the same file unconditionally, and the release
+    ships one file that every configuration compiles.
     """
     dependencies: list[str] = []
     reexports: list[str] = []
     code_started = False
-    for line in lines:
+    cond_depth = 0
+    for number, line in enumerate(lines, 1):
+        if COND_OPEN.match(line):
+            cond_depth += 1
+        elif COND_CLOSE.match(line):
+            cond_depth = max(0, cond_depth - 1)
         if m := INTERNAL_INCLUDE.match(line):
+            if cond_depth:
+                raise SystemExit(f"error: {rel}:{number}: #include \"{m.group(1)}\" is inside a "
+                                 f"preprocessor conditional. The amalgamation emits each header "
+                                 f"once and unconditionally, so the condition would be lost; "
+                                 f"include it unconditionally, or put the #if inside the header.")
             (reexports if code_started else dependencies).append(m.group(1))
             continue
         stripped = line.strip()
@@ -101,7 +118,7 @@ def topological_order(
         state[rel] = 1
         stack_trace.append(rel)
         bodies[rel] = read_header(include_dir, rel)
-        deps, reexports = split_includes(bodies[rel])
+        deps, reexports = split_includes(rel, bodies[rel])
         for dep in deps:
             visit(dep)
         stack_trace.pop()
@@ -160,9 +177,59 @@ def strip_body(lines: list[str]) -> tuple[list[str], list[str]]:
     return externals, trimmed
 
 
+def self_test() -> int:
+    """Prove the ordering and the refusals still bite."""
+    import tempfile
+
+    failures: list[str] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        include = pathlib.Path(tmp)
+        (include / "metl").mkdir()
+        (include / "metl" / "a.hpp").write_text("#pragma once\n#include <cstddef>\nint a();\n")
+        (include / "metl" / "root.hpp").write_text(
+            '#pragma once\n#include "metl/a.hpp"\n#if defined(_MSC_VER)\n#include <intrin.h>\n#endif\n'
+            "int root();\n")
+        order, bodies, _ = topological_order(include, ["metl/root.hpp"])
+        if order != ["metl/a.hpp", "metl/root.hpp"]:
+            failures.append(f"a dependency was not emitted first: {order}")
+        externals, body = strip_body(bodies["metl/root.hpp"])
+        if externals or "#include <intrin.h>" not in body:
+            failures.append("a conditional external include was hoisted out of its #if")
+
+        # An internal include under #if: the amalgamation emits every header
+        # once, unconditionally, so the condition would be lost. Refused.
+        (include / "metl" / "root.hpp").write_text(
+            '#pragma once\n#ifdef METL_SOMETHING\n#include "metl/a.hpp"\n#endif\nint root();\n')
+        try:
+            topological_order(include, ["metl/root.hpp"])
+            failures.append("an internal include inside #ifdef was accepted, and would be "
+                            "emitted unconditionally")
+        except SystemExit as refusal:
+            if "inside a preprocessor conditional" not in str(refusal):
+                failures.append(f"an internal include inside #ifdef was refused for the wrong reason: {refusal}")
+
+        # A cycle among dependency edges.
+        (include / "metl" / "root.hpp").write_text('#pragma once\n#include "metl/a.hpp"\nint root();\n')
+        (include / "metl" / "a.hpp").write_text('#pragma once\n#include "metl/root.hpp"\nint a();\n')
+        try:
+            topological_order(include, ["metl/root.hpp"])
+            failures.append("an include cycle among dependency edges was accepted")
+        except SystemExit:
+            pass
+
+    for failure in failures:
+        print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
+    if failures:
+        return 1
+    print("self-test passed: dependencies are emitted first, conditional external includes stay "
+          "in place, and an internal include under #if and a dependency cycle are refused")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("-o", "--output", required=True, type=pathlib.Path)
+    parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("-o", "--output", type=pathlib.Path)
     parser.add_argument("--include-dir", default="include", type=pathlib.Path)
     parser.add_argument("--root", default="metl/metl.hpp",
                         help="umbrella header to start from (default: metl/metl.hpp)")
@@ -171,6 +238,10 @@ def main() -> int:
                         help="ISO date for the banner; defaults to today. Pass a fixed value "
                              "for a reproducible build.")
     args = parser.parse_args()
+    if args.self_test:
+        return self_test()
+    if args.output is None:
+        parser.error("the following arguments are required: -o/--output")
 
     include_dir = args.include_dir.resolve()
     order, bodies, reexports = topological_order(include_dir, [args.root])
