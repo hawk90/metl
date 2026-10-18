@@ -39,6 +39,7 @@ import argparse
 import pathlib
 import re
 import sys
+import tempfile
 
 # No public runtime operation whose execution time could be unbounded: these are
 # preprocessor macros, empty tag types, or traits evaluated by the compiler.
@@ -106,8 +107,9 @@ def states_guarantee(text):
         VOCABULARY.search(doc_comment_text(text)) is not None
 
 
-def scan(include_dir):
+def scan(include_dir, pending=None):
     """Return (violations, stale_pending, counts)."""
+    pending = PENDING if pending is None else pending
     root = pathlib.Path(include_dir)
     headers = sorted(p for p in root.rglob("*.hpp") if "detail" not in p.parts)
     if not headers:
@@ -120,7 +122,7 @@ def scan(include_dir):
         if rel in EXEMPT:
             continue
         text = header.read_text(encoding="utf-8")
-        if rel in PENDING:
+        if rel in pending:
             # A pending header that now states its guarantee must leave the list.
             if states_guarantee(text):
                 stale.append(rel)
@@ -131,7 +133,7 @@ def scan(include_dir):
     counts = {
         "headers": len(headers),
         "exempt": len(EXEMPT),
-        "pending": len(PENDING),
+        "pending": len(pending),
         "checked": checked,
     }
     return violations, stale, counts
@@ -161,12 +163,23 @@ def self_test():
             for violation in check_text(text):
                 print(f"  {violation}", file=sys.stderr)
             return 1
+    # PENDING is self-cleaning: a listed header that now states its guarantee
+    # is reported, and one that still does not is skipped, not failed.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / "done.hpp").write_text(SELF_TEST_CASES[0][1])
+        (root / "todo.hpp").write_text("/// A container.\nstruct x {};\n")
+        violations, stale, _ = scan(root, pending={"done.hpp", "todo.hpp"})
+        if stale != ["done.hpp"] or violations:
+            print(f"SELF-TEST FAILED [pending]: stale={stale}, wanted ['done.hpp']; "
+                  f"violations={violations}, wanted none", file=sys.stderr)
+            return 1
     # PENDING may only shrink; an entry that is also EXEMPT is a contradiction.
     overlap = PENDING & set(EXEMPT)
     if overlap:
         print(f"SELF-TEST FAILED: {sorted(overlap)} is both EXEMPT and PENDING", file=sys.stderr)
         return 1
-    print("self-test passed: a missing, vague, or forbidden guarantee is rejected")
+    print("self-test passed: a missing, vague, or forbidden guarantee is rejected, and a PENDING entry that states one is reported")
     return 0
 
 
