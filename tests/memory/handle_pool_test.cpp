@@ -1,5 +1,6 @@
 #include "metl_check.hpp"
 
+#include <cstddef>
 #include <cstdint>
 
 #include <metl/handle_pool.hpp>
@@ -193,8 +194,8 @@ int main() {
   }
 
   // --- A forged handle to a never-used slot does not resolve -------------------
-  // Every slot starts at generation 1, so `{unused index, 1}` matches the
-  // slot's generation; only the slot being inactive rejects it.
+  // generation_of() reports 1 for a never-used slot, so `{unused index, 1}`
+  // names the generation the slot would issue first.
   {
     metl::handle_pool<int, 4> pool;
     const auto& view = pool;
@@ -212,6 +213,20 @@ int main() {
     CHECK(!pool.contains(out_of_range));
   }
 
+  // --- A forged handle to a freed slot at its current generation does not ------
+  // resolve. The generation matches, so only the slot being inactive rejects it.
+  {
+    metl::handle_pool<int, 4> pool;
+    const auto handle = pool.try_emplace(1);
+    CHECK(pool.destroy(handle));
+    const metl::handle_pool<int, 4>::handle_type forged{handle.index(), pool.generation_of(handle.index())};
+    CHECK(forged.generation() != handle.generation());
+    CHECK(!pool.contains(forged));
+    CHECK_EQ(pool.get(forged), static_cast<int*>(nullptr));
+    CHECK(!pool.destroy(forged));
+    CHECK(pool.empty());
+  }
+
   // --- Generation wraparound skips 0 -----------------------------------------
   // With an 8-bit counter the whole cycle is short enough to walk exhaustively.
   // Generation 0 is the null marker, so a slot must never land on it -- if it
@@ -226,6 +241,50 @@ int main() {
       CHECK(pool.destroy(handle));
     }
     CHECK(pool.generation_of(0) != 0);
+  }
+
+  // --- A new pool hands out 0, 1, 2, ...; a freed slot is reused first --------
+  // A new pool's free list is all zero bits (see handle_pool.hpp); that must
+  // still mean index order, and a freed slot goes to the front.
+  {
+    metl::handle_pool<int, 4> pool;
+    for (std::size_t i = 0; i < 4; ++i) {
+      const auto handle = pool.try_emplace(static_cast<int>(i));
+      CHECK_EQ(static_cast<std::size_t>(handle.index()), i);
+      CHECK_EQ(static_cast<unsigned>(handle.generation()), 1u);
+    }
+    CHECK(!pool.try_emplace(9).valid());
+    CHECK(pool.destroy(metl::handle_pool<int, 4>::handle_type{2, 1}));
+    CHECK(pool.destroy(metl::handle_pool<int, 4>::handle_type{0, 1}));
+    const auto first = pool.try_emplace(10);
+    const auto second = pool.try_emplace(11);
+    CHECK_EQ(static_cast<unsigned>(first.index()), 0u);
+    CHECK_EQ(static_cast<unsigned>(first.generation()), 2u);
+    CHECK_EQ(static_cast<unsigned>(second.index()), 2u);
+    CHECK(!pool.try_emplace(12).valid());
+  }
+
+  // --- The largest capacity fills exactly and reuses its last slot ------------
+  // Every free-list value is at most max_capacity, the edge of index_type.
+  {
+    using big_pool = metl::handle_pool<unsigned char, metl::handle_pool<unsigned char, 1>::max_capacity>;
+    static big_pool pool;
+    for (std::size_t i = 0; i < big_pool::max_capacity; ++i) {
+      const auto handle = pool.try_emplace(static_cast<unsigned char>(i));
+      if (static_cast<std::size_t>(handle.index()) != i) {
+        CHECK_EQ(static_cast<std::size_t>(handle.index()), i);
+        break;
+      }
+    }
+    CHECK(pool.full());
+    CHECK(!pool.try_emplace(static_cast<unsigned char>(0)).valid());
+    const big_pool::handle_type last{static_cast<big_pool::index_type>(big_pool::max_capacity - 1), 1};
+    CHECK(pool.destroy(last));
+    const auto again = pool.try_emplace(static_cast<unsigned char>(7));
+    CHECK_EQ(static_cast<std::size_t>(again.index()), big_pool::max_capacity - 1);
+    CHECK(pool.full());
+    pool.clear();
+    CHECK(pool.empty());
   }
 
   return metl_test::exit_code();

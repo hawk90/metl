@@ -1,0 +1,1 @@
+- `handle_pool` is constant-initialized at namespace scope since C++20: `constinit` on one now compiles, and a global pool is no longer constructed at startup in link order. An empty pool is now all zero bits. Its size is unchanged, and a new pool still hands out slot 0, 1, 2, ... at generation 1 (#408).

@@ -4,6 +4,7 @@
 #include "metl/attributes.hpp"
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/constant_init.hpp"
 #include "metl/type_traits.hpp"
 #include "metl/versioned_handle.hpp"
 
@@ -113,14 +114,15 @@ class handle_pool {
                 "metl::handle_pool Capacity must fit the handle's slot index field");
 
   /// Constructs an empty pool with every slot free and generation 1.
-  /// @note Not constexpr: the free list is linked at run time, so a
-  ///       namespace-scope pool is initialized at run time, in link order.
-  ///       Construct it before anything that runs earlier can reach it.
-  handle_pool() noexcept : free_head_(0), size_(0) {
-    for (size_type i = 0; i < Capacity; ++i) {
-      next_[i] = static_cast<index_type>(i + 1);  // last one points at `Capacity` == end
-      generation_[i] = generation_type{1};        // 0 is reserved for the null handle
-      active_[i] = false;
+  ///
+  /// Constant-initialized at namespace scope since C++20 (see
+  /// detail/constant_init.hpp): an empty pool is all zero bits, so the
+  /// constant image lands in `.bss`. A local one zeroes its free-list,
+  /// generation and occupancy arrays at run time, and nothing in the object
+  /// slots.
+  constexpr handle_pool() noexcept : next_(), generation_(), active_(), free_head_(0), size_(0) {
+    for (auto& slot : storage_) {
+      detail::zero_for_constant_init(slot.bytes);
     }
   }
 
@@ -145,7 +147,10 @@ class handle_pool {
     }
 
     const size_type index = free_head_;
-    free_head_ = next_[index];
+    free_head_ = next_free(index);
+    if (generation_[index] == generation_type{0}) {
+      generation_[index] = generation_type{1};  // first use of the slot
+    }
     active_[index] = true;
     ++size_;
     return_on_unwind claim{this, index};
@@ -219,7 +224,7 @@ class handle_pool {
   /// for tests that need to drive the counter to wraparound.
   METL_NODISCARD generation_type generation_of(index_type index) const noexcept {
     METL_ASSERT(index < Capacity);
-    return generation_[index];
+    return generation_[index] == generation_type{0} ? generation_type{1} : generation_[index];
   }
 
  private:
@@ -265,7 +270,24 @@ class handle_pool {
 
     slot_ptr(index)->~T();
 
-    next_[index] = static_cast<index_type>(free_head_);
+    link_free(index);
+  }
+
+  // An all-zero pool is a valid empty one, so a namespace-scope pool needs no
+  // code at startup. Two encodings make it so:
+  //   - next_[i] holds the next free index minus (i + 1), modulo 2^16, so a
+  //     zero links slot i to i + 1: the order a new pool hands slots out in.
+  //     Every value involved is at most Capacity, which fits index_type
+  //     (max_capacity), so the modular arithmetic is exact.
+  //   - generation_[i] == 0 marks a slot no handle was ever issued from. It
+  //     reads as generation 1 (0 is the null handle's), and try_emplace stores
+  //     the 1 on first use. No live handle carries 0, so get() needs no case.
+  size_type next_free(size_type index) const noexcept {
+    return static_cast<index_type>(index + 1 + next_[index]);
+  }
+
+  void link_free(size_type index) noexcept {
+    next_[index] = static_cast<index_type>(free_head_ - index - 1);
     free_head_ = index;
   }
 
@@ -282,8 +304,7 @@ class handle_pool {
       if (pool_ != nullptr) {
         pool_->active_[index_] = false;
         --pool_->size_;
-        pool_->next_[index_] = static_cast<index_type>(pool_->free_head_);
-        pool_->free_head_ = index_;
+        pool_->link_free(index_);
       }
     }
     void dismiss() noexcept { pool_ = nullptr; }
