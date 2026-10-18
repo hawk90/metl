@@ -660,7 +660,10 @@ jobs:
               status=1
               continue
             fi
-            got=$(arm-none-eabi-objdump -d hints.o | grep -cE '[[:space:]](yield|sev|wfe)([[:space:]]|$)' || true)
+            # objdump on its own line: inside `$(... | grep -c ... || true)` its
+            # failure read as "0 hints", which is the expected answer for three rows.
+            arm-none-eabi-objdump -d hints.o > hints.dis
+            got=$(grep -cE '[[:space:]](yield|sev|wfe)([[:space:]]|$)' hints.dis || true)
             echo "${cpu}: ${got} hint instruction(s), expected ${want}"
             if [[ "${got}" != "${want}" ]]; then
               echo "::error::${cpu}: expected ${want} hint instruction(s), found ${got}"

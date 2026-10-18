@@ -40,6 +40,22 @@ REQUIRED = ("ci-gate", "analyze / c-cpp")
 PRODUCER = {"ci-gate": ".github/workflows/ci.yml", "analyze / c-cpp": ".github/workflows/codeql.yml"}
 WAIT_MINUTES = 60
 NO_RUN_MINUTES = 10
+# Consecutive minutes a GitHub API call may fail (a 502, a rate limit) before
+# the gate gives up. One bad answer in an hour of polling is not a verdict.
+API_FAILURES = 3
+
+
+class ApiError(Exception):
+    """A command the gate needs failed; the message carries its own output."""
+
+
+def run(command):
+    """stdout of `command`, or ApiError naming it with what it printed."""
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        output = (result.stderr or result.stdout).strip() or "no output"
+        raise ApiError(f"`{' '.join(command)}` exited {result.returncode}: {output}")
+    return result.stdout
 
 
 def verdict(runs, minute, producing=False):
@@ -68,25 +84,20 @@ def overall(verdicts):
 
 
 def check_runs(repo, sha, name):
-    result = subprocess.run(
-        ["gh", "api", "-X", "GET", f"repos/{repo}/commits/{sha}/check-runs", "-f", f"check_name={name}"],
-        capture_output=True, text=True, check=True)
-    runs = json.loads(result.stdout)["check_runs"]
+    runs = json.loads(run(["gh", "api", "-X", "GET", f"repos/{repo}/commits/{sha}/check-runs",
+                           "-f", f"check_name={name}"]))["check_runs"]
     return [run for run in runs if (run.get("app") or {}).get("slug") == "github-actions"]
 
 
 def producing_workflows(repo, sha):
     """Paths of the workflows with a run on `sha` that has not completed."""
-    result = subprocess.run(
-        ["gh", "api", "-X", "GET", f"repos/{repo}/actions/runs", "-f", f"head_sha={sha}",
-         "-f", "per_page=100"],
-        capture_output=True, text=True, check=True)
-    runs = json.loads(result.stdout)["workflow_runs"]
+    runs = json.loads(run(["gh", "api", "-X", "GET", f"repos/{repo}/actions/runs",
+                           "-f", f"head_sha={sha}", "-f", "per_page=100"]))["workflow_runs"]
     return {run["path"] for run in runs if run.get("status") != "completed"}
 
 
 def on_main(sha):
-    subprocess.run(["git", "fetch", "--no-tags", "--quiet", "origin", "main"], check=True)
+    run(["git", "fetch", "--no-tags", "--quiet", "origin", "main"])
     return subprocess.run(["git", "merge-base", "--is-ancestor", sha, "origin/main"]).returncode == 0
 
 
@@ -131,6 +142,14 @@ def self_test():
         # Job level only: a step's `with: name:` (an artifact) sits deeper.
         elif not re.search(rf"^    name: {re.escape(name)}\s*$", workflow.read_text(), re.MULTILINE):
             failures.append(f"{path} has no job named {name!r}, so it cannot produce that check")
+    # A failing command must surface as ApiError with its own output -- not as
+    # a traceback that ends a release, after up to an hour of waiting, on one 502.
+    try:
+        run([sys.executable, "-c", "import sys; sys.stderr.write('HTTP 502'); sys.exit(1)"])
+        failures.append("run() returned for a command that exited 1")
+    except ApiError as error:
+        if "HTTP 502" not in str(error):
+            failures.append(f"run()'s error does not carry the command's output: {error}")
     if set(REQUIRED) != {"ci-gate", "analyze / c-cpp"}:
         failures.append(f"REQUIRED changed to {REQUIRED}; update the docstring and this test")
     if failures:
@@ -156,15 +175,31 @@ def main():
     if not (args.repo and args.sha):
         parser.error("--repo and --sha are required")
 
-    if not on_main(args.sha):
+    try:
+        main_has_it = on_main(args.sha)
+    except ApiError as error:
+        print(f"::error::could not fetch origin/main to check {args.sha} is on it: {error}")
+        return 1
+    if not main_has_it:
         print(f"::error::{args.ref} points at {args.sha}, which is not on main. Release only from "
               f"main: merge first, then tag the merge commit.")
         return 1
+    failed_calls = 0
     for minute in range(WAIT_MINUTES + 1):
-        running = producing_workflows(args.repo, args.sha)
-        verdicts = {name: verdict(check_runs(args.repo, args.sha, name), minute,
-                                  PRODUCER[name] in running)
-                    for name in REQUIRED}
+        try:
+            running = producing_workflows(args.repo, args.sha)
+            verdicts = {name: verdict(check_runs(args.repo, args.sha, name), minute,
+                                      PRODUCER[name] in running)
+                        for name in REQUIRED}
+            failed_calls = 0
+        except ApiError as error:
+            failed_calls += 1
+            if failed_calls >= API_FAILURES:
+                print(f"::error::the GitHub API failed {failed_calls} minutes running, last with "
+                      f"{error}. Re-run this job once it answers.")
+                return 1
+            print(f"::warning::{error} -- trying again in a minute")
+            verdicts = {name: "wait" for name in REQUIRED}
         state, detail = overall(verdicts)
         if state == "pass":
             print(f"main's {' and '.join(REQUIRED)} passed for {args.sha}")
