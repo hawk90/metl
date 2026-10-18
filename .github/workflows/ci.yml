@@ -1462,13 +1462,22 @@ jobs:
           CXX: clang++
         run: |
           fail=0
+          checked=0
+          # find on its own line, so its failure stops the step; read from a
+          # process substitution, it was masked, and no headers read as clean.
+          find include/metl -name '*.hpp' -print0 > headers.lst
           while IFS= read -r -d '' h; do
+            checked=$((checked + 1))
             rel="${h#include/}"
             echo "checking ${rel}"
             printf '#include <%s>\n' "${rel}" \
               | "${CXX}" -std=c++17 -Wall -Wextra -Werror -Iinclude -fsyntax-only -x c++ - \
               || { echo "NOT SELF-CONTAINED: ${rel}"; fail=1; }
-          done < <(find include/metl -name '*.hpp' -print0)
+          done < headers.lst
+          if [ "${checked}" -eq 0 ]; then
+            echo "::error::no headers found under include/metl -- nothing was checked"
+            exit 1
+          fi
           exit "${fail}"
 
       # The same guarantees are also enforced through CMake/CTest so `ctest`
