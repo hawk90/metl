@@ -12,6 +12,7 @@
 ///   | `erase(iterator)` | wait-free, bounded by `Capacity` moves |
 ///   | `erase_if` | wait-free, bounded by `Capacity` erases, each bounded by `Capacity` moves |
 ///   | `clear`, iteration, copy, destructor | wait-free, bounded by `size()` |
+///   | `swap` | wait-free, bounded by the larger `size()` |
 ///
 /// Storage is one sorted array, so lookup is a binary search and modification
 /// shifts the tail to keep it sorted. Both bounds are compile-time known.
@@ -102,6 +103,10 @@ class flat_map {
       detail::nothrow_binary_call_v<Compare, const key_type&, const K&>;
   // erase relocates the tail by move construction.
   static constexpr bool relocate_cannot_throw = std::is_nothrow_move_constructible_v<value_type>;
+  // swap swaps the elements both hold and relocates the rest.
+  static constexpr bool swap_cannot_throw =
+      std::is_nothrow_move_constructible_v<value_type> && std::is_nothrow_swappable_v<Key> &&
+      std::is_nothrow_swappable_v<T> && std::is_nothrow_swappable_v<Compare>;
 
  public:
   /// @brief Construct an empty map with a default-constructed comparator.
@@ -546,7 +551,58 @@ class flat_map {
     }
   }
 
+  /// @brief Swaps contents and comparators with @p other, element by element: the
+  ///        elements both hold are swapped in place (key with key, value with value), and the longer one's
+  ///        remaining elements are moved across. Each keeps its own storage, so an
+  ///        iterator keeps its position, and positions past the new size are invalid.
+  /// @note If an element's move or swap, or the comparators' swap, throws part-way,
+  ///       neither array is sorted any more, so both are cleared before the
+  ///       exception propagates.
+  void swap(flat_map& other) noexcept(swap_cannot_throw) {
+    if (this == &other) {
+      return;
+    }
+#if !METL_NO_EXCEPTIONS
+    if constexpr (!swap_cannot_throw) {
+      try {
+        swap_contents(other);
+      } catch (...) {
+        clear();
+        other.clear();
+        throw;
+      }
+      return;
+    }
+#endif
+    swap_contents(other);
+  }
+
  private:
+  // The body of swap, without its clear-both-on-throw.
+  void swap_contents(flat_map& other) noexcept(swap_cannot_throw) {
+    using std::swap;
+    swap(comp_, other.comp_);
+    const size_type common = (size_ < other.size_) ? size_ : other.size_;
+    for (size_type i = 0; i < common; ++i) {
+      swap(data()[i].key, other.data()[i].key);
+      swap(data()[i].value, other.data()[i].value);
+    }
+    if (size_ != other.size_) {
+      flat_map& shorter = (size_ < other.size_) ? *this : other;
+      flat_map& longer = (size_ < other.size_) ? other : *this;
+      // Counted into `shorter` as each one exists, so a throw leaves each
+      // owning exactly the elements it holds for the clear below.
+      for (size_type i = common; i < longer.size_; ++i) {
+        ::new (shorter.storage_.slot(i)) value_type(static_cast<value_type&&>(longer.data()[i]));
+        ++shorter.size_;
+      }
+      while (longer.size_ > common) {
+        --longer.size_;
+        longer.data()[longer.size_].~value_type();
+      }
+    }
+  }
+
   // Moves every element of `other` (sorted, unique) onto the end of this empty
   // container, in order.
   void append_sorted_from(flat_map& other) noexcept(std::is_nothrow_move_constructible_v<value_type>) {
@@ -784,6 +840,21 @@ class flat_map {
   detail::array_storage<value_type, (Capacity == 0 ? 1 : Capacity)> storage_;
   size_type size_;
 };
+
+/// @brief Swaps the contents of two flat_maps of the same type, capacity and comparator.
+/// Declared only when the elements and the comparator are swappable; otherwise
+/// `using std::swap; swap(a, b)` still finds std::swap, which moves both whole
+/// containers.
+template <typename Key,
+          typename T,
+          std::size_t N,
+          typename Compare,
+          std::enable_if_t<std::is_swappable_v<Key> && std::is_swappable_v<T> && std::is_swappable_v<Compare>,
+                           int> = 0>
+inline void swap(flat_map<Key, T, N, Compare>& a,
+                 flat_map<Key, T, N, Compare>& b) noexcept(noexcept(a.swap(b))) {
+  a.swap(b);
+}
 
 // ---------------------------------------------------------------------------
 // Relational operators

@@ -8,6 +8,7 @@
 ///   | `push`, `pop`, `emplace`, `try_*`, `front`, `back` | wait-free, bounded |
 ///   | `size`, `empty`, `full` | wait-free, bounded |
 ///   | `clear`, destructor | wait-free, bounded by `size()` |
+///   | `swap` | wait-free, bounded by the larger `size()` |
 ///
 /// Push and pop are index arithmetic on a ring: nothing is shifted, nothing is
 /// searched, and the cost does not depend on how full the queue is. `clear` runs
@@ -21,6 +22,7 @@
 #include "metl/ring_buffer.hpp"
 
 #include <cstddef>
+#include <type_traits>
 #include <utility>
 
 namespace metl {
@@ -106,8 +108,23 @@ class fixed_queue {
   /// Removes all elements.
   void clear() noexcept { storage_.clear(); }
 
+  /// Swaps contents with `other` element by element (see `ring_buffer::swap`).
+  /// @note If an element's move or swap throws, both stay valid, holding
+  ///       elements of either, and nothing leaks.
+  void swap(fixed_queue& other) noexcept(std::is_nothrow_swappable_v<ring_buffer<T, Capacity>>) {
+    storage_.swap(other.storage_);
+  }
+
  private:
   ring_buffer<T, Capacity> storage_;
 };
+
+/// Swaps the contents of two queues of the same type and capacity.
+/// Declared only for a swappable `T`; otherwise `using std::swap; swap(a, b)`
+/// still finds std::swap, which moves both whole containers.
+template <typename T, std::size_t N, std::enable_if_t<std::is_swappable_v<T>, int> = 0>
+inline void swap(fixed_queue<T, N>& a, fixed_queue<T, N>& b) noexcept(noexcept(a.swap(b))) {
+  a.swap(b);
+}
 
 }  // namespace metl

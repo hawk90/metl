@@ -8,6 +8,7 @@
 ///   | `push`, `pop`, `emplace`, `try_*`, `top` | wait-free, bounded |
 ///   | `size`, `empty`, `full` | wait-free, bounded |
 ///   | `clear`, destructor | wait-free, bounded by `size()` |
+///   | `swap` | wait-free, bounded by the larger `size()` |
 ///
 /// The stack is an index into inline storage, so a push or pop is one construction
 /// or destruction plus an increment -- independent of depth. `clear` runs one
@@ -19,6 +20,7 @@
 #include "metl/fixed_vector.hpp"
 
 #include <cstddef>
+#include <type_traits>
 #include <utility>
 
 namespace metl {
@@ -97,8 +99,23 @@ class fixed_stack {
   /// Removes all elements.
   void clear() noexcept { storage_.clear(); }
 
+  /// Swaps contents with `other` element by element (see `fixed_vector::swap`).
+  /// @note If an element's move or swap throws, both stay valid, holding
+  ///       elements of either, and nothing leaks.
+  void swap(fixed_stack& other) noexcept(std::is_nothrow_swappable_v<fixed_vector<T, Capacity>>) {
+    storage_.swap(other.storage_);
+  }
+
  private:
   fixed_vector<T, Capacity> storage_;
 };
+
+/// Swaps the contents of two stacks of the same type and capacity.
+/// Declared only for a swappable `T`; otherwise `using std::swap; swap(a, b)`
+/// still finds std::swap, which moves both whole containers.
+template <typename T, std::size_t N, std::enable_if_t<std::is_swappable_v<T>, int> = 0>
+inline void swap(fixed_stack<T, N>& a, fixed_stack<T, N>& b) noexcept(noexcept(a.swap(b))) {
+  a.swap(b);
+}
 
 }  // namespace metl
