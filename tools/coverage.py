@@ -41,6 +41,25 @@ WHAT THIS CANNOT SEE, and why the number is not the whole story:
 So: this measures host-visible RUNTIME branch depth. It is a floor on quality,
 not a summary of it.
 
+MC/DC IS REPORTED, NOT GATED (#342). Branch coverage can reach 100% on
+`if (a && b)` without ever showing that `b` alone changes the outcome. So one
+more build is measured with -fcoverage-mcdc (Clang 18+), through the CMake
+option METL_ENABLE_COVERAGE_MCDC. The report prints the share of conditions
+shown to affect their decision independently, the weakest files, and the
+decisions with conditions missing. A floor comes later, from the CI figure.
+Read it with these limits:
+
+  * Clang caps the conditions in one decision and does not instrument a
+    decision over the cap; it says so in a -Wpgo-coverage warning. Those
+    decisions are absent from the figure, not counted as missed, so every one
+    the build skipped is listed.
+  * It is its own build because -fcoverage-mcdc moves the line and branch
+    figures (+1 point of lines on Apple Clang 21, mostly constexpr headers),
+    and those must stay the ones the floors were set against.
+  * LLVM 23.1's llvm-cov crashes (SIGILL) on the MC/DC records of
+    variant.hpp; Apple Clang 21 does not. A crash fails this run rather than
+    printing no figure.
+
 ONE FILE, ONE FORMULA (#308). The gated figures are computed from the same
 include/metl lcov export that Codecov receives, with Codecov's formula, so the
 badge and the gate report the same number for the same commit:
@@ -66,7 +85,9 @@ The floors here stay the gate; Codecov only displays.
 """
 
 import argparse
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -84,6 +105,15 @@ CONFIGURATIONS = {
     "hardening-0": "-DMETL_HARDENING=0",
     "crc-table-off": "-DMETL_CRC_TABLE=0",
 }
+
+
+# Clang's -Wpgo-coverage warning for a decision it leaves out of MC/DC: over the
+# condition cap (or, before Clang 19, a nested boolean expression).
+MCDC_SKIPPED = re.compile(r"^(?P<path>[^:\s][^:]*):(?P<line>\d+):(?P<col>\d+): warning: "
+                          r"unsupported MC/DC boolean expression; (?P<why>.*?)(?: \[-W[\w-]+\])?$")
+
+# How many of the weakest decisions the report lists.
+MCDC_WEAKEST = 25
 
 
 def find_tool(name):
@@ -189,6 +219,88 @@ def configuration_only_unexecuted(default_lcov, configuration_lcov, source_line)
     return only, sorted(key for key, count in only.items() if count == 0)
 
 
+def repo_relative(path):
+    return os.path.relpath(path, REPO) if path.startswith(str(REPO) + os.sep) else path
+
+
+def mcdc_skipped(build_output, marker):
+    """{(file, line, col): reason} for each decision under `marker` that Clang
+    did not instrument. A header's decision is reported once per translation
+    unit, so they are deduplicated."""
+    skipped = {}
+    for raw in build_output.splitlines():
+        found = MCDC_SKIPPED.match(raw.strip())
+        if found and marker in found["path"]:
+            key = (repo_relative(found["path"]), int(found["line"]), int(found["col"]))
+            skipped[key] = found["why"]
+    return skipped
+
+
+def mcdc_summary(export_json, marker):
+    """MC/DC from `llvm-cov export -format=text`, for the files under `marker`.
+
+    Returns (covered, count, files, decisions): llvm-cov's own condition
+    totals, [(file, covered, count)] per file that has any, and
+    [(file, line, col, uncovered, conditions)] per decision with a condition
+    no test showed independent.
+
+    A template's decision has one record per instantiation. The list takes a
+    condition as shown when any instantiation shows it, so every condition it
+    names is missing from all of them. That is more lenient than llvm-cov's
+    totals, which are used as they are.
+
+    A record starts with its line and column; its first list is one flag per
+    condition. The fields between them changed across LLVM releases, so they
+    are not read."""
+    covered = count = 0
+    files, decisions = [], []
+    for data in json.loads(export_json)["data"]:
+        for entry in data["files"]:
+            path = repo_relative(entry["filename"])
+            if marker not in path:
+                continue
+            mcdc = entry["summary"].get("mcdc", {"count": 0, "covered": 0})
+            if mcdc["count"]:
+                covered += mcdc["covered"]
+                count += mcdc["count"]
+                files.append((path, mcdc["covered"], mcdc["count"]))
+            shown = {}
+            for record in entry.get("mcdc_records", []):
+                conditions = next(field for field in record if isinstance(field, list))
+                key = (record[0], record[1], len(conditions))
+                before = shown.get(key, [False] * len(conditions))
+                shown[key] = [a or b for a, b in zip(before, conditions)]
+            for (line, col, total), flags in sorted(shown.items()):
+                if not all(flags):
+                    decisions.append((path, line, col, flags.count(False), total))
+    return covered, count, files, decisions
+
+
+def print_mcdc(covered, count, files, decisions, skipped):
+    """Prints the MC/DC report. Returns False when the export holds no MC/DC
+    record at all, which means the measurement did not happen."""
+    print("\n=== include/metl MC/DC (reported, no floor yet; #342) ===")
+    if not count:
+        print("FAIL: the MC/DC build exported no MC/DC record for include/metl")
+        return False
+    print(f"  conditions {pct(count, count - covered):6.2f}%  ({covered}/{count} shown to "
+          f"affect their decision independently)")
+    print(f"  decisions not instrumented (left out of the figure): {len(skipped)}")
+    for (path, line, col), why in sorted(skipped.items()):
+        print(f"    {path}:{line}:{col}  {why}")
+    print("  weakest files:")
+    for path, hit, total in sorted(files, key=lambda f: (f[1] / f[2], f[0]))[:10]:
+        print(f"    {pct(total, total - hit):6.2f}%  ({hit}/{total})  {path}")
+    print(f"  decisions with conditions no instantiation showed independent "
+          f"({len(decisions)} in all, most missing first, {min(len(decisions), MCDC_WEAKEST)} "
+          f"shown):")
+    for path, line, col, uncovered, total in sorted(
+            decisions, key=lambda d: (-d[3], d[0], d[1], d[2]))[:MCDC_WEAKEST]:
+        print(f"    {uncovered}/{total} missing  {path}:{line}:{col}  "
+              f"{read_source_line(path, line).strip()[:70]}")
+    return True
+
+
 def read_source_line(path, number):
     try:
         return (REPO / path).read_text().splitlines()[number - 1]
@@ -232,14 +344,52 @@ def self_test():
         print(f"SELF-TEST FAILED: configuration-only lines {sorted(only)}, unexecuted {unexecuted}",
               file=sys.stderr)
         return 1
+    # MC/DC: the LLVM 18 record layout and a later, wider one; a test file left
+    # out. Line 3 has two instantiations that each miss a condition, line 5 two
+    # that together show both, line 7 one.
+    export = json.dumps({"data": [{"files": [
+        {"filename": str(REPO / "include/metl/a.hpp"),
+         "summary": {"mcdc": {"count": 5, "covered": 2}},
+         "mcdc_records": [[3, 9, 3, 20, 0, 5, [True, False], []],
+                          [3, 9, 3, 20, 0, 5, [True, False], []],
+                          [5, 9, 5, 20, 0, 5, [True, False], []],
+                          [5, 9, 5, 20, 0, 5, [False, True], []],
+                          [7, 5, 7, 30, 1, 1, 0, 0, 5, [False, False, True], [{"result": True}]]]},
+        {"filename": str(REPO / "include/metl/b.hpp"),
+         "summary": {"mcdc": {"count": 0, "covered": 0}}},
+        {"filename": str(REPO / "tests/t.cpp"),
+         "summary": {"mcdc": {"count": 4, "covered": 0}},
+         "mcdc_records": [[1, 1, 1, 9, 0, 5, [False, False]]]},
+    ]}]})
+    got = mcdc_summary(export, "include/metl/")
+    want = (2, 5, [("include/metl/a.hpp", 2, 5)],
+            [("include/metl/a.hpp", 3, 9, 1, 2), ("include/metl/a.hpp", 7, 5, 2, 3)])
+    if got != want:
+        print(f"SELF-TEST FAILED: mcdc_summary gave {got}, expected {want}", file=sys.stderr)
+        return 1
+    warning = ("unsupported MC/DC boolean expression; number of conditions (7) exceeds max (6). "
+               "Expression will not be covered [-Wpgo-coverage]")
+    build = (f"{REPO}/include/metl/a.hpp:12:20: warning: {warning}\n"
+             f"{REPO}/include/metl/a.hpp:12:20: warning: {warning}\n"
+             f"{REPO}/tests/t.cpp:4:1: warning: {warning}\n"
+             f"{REPO}/include/metl/b.hpp:3:3: warning: unused variable 'x' [-Wunused-variable]\n")
+    got = mcdc_skipped(build, "include/metl/")
+    want = {("include/metl/a.hpp", 12, 20):
+            "number of conditions (7) exceeds max (6). Expression will not be covered"}
+    if got != want:
+        print(f"SELF-TEST FAILED: mcdc_skipped gave {got}, expected {want}", file=sys.stderr)
+        return 1
     print("self-test passed: partial lines and untaken branches are counted as Codecov counts them, "
-          "and a configuration's own code lines are found and checked")
+          "a configuration's own code lines are found and checked, and MC/DC conditions and "
+          "skipped decisions are read")
     return 0
 
 
-def measure(build_dir, cxx_flags, profdata, cov):
+def measure(build_dir, cxx_flags, profdata, cov, mcdc=False):
     """Builds `build_dir` instrumented with `cxx_flags`, runs every test and
-    returns (the lcov export, llvm-cov's report), or None after saying why."""
+    returns (the lcov export, llvm-cov's report, the JSON export or None, the
+    build's output), or None after saying why. `mcdc` adds -fcoverage-mcdc and
+    the JSON export that carries its records."""
     prof_dir = build_dir / "profraw"
     shutil.rmtree(build_dir, ignore_errors=True)
     prof_dir.mkdir(parents=True)
@@ -249,9 +399,14 @@ def measure(build_dir, cxx_flags, profdata, cov):
                  "-DMETL_ENABLE_COVERAGE=ON", "-DMETL_INSTALL=OFF"]
     if cxx_flags:
         configure.append(f"-DCMAKE_CXX_FLAGS={cxx_flags}")
+    if mcdc:
+        configure.append("-DMETL_ENABLE_COVERAGE_MCDC=ON")
     if subprocess.run(configure, **quiet).returncode:
         return None
-    if subprocess.run(["cmake", "--build", str(build_dir), "-j"], **quiet).returncode:
+    built = subprocess.run(["cmake", "--build", str(build_dir), "-j"], stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT, text=True)
+    if built.returncode:
+        print(built.stdout)
         return None
 
     env = dict(os.environ, LLVM_PROFILE_FILE=str(prof_dir / "%p.profraw"))
@@ -287,7 +442,15 @@ def measure(build_dir, cxx_flags, profdata, cov):
     if exported.returncode:
         print(exported.stderr, file=sys.stderr)
         return None
-    return exported.stdout, report
+    export_json = None
+    if mcdc:
+        as_json = subprocess.run([cov, "export", "-format=text", "-skip-expansions", *objects,
+                                  f"-instr-profile={profile}"], capture_output=True, text=True)
+        if as_json.returncode:
+            print(as_json.stderr, file=sys.stderr)
+            return None
+        export_json = as_json.stdout
+    return exported.stdout, report, export_json, built.stdout
 
 
 def configurations_ran(default_lcov, profdata, cov):
@@ -340,7 +503,7 @@ def main():
     measured = measure(BUILD_DIR, "", profdata, cov)
     if measured is None:
         return 1
-    exported_lcov, report = measured
+    exported_lcov, report, _, _ = measured
     kept = lcov_records_under(exported_lcov, "include/metl/")
     if kept == 0:
         print("error: the lcov export has no include/metl record", file=sys.stderr)
@@ -376,8 +539,16 @@ def main():
     print(f"  lines     {pct(ln, lnmiss):6.2f}%  ({ln - lnmiss}/{ln})")
 
     failed = False
-    if args.configurations:
-        failed = not configurations_ran(lcov, profdata, cov)
+    print("\n--- MC/DC build (-fcoverage-mcdc)")
+    measured = measure(REPO / "build-coverage-mcdc", "", profdata, cov, mcdc=True)
+    if measured is None:
+        print("FAIL: the MC/DC build did not build, run and export")
+        failed = True
+    elif not print_mcdc(*mcdc_summary(measured[2], "include/metl/"),
+                        mcdc_skipped(measured[3], "include/metl/")):
+        failed = True
+    if args.configurations and not configurations_ran(lcov, profdata, cov):
+        failed = True
     if lines_pct < args.min_lines:
         print(f"\nFAIL: line coverage {lines_pct:.2f}% is below the {args.min_lines:g}% floor")
         failed = True

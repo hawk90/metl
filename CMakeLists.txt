@@ -39,6 +39,7 @@ option(METL_BUILD_FUZZERS
        "Build the libFuzzer harnesses (Clang only; links -fsanitize=fuzzer,address,undefined)" OFF)
 option(METL_BUILD_BENCHMARKS "Build the micro-benchmarks (host only; always compiled -O2)" OFF)
 option(METL_ENABLE_COVERAGE "Instrument the tests for source-based coverage (Clang/GCC)" OFF)
+option(METL_ENABLE_COVERAGE_MCDC "With METL_ENABLE_COVERAGE on Clang 18+, also record MC/DC" OFF)
 
 # ---------------------------------------------------------------------------
 # Public library  (umbrella header-only target)
@@ -102,6 +103,9 @@ if(METL_BUILD_TESTS)
         target_compile_options(metl_test_options INTERFACE
           -fprofile-instr-generate -fcoverage-mapping -O0 -g)
         target_link_options(metl_test_options INTERFACE -fprofile-instr-generate)
+        if(METL_ENABLE_COVERAGE_MCDC)
+          target_compile_options(metl_test_options INTERFACE -fcoverage-mcdc)
+        endif()
       else()
         target_compile_options(metl_test_options INTERFACE --coverage -O0 -g)
         target_link_options(metl_test_options INTERFACE --coverage)
