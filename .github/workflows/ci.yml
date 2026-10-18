@@ -803,6 +803,14 @@ jobs:
         -std=c++17 -mcpu=${{ matrix.cpu }} -mthumb -Os
         -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti
         --specs=nano.specs --specs=nosys.specs -nostartfiles
+      # The stack probe's compile flags: METL_LINK_FLAGS' compile half plus
+      # -fstack-usage. Named once so the measurement record states the flags
+      # that were actually used.
+      METL_STACK_PROBE_FLAGS: >-
+        -std=c++17 -mcpu=${{ matrix.cpu }} -mthumb -Os
+        -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti
+        -fstack-usage
+      METL_MEASUREMENTS: measurements-${{ matrix.cpu }}.json
 
     steps:
       - name: Checkout
@@ -912,7 +920,8 @@ jobs:
         run: |
           tools/check_size.py \
             --elf invariant_probe.elf \
-            --cpu ${{ matrix.cpu }}
+            --cpu ${{ matrix.cpu }} \
+            --record "$METL_MEASUREMENTS" --flags "$METL_LINK_FLAGS"
 
       # Stack-depth ratchet. The size ratchet above measures FLASH; this
       # measures what METL puts on the stack while it runs, which nothing here
@@ -929,10 +938,8 @@ jobs:
       - name: Compile the stack probe with -fstack-usage
         run: |
           set -euo pipefail
-          arm-none-eabi-g++ \
-            -std=c++17 -mcpu=${{ matrix.cpu }} -mthumb -Os \
-            -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti \
-            -fstack-usage \
+          # shellcheck disable=SC2086  # METL_STACK_PROBE_FLAGS is a word list
+          arm-none-eabi-g++ $METL_STACK_PROBE_FLAGS \
             -Iinclude -c tests/embedded/stack_probe.cpp -o stack_probe.o
 
       - name: Stack ratchet must still bite (canary)
@@ -966,11 +973,33 @@ jobs:
       # in this PR (run 32613760217), never from a local figure -- the numbers
       # themselves live in tools/check_size.py and are deliberately not repeated
       # here, which is the mistake #76 fixed for the size budgets.
-      - name: Probe static RAM (.bss + .data) against its budget
+      #
+      # Since #405 the sections are classified by ELF type and flags, not by
+      # name, and the ratchet covers thread-local storage as well.
+      - name: Probe static RAM (.bss + .data + TLS) against its budget
         run: |
           tools/check_size.py \
             --ram-object stack_probe.o \
-            --cpu ${{ matrix.cpu }}
+            --cpu ${{ matrix.cpu }} \
+            --record "$METL_MEASUREMENTS" --flags "$METL_STACK_PROBE_FLAGS" \
+            --su-dir .
+
+      # The record of what the steps above measured (#405): per-class totals,
+      # every section, the static deepest frame, and null for what nothing
+      # measures yet. The summary is for reading a run; the artifact is what
+      # release.yml attaches to the release, so a later release has something
+      # to be compared against. Artifacts expire after 90 days; the release
+      # asset does not.
+      - name: Measurement record in the job summary
+        run: tools/check_size.py --summary "$METL_MEASUREMENTS" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the measurement record
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: measurements-${{ matrix.cpu }}
+          path: ${{ env.METL_MEASUREMENTS }}
+          if-no-files-found: error
+          retention-days: 90
 
   # ---------------------------------------------------------------------------
   # Tier 1 capability gate for METL's lock-free types — metl::atomic_handle and
