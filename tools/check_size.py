@@ -22,7 +22,9 @@ docs/SCOPE.md section 8), so this ratchet tracks *that set* -- adding a type to
 the library moves nothing here until the probe uses it, which is the same
 coverage caveat the invariant audit carries and for the same reason.
 
-THREE METRICS, and the second one is why this file changed.
+THREE GATED METRICS, and the second one is why this file changed. They are
+named here for the sections that dominate them; what is summed is a CLASS (see
+below), and `.text` / `.rodata` / `.bss`+`.data` below mean code / const / ram.
 
   .text    the code. Gated since #56.
   .rodata  constants -- lookup tables, string literals. Also flash, also
@@ -45,23 +47,75 @@ THREE METRICS, and the second one is why this file changed.
            into .data. Measured on the stack probe's OBJECT file, because that
            probe already declares realistic-capacity containers in static
            storage -- which is exactly what a .bss ratchet needs, and it existed
-           already.
+           already. The ratchet covers ram + tls: thread-local storage is RAM
+           too, one copy per thread.
 
-Sections are summed by PREFIX. Under -ffunction-sections/-fdata-sections the
-compiler emits `.bss._ZL7storage` rather than one `.bss`, so an exact-name
-lookup reads zero and a ratchet over zero passes forever.
+SECTIONS ARE CLASSIFIED BY ELF TYPE AND FLAGS, NEVER BY NAME (#405). This file
+used to sum sections by name prefix -- `.bss`, `.bss.*`, `.data`, `.data.*` --
+which survived -fdata-sections but silently left out anything holding RAM under
+another name. Checked with an ARM object built from a probe of each case:
+
+  thread_local        `.tbss.*` / `.tdata.*`   flags WAT       was not counted
+  section(".noinit")  `.noinit`, PROGBITS      flags WA        was not counted
+  dynamic init        `.bss.*` + `.init_array`                 `.bss` only
+
+So the tool reads the ELF itself (no `size`, no `readelf`) and sorts every
+SHF_ALLOC section into one class:
+
+  code         ALLOC + EXECINSTR
+  const        ALLOC, not WRITE, not EXECINSTR -- `.rodata`, `.ARM.exidx`
+  ram          ALLOC + WRITE, not TLS, not an init/fini array. Split into
+               ram_progbits and ram_nobits for information only: `.noinit` is
+               PROGBITS in an object file although it holds no initial value, and
+               only the linker script's NOLOAD makes it NOBITS. An object file can
+               tell RAM from flash; it cannot reliably tell initialized RAM from
+               zeroed RAM.
+  tls          the TLS flag
+  init_arrays  INIT_ARRAY / FINI_ARRAY / PREINIT_ARRAY. Writable, but on bare
+               metal the linker script puts them in flash. An entry means some
+               namespace-scope object is constructed at run time, in link order,
+               so the entry count is reported as well as the bytes.
+
+A non-ALLOC section is ignored. An ALLOC section of a type this file does not
+know FAILS the run: dropping it would be the name-prefix hole again.
+
+A LINKED image is also measured by address, because there the address decides:
+`.data` occupies RAM at its run address and flash at its load address. When the
+image defines the region symbols that tests/embedded/mps2-an385.ld gives
+picolibc.ld (`__flash`, `__flash_size`, `__ram`, `__ram_size`), every PT_LOAD
+segment is placed: RAM is memsz inside the RAM region, flash is filesz inside the
+flash region, and a segment in neither fails. The invariant probe links with the
+toolchain's default script, which declares no regions, so its region totals are
+recorded as null -- not measured, which is not the same as 0.
+
+THE MEASUREMENT RECORD. `--record FILE` writes what was measured as JSON: cpu,
+commit, per artifact the toolchain (`.comment`), flags, per-class totals and
+every section, plus the stack figures in keys of their own -- the static deepest
+frame from `.su` (`--su-dir`) and the runtime high-water mark without and with
+LTO, which nothing measures yet (#404) and are therefore null. The `invariants`
+job uploads one record per CPU, and the release attaches all four, merged by
+`--merge-records`, as metl-X.Y.Z-measurements.json, so a later release has
+something to be compared against.
 
 Usage:
     tools/check_size.py --elf invariant_probe.elf --cpu cortex-m3
     tools/check_size.py --elf invariant_probe.elf --cpu cortex-m3 --report
     tools/check_size.py --ram-object stack_probe.o --cpu cortex-m3
+    tools/check_size.py --ram-object stack_probe.o --cpu cortex-m3 \
+        --record m.json --flags "$FLAGS" --su-dir .
+    tools/check_size.py --summary m.json
+    tools/check_size.py --merge-records out.json --expect-commit SHA a.json b.json ...
     tools/check_size.py --self-test
 """
 
 import argparse
-import re
+import json
+import os
+import pathlib
+import struct
 import subprocess
 import sys
+import tempfile
 
 # Budgets in bytes for `.text` of the linked probe, per CPU, measured by the
 # `invariants` CI job itself. A local number is not a substitute and never has
@@ -134,42 +188,329 @@ RAM_BUDGETS = {
 }
 RAM_TOLERANCE_BYTES = 64
 
-SECTION_LINE = re.compile(r"^(\.\S+)\s+(\d+)\s+")
+
+# ELF constants this file needs, from the System V gABI and the ARM ELF ABI.
+SHF_WRITE = 0x1
+SHF_ALLOC = 0x2
+SHF_EXECINSTR = 0x4
+SHF_TLS = 0x400
+
+SHT_PROGBITS = 1
+SHT_SYMTAB = 2
+SHT_NOTE = 7
+SHT_NOBITS = 8
+SHT_INIT_ARRAY = 14
+SHT_FINI_ARRAY = 15
+SHT_PREINIT_ARRAY = 16
+SHT_ARM_EXIDX = 0x70000001
+EM_ARM = 40
+PT_LOAD = 1
+
+ARRAY_TYPES = {SHT_INIT_ARRAY: "INIT_ARRAY", SHT_FINI_ARRAY: "FINI_ARRAY",
+               SHT_PREINIT_ARRAY: "PREINIT_ARRAY"}
+
+# The section types an ALLOC section may have. Anything else fails the run
+# rather than being dropped. Processor-specific types are only known on their
+# own machine: 0x70000001 is ARM_EXIDX on ARM and something else elsewhere.
+ALLOC_TYPES = {SHT_PROGBITS: "PROGBITS", SHT_NOBITS: "NOBITS", SHT_NOTE: "NOTE",
+               **ARRAY_TYPES}
+MACHINE_ALLOC_TYPES = {EM_ARM: {SHT_ARM_EXIDX: "ARM_EXIDX"}}
+
+CLASSES = ("code", "const", "ram", "ram_progbits", "ram_nobits", "tls",
+           "init_arrays", "init_array_entries")
+
+# The symbols tests/embedded/mps2-an385.ld defines for picolibc.ld.
+REGION_SYMBOLS = ("__flash", "__flash_size", "__ram", "__ram_size")
 
 
-def section_sizes(artifact, size_tool):
-    """{section: bytes} from `<size_tool> -A <artifact>`."""
-    result = subprocess.run([size_tool, "-A", artifact], capture_output=True, text=True)
-    if result.returncode != 0:
-        # A traceback here would be read as a broken script rather than as a
-        # broken measurement, and the job would need someone to go and look.
-        raise RuntimeError(
-            f"{size_tool} -A {artifact} exited {result.returncode}: "
-            f"{result.stderr.strip() or 'no diagnostic'}"
-        )
-    output = result.stdout
-    sizes = {}
-    for line in output.splitlines():
-        match = SECTION_LINE.match(line.strip())
-        if match:
-            sizes[match.group(1)] = int(match.group(2))
-    return sizes
+class ElfError(Exception):
+    """A file this tool cannot measure honestly."""
 
 
-def sum_sections(sizes, *names):
-    """Total of every section called `name` or starting with `name.`.
+class Elf:
+    """The parts of an ELF file this tool reads: sections, segments, symbols."""
 
-    -ffunction-sections/-fdata-sections split a section per symbol, so an object
-    file has `.bss._ZL7storage` and no plain `.bss` at all. Looking the bare name
-    up returns 0, and a ratchet against 0 is a ratchet against nothing.
+    def __init__(self, data):
+        if data[:4] != b"\x7fELF":
+            raise ElfError("not an ELF file")
+        elf_class, encoding = data[4], data[5]
+        if elf_class not in (1, 2) or encoding not in (1, 2):
+            raise ElfError(f"unsupported ELF class {elf_class} / data encoding {encoding}")
+        self.is64 = elf_class == 2
+        self.endian = "<" if encoding == 1 else ">"
+        self.data = data
+        header = "16sHHIQQQIHHHHHH" if self.is64 else "16sHHIIIIIHHHHHH"
+        (_, self.type, self.machine, _, _, phoff, shoff, _, _,
+         phentsize, phnum, shentsize, shnum, shstrndx) = self._unpack(header, 0)
+
+        raw_sections = []
+        if shoff:
+            layout = "IIQQQQIIQQ" if self.is64 else "IIIIIIIIII"
+            first = self._unpack(layout, shoff)
+            # Extended numbering: past 0xff00 sections the real count and
+            # string-table index live in section 0.
+            count = shnum or first[5]
+            if shstrndx == 0xFFFF:
+                shstrndx = first[6]
+            for i in range(count):
+                (name, kind, flags, addr, offset, size, link, _, _,
+                 entsize) = self._unpack(layout, shoff + i * shentsize)
+                raw_sections.append({"name_offset": name, "type": kind, "flags": flags,
+                                     "addr": addr, "offset": offset, "size": size,
+                                     "link": link, "entsize": entsize})
+        names = raw_sections[shstrndx] if shstrndx < len(raw_sections) else None
+        self.sections = []
+        for section in raw_sections:
+            section["name"] = self._string(names, section["name_offset"]) if names else ""
+            self.sections.append(section)
+
+        self.segments = []
+        if phoff:
+            for i in range(phnum):
+                if self.is64:
+                    kind, _, _, vaddr, paddr, filesz, memsz, _ = self._unpack(
+                        "IIQQQQQQ", phoff + i * phentsize)
+                else:
+                    kind, _, vaddr, paddr, filesz, memsz, _, _ = self._unpack(
+                        "IIIIIIII", phoff + i * phentsize)
+                self.segments.append({"type": kind, "vaddr": vaddr, "paddr": paddr,
+                                      "filesz": filesz, "memsz": memsz})
+
+    def _unpack(self, layout, offset):
+        fmt = self.endian + layout
+        end = offset + struct.calcsize(fmt)
+        if end > len(self.data):
+            raise ElfError(f"truncated: a header at offset {offset} runs past the file")
+        return struct.unpack_from(fmt, self.data, offset)
+
+    def _string(self, table, offset):
+        start = table["offset"] + offset
+        end = self.data.find(b"\0", start, table["offset"] + table["size"])
+        if end < 0:
+            raise ElfError("a string table entry is not terminated")
+        return self.data[start:end].decode("utf-8", "replace")
+
+    def symbols(self):
+        """{name: value} from the symbol table, empty if there is none."""
+        found = {}
+        layout = "IBBHQQ" if self.is64 else "IIIBBH"
+        size = struct.calcsize(self.endian + layout)
+        for section in self.sections:
+            if section["type"] != SHT_SYMTAB:
+                continue
+            strings = self.sections[section["link"]]
+            for i in range(section["size"] // size):
+                fields = self._unpack(layout, section["offset"] + i * size)
+                name, value = (fields[0], fields[4]) if self.is64 else (fields[0], fields[1])
+                if name:
+                    found[self._string(strings, name)] = value
+        return found
+
+    def comment(self):
+        """The toolchain identification strings in `.comment`, or None."""
+        for section in self.sections:
+            if section["name"] == ".comment" and section["type"] == SHT_PROGBITS:
+                blob = self.data[section["offset"]:section["offset"] + section["size"]]
+                strings = [s.decode("utf-8", "replace") for s in blob.split(b"\0") if s]
+                return sorted(set(strings)) or None
+        return None
+
+
+def flag_letters(flags):
+    return "".join(letter for bit, letter in ((SHF_WRITE, "W"), (SHF_ALLOC, "A"),
+                                              (SHF_EXECINSTR, "X"), (SHF_TLS, "T"))
+                   if flags & bit)
+
+
+def classify(elf):
+    """(totals, sections) by type and flags; raises ElfError on an unknown type.
+
+    `totals` has every key in CLASSES. `sections` lists each ALLOC section with
+    its class, so a total can always be traced back to what made it up.
     """
-    total = 0
-    for section, size in sizes.items():
-        for name in names:
-            if section == name or section.startswith(name + "."):
-                total += size
-                break
-    return total
+    known = {**ALLOC_TYPES, **MACHINE_ALLOC_TYPES.get(elf.machine, {})}
+    word = 8 if elf.is64 else 4
+    totals = dict.fromkeys(CLASSES, 0)
+    listed = []
+    for section in elf.sections:
+        flags, kind, size = section["flags"], section["type"], section["size"]
+        if not flags & SHF_ALLOC:
+            continue
+        if kind not in known:
+            raise ElfError(f"section {section['name'] or '?'} is ALLOC with type "
+                           f"{kind:#x}, which this tool does not classify. Teach "
+                           f"classify() what it is rather than leave its bytes out.")
+        if flags & SHF_TLS:
+            cls = "tls"
+        elif kind in ARRAY_TYPES:
+            cls = "init_arrays"
+            totals["init_array_entries"] += size // (section["entsize"] or word)
+        elif flags & SHF_EXECINSTR:
+            cls = "code"
+        elif flags & SHF_WRITE:
+            cls = "ram"
+            totals["ram_nobits" if kind == SHT_NOBITS else "ram_progbits"] += size
+        else:
+            cls = "const"
+        totals[cls] += size
+        listed.append({"name": section["name"], "type": known[kind],
+                       "flags": flag_letters(flags), "class": cls, "bytes": size})
+    return totals, listed
+
+
+def regions(elf):
+    """{"flash": bytes, "ram": bytes} placed by PT_LOAD address, or None.
+
+    None means the image declares no memory regions (the toolchain's default
+    linker script), so there is nothing to place a segment against.
+    """
+    symbols = elf.symbols()
+    if not all(name in symbols for name in REGION_SYMBOLS):
+        return None
+    flash = (symbols["__flash"], symbols["__flash"] + symbols["__flash_size"])
+    ram = (symbols["__ram"], symbols["__ram"] + symbols["__ram_size"])
+
+    def inside(region, start, size):
+        return region[0] <= start and start + size <= region[1]
+
+    totals = {"flash": 0, "ram": 0}
+    for segment in elf.segments:
+        if segment["type"] != PT_LOAD or segment["memsz"] == 0:
+            continue
+        if inside(ram, segment["vaddr"], segment["memsz"]):
+            totals["ram"] += segment["memsz"]
+            if segment["filesz"]:
+                # Initialized RAM: its initial bytes are stored in flash.
+                if not inside(flash, segment["paddr"], segment["filesz"]):
+                    raise ElfError(f"a RAM segment at {segment['vaddr']:#x} loads its "
+                                   f"{segment['filesz']} initial bytes from "
+                                   f"{segment['paddr']:#x}, outside the flash region")
+                totals["flash"] += segment["filesz"]
+        elif inside(flash, segment["vaddr"], segment["memsz"]):
+            totals["flash"] += segment["filesz"]
+        else:
+            raise ElfError(f"a PT_LOAD segment at {segment['vaddr']:#x} "
+                           f"({segment['memsz']} bytes) is in neither the flash "
+                           f"region [{flash[0]:#x}, {flash[1]:#x}) nor the RAM "
+                           f"region [{ram[0]:#x}, {ram[1]:#x})")
+    return totals
+
+
+def measure(path, linked):
+    """One artifact's entry for the measurement record."""
+    try:
+        data = pathlib.Path(path).read_bytes()
+    except OSError as error:
+        raise ElfError(f"cannot read {path}: {error.strerror}") from error
+    elf = Elf(data)
+    totals, listed = classify(elf)
+    entry = {"role": "linked-image" if linked else "object",
+             "toolchain": elf.comment(), "flags": None,
+             "classes": totals, "regions": None, "sections": listed}
+    if linked:
+        entry["regions"] = regions(elf) or {"flash": None, "ram": None}
+    return entry
+
+
+def static_max_frame(su_dir):
+    """The deepest frame in the `.su` files under `su_dir`, or None."""
+    import check_stack  # same directory; only needed when recording the stack
+    entries = check_stack.collect(su_dir)
+    if not entries:
+        return None
+    name, size, _ = max(entries, key=lambda e: e[1])
+    return {"bytes": size, "function": name}
+
+
+RECORD_SCHEMA = 1
+
+
+def empty_record(cpu):
+    return {"schema": RECORD_SCHEMA, "cpu": cpu, "commit": current_commit(),
+            "artifacts": {},
+            # Separate keys, never one "stack" number: the static figure is the
+            # deepest single frame, the runtime ones are a high-water mark. No
+            # job measures the runtime figures yet (#404), so they are null.
+            "stack": {"static_max_frame": None, "runtime_hwm": None,
+                      "runtime_hwm_lto": None}}
+
+
+def current_commit():
+    sha = os.environ.get("GITHUB_SHA")
+    if sha:
+        return sha
+    result = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def update_record(path, cpu, artifact, entry, su_dir):
+    """Merge one measurement into the record at `path`, creating it if needed."""
+    record_path = pathlib.Path(path)
+    record = json.loads(record_path.read_text()) if record_path.exists() else empty_record(cpu)
+    if record.get("cpu") != cpu:
+        raise ElfError(f"{path} records {record.get('cpu')}, not {cpu}")
+    record["artifacts"][pathlib.Path(artifact).name] = entry
+    if su_dir is not None:
+        frame = static_max_frame(su_dir)
+        if frame is None:
+            raise ElfError(f"no .su frames under {su_dir}; the record would claim "
+                           f"a stack measurement that was never made")
+        record["stack"]["static_max_frame"] = frame
+    record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+
+
+def summary(record):
+    """Markdown for the job summary: one row per artifact, nulls shown as such."""
+    def cell(value):
+        return "not measured" if value is None else str(value)
+
+    lines = [f"### Measurements: {record['cpu']} at {(record.get('commit') or '?')[:12]}", "",
+             "| artifact | code | const | ram | tls | init arrays (entries) | flash | RAM |",
+             "|---|---:|---:|---:|---:|---:|---:|---:|"]
+    for name, entry in sorted(record["artifacts"].items()):
+        c = entry["classes"]
+        r = entry["regions"]
+        # An object file has no addresses yet: placing it is not applicable,
+        # which is a different answer from "not measured".
+        flash, ram = ("n/a", "n/a") if r is None else (cell(r["flash"]), cell(r["ram"]))
+        lines.append(f"| `{name}` | {c['code']} | {c['const']} | {c['ram']} | {c['tls']} | "
+                     f"{c['init_arrays']} ({c['init_array_entries']}) | {flash} | {ram} |")
+    stack = record["stack"]
+    frame = stack["static_max_frame"]
+    lines += ["", "| stack | bytes |", "|---|---:|",
+              f"| static deepest frame | "
+              f"{cell(frame and frame['bytes'])}{' (`' + frame['function'] + '`)' if frame else ''} |",
+              f"| runtime high-water mark | {cell(stack['runtime_hwm'])} |",
+              f"| runtime high-water mark, LTO | {cell(stack['runtime_hwm_lto'])} |"]
+    return "\n".join(lines) + "\n"
+
+
+REQUIRED_ARTIFACTS = ("invariant_probe.elf", "stack_probe.o")
+
+
+def merge_records(paths, expect_commit):
+    """{"commit", "records": {cpu: record}} for a release; raises on any gap."""
+    records = {}
+    for path in paths:
+        record = json.loads(pathlib.Path(path).read_text())
+        cpu = record.get("cpu")
+        if record.get("schema") != RECORD_SCHEMA:
+            raise ElfError(f"{path}: schema {record.get('schema')}, expected {RECORD_SCHEMA}")
+        if cpu in records:
+            raise ElfError(f"{path}: a second record for {cpu}")
+        if expect_commit and record.get("commit") != expect_commit:
+            raise ElfError(f"{path}: measured {record.get('commit')}, not {expect_commit}")
+        missing = [a for a in REQUIRED_ARTIFACTS if a not in record.get("artifacts", {})]
+        if missing:
+            raise ElfError(f"{path}: no measurement of {', '.join(missing)}")
+        if record["stack"]["static_max_frame"] is None:
+            raise ElfError(f"{path}: no static stack measurement")
+        records[cpu] = record
+    wanted = set(RAM_BUDGETS)
+    if set(records) != wanted:
+        raise ElfError(f"records for {sorted(records)}; a release needs exactly "
+                       f"{sorted(wanted)}")
+    return {"schema": RECORD_SCHEMA, "commit": expect_commit, "records": records}
 
 
 def compare(label, measured, budget, tolerance, cpu, report, key):
@@ -203,88 +544,225 @@ def compare(label, measured, budget, tolerance, cpu, report, key):
     return 0, out
 
 
+def breakdown(listed, *classes):
+    """The sections making up `classes`, largest first, for a failure message."""
+    rows = sorted((s for s in listed if s["class"] in classes), key=lambda s: -s["bytes"])
+    return [f"      {s['bytes']:7}  {s['class']:11} {s['type']:10} {s['flags']:4} {s['name']}"
+            for s in rows]
+
+
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--elf", help="linked probe: gates .text and .rodata")
-    parser.add_argument("--ram-object", help="stack probe object: gates .bss + .data")
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--elf", help="linked probe: gates code and const")
+    parser.add_argument("--ram-object", help="stack probe object: gates ram + tls")
     parser.add_argument("--cpu")
-    parser.add_argument("--size-tool", default="arm-none-eabi-size")
     parser.add_argument(
         "--report",
         action="store_true",
         help="print the measured size and exit 0 even with no budget set",
     )
+    parser.add_argument("--record", help="JSON measurement record to create or add to")
+    parser.add_argument("--flags", help="the compiler flags, for the record")
+    parser.add_argument("--su-dir", help="with --record: record the deepest .su frame")
+    parser.add_argument("--summary", metavar="RECORD",
+                        help="print RECORD as a Markdown table and exit")
+    parser.add_argument("--merge-records", metavar="OUT",
+                        help="merge the record files given as arguments into OUT")
+    parser.add_argument("--expect-commit", help="with --merge-records: every record's commit")
+    parser.add_argument("records", nargs="*", help=argparse.SUPPRESS)
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
 
     if args.self_test:
         return self_test()
 
-    if not args.cpu or bool(args.elf) == bool(args.ram_object):
-        print("error: --cpu plus exactly one of --elf / --ram-object", file=sys.stderr)
-        return 2
-
-    artifact = args.elf or args.ram_object
     try:
-        sizes = section_sizes(artifact, args.size_tool)
-    except RuntimeError as error:
+        if args.summary:
+            print(summary(json.loads(pathlib.Path(args.summary).read_text())), end="")
+            return 0
+        if args.merge_records:
+            if not args.records:
+                raise ElfError("--merge-records needs the record files to merge")
+            merged = merge_records(args.records, args.expect_commit)
+            pathlib.Path(args.merge_records).write_text(
+                json.dumps(merged, indent=2, sort_keys=True) + "\n")
+            print(f"merged {len(merged['records'])} records into {args.merge_records}")
+            return 0
+        if not args.cpu or bool(args.elf) == bool(args.ram_object) or args.records:
+            print("error: --cpu plus exactly one of --elf / --ram-object", file=sys.stderr)
+            return 2
+        if args.su_dir and not args.record:
+            print("error: --su-dir only feeds --record", file=sys.stderr)
+            return 2
+
+        artifact = args.elf or args.ram_object
+        entry = measure(artifact, linked=bool(args.elf))
+        entry["flags"] = args.flags
+        if args.record:
+            update_record(args.record, args.cpu, artifact, entry, args.su_dir)
+    except (ElfError, OSError, ValueError) as error:
+        # A traceback here would be read as a broken script rather than as a
+        # broken measurement, and the job would need someone to go and look.
         print(f"::error::{error}", file=sys.stderr)
         return 1
 
+    classes, listed = entry["classes"], entry["sections"]
     if args.elf:
-        text = sum_sections(sizes, ".text")
-        rodata = sum_sections(sizes, ".rodata")
-        print(f"{args.cpu}: .text={text} .rodata={rodata} bytes  ({artifact})")
+        code, const = classes["code"], classes["const"]
+        where = entry["regions"]
+        placed = ("no memory regions declared" if where["flash"] is None
+                  else f"flash={where['flash']} RAM={where['ram']}")
+        print(f"{args.cpu}: code={code} const={const} bytes, "
+              f"{classes['init_array_entries']} init_array entries, {placed}  ({artifact})")
 
-        # A linked probe with no .text is not a small probe, it is a broken
-        # measurement -- a wrong path, a size tool that printed nothing, a
-        # section name that moved. Zero must never look like a pass.
-        if text == 0:
-            print(f"::error::{artifact} reports .text=0. A ratchet over an empty "
+        # A linked probe with no code is not a small probe, it is a broken
+        # measurement -- a wrong path, a section that lost its flags. Zero must
+        # never look like a pass.
+        if code == 0:
+            print(f"::error::{artifact} has no code. A ratchet over an empty "
                   f"measurement passes forever.", file=sys.stderr)
             return 1
 
         code_text, lines_text = compare(
-            ".text", text, BUDGETS.get(args.cpu), TOLERANCE_BYTES,
+            "code", code, BUDGETS.get(args.cpu), TOLERANCE_BYTES,
             args.cpu, args.report, "BUDGETS")
         code_rodata, lines_rodata = compare(
-            ".rodata", rodata, RODATA_BUDGETS.get(args.cpu), RODATA_TOLERANCE_BYTES,
+            "const", const, RODATA_BUDGETS.get(args.cpu), RODATA_TOLERANCE_BYTES,
             args.cpu, args.report, "RODATA_BUDGETS")
         for line in lines_text + lines_rodata:
             print(line)
+        if code_text or code_rodata or args.report:
+            print("  what makes up code and const:")
+            for line in breakdown(listed, "code", "const"):
+                print(line)
         if args.report:
             print("  --report: printing only, not enforcing")
         return max(code_text, code_rodata)
 
-    ram = sum_sections(sizes, ".bss", ".data")
-    print(f"{args.cpu}: .bss+.data={ram} bytes  ({artifact})")
+    ram = classes["ram"] + classes["tls"]
+    print(f"{args.cpu}: ram={classes['ram']} (progbits {classes['ram_progbits']}, "
+          f"nobits {classes['ram_nobits']}) tls={classes['tls']} bytes, "
+          f"{classes['init_array_entries']} init_array entries  ({artifact})")
 
     # The stack probe declares realistic-capacity containers in static storage.
     # If that sums to zero the probe was not the artifact measured.
     if ram == 0:
-        print(f"::error::{artifact} reports no .bss or .data at all. The RAM probe "
-              f"declares static containers, so zero means the wrong file was "
-              f"measured or the section names moved.", file=sys.stderr)
+        print(f"::error::{artifact} has no writable ALLOC section at all. The RAM "
+              f"probe declares static containers, so zero means the wrong file was "
+              f"measured.", file=sys.stderr)
         return 1
 
-    code, lines = compare(".bss+.data", ram, RAM_BUDGETS.get(args.cpu),
+    code, lines = compare("ram+tls", ram, RAM_BUDGETS.get(args.cpu),
                           RAM_TOLERANCE_BYTES, args.cpu, args.report, "RAM_BUDGETS")
     for line in lines:
         print(line)
+    if code or args.report:
+        print("  what makes up ram and tls:")
+        for line in breakdown(listed, "ram", "tls"):
+            print(line)
     if args.report:
         print("  --report: printing only, not enforcing")
     return code
 
 
-# A gate that cannot fail is not a gate. These fixtures prove every comparison
-# still bites and still lets a legitimate size through.
+# ---------------------------------------------------------------------------
+# Synthetic ELF files for the self-test, so it needs no toolchain.
+# ---------------------------------------------------------------------------
+def build_elf(sections, segments=(), symbols=None, comment=None,
+              is64=False, big=False, machine=EM_ARM, elf_type=1):
+    """Bytes of an ELF file with these sections (name, type, flags, size[, entsize]).
+
+    Section contents are not written: the tool never reads them, except
+    `.comment` and the symbol and string tables, which this builds for real.
+    """
+    end = ">" if big else "<"
+    names = bytearray(b"\0")
+    blobs = bytearray()
+    table = [(0, 0, 0, 0, 0, 0, 0, 0)]  # name, type, flags, offset, size, link, entsize, addr
+    ehsize = 64 if is64 else 52
+    phentsize = 56 if is64 else 32
+    data_start = ehsize + phentsize * len(segments)
+
+    def name_of(text):
+        offset = len(names)
+        names.extend(text.encode() + b"\0")
+        return offset
+
+    def blob(payload):
+        offset = data_start + len(blobs)
+        blobs.extend(payload)
+        return offset
+
+    for name, kind, flags, size, *entsize in sections:
+        table.append((name_of(name), kind, flags, 0, size, 0, entsize[0] if entsize else 0, 0))
+    if comment is not None:
+        payload = b"\0".join(c.encode() for c in comment) + b"\0"
+        table.append((name_of(".comment"), SHT_PROGBITS, 0, blob(payload), len(payload), 0, 0, 0))
+    if symbols:
+        strtab = bytearray(b"\0")
+        syms = bytearray(struct.pack(end + ("IBBHQQ" if is64 else "IIIBBH"), *([0] * 6)))
+        for symbol, value in symbols.items():
+            offset = len(strtab)
+            strtab.extend(symbol.encode() + b"\0")
+            syms.extend(struct.pack(end + "IBBHQQ", offset, 0, 0, 0xFFF1, value, 0) if is64
+                        else struct.pack(end + "IIIBBH", offset, value, 0, 0, 0, 0xFFF1))
+        strtab_index = len(table) + 1
+        table.append((name_of(".symtab"), SHT_SYMTAB, 0, blob(syms), len(syms),
+                      strtab_index, 24 if is64 else 16, 0))
+        table.append((name_of(".strtab"), 3, 0, blob(strtab), len(strtab), 0, 0, 0))
+    shstrndx = len(table)
+    table.append((name_of(".shstrtab"), 3, 0, 0, 0, 0, 0, 0))
+    shstr_offset = data_start + len(blobs)
+    table[-1] = table[-1][:3] + (shstr_offset, len(names)) + table[-1][5:]
+    shoff = shstr_offset + len(names)
+    shentsize = 64 if is64 else 40
+
+    out = bytearray(b"\x7fELF" + bytes([2 if is64 else 1, 2 if big else 1, 1]) + bytes(9))
+    header = "HHIQQQIHHHHHH" if is64 else "HHIIIIIHHHHHH"
+    out += struct.pack(end + header, elf_type, machine, 1, 0,
+                       ehsize if segments else 0, shoff, 0, ehsize, phentsize,
+                       len(segments), shentsize, len(table), shstrndx)
+    for vaddr, paddr, filesz, memsz in segments:
+        out += (struct.pack(end + "IIQQQQQQ", PT_LOAD, 0, 0, vaddr, paddr, filesz, memsz, 0)
+                if is64 else
+                struct.pack(end + "IIIIIIII", PT_LOAD, 0, vaddr, paddr, filesz, memsz, 0, 0))
+    out += blobs + names
+    for name, kind, flags, offset, size, link, entsize, addr in table:
+        out += (struct.pack(end + "IIQQQQIIQQ", name, kind, flags, addr, offset, size,
+                            link, 0, 1, entsize) if is64 else
+                struct.pack(end + "IIIIIIIIII", name, kind, flags, addr, offset, size,
+                            link, 0, 1, entsize))
+    return bytes(out)
+
+
+WA, AX, A, WAT = SHF_WRITE | SHF_ALLOC, SHF_ALLOC | SHF_EXECINSTR, SHF_ALLOC, \
+    SHF_WRITE | SHF_ALLOC | SHF_TLS
+
+# Every row of #405's table, as the ARM object probe produced them.
+PROBE_SECTIONS = [
+    (".text.f", SHT_PROGBITS, AX, 100),
+    (".rodata.c", SHT_PROGBITS, A, 32),
+    (".bss.zero_g", SHT_NOBITS, WA, 4),
+    (".data.nonzero_g", SHT_PROGBITS, WA, 8),
+    (".tbss.tls_zero", SHT_NOBITS, WAT, 16),
+    (".tdata.tls_init", SHT_PROGBITS, WAT, 32),
+    (".noinit", SHT_PROGBITS, WA, 64),
+    (".bss.dyn_g", SHT_NOBITS, WA, 128),
+    (".init_array", SHT_INIT_ARRAY, WA, 8),
+    (".ARM.exidx.text.f", SHT_ARM_EXIDX, A | 0x80, 8),  # AL: SHF_LINK_ORDER
+    (".ARM.attributes", 0x70000003, 0, 50),  # not ALLOC: ignored
+    (".rel.text.f", 9, 0x40, 16),  # SHT_REL, not ALLOC: ignored
+]
+
+
 def self_test():
     failures = []
 
     cases = (
-        ("BUDGETS", ".text", TOLERANCE_BYTES),
-        ("RODATA_BUDGETS", ".rodata", RODATA_TOLERANCE_BYTES),
-        ("RAM_BUDGETS", ".bss+.data", RAM_TOLERANCE_BYTES),
+        ("BUDGETS", "code", TOLERANCE_BYTES),
+        ("RODATA_BUDGETS", "const", RODATA_TOLERANCE_BYTES),
+        ("RAM_BUDGETS", "ram+tls", RAM_TOLERANCE_BYTES),
     )
     for key, label, tolerance in cases:
         budget = 10_000
@@ -312,25 +790,159 @@ def self_test():
         if code != 0:
             failures.append(f"{label}: --report refused a missing budget")
 
-    # Prefix summing. Under -fdata-sections there is no plain `.bss`, so an
-    # exact-name lookup reads zero and the ratchet guards nothing.
-    split = {".bss._ZL7storage": 4096, ".bss._ZL5table": 1024, ".data.rel.ro": 8,
-             ".text": 100, ".rodata.str1.1": 32}
-    if sum_sections(split, ".bss", ".data") != 4096 + 1024 + 8:
-        failures.append("sum_sections missed per-symbol .bss/.data sections")
-    if sum_sections(split, ".rodata") != 32:
-        failures.append("sum_sections missed a split .rodata section")
-    if sum_sections(split, ".bss") == 0:
-        failures.append("an exact-name .bss lookup would have read zero -- "
-                        "the prefix sum is what stops that")
+    def expect(name, got, want):
+        if got != want:
+            failures.append(f"{name}: got {got}, want {want}")
+
+    # Every row of the table, in each byte order and word size the readers have
+    # to handle. ARM_EXIDX is an ARM type, so the non-ARM variants drop it.
+    variants = [(False, False, EM_ARM), (True, False, EM_ARM),
+                (False, True, EM_ARM), (True, True, 21)]  # 21: EM_PPC64, big-endian job
+    for is64, big, machine in variants:
+        tag = f"ELF{64 if is64 else 32}{'BE' if big else 'LE'}"
+        rows = [s for s in PROBE_SECTIONS if machine == EM_ARM or s[1] != SHT_ARM_EXIDX]
+        totals, listed = classify(Elf(build_elf(rows, is64=is64, big=big, machine=machine)))
+        expect(f"{tag} code", totals["code"], 100)
+        expect(f"{tag} const (.rodata + .ARM.exidx)", totals["const"],
+               32 + (8 if machine == EM_ARM else 0))
+        expect(f"{tag} ram (.bss + .data + .noinit + dyn .bss)", totals["ram"], 4 + 8 + 64 + 128)
+        expect(f"{tag} ram_nobits", totals["ram_nobits"], 4 + 128)
+        expect(f"{tag} ram_progbits (.noinit is PROGBITS)", totals["ram_progbits"], 8 + 64)
+        expect(f"{tag} tls", totals["tls"], 16 + 32)
+        expect(f"{tag} init_arrays bytes", totals["init_arrays"], 8)
+        expect(f"{tag} init_array entries", totals["init_array_entries"], 8 // (8 if is64 else 4))
+        if any(s["name"] in (".ARM.attributes", ".rel.text.f") for s in listed):
+            failures.append(f"{tag}: a non-ALLOC section was classified")
+
+    # What the name-prefix sum this replaced would have missed on the same rows.
+    by_name = sum(s[3] for s in PROBE_SECTIONS
+                  if s[0].startswith((".bss.", ".data.")) or s[0] in (".bss", ".data"))
+    totals, _ = classify(Elf(build_elf(PROBE_SECTIONS)))
+    expect("ram + tls over the prefix sum (.tbss, .tdata, .noinit)",
+           totals["ram"] + totals["tls"] - by_name, 16 + 32 + 64)
+
+    # An object with no .bss at all is fine: only a total of zero is not.
+    totals, _ = classify(Elf(build_elf([(".data.x", SHT_PROGBITS, WA, 12)])))
+    expect("no .bss: ram", totals["ram"], 12)
+    expect("no .bss: ram_nobits", totals["ram_nobits"], 0)
+
+    # An ALLOC section of a type nobody taught the classifier must stop the run,
+    # and so must a processor-specific type on another processor.
+    for label, data in (
+            ("unknown ALLOC type", build_elf([(".odd", 0x6FFF4700, A, 4)])),
+            ("ARM_EXIDX on a non-ARM machine",
+             build_elf([(".ARM.exidx", SHT_ARM_EXIDX, A, 8)], machine=21))):
+        try:
+            classify(Elf(data))
+            failures.append(f"{label} was accepted")
+        except ElfError:
+            pass
+    # ...but an unknown type that is not ALLOC is not this tool's business.
+    totals, _ = classify(Elf(build_elf([(".x", 0x6FFF4700, 0, 4), (".t", SHT_PROGBITS, AX, 2)])))
+    expect("non-ALLOC unknown type ignored, code", totals["code"], 2)
+
+    # A linked image: .data counted once in RAM (run address) and once in flash
+    # (load address). .bss is RAM only. Region bounds come from the image.
+    region_symbols = {"__flash": 0x0, "__flash_size": 0x1000,
+                      "__ram": 0x20000000, "__ram_size": 0x1000}
+    text, data, bss = 0x200, 0x10, 0x40
+    for is64, big in ((False, False), (True, True)):
+        image = build_elf([(".text", SHT_PROGBITS, AX, text)],
+                          segments=[(0x0, 0x0, text, text),
+                                    (0x20000000, text, data, data),
+                                    (0x20000000 + data, 0x20000000 + data, 0, bss)],
+                          symbols=region_symbols, is64=is64, big=big, elf_type=2)
+        expect(f"linked ELF{64 if is64 else 32} regions", regions(Elf(image)),
+               {"flash": text + data, "ram": data + bss})
+
+    for label, segment in (("a segment outside both regions", (0x10000000, 0x10000000, 4, 4)),
+                           ("a segment straddling the end of RAM", (0x20000FF0, 0x0, 0, 0x20)),
+                           ("RAM initialized from outside flash", (0x20000000, 0x30000000, 4, 4))):
+        try:
+            regions(Elf(build_elf([], segments=[segment], symbols=region_symbols, elf_type=2)))
+            failures.append(f"{label} was accepted")
+        except ElfError:
+            pass
+
+    # No region symbols (the toolchain's default script): not measured, not 0.
+    expect("no region symbols", regions(Elf(build_elf([], segments=[(0, 0, 4, 4)], elf_type=2))),
+           None)
+
+    # .comment is where the toolchain names itself.
+    expect("toolchain from .comment",
+           Elf(build_elf([], comment=["GCC: (fixture) 14.2.0", "GCC: (fixture) 14.2.0"])).comment(),
+           ["GCC: (fixture) 14.2.0"])
+
+    # Truncated and foreign files are errors, not zeros.
+    for label, data in (("a truncated file", build_elf(PROBE_SECTIONS)[:80]),
+                        ("a file that is not ELF", b"\xcf\xfa\xed\xfe" + bytes(60))):
+        try:
+            classify(Elf(data))
+            failures.append(f"{label} was measured")
+        except ElfError:
+            pass
+
+    # The record: unmeasured stays null, and a release refuses any gap.
+    with tempfile.TemporaryDirectory() as scratch:
+        root = pathlib.Path(scratch)
+        obj = root / "stack_probe.o"
+        obj.write_bytes(build_elf(PROBE_SECTIONS))
+        elf = root / "invariant_probe.elf"
+        elf.write_bytes(build_elf([(".text", SHT_PROGBITS, AX, 64)], segments=[(0, 0, 64, 64)],
+                                  elf_type=2))
+        (root / "stack_probe.su").write_text("probe.cpp:1:1:void f()\t40\tstatic\n")
+        paths = []
+        for cpu in sorted(RAM_BUDGETS):
+            record = root / f"{cpu}.json"
+            update_record(record, cpu, elf, measure(elf, linked=True), None)
+            update_record(record, cpu, obj, measure(obj, linked=False), root)
+            paths.append(record)
+        one = json.loads(paths[0].read_text())
+        expect("record: runtime stack is null", (one["stack"]["runtime_hwm"],
+                                                 one["stack"]["runtime_hwm_lto"]), (None, None))
+        expect("record: static frame", one["stack"]["static_max_frame"]["bytes"], 40)
+        expect("record: default-script regions are null",
+               one["artifacts"]["invariant_probe.elf"]["regions"], {"flash": None, "ram": None})
+        expect("record: object ram", one["artifacts"]["stack_probe.o"]["classes"]["ram"], 204)
+        if "not measured" not in summary(one):
+            failures.append("the summary shows an unmeasured value as something else")
+
+        commit = one["commit"]
+        try:
+            merged = merge_records(paths, commit)
+            expect("merged cpus", sorted(merged["records"]), sorted(RAM_BUDGETS))
+        except ElfError as error:
+            failures.append(f"a complete set of records was refused: {error}")
+        stale = root / "stale.json"
+        stale.write_text(json.dumps(dict(one, commit="0" * 40)))
+        no_stack = root / "no_stack.json"
+        no_stack.write_text(json.dumps(dict(one, stack=empty_record("x")["stack"])))
+        for label, inputs, want in (("a missing CPU", paths[1:], commit),
+                                    ("a duplicate CPU", paths + paths[:1], commit),
+                                    ("a record of another commit", [stale] + paths[1:], commit),
+                                    ("a record without a stack figure", [no_stack] + paths[1:],
+                                     commit)):
+            try:
+                merge_records(inputs, want)
+                failures.append(f"{label} was released")
+            except ElfError:
+                pass
+        try:
+            update_record(paths[0], "cortex-m3" if one["cpu"] != "cortex-m3" else "cortex-m0",
+                          obj, measure(obj, linked=False), None)
+            failures.append("a record accepted a measurement for another CPU")
+        except ElfError:
+            pass
 
     for failure in failures:
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
         return 1
-    print("self-test passed: for .text, .rodata and .bss+.data alike, over-budget "
-          "and missing-budget are rejected while at-budget and edge are accepted; "
-          "sections split by -fdata-sections are summed, not missed")
+    print("self-test passed: over-budget and missing-budget are rejected while "
+          "at-budget and edge are accepted; every row of #405's table lands in its "
+          "class in ELF32/64 LE/BE, an unknown ALLOC type fails, linked .data counts "
+          "once in RAM and once in flash, a segment outside both regions fails, and "
+          "a release refuses an incomplete set of records")
     return 0
 
 
