@@ -108,7 +108,8 @@ __attribute__((noinline)) void churn_map() noexcept {
 #if defined(METL_STACK_PROBE_CANARY)
   // The runtime gate's negative control (tools/check_qemu_probes.py): the
   // defect this file exists for, a rebuild into a local array, at 1 KiB. The
-  // high-water mark must grow by at least that much, or the gate cannot see it.
+  // canary build's mark must reach at least the array's size and exceed the
+  // no-LTO budget, or the gate could not reject it.
   // Never defined for the static .su gate or a normal run.
   volatile std::uint64_t scratch[128];
   for (u32 i = 0; i < 128; ++i) {

@@ -37,12 +37,13 @@ runner shim's METL_QEMU_EXIT line, a trace with no instructions, a region list
 that does not match the regions found in the trace. Before the real stack
 probe is graded, a CANARY build (-DMETL_STACK_PROBE_CANARY puts a 1 KiB local
 array in the probe's map churn, the defect stack_probe.cpp exists for) must read
-at least 1 KiB deeper, or the paint cannot see what the gate is for.
+at least as deep as its own array, and deeper than the no-LTO budget allows, or
+the gate could not reject the defect it is for. See CANARY_BYTES for why the
+rule is absolute rather than "the mark rises by 1 KiB".
 
-BUDGETS. Empty until CI measures them, as check_size.py's, check_stack.py's and
-check_instructions.py's started: a local QEMU and toolchain are a different
-measurement. The CI step enforces from its first run, so a missing budget FAILS
-and prints the line to paste; there is no green run without a budget.
+BUDGETS. Measured by the `invariants` job, never locally: a local QEMU and
+toolchain are a different measurement. The step enforces, so a missing budget
+FAILS and prints the line to paste; there is no green run without a budget.
 
 Usage:
     tools/check_qemu_probes.py --cpu cortex-m3 --machine mps2-an385 \\
@@ -73,20 +74,63 @@ RUN_TIMEOUT_SECONDS = 30
 TRACE_TIMEOUT_SECONDS = 180
 
 # Runtime stack high-water mark in bytes, per CPU, without and with LTO.
-# Measured by the `invariants` job and written down in a follow-up commit; a
-# budget goes DOWN freely and UP only with the commit saying what grew and why.
-STACK_BUDGETS = {}
+# Measured by the `invariants` job on PR #420 (QEMU 10.2.1, arm-none-eabi-g++
+# 14.2.1); a budget goes DOWN freely and UP only with the commit saying what grew
+# and why.
+STACK_BUDGETS = {
+    "cortex-m0": {"no-lto": 112, "lto": 120},
+    "cortex-m3": {"no-lto": 104, "lto": 120},
+    "cortex-m4": {"no-lto": 104, "lto": 120},
+    "cortex-m7": {"no-lto": 104, "lto": 120},
+}
 
 # Same tolerance as check_stack.py, for the same reason: the regression this
 # catches is a local buffer, kilobytes, and 64 bytes is a dozen spilled
 # registers.
 STACK_TOLERANCE_BYTES = 64
 
-# The canary's 1 KiB array must show up as at least this much more stack.
-CANARY_MIN_GROWTH_BYTES = 1024
+# The canary's array: 128 x uint64_t, every element written. Its lowest word
+# lies at least this far below the SP `measure` reads, because the array sits
+# in churn_map's frame and every frame between that SP and the array (the
+# driver's, churn_map's saved registers) only adds depth. So the canary's mark
+# is at least this, whatever the frame layout.
+#
+# The rule is absolute on purpose. "The mark rises by 1 KiB" is not a property
+# of the probe: the mark is the deepest WRITTEN word over every operation the
+# driver runs, so the rise is
+#     1024 + (deepest written word of churn_map's chain - deepest of any chain)
+#          - (bytes of churn_map's own frame the canary build no longer needs)
+# and both corrections depend on code generation. The first CI run measured a
+# rise of exactly 1024 on Cortex-M0 and of 1012 on M3, M4 and M7 (run of PR
+# #420, marks 112 -> 1136 and 104 -> 1116), with nothing wrong with the paint.
+CANARY_BYTES = 1024
 
-# Guest instructions per region, per CPU, from the build without LTO.
-INSTRUCTION_BUDGETS = {}
+# Guest instructions per region, per CPU, from the build without LTO. Measured
+# by the same run as STACK_BUDGETS. M3, M4 and M7 agree except in
+# spsc_byte_ring_write_read, where the M3 build executed 512 more (7052 against
+# 6540); the source is the same and only -mcpu differs. Not yet investigated.
+_V7M_COUNTS = {
+    "fixed_queue_push_pop": 2632,
+    "fixed_vector_fill_clear": 1620,
+    "flat_map_insert_find": 32240,
+    "mpmc_queue_push_pop": 3914,
+    "ring_buffer_push_overwrite": 1288,
+    "spsc_byte_ring_write_read": 6540,
+    "spsc_queue_push_pop": 2697,
+}
+INSTRUCTION_BUDGETS = {
+    "cortex-m0": {
+        "fixed_queue_push_pop": 3399,
+        "fixed_vector_fill_clear": 1749,
+        "flat_map_insert_find": 37788,
+        "ring_buffer_push_overwrite": 1479,
+        "spsc_byte_ring_write_read": 8566,
+        "spsc_queue_push_pop": 2952,
+    },
+    "cortex-m3": dict(_V7M_COUNTS, spsc_byte_ring_write_read=7052),
+    "cortex-m4": dict(_V7M_COUNTS),
+    "cortex-m7": dict(_V7M_COUNTS),
+}
 
 # QEMU's count is exact for a given binary; the tolerance is room for a
 # toolchain that schedules a little differently, as in check_instructions.py.
@@ -201,14 +245,20 @@ def match_regions(names, counts, cpu):
 def grade_stack(cpu, marks, canary, report):
     """(exit_code, lines). `marks` is {"no-lto": bytes, "lto": bytes}."""
     out, failures = [], []
-    growth = canary - marks["no-lto"]
     out.append(f"{cpu}: runtime stack high-water mark {marks['no-lto']} bytes, "
-               f"{marks['lto']} with LTO (canary +{growth})")
-    if growth < CANARY_MIN_GROWTH_BYTES:
-        # Not excused by --report: a paint that cannot see a 1 KiB local array
-        # measures nothing worth printing either.
-        return 1, out + [f"::error::the canary's 1 KiB local array raised the mark by only "
-                         f"{growth} bytes; the paint cannot see the defect this gate is for"]
+               f"{marks['lto']} with LTO; canary build {canary}")
+    budgets = STACK_BUDGETS.get(cpu)
+    # Not excused by --report: a paint that cannot see the canary measures
+    # nothing worth printing either.
+    if canary < CANARY_BYTES:
+        return 1, out + [f"::error::the canary build's mark is {canary} bytes, below its own "
+                         f"{CANARY_BYTES}-byte array: the paint or the scan misses stack that "
+                         f"was written"]
+    no_lto = None if budgets is None else budgets.get("no-lto")
+    if no_lto is not None and canary <= no_lto + STACK_TOLERANCE_BYTES:
+        return 1, out + [f"::error::the canary build reached {canary} bytes, within the "
+                         f"no-LTO budget {no_lto} (+{STACK_TOLERANCE_BYTES}): the gate would "
+                         f"not reject the defect it exists for"]
     budgets = STACK_BUDGETS.get(cpu)
     for build, used in sorted(marks.items()):
         budget = None if budgets is None else budgets.get(build)
@@ -439,14 +489,17 @@ def self_test():
             failures.append("a stack with no budget passed")
         if grade_stack("m", marks, 1400, report=True)[0] != 0:
             failures.append("--report refused a stack with no budget")
-        if grade_stack("m", marks, 900, report=True)[0] == 0:
-            failures.append("a canary that grew by 600 bytes passed, even under --report")
+        if grade_stack("m", marks, CANARY_BYTES - 1, report=True)[0] == 0:
+            failures.append("a canary mark below its own array passed, even under --report")
         STACK_BUDGETS["m"] = {"no-lto": 300 - STACK_TOLERANCE_BYTES, "lto": 260}
         if grade_stack("m", marks, 1400, report=False)[0] != 0:
             failures.append("a stack exactly at budget + tolerance failed")
         STACK_BUDGETS["m"]["no-lto"] -= 1
         if grade_stack("m", marks, 1400, report=False)[0] == 0:
             failures.append("a stack one byte over budget + tolerance passed")
+        STACK_BUDGETS["m"] = {"no-lto": 1400 - STACK_TOLERANCE_BYTES, "lto": 1400}
+        if grade_stack("m", marks, 1400, report=True)[0] == 0:
+            failures.append("a canary within the no-LTO budget passed, even under --report")
 
         counts = {"r": 1000}
         if grade_instructions("m", counts, report=False)[0] == 0:
@@ -487,8 +540,8 @@ def self_test():
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
     print("self-test passed: missing, saturated and unparseable stack reports, cut or empty "
-          "traces, mismatched region lists, missing and exceeded budgets and a blind canary "
-          "are all rejected; at-budget figures pass and the record is filled")
+          "traces, mismatched region lists, missing and exceeded budgets, a blind canary "
+          "and a canary the gate would not reject are all rejected; at-budget figures pass and the record is filled")
     return 0
 
 
