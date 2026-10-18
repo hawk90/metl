@@ -9,7 +9,8 @@ can settle:
 
   D1  every `metl::Name` used in the docs exists in a public header.
       Catches an API that was renamed or removed while the prose kept using it.
-  D2  every relative link to a file in the repo resolves.
+  D2  every relative link in every tracked Markdown file resolves: inline
+      links, reference-style definitions and HTML attributes, to any target.
   D3  every example named in the docs is registered in examples/CMakeLists.txt,
       and every examples/*.cpp on disk is registered there too. An example that
       is not in that list is not built and not run, so pointing a reader at it
@@ -116,7 +117,13 @@ SIZE_SCANNED_SUFFIXES = (".md", ".yml", ".yaml", ".py", ".txt", ".sh")
 TEST_COUNT_FIGURE = re.compile(r"(?<![-\w.])(\d+)\s+(?:tests?|test files)\b")
 
 QUALIFIED = re.compile(r"\bmetl::([a-zA-Z_][a-zA-Z_0-9]*)")
-RELATIVE_LINK = re.compile(r"\]\(((?!https?:|#)[^)\s]+\.(?:cpp|hpp|md|py|yml|txt|svg|png))[^)]*\)")
+# A target with a scheme (https:, mailto:) or only an anchor is not a file.
+_NOT_A_FILE = r"(?![A-Za-z][\w+.-]*:|#)"
+RELATIVE_LINK = re.compile(r"\]\(\s*<?(" + _NOT_A_FILE + r"[^)\s>]+)")
+REFERENCE_LINK = re.compile(r"^ {0,3}\[[^\]]+\]:\s*<?(" + _NOT_A_FILE + r"[^\s>]+)", re.M)
+# Code is not prose: a lambda's `[](auto x)` is not a link. A code span may
+# wrap onto the next line, but not across a paragraph break.
+CODE = re.compile(r"^ {0,3}(```|~~~).*?^ {0,3}\1[^\n]*$|`(?:[^`\n]|\n(?![ \t]*\n))*`", re.M | re.S)
 # The README header is HTML (a centred logo and badges), so its links are
 # `href=` / `src=` / `srcset=` attributes, which the markdown pattern above
 # never sees.
@@ -292,11 +299,6 @@ def check(repo_root="."):
                 problems.append(("D1", f"{doc}: uses `metl::{name}`, which no public "
                                        f"header defines"))
 
-        # D2
-        for target in sorted(set(RELATIVE_LINK.findall(text)) | set(HTML_LINK.findall(text))):
-            if not (path.parent / target).resolve().exists():
-                problems.append(("D2", f"{doc}: links to `{target}`, which does not exist"))
-
         # D3
         for name in sorted(set(EXAMPLE_REF.findall(text))):
             if name not in registered:
@@ -324,14 +326,32 @@ def check(repo_root="."):
             problems.append(("D4", f".clusterfuzzlite/build.sh names {name}, which has no "
                                    f"fuzz/{name}.cpp"))
 
+    # D2: every relative link in every Markdown file resolves.
+    scanned = sorted(scannable_files(root))
+    for relative in (p for p in scanned if p.suffix == ".md"):
+        try:
+            prose = CODE.sub("", (root / relative).read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, OSError) as error:
+            problems.append(("D2", f"{relative.as_posix()}: cannot be read ({error})"))
+            continue
+        links = (set(RELATIVE_LINK.findall(prose)) | set(REFERENCE_LINK.findall(prose))
+                 | set(HTML_LINK.findall(prose)))
+        for target in sorted(links):
+            file = re.split(r"[#?]", target)[0]
+            if file and not (root / relative.parent / file).resolve().exists():
+                problems.append(("D2", f"{relative.as_posix()}: links to `{target}`, which does not exist"))
+
     # D5: the size budgets live in one file. Anywhere else is a copy, and a copy
     # is a number waiting to go stale -- which is exactly what it did.
-    for relative in sorted(scannable_files(root)):
+    for relative in scanned:
         if relative.as_posix() in SIZE_BUDGET_EXEMPT:
             continue
         try:
             text = (root / relative).read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
+        except (UnicodeDecodeError, OSError) as error:
+            # A file this rule cannot read is a file it did not check.
+            problems.append(("D5", f"{relative.as_posix()}: cannot be read as UTF-8 text, so it "
+                                   f"cannot be checked for a size figure ({error})"))
             continue
         for number, line in enumerate(text.splitlines(), 1):
             match = SIZE_FIGURE.search(line)
@@ -503,6 +523,28 @@ def self_test():
         # D2 must see HTML attributes too, not just markdown links.
         if not any(rule == "D2" and "nope.svg" in message for rule, message in check(root)):
             failures.append("D2 did not flag a broken HTML <img src=> link")
+
+        # D2 reads every Markdown file, not only DOCS; reference-style links
+        # too; and any relative target, not only some extensions. A lambda's
+        # `[](auto x)` in code is not a link.
+        (root / "docs" / "EXTRA.md").write_text(
+            "[gone](missing.md)\n[dir](nodir/)\n\n[ref]: gone.cpp\n"
+            "```cpp\nauto f = [](auto x) { return x; };\n```\nand `[](auto y)` inline\n")
+        d2 = [message for rule, message in check(root) if rule == "D2"]
+        for want in ("docs/EXTRA.md: links to `missing.md`", "docs/EXTRA.md: links to `nodir/`",
+                     "docs/EXTRA.md: links to `gone.cpp`"):
+            if not any(want in message for message in d2):
+                failures.append(f"D2 missed {want!r}: {d2}")
+        if any("auto" in message for message in d2):
+            failures.append(f"D2 read a link inside code: {d2}")
+        (root / "docs" / "EXTRA.md").write_text(
+            "[ok](SCOPE.md#8-the-gates)\n\n[ref]: ../README.md\n```cpp\nauto f = [](auto x) {};\n```\n")
+
+        # D5 cannot skip a file it cannot decode: that file is unchecked.
+        (root / "binary.yml").write_bytes(b"\xff\xfe cortex-m0 9999\n")
+        if not any(rule == "D5" and "binary.yml" in message for rule, message in check(root)):
+            failures.append("D5 skipped a file it could not decode")
+        (root / "binary.yml").unlink()
 
         # D5 must have fired on the restated budget and NOT on the -mcpu flag.
         d5 = [message for rule, message in check(root) if rule == "D5"]
