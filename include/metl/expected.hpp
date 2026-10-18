@@ -169,28 +169,36 @@ struct expected_empty {};
 // built through a non-const pointer and handed out as const.
 template <typename T, typename E>
 union expected_union {
-  expected_empty empty_;
-  std::remove_cv_t<T> value_;
-  std::remove_cv_t<E> error_;
+  expected_empty empty;
+  std::remove_cv_t<T> value;
+  std::remove_cv_t<E> error;
 
-  constexpr expected_union() noexcept : empty_{} {}
+  constexpr expected_union() noexcept : empty{} {}
   template <typename... Args>
-  constexpr explicit expected_union(in_place_t, Args&&... args) : value_(std::forward<Args>(args)...) {}
+  constexpr explicit expected_union(in_place_t, Args&&... args) : value(std::forward<Args>(args)...) {}
   template <typename... Args>
-  constexpr explicit expected_union(unexpect_t, Args&&... args) : error_(std::forward<Args>(args)...) {}
-  // expected ends the active member itself.
+  constexpr explicit expected_union(unexpect_t, Args&&... args) : error(std::forward<Args>(args)...) {}
+  // expected copies, moves and ends the active member itself.
+  expected_union(const expected_union&) = delete;
+  expected_union(expected_union&&) = delete;
+  expected_union& operator=(const expected_union&) = delete;
+  expected_union& operator=(expected_union&&) = delete;
   METL_CONSTEXPR20 ~expected_union() {}
 };
 
 // The storage of expected<void, E>: the error, or nothing.
 template <typename E>
 union expected_error_union {
-  expected_empty empty_;
-  std::remove_cv_t<E> error_;
+  expected_empty empty;
+  std::remove_cv_t<E> error;
 
-  constexpr expected_error_union() noexcept : empty_{} {}
+  constexpr expected_error_union() noexcept : empty{} {}
   template <typename... Args>
-  constexpr explicit expected_error_union(unexpect_t, Args&&... args) : error_(std::forward<Args>(args)...) {}
+  constexpr explicit expected_error_union(unexpect_t, Args&&... args) : error(std::forward<Args>(args)...) {}
+  expected_error_union(const expected_error_union&) = delete;
+  expected_error_union(expected_error_union&&) = delete;
+  expected_error_union& operator=(const expected_error_union&) = delete;
+  expected_error_union& operator=(expected_error_union&&) = delete;
   METL_CONSTEXPR20 ~expected_error_union() {}
 };
 
@@ -826,11 +834,11 @@ class expected {
   // Laundered: emplace and assignment can end a member and build a new one in
   // its place, which C++17 [basic.life]/8 does not let the member's name reach
   // when T or E has a const or reference member.
-  T* value_ptr() noexcept { return std::launder(detail::addressof(storage_.value_)); }
-  const T* value_ptr() const noexcept { return std::launder(detail::addressof(storage_.value_)); }
+  T* value_ptr() noexcept { return std::launder(detail::addressof(storage_.value)); }
+  const T* value_ptr() const noexcept { return std::launder(detail::addressof(storage_.value)); }
 
-  E* error_ptr() noexcept { return std::launder(detail::addressof(storage_.error_)); }
-  const E* error_ptr() const noexcept { return std::launder(detail::addressof(storage_.error_)); }
+  E* error_ptr() noexcept { return std::launder(detail::addressof(storage_.error)); }
+  const E* error_ptr() const noexcept { return std::launder(detail::addressof(storage_.error)); }
 
   // Unchecked accessors used internally where active-member state is known.
   T& value_unchecked() noexcept { return *value_ptr(); }
@@ -848,12 +856,12 @@ class expected {
 
   template <typename... Args>
   void construct_value(Args&&... args) {
-    detail::construct_at(detail::addressof(storage_.value_), std::forward<Args>(args)...);
+    detail::construct_at(detail::addressof(storage_.value), std::forward<Args>(args)...);
   }
 
   template <typename... Args>
   void construct_error(Args&&... args) {
-    detail::construct_at(detail::addressof(storage_.error_), std::forward<Args>(args)...);
+    detail::construct_at(detail::addressof(storage_.error), std::forward<Args>(args)...);
   }
 
   // Only the destructor calls this; a member's destructor that reaches back
@@ -1598,8 +1606,8 @@ class expected<void, E> {
   }
 
  private:
-  E* error_ptr() noexcept { return std::launder(detail::addressof(storage_.error_)); }
-  const E* error_ptr() const noexcept { return std::launder(detail::addressof(storage_.error_)); }
+  E* error_ptr() noexcept { return std::launder(detail::addressof(storage_.error)); }
+  const E* error_ptr() const noexcept { return std::launder(detail::addressof(storage_.error)); }
 
   constexpr bool holds_value() const noexcept { return state_ == detail::expected_state::value; }
   constexpr bool holds_error() const noexcept { return state_ == detail::expected_state::error; }
@@ -1609,7 +1617,7 @@ class expected<void, E> {
 
   template <typename... Args>
   void construct_error(Args&&... args) {
-    detail::construct_at(detail::addressof(storage_.error_), std::forward<Args>(args)...);
+    detail::construct_at(detail::addressof(storage_.error), std::forward<Args>(args)...);
   }
 
   // The success state leaves the empty member active: nothing to build, and a

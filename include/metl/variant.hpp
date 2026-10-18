@@ -146,25 +146,29 @@ struct variant_empty {};
 // alternative's. Members are unqualified, as in optional.
 template <typename... Ts>
 union alternative_storage {
-  variant_empty empty_;
+  variant_empty empty;
 
-  constexpr alternative_storage() noexcept : empty_{} {}
+  constexpr alternative_storage() noexcept : empty{} {}
 };
 
 template <typename T, typename... Rest>
 union alternative_storage<T, Rest...> {
-  variant_empty empty_;
-  std::remove_cv_t<T> head_;
-  alternative_storage<Rest...> tail_;
+  variant_empty empty;
+  std::remove_cv_t<T> head;
+  alternative_storage<Rest...> tail;
 
-  constexpr alternative_storage() noexcept : empty_{} {}
+  constexpr alternative_storage() noexcept : empty{} {}
   template <typename... Args>
   constexpr explicit alternative_storage(in_place_index_t<0>, Args&&... args)
-      : head_(std::forward<Args>(args)...) {}
+      : head(std::forward<Args>(args)...) {}
   template <std::size_t I, typename... Args>
   constexpr explicit alternative_storage(in_place_index_t<I>, Args&&... args)
-      : tail_(in_place_index<I - 1>, std::forward<Args>(args)...) {}
-  // variant ends the active alternative itself.
+      : tail(in_place_index<I - 1>, std::forward<Args>(args)...) {}
+  // variant copies, moves and ends the active alternative itself.
+  alternative_storage(const alternative_storage&) = delete;
+  alternative_storage(alternative_storage&&) = delete;
+  alternative_storage& operator=(const alternative_storage&) = delete;
+  alternative_storage& operator=(alternative_storage&&) = delete;
   METL_CONSTEXPR20 ~alternative_storage() {}
 };
 
