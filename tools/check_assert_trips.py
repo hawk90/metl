@@ -141,6 +141,14 @@ def run_ctest(build_dir):
 
 
 def self_test():
+    # Explicit checks, not `assert`: python -O strips asserts, and a self-test
+    # made of them then passes whatever the code does.
+    failures = []
+
+    def expect(label, ok):
+        if not ok:
+            failures.append(label)
+
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
         (root / "a.hpp").write_text(
@@ -151,15 +159,24 @@ def self_test():
             "              9);\n"
             "}\n", encoding="utf-8")
         sites = find_sites(root)
-        assert [(s[1], s[2]) for s in sites] == [(3, 3), (4, 5)], sites
+        expect(f"sites: got {[(s[1], s[2]) for s in sites]}, want [(3, 3), (4, 5)]",
+               [(s[1], s[2]) for s in sites] == [(3, 3), (4, 5)])
         tripped = read_trips("12: metl-assert-trip /x/include/metl/a.hpp:5\nnot a line\n"
                              "metl-assert-trip /y/elsewhere.hpp:3\n")
-        assert tripped == {("a.hpp", 5)}, tripped
-        assert check(sites, tripped, {"a.hpp": (1, "r")}, quiet=True) == []
-        assert check(sites, tripped, {}, quiet=True), "an untripped assert must fail"
-        assert check(sites, tripped, {"a.hpp": (2, "r")}, quiet=True), "a stale allowance must fail"
-        assert check(sites, tripped, {"a.hpp": (1, "r"), "gone.hpp": (1, "r")}, quiet=True)
-        assert check(sites, tripped | {("a.hpp", 3)}, {}, quiet=True) == []
+        expect(f"trips: got {tripped}, want {{('a.hpp', 5)}}", tripped == {("a.hpp", 5)})
+        expect("a multi-line assert tripped on its last line, with one allowed, was refused",
+               check(sites, tripped, {"a.hpp": (1, "r")}, quiet=True) == [])
+        expect("an untripped assert passed", check(sites, tripped, {}, quiet=True))
+        expect("a stale allowance passed",
+               check(sites, tripped, {"a.hpp": (2, "r")}, quiet=True))
+        expect("an allowance for a header with no assert passed",
+               check(sites, tripped, {"a.hpp": (1, "r"), "gone.hpp": (1, "r")}, quiet=True))
+        expect("every assert tripped was refused",
+               check(sites, tripped | {("a.hpp", 3)}, {}, quiet=True) == [])
+    for failure in failures:
+        print(f"self-test FAILED: {failure}", file=sys.stderr)
+    if failures:
+        return 1
     print("self-test passed: untripped asserts, stale allowances and multi-line invocations are handled")
     return 0
 
