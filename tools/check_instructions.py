@@ -54,11 +54,13 @@ Usage:
 """
 
 import argparse
+import os
 import pathlib
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 # Instructions executed, per benchmark, with the process baseline subtracted.
 # Keyed "<binary>::<benchmark name>".
@@ -158,9 +160,12 @@ def instruction_count(runner, argv):
 
 def benchmark_names(binary):
     """(countable, skipped) names, from the binary's own --list."""
-    result = subprocess.run(
-        [str(binary), "--list"], capture_output=True, text=True, check=True
-    )
+    try:
+        result = subprocess.run([str(binary), "--list"], capture_output=True, text=True)
+    except OSError as error:
+        raise RuntimeError(f"cannot run {binary} --list: {error}") from error
+    if result.returncode != 0:
+        raise RuntimeError(f"{binary} --list exited {result.returncode}\n{result.stderr}")
     countable, skipped = [], []
     for line in result.stdout.splitlines():
         name = line.strip()
@@ -269,6 +274,17 @@ def compare(measured, report, iterations=BUDGET_ITERATIONS):
             out.append(f"      NOTE: {budget - count:,} fewer than the budget. "
                        f"Lower BUDGETS['{key}'] to {count} so the ratchet keeps its grip.")
 
+    # A budget nothing measured: the benchmark was deleted or renamed, or its
+    # binary was not built. Its entry would otherwise leave the gate silently.
+    for key in sorted(set(BUDGETS) - set(measured)):
+        out.append(f"  {'':>12}  {key}   (budgeted, not measured)")
+        failures.append(
+            f"::error::{key} has a budget but this run did not measure it. If the "
+            f"benchmark was removed or renamed, remove or rename its entry in "
+            f"tools/check_instructions.py BUDGETS; if its binary is missing, "
+            f"build it."
+        )
+
     # Invalid measurements first, and they are not excused by --report.
     if hard:
         out.extend(hard)
@@ -349,6 +365,35 @@ def self_test():
         if code == 0:
             failures.append("a recorded budget let an optimised-away benchmark pass")
         del BUDGETS["b::optimised away"]
+
+        # A budget nothing measured fails: a benchmark deleted or renamed, or a
+        # whole binary no longer built, would otherwise drop out of the gate
+        # with every remaining entry passing.
+        BUDGETS["b::gone"] = 1_000_000
+        code, out = compare({"b::x": 1_000_000}, report=False)
+        if code == 0:
+            failures.append("passed with a budgeted benchmark that was never measured")
+        if not any("b::gone" in line for line in out):
+            failures.append("an unmeasured budget was not named")
+        code, _ = compare({"b::x": 1_000_000}, report=True)
+        if code != 0:
+            failures.append("--report refused a run that left a budget unmeasured")
+        BUDGETS.clear()
+
+        # A binary whose --list fails is an ::error::, not a traceback.
+        if os.name != "nt":
+            with tempfile.TemporaryDirectory() as tmp:
+                broken = pathlib.Path(tmp) / "metl_bench_broken"
+                broken.write_text("#!/bin/sh\nexit 3\n")
+                broken.chmod(0o755)
+                try:
+                    benchmark_names(broken)
+                    failures.append("a binary whose --list failed was read as listing nothing")
+                except RuntimeError:
+                    pass
+                except Exception as error:  # noqa: BLE001 -- the failure being tested
+                    failures.append(f"a failing --list raised {type(error).__name__}, "
+                                    f"not the RuntimeError main() reports")
 
         # ...and a benchmark just above the floor is fine.
         BUDGETS["b::thin but real"] = MIN_MEANINGFUL_COUNT
