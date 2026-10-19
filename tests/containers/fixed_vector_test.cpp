@@ -365,6 +365,13 @@ int main() {
     }
   }
 
+  // const element access.
+  {
+    const metl::fixed_vector<int, 4> v{10, 20, 30};
+    CHECK_EQ(v.at(1), 20);
+    CHECK_EQ(v.back(), 30);
+  }
+
   // comparison operators.
   {
     metl::fixed_vector<int, 4> a{1, 2, 3};

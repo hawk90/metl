@@ -126,6 +126,9 @@ int main() {
     if (static_cast<int>(r.cend() - r.cbegin()) != 4) {
       return 15;
     }
+    if (cr.front() != 2 || cr.back() != 5) {
+      return 23;
+    }
 
     // Random access: the category is claimed, so the operations must work.
     auto it = r.begin();
