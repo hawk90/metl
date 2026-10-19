@@ -1053,13 +1053,34 @@ jobs:
           if-no-files-found: ignore
 
       # The record of what the steps above measured (#405): per-class totals,
-      # every section, the static deepest frame, and null for what nothing
-      # measures yet. The summary is for reading a run; the artifact is what
+      # every section, the static deepest frame, the QEMU runtime stack and
+      # instruction counts, and null for anything not measured. The summary is for reading a run; the artifact is what
       # release.yml attaches to the release, so a later release has something
       # to be compared against. Artifacts expire after 90 days; the release
       # asset does not.
       - name: Measurement record in the job summary
         run: tools/check_size.py --summary "$METL_MEASUREMENTS" >> "$GITHUB_STEP_SUMMARY"
+
+      # The same record against the latest release's (#409), so a change too
+      # small for a budget's tolerance still shows. A report, not a gate: the
+      # budgets above are the gate. A release from before #405 has no record,
+      # and the summary says so instead of failing.
+      - name: Compare with the latest release's measurements
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)"
+          asset="metl-${tag#v}-measurements.json"
+          if ! gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" --json assets \
+              --jq '.assets[].name' | grep -qxF "${asset}"; then
+            printf '### Measurements compared\n\n%s has no measurement record to compare against.\n' \
+              "${tag}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh release download "${tag}" --repo "${GITHUB_REPOSITORY}" --pattern "${asset}" \
+            --dir previous-release
+          tools/check_size.py --compare "previous-release/${asset}" "$METL_MEASUREMENTS" \
+            >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload the measurement record
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
