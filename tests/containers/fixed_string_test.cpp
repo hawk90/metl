@@ -161,5 +161,27 @@ int main() {
     return 24;
   }
 
+  // #444: the const front()/back() overloads and the asserting pop_back() had
+  // only ever run on an empty string, in the death tests. Run them where they
+  // succeed.
+  const metl::fixed_string<8>& abc_view = abc8;
+  if (abc_view.front() != 'a') {
+    return 25;
+  }
+  if (abc_view.back() != 'c') {
+    return 26;
+  }
+
+  metl::fixed_string<8> popped("xyz");
+  popped.pop_back();
+  if (popped.size() != 2 || popped.back() != 'y' || popped.c_str()[2] != '\0') {
+    return 27;
+  }
+  popped.pop_back();
+  popped.pop_back();
+  if (!popped.empty() || popped.c_str()[0] != '\0') {
+    return 28;
+  }
+
   return 0;
 }
