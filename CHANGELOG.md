@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-19
+
+**Highlights.** This release is about measurement. Each release now carries
+what CI measured on every Cortex-M target: code, constant and RAM sizes
+section by section, the static and runtime stack, and instruction counts under
+QEMU. It also carries a comparison with the previous release, so a change too
+small for a size budget still shows. Experimental types get their own tier,
+`metl/exp/`, starting with a packed bitset. Ten containers get a `swap` that
+moves each element once. `expected`, `variant` and the hash tables can be
+`constinit`.
+
+### Upgrading from 1.3.0
+
+No code change is needed. Three things differ:
+
+- `using std::swap; swap(a, b)` on one of the ten containers listed under Added
+  now calls its own `swap`. If an element's move or swap throws, a sorted, heap
+  or hash container is left empty; the others keep valid elements.
+- A namespace-scope `expected` or `variant` is constant-initialized, in C++17 as
+  well as C++20; so are `static_unordered_map` and `static_unordered_set` built
+  as C++20. Each is ready before any dynamic initializer runs, and in C++20
+  `constinit` accepts it.
+- Headers under `metl/exp/` are not in `<metl/metl.hpp>` or the single header.
+  Include them by name; they may change or go in a minor release.
+
+### Added
+
+- **Tier 2 opens (#335).** `include/metl/exp/` holds experimental types in
+  `metl::exp`. They are not in `<metl/metl.hpp>` or the single header, may
+  change or be removed in a minor release, and each header names the issue
+  that says when it is promoted or removed.
+- **`metl::exp::bitset<N>` (#336).** In `<metl/exp/bitset.hpp>`: N bits packed
+  into 32-bit words, with `test`/`set`/`reset`, `count`, `any`/`none`/`all`,
+  `find_first_set`/`find_first_clear`, shifts and equality. Everything is
+  `constexpr`, and an index past the end stops the program at every hardening
+  level.
+- **Member and ADL `swap` for ten containers (#348).** `fixed_string`,
+  `fixed_deque`, `fixed_queue`, `fixed_stack`, `fixed_priority_queue`,
+  `ring_buffer`, `flat_map`, `flat_set`, `static_unordered_map` and
+  `static_unordered_set` swap element by element. Swapping containers of n and
+  m elements moves at most the larger of n and m elements (`n + m` for the hash
+  containers), where `std::swap` moved every element three times. Each is
+  `noexcept` when the element's move and swap are. If one throws, a sorted,
+  heap or hash container is left empty, and the others keep valid elements.
+  The free `swap` is declared only for swappable elements, so
+  `using std::swap; swap(a, b)` still compiles for the rest.
+- **A measurement record per release (#405, #404, #338).** Each release
+  attaches `metl-X.Y.Z-measurements.json`: what main's CI measured for the
+  tagged commit on each Cortex-M target. That is the code, constant, RAM and
+  thread-local storage sizes section by section, the deepest static stack
+  frame, the runtime stack high-water mark with and without LTO, and the
+  instruction count of each benchmark region under QEMU. A value that was not
+  measured is `null`. The size gate now classifies sections by ELF type and
+  flags, so RAM under a name other than `.bss` or `.data` (thread-local
+  storage, `.noinit`) is counted.
+- **A comparison with the previous release (#409).** Each release also
+  attaches `metl-X.Y.Z-measurements.md`, comparing those figures with the
+  previous release's and naming the sections behind each change; the release
+  notes include it. 1.3.0 has no record, so 1.4.0's says so; the first
+  comparison comes with the next release.
+
+### Changed
+
+- **`static_unordered_map` and `static_unordered_set` are constant-initialized
+  at namespace scope since C++20 (#408),** like the other containers.
+  `constinit` on one now compiles, and a global one is no longer constructed at
+  startup in link order. Their size and the code of a local one are unchanged.
+
+### Fixed
+
+- **`expected` and `variant` are constant-initialized at namespace scope, in
+  C++17 as well as C++20 (#395).** Their default, value, error and in-place
+  constructors were labelled `constexpr` but built the member with placement
+  new, which no constant expression allows. So a global was constructed at run
+  time in link order, and `constinit` on one failed to compile. They now build
+  it in a union member initializer. `sizeof` and alignment are unchanged.
+
 ## [1.3.0] - 2026-10-15
 
 **Highlights.** This release is about tests. A conformance suite now checks
