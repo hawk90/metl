@@ -120,11 +120,17 @@ REPO = Path(__file__).resolve().parent.parent
 BUILD_DIR = REPO / "build-coverage"
 
 # The configurations whose `#if` arms the default build does not compile, each
-# with the flags that select it. Each is measured on its own (#387).
+# with the flags that select it. Each is measured on its own (#387), and each
+# must compile at least one line the default build does not: one that compiles
+# none has nothing for this gate to check.
+#
+# METL_HARDENING=0 is not here, for exactly that reason. It only REMOVES checks,
+# so it compiles no line of its own; it sat here reporting "0 lines, 0 of them
+# ran" on every run. The suite at that level runs in the sanitizers job
+# (asan-ubsan-hardening-none).
 CONFIGURATIONS = {
     "cxx20": "-std=c++20",
     "no-exceptions": "-fno-exceptions -fno-rtti",
-    "hardening-0": "-DMETL_HARDENING=0",
     "crc-table-off": "-DMETL_CRC_TABLE=0",
 }
 
@@ -469,6 +475,18 @@ def print_mcdc(covered, count, files, decisions, pooled, skipped):
     return True
 
 
+def configuration_failures(name, only, unexecuted, source_line):
+    """FAIL lines for one configuration: each line only it compiles that no
+    test ran -- and, if it compiles no line of its own, that, because then
+    nothing was checked."""
+    if not only:
+        return [f"FAIL: the {name} configuration compiled no line the default build does not, so "
+                f"there is nothing for it to check: its flags did not take effect, or it does not "
+                f"belong in CONFIGURATIONS"]
+    return [f"FAIL: {path}:{number} is compiled only in {name} and no test ran it: "
+            f"{source_line(path, number).strip()}" for path, number in unexecuted]
+
+
 def read_source_line(path, number):
     try:
         return (REPO / path).read_text().splitlines()[number - 1]
@@ -629,9 +647,31 @@ def self_test():
                 "end_of_record\n"):
         print(f"SELF-TEST FAILED: lcov_without gave\n{kept}", file=sys.stderr)
         return 1
+    if configuration_failures("fixture", only, unexecuted, lambda _path, n: source.get(n, "")) != [
+            "FAIL: include/metl/a.hpp:8 is compiled only in fixture and no test ran it: std::abort();"]:
+        print("SELF-TEST FAILED: a configuration-only line that never ran was not reported",
+              file=sys.stderr)
+        return 1
+    # A configuration that compiles nothing of its own checks nothing.
+    nothing, _ = configuration_only_unexecuted(default, default, lambda _path, n: source.get(n, ""))
+    if not configuration_failures("fixture", nothing, [], lambda _path, _n: ""):
+        print("SELF-TEST FAILED: a configuration with no lines of its own passed", file=sys.stderr)
+        return 1
+    # Only include/metl records are kept, with the repository prefix removed so
+    # Codecov matches them to the tree; a test source's record is dropped.
+    exported = (f"SF:{REPO}/include/metl/a.hpp\nDA:1,1\nend_of_record\n"
+                f"SF:{REPO}/tests/a_test.cpp\nDA:1,0\nend_of_record\n")
+    if lcov_filtered(exported, "include/metl/") != "SF:include/metl/a.hpp\nDA:1,1\nend_of_record\n":
+        print(f"SELF-TEST FAILED: lcov_filtered kept {lcov_filtered(exported, 'include/metl/')!r}",
+              file=sys.stderr)
+        return 1
+    if lcov_filtered(exported, "no-such-dir/"):
+        print("SELF-TEST FAILED: lcov_filtered kept a record outside the marker", file=sys.stderr)
+        return 1
     print("self-test passed: partial lines and untaken branches are counted as Codecov counts them, "
-          "a configuration's own code lines are found and checked, binaries are merged per line "
-          "and branch without their unused records, and MC/DC conditions and skipped decisions are read")
+          "only include/metl records are measured, a configuration's own code lines are found "
+          "and checked (one with none fails), binaries are merged per line and branch without "
+          "their unused records, and MC/DC conditions and skipped decisions are read")
     return 0
 
 
@@ -795,11 +835,13 @@ def measure(build_dir, cxx_flags, profdata, cov, mcdc=False):
     if mcdc:
         configure.append("-DMETL_ENABLE_COVERAGE_MCDC=ON")
     if subprocess.run(configure, **quiet).returncode:
+        print(f"error: configuring {build_dir.name} failed", file=sys.stderr)
         return None
     built = subprocess.run(["cmake", "--build", str(build_dir), "-j"], stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT, text=True)
     if built.returncode:
         print(built.stdout)
+        print(f"error: building {build_dir.name} failed", file=sys.stderr)
         return None
 
     # The binaries name their own profiles (CMakeLists.txt); an inherited
@@ -849,13 +891,13 @@ def configurations_ran(default_lcov, profdata, cov):
         print_differing(measured[1])
         hits, partials, misses, br_hit, br_found = lcov_totals(lcov)
         only, unexecuted = configuration_only_unexecuted(default_lcov, lcov, read_source_line)
-        print(f"  lines {100.0 * hits / (hits + partials + misses):6.2f}%   branches "
+        lines = hits + partials + misses
+        print(f"  lines {100.0 * hits / lines if lines else 0.0:6.2f}%   branches "
               f"{100.0 * br_hit / br_found if br_found else 0.0:6.2f}%   (for reference)")
         print(f"  lines only this configuration compiles: {len(only)}, "
               f"{len(only) - len(unexecuted)} of them ran")
-        for path, number in unexecuted:
-            print(f"FAIL: {path}:{number} is compiled only in {name} and no test ran it: "
-                  f"{read_source_line(path, number).strip()}")
+        for failure in configuration_failures(name, only, unexecuted, read_source_line):
+            print(failure)
             all_ran = False
     return all_ran
 

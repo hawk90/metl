@@ -93,6 +93,7 @@
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
+#include "metl/detail/constant_init.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
 #include "metl/hash.hpp"
@@ -276,12 +277,18 @@ class static_unordered_map {
 
   /// @brief Construct an empty map with all slots marked empty.
   /// @note noexcept exactly when default-constructing `Hash` and `KeyEqual` is.
-  /// @note Not constexpr: the slots are marked empty at run time, so a
-  ///       namespace-scope map is initialized at run time, in link order.
-  ///       Construct it before anything that runs earlier can reach it.
-  static_unordered_map() noexcept(std::is_nothrow_default_constructible_v<Hash> &&
-                                  std::is_nothrow_default_constructible_v<KeyEqual>)
+  /// Constant-initialized at namespace scope since C++20 (see
+  /// detail/constant_init.hpp): an empty slot's state is 0, so the constant
+  /// image is all zeros and lands in `.bss`. A local one writes its
+  /// `bucket_count` state bytes at run time, and nothing to the element slots.
+  constexpr static_unordered_map() noexcept(std::is_nothrow_default_constructible_v<Hash> &&
+                                            std::is_nothrow_default_constructible_v<KeyEqual>)
       : size_(0), hasher_(), key_equal_() {
+    if (detail::in_constant_evaluation()) {
+      for (auto& slot : storage_) {
+        detail::zero_for_constant_init(slot.bytes);
+      }
+    }
     initialize_states();
   }
 
@@ -715,7 +722,7 @@ class static_unordered_map {
     initialize_states();
   }
 
-  void initialize_states() noexcept {
+  constexpr void initialize_states() noexcept {
     for (size_type i = 0; i < bucket_count; ++i) {
       states_[i] = slot_state::empty;
     }
