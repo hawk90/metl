@@ -99,6 +99,13 @@ int main() {
     return 3;
   }
 
+  // The const overloads are separate functions; before this they ran only in
+  // the death tests (#442).
+  const auto& cmap = map;
+  if (cmap.at(1).value != 20 || cmap.nth(2).value != 30) {
+    return 48;
+  }
+
   if (!map.contains(2) || map.contains(9)) {
     return 4;
   }

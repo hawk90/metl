@@ -205,5 +205,16 @@ int main() {
     CHECK(full.allocate(1, 1) == nullptr);
   }
 
+  // A zero-byte arena refuses every raw allocation and stays empty. try_emplace
+  // refuses at compile time, so only the raw allocate reaches the run-time
+  // refusal.
+  {
+    metl::arena_allocator<0> none;
+    CHECK(none.allocate(1, 1) == nullptr);
+    CHECK(none.allocate(8) == nullptr);
+    CHECK(none.empty());
+    CHECK_EQ(none.remaining(), std::size_t{0});
+  }
+
   return metl_test::exit_code();
 }
