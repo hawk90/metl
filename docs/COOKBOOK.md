@@ -69,8 +69,11 @@ Consequences:
   from your element type, hasher or callback propagates. The container is left
   unchanged or, when the throw interrupts a reorder (a shift in `flat_map` /
   `flat_set`, a sift in `fixed_priority_queue`, the tombstone rebuild in the
-  unordered containers), **emptied** -- never half-sorted. Unchecked accessors
-  (`value()`, `operator*`, `get<>()`, `at()`) assert on a broken precondition
+  unordered containers, a `swap` of any of those), **emptied** -- never
+  half-sorted. A `swap` of a sequence container (`fixed_vector`,
+  `fixed_deque`, `ring_buffer`, `fixed_queue`, `fixed_stack`) is the one case
+  that does neither: if it throws, both stay valid, each holding elements of
+  either. Unchecked accessors (`value()`, `operator*`, `get<>()`, `at()`) assert on a broken precondition
   and, by default, `std::abort()`. **Always branch on
   `has_value()` / `operator bool` / `holds_alternative<>()` first**, or use the
   total accessors `value_or(default)` / `find()` / `get_if()`.
