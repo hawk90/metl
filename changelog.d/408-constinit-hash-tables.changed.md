@@ -1,1 +1,0 @@
-- `static_unordered_map` and `static_unordered_set` are constant-initialized at namespace scope since C++20, like the other containers: `constinit` on one now compiles, and a global one is no longer constructed at startup in link order. Their size and the code of a local one are unchanged (#408).

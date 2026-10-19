@@ -652,13 +652,15 @@ METL is licensed under the [Apache License, Version 2.0](LICENSE).
 
 ## Status
 
-**1.3.0** — stable. METL follows [Semantic Versioning](https://semver.org/): the
+**1.4.0** — stable. METL follows [Semantic Versioning](https://semver.org/): the
 public API changes incompatibly only in a new major version. "Public" means every
-header under `include/metl/` except `detail/`, everything in namespace `metl`
-except `metl::detail`, and the documented `METL_*` configuration macros. Not
-covered: `metl::detail` and `include/metl/detail/`, hash *values* (they may
-change in a minor release -- do not persist them), exact code size, and the
-wording of assert messages.
+header under `include/metl/` except `detail/` and `exp/`, everything in namespace
+`metl` except `metl::detail` and `metl::exp`, and the documented `METL_*`
+configuration macros. Not covered: `metl::detail` and `include/metl/detail/`;
+`metl::exp` and `include/metl/exp/`, the experimental tier, which may change or be
+removed in a minor release ([docs/SCOPE.md](docs/SCOPE.md) section 3); hash
+*values* (they may change in a minor release -- do not persist them); exact code
+size; and the wording of assert messages.
 
 Coming from `0.1.0-alpha2`? [CHANGELOG.md](CHANGELOG.md) has an "Upgrading"
 list, loud changes (compile errors, asserts) first and silent ones after.
