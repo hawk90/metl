@@ -50,6 +50,12 @@ int main() {
     return 4;
   }
 
+  // The const overload, with the front no longer in the first slot.
+  const auto& view = queue;
+  if (view.front() != 2) {
+    return 11;
+  }
+
   if (!queue.try_push(4) || !queue.full()) {
     return 5;
   }
