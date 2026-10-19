@@ -73,8 +73,8 @@ Consequences:
   half-sorted. A `swap` of a sequence container (`fixed_vector`,
   `fixed_deque`, `ring_buffer`, `fixed_queue`, `fixed_stack`) is the one case
   that does neither: if it throws, both stay valid, each holding elements of
-  either. Unchecked accessors (`value()`, `operator*`, `get<>()`, `at()`) assert on a broken precondition
-  and, by default, `std::abort()`. **Always branch on
+  either. Unchecked accessors (`value()`, `operator*`, `get<>()`, `at()`)
+  assert on a broken precondition and, by default, `std::abort()`. **Always branch on
   `has_value()` / `operator bool` / `holds_alternative<>()` first**, or use the
   total accessors `value_or(default)` / `find()` / `get_if()`.
 - **The assert path cannot continue.** `metl::detail::assertion_failed` and
