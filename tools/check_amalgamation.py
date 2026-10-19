@@ -7,11 +7,10 @@ amalgamation instead of include/, and the whole suite runs against what users
 download. The tests of Tier 2 (metl/exp/) types are left out and listed: the
 amalgamation holds only what the umbrella includes. A test that exits with 77
 (metl_test::skip_code) had nothing to check in this build and is reported as
-skipped, not passed. A test that CMakeLists.txt
-builds from several translation units (a metl_cc_test whose SRCS lists more than
-one file) is built from all of them, in the order listed, so a property that
-only shows across translation units -- link order, ODR -- is checked against
-the amalgamation too.
+skipped, not passed. A test that CMakeLists.txt builds from several translation
+units (a metl_cc_test whose SRCS lists more than one file) is built from all of
+them, in the order listed, so a property that only shows across translation
+units -- link order, ODR -- is checked against the amalgamation too.
 
 Every test is compiled with the METL_EXPECTED_VERSION_* values CMake gives
 tests/core/version_test.cpp, read from project(VERSION) in CMakeLists.txt, so
