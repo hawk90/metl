@@ -320,5 +320,13 @@ int main() {
     }
   }
 
+  // A zero-capacity set finds nothing.
+  {
+    metl::static_unordered_set<int, 0> zero;
+    if (zero.contains(3) || zero.find(3) != nullptr) {
+      return 22;
+    }
+  }
+
   return 0;
 }

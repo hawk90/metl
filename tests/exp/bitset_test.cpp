@@ -196,6 +196,22 @@ void shift_edges() {
   }
 }
 
+/// == looks at every word: one bit apart, in the first word or the last, the
+/// two sets are unequal. tail_bits_stay_zero only compares equal sets.
+template <std::size_t N>
+void equality() {
+  for (std::size_t i : {std::size_t{0}, N - 1}) {
+    metl::exp::bitset<N> lhs;
+    metl::exp::bitset<N> rhs;
+    rhs.set(i);
+    CHECK(!(lhs == rhs));
+    CHECK(lhs != rhs);
+    lhs.set(i);
+    CHECK(lhs == rhs);
+    CHECK(!(lhs != rhs));
+  }
+}
+
 template <std::size_t N>
 void out_of_range_traps() {
   metl::exp::bitset<N> bits;
@@ -212,6 +228,7 @@ void all_cases() {
   boundary_bits<N>();
   tail_bits_stay_zero<N>();
   shift_edges<N>();
+  equality<N>();
   out_of_range_traps<N>();
 }
 

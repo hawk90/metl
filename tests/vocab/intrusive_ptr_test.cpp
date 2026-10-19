@@ -51,6 +51,11 @@ void intrusive_ptr_release(node* object) {
 
 struct non_atomic_obj final : metl::intrusive_ref_counter<non_atomic_obj, metl::refcount_kind::non_atomic> {
   explicit non_atomic_obj(int v) : value(v) {}
+  // Declared: copy_construct_test copies one, and with the destructor below
+  // an implicit copy is deprecated (-Wdeprecated-copy-with-user-provided-dtor).
+  // No test assigns one.
+  non_atomic_obj(const non_atomic_obj&) = default;
+  non_atomic_obj& operator=(const non_atomic_obj&) = delete;
   ~non_atomic_obj() { ++destruction_count; }
   int value;
   static int destruction_count;
@@ -133,6 +138,14 @@ static int crtp_non_atomic_test() {
     if (!p || p->value != 42 || raw->use_count() != 1) {
       return 100;
     }
+    // operator* names the managed object itself: a write through it lands there.
+    if (&*p != raw || (*p).value != 42) {
+      return 106;
+    }
+    (*p).value = 43;
+    if (raw->value != 43) {
+      return 107;
+    }
 
     {
       metl::intrusive_ptr<non_atomic_obj> q = p;
@@ -159,6 +172,40 @@ static int crtp_non_atomic_test() {
   if (non_atomic_obj::destruction_count != 1) {
     return 105;
   }
+  return 0;
+}
+
+// Copying a counted object copies its value, not its count: the copy is a new
+// object that nothing refers to yet, and the original keeps its references.
+static int copy_construct_test() {
+  non_atomic_obj::destruction_count = 0;
+
+  storage_for<non_atomic_obj> store;
+  auto* raw = store.construct(9);
+  metl::intrusive_ptr<non_atomic_obj> p(raw, metl::retain_ref);
+  metl::intrusive_ptr<non_atomic_obj> q = p;
+  if (raw->use_count() != 2) {
+    return 200;
+  }
+
+  storage_for<non_atomic_obj> copy_store;
+  auto* copy = copy_store.construct(*raw);
+  if (copy->value != 9 || copy->use_count() != 0 || raw->use_count() != 2) {
+    return 201;
+  }
+
+  // The copy is counted on its own from zero, and released to destruction.
+  metl::intrusive_ptr<non_atomic_obj> c(copy, metl::retain_ref);
+  if (copy->use_count() != 1 || raw->use_count() != 2) {
+    return 202;
+  }
+  c.reset();
+  if (non_atomic_obj::destruction_count != 1 || raw->use_count() != 2) {
+    return 203;
+  }
+
+  q.reset();
+  p.reset();
   return 0;
 }
 
@@ -387,6 +434,8 @@ int main() {
   if (int r = legacy_test())
     return r;
   if (int r = crtp_non_atomic_test())
+    return r;
+  if (int r = copy_construct_test())
     return r;
   if (int r = comparison_test())
     return r;
