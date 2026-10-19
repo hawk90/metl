@@ -105,7 +105,7 @@ that is what everything else in this document and in CI is for.
 - **Every GitHub Action is pinned to a commit SHA**, not a tag. A tag can be
   moved; a SHA cannot.
 - **Renovate** proposes updates weekly: action SHAs, and the clang-format,
-  Conan, Zephyr and ESP-IDF pins. A new version waits until it has been
+  Conan, west, Zephyr and ESP-IDF pins. A new version waits until it has been
   published for a few days before it is proposed. Non-major updates merge
   automatically once CI is green, except Zephyr and ESP-IDF minors, which —
   like every major — wait for approval on the dependency dashboard. Security
