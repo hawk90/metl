@@ -159,5 +159,16 @@ int main() {
     return 11;
   }
 
+  // Zero through has_single_bit and bit_width at run time. The literal calls
+  // above are folded by the compiler, and none of them passes these two a zero
+  // outside a constant expression.
+  if (metl::has_single_bit<std::uint32_t>(vzero) || !metl::has_single_bit<std::uint32_t>(v32) ||
+      metl::has_single_bit<std::uint32_t>(vall)) {
+    return 12;
+  }
+  if (metl::bit_width<std::uint32_t>(vzero) != 0 || metl::bit_width<std::uint32_t>(v32) != 32) {
+    return 13;
+  }
+
   return 0;
 }

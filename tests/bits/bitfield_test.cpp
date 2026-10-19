@@ -136,5 +136,20 @@ int main() {
     return 4;
   }
 
+  // encode and the enum forms, checked above only inside static_assert, on a
+  // run-time word.
+  std::uint32_t clock_reg = 0u;
+  clock_reg = clksrc_field::insert(clock_reg, 0x2u);
+  const clock_source source = clksrc_field::extract_enum<clock_source>(clock_reg);
+  if (source != clock_source::pll) {
+    return 5;
+  }
+  if (clksrc_field::encode_enum(source) != 0x02000000u) {
+    return 6;
+  }
+  if (mode_field::encode(mode_field::extract(reg)) != 0x30000000u) {
+    return 7;
+  }
+
   return 0;
 }
