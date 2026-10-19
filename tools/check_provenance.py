@@ -8,7 +8,10 @@ the same tree while the next pull request waits for runners (#431). So main.yml
 runs this first, and calls ci.yml in full only when this cannot show the commit
 was verified.
 
-The commit counts as verified ("reused") when
+A commit that changes the project version is never reused: it is what a tag
+will release, and tools/release_gate.py wants ci.yml run in full on it, on main,
+with the runner images of the day. Any other commit counts as verified
+("reused") when
 
   * exactly one pull request was merged as this commit, from a branch of this
     repository (a fork's run is not taken on trust);
@@ -28,7 +31,8 @@ Anything else -- no pull request, a fork, no matching run, an API error -- is
 
 What reuse gives up is stated on #431: the tests ran on the pull request's run,
 not on a run of this commit, so a change in the runner images between the two
-is not seen here. ci.yml's nightly run on main covers that.
+is not seen here. ci.yml's nightly run on main covers that, and a release
+needs a full run on the released commit itself.
 
 --gate is main-gate's verdict over main.yml's jobs: the subject check and the
 provenance check succeeded, and exactly one of the two paths ran and passed --
@@ -48,6 +52,7 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -85,6 +90,25 @@ def merged_pull(pulls, repo, sha):
         return None, (f"#{pull.get('number')} came from {head_repo or 'a deleted repository'}, "
                       f"not {repo}; a fork's run is not taken on trust")
     return pull, None
+
+
+def project_version(cmakelists):
+    """project(VERSION ...) of a CMakeLists.txt, by release.yml's rule, or None."""
+    match = re.search(r"^  VERSION ([0-9.]*)$", cmakelists, re.MULTILINE)
+    return match.group(1) if match else None
+
+
+def release_reason(parent_version, version):
+    """Why this commit runs ci.yml in full as a release, or None if it is not one.
+
+    A commit that changes the project version is what a tag will release, and
+    tools/release_gate.py wants ci.yml run in full on it, on main, with the
+    runner images of the day -- not only on its pull request. A version that
+    cannot be read counts as a change: a doubt can only run more."""
+    if parent_version is not None and parent_version == version:
+        return None
+    return (f"the project version changes ({parent_version} -> {version}): a release commit "
+            f"runs {CI_WORKFLOW} in full on main")
 
 
 def decide(tree, records, docs_only_commit, parent_passed):
@@ -162,6 +186,10 @@ def tested_tree(repo, run_id, scratch):
 def investigate(repo, sha, checkout):
     """(reused, source, reason) for `sha`, from the GitHub API and the checkout."""
     tree = run(["git", "-C", checkout, "rev-parse", f"{sha}^{{tree}}"]).strip()
+    why = release_reason(*(project_version(run(["git", "-C", checkout, "show", f"{rev}:CMakeLists.txt"]))
+                           for rev in (f"{sha}^1", sha)))
+    if why:
+        return False, "", why
     pull, why = merged_pull(gh_json(f"repos/{repo}/commits/{sha}/pulls"), repo, sha)
     if pull is None:
         return False, "", why
@@ -224,6 +252,38 @@ def self_test():
         if got != want:
             failures.append(f"merged_pull: {label} -> {got}, want {want}")
 
+    # cmake_minimum_required's VERSION comes first, as in the real file.
+    cmake = "cmake_minimum_required(VERSION 3.16)\nproject(\n  metl\n  VERSION {}\n  LANGUAGES CXX\n)\n"
+    for label, parent_text, text, want in (
+            ("the same version", cmake.format("1.4.0"), cmake.format("1.4.0"), False),
+            ("a version bump", cmake.format("1.4.0"), cmake.format("1.5.0"), True),
+            ("a version that cannot be read", cmake.format("1.4.0"), "project(metl)\n", True),
+            ("neither version can be read", "project(metl)\n", "project(metl)\n", True)):
+        got = release_reason(project_version(parent_text), project_version(text)) is not None
+        if got != want:
+            failures.append(f"release_reason: {label} -> {got}, want {want}")
+    if project_version(cmake.format("1.4.0")) != "1.4.0":
+        failures.append(f"project_version reads {project_version(cmake.format('1.4.0'))!r}, "
+                        f"not the project's 1.4.0")
+    root = pathlib.Path(__file__).resolve().parent.parent
+    if project_version((root / "CMakeLists.txt").read_text()) is None:
+        failures.append("project_version cannot read this repository's CMakeLists.txt")
+
+    # A release commit is decided before any API call: from the checkout alone.
+    with tempfile.TemporaryDirectory() as checkout:
+        classify_change._git(checkout, "init", "--quiet")
+        for version in ("1.4.0", "1.5.0"):
+            pathlib.Path(checkout, "CMakeLists.txt").write_text(cmake.format(version))
+            classify_change._git(checkout, "add", "CMakeLists.txt")
+            classify_change._git(checkout, "commit", "--quiet", "--message", version)
+        head = run(["git", "-C", checkout, "rev-parse", "HEAD"]).strip()
+        try:
+            reused, _, reason = investigate("o/r", head, checkout)
+            if reused or "version changes" not in reason:
+                failures.append(f"investigate on a version bump -> reused={reused}: {reason}")
+        except ApiError as error:
+            failures.append(f"investigate asked the API about a version bump: {error}")
+
     url = "https://example/run/1"
     built = {"tree": tree, "code": "true"}
     docs = {"tree": tree, "code": "false"}
@@ -284,8 +344,8 @@ def self_test():
     if failures:
         print("SELF-TEST FAILED:\n  " + "\n  ".join(failures), file=sys.stderr)
         return 1
-    print("self-test passed: merged-pull selection, tree matching (including the "
-          "documentation-only chain) and main-gate's verdict each fail where they must")
+    print("self-test passed: release commits, merged-pull selection, tree matching (including "
+          "the documentation-only chain) and main-gate's verdict each fail where they must")
     return 0
 
 

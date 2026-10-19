@@ -8,22 +8,32 @@ size/stack/RAM budgets, QEMU on four Cortex-M cores, Zephyr, ESP-IDF -- passed
 on this commit's exact tree: on the pull request that put the tree on main
 (tools/check_provenance.py shows which run), or in full on the push when that
 cannot be shown. It also requires the commit's own measurement records and its
-subject check. A tag releases a commit only when
+subject check.
+
+A pull request's run may be hours or days older than the merge, so a change in
+the runner images since then is not in `main-gate` (#431). What is released
+must not rest on that: the release also needs ci.yml run in full on main, on
+this commit itself. main.yml does that for a commit that changes the project
+version (tools/check_provenance.py), so the usual release commit has it; for
+any other commit, `gh workflow run ci.yml --ref main` while it is main's tip, or
+the nightly run on it, gives it. A tag releases a commit only when
 
   * the commit is on main, and
   * CodeQL reports no open (undismissed) alert on that commit, and
-  * every check in REQUIRED has a successful run on that commit, from a push
-    to main in the workflow that produces it. A pull_request run's ci-gate
-    reports on its head commit too, but it tested a merge with the base of its
-    day, and a documentation-only pull request's ci-gate passes with every
-    build skipped; main.yml's provenance check is what closes both gaps, so
-    the gate reads main.yml and never a pull request run.
+  * every verdict in REQUIRED has a successful check run on that commit, from
+    one of its SOURCES: a run on main of the named workflow, for one of the
+    named events. A pull_request run's ci-gate reports on its head commit too,
+    but it tested a merge with the base of its day, and a documentation-only
+    pull request's ci-gate passes with every build skipped; main.yml's
+    provenance check is what closes both gaps, so the gate reads main and
+    never a pull request run.
 
 A check still running is waited for (main.yml takes a few minutes, or 10-25
-when it runs ci.yml in full, most of it queueing for runners). A check that finished without success fails the release
-at once.
+when it runs ci.yml in full, most of it queueing for runners). A check that
+finished without success fails the release once nothing that could still
+produce a passing one is running.
 
-A check that has not appeared yet is waited for while the workflow that
+A check that has not appeared yet is waited for while a workflow that
 produces it is still running on this commit. `main-gate` is a fan-in: GitHub
 creates its check run only when every job it needs has finished, so for most of
 a healthy CI run it does not exist. Only when that workflow is not running here
@@ -44,11 +54,23 @@ import pathlib
 import re
 import subprocess
 import sys
+import tempfile
 import time
 
-REQUIRED = ("main-gate", "analyze / c-cpp")
-# The workflow that produces each required check.
-PRODUCER = {"main-gate": ".github/workflows/main.yml", "analyze / c-cpp": ".github/workflows/codeql.yml"}
+MAIN_YML, CI_YML = ".github/workflows/main.yml", ".github/workflows/ci.yml"
+# Each verdict a release needs, and the check runs that can give it:
+# (check name, the workflow that produces it, the events of its runs on main).
+SOURCES = {
+    "main-gate": (("main-gate", MAIN_YML, ("push",)),),
+    "analyze / c-cpp": (("analyze / c-cpp", ".github/workflows/codeql.yml", ("push",)),),
+    "ci.yml in full": (("full / ci-gate", MAIN_YML, ("push",)),
+                       ("ci-gate", CI_YML, ("schedule", "workflow_dispatch"))),
+}
+REQUIRED = tuple(SOURCES)
+# What to do when a verdict never reported, beyond "CI never ran".
+HINT = {"ci.yml in full": "main.yml ran ci.yml in full only if the commit changes the project "
+                          "version. Run `gh workflow run ci.yml --ref main` while this commit is "
+                          "main's tip, then re-run this job"}
 WAIT_MINUTES = 60
 NO_RUN_MINUTES = 10
 # Consecutive minutes a GitHub API call may fail (a 502, a rate limit) before
@@ -77,11 +99,12 @@ def verdict(runs, minute, producing=False):
     the commit, so a check that has not appeared yet is still to come."""
     if any(run.get("conclusion") == "success" for run in runs):
         return "pass"
-    if runs and all(run.get("status") == "completed" for run in runs):
+    # A second source (a dispatched ci.yml, a re-run) may still pass.
+    if runs and not producing and all(run.get("status") == "completed" for run in runs):
         return "fail:finished as " + ",".join(str(run.get("conclusion")) for run in runs)
     if not runs and not producing and minute >= NO_RUN_MINUTES:
-        return (f"fail:never reported in {NO_RUN_MINUTES} minutes, and the workflow that "
-                f"produces it is not running -- no push to main ran CI on this commit")
+        return (f"fail:never reported in {NO_RUN_MINUTES} minutes, and no workflow that "
+                f"produces it is running -- main never ran it on this commit")
     return "wait"
 
 
@@ -95,10 +118,10 @@ def overall(verdicts):
     return "wait", {name: v for name, v in verdicts.items() if v == "wait"}
 
 
-def from_main_push(checks, workflow_runs, path):
-    """The check runs that a `push` to main ran, in the workflow at `path`."""
+def from_main(checks, workflow_runs, path, events):
+    """The check runs that a run on main of the workflow at `path` made, for one of `events`."""
     suites = {run.get("check_suite_id") for run in workflow_runs
-              if run.get("event") == "push" and run.get("head_branch") == "main"
+              if run.get("event") in events and run.get("head_branch") == "main"
               and run.get("path") == path}
     return [check for check in checks if (check.get("check_suite") or {}).get("id") in suites]
 
@@ -163,14 +186,42 @@ def workflow_runs_on(repo, sha):
 
 
 def producing_workflows(workflow_runs):
-    """Paths of the workflows a push to main is still running on the commit."""
-    return {run["path"] for run in workflow_runs if run.get("status") != "completed"
-            and run.get("event") == "push" and run.get("head_branch") == "main"}
+    """(path, event) of each workflow still running on the commit on main."""
+    return {(run["path"], run.get("event")) for run in workflow_runs
+            if run.get("status") != "completed" and run.get("head_branch") == "main"}
+
+
+def gather(name, workflow_runs, running, checks_named):
+    """(the check runs that count for verdict `name`, whether one may still come)."""
+    runs, producing = [], False
+    for check, path, events in SOURCES[name]:
+        runs += from_main(checks_named(check), workflow_runs, path, events)
+        producing = producing or any((path, event) in running for event in events)
+    return runs, producing
 
 
 def on_main(sha):
     run(["git", "fetch", "--no-tags", "--quiet", "origin", "main"])
     return subprocess.run(["git", "merge-base", "--is-ancestor", sha, "origin/main"]).returncode == 0
+
+
+def produces(root, path, check):
+    """None if the workflow at `path` has a job whose check is named `check`, else why not.
+
+    "caller / job" is `job` in the workflow that the job `caller` calls."""
+    workflow = root / path
+    if not workflow.is_file():
+        return f"{path} does not exist"
+    text = workflow.read_text()
+    caller, _, rest = check.partition(" / ")
+    called = re.search(rf"^  {re.escape(caller)}:\n(?:    .*\n|\s*\n)*?    uses: \./(\S+)",
+                       text, re.MULTILINE) if rest else None
+    if called:
+        return produces(root, called.group(1), rest)
+    # Job level only: a step's `with: name:` (an artifact) sits deeper.
+    if not re.search(rf"^    name: {re.escape(check)}\s*$", text, re.MULTILINE):
+        return f"{path} has no job named {check!r}"
+    return None
 
 
 def self_test():
@@ -186,6 +237,8 @@ def self_test():
         # A fan-in check does not exist until its workflow's other jobs finish.
         ([], NO_RUN_MINUTES + 15, "wait", True),
         ([done_fail, ok], 0, "pass"),          # a re-run that succeeded counts
+        # main.yml's full run failed, and a dispatched ci.yml is still running.
+        ([done_fail], 0, "wait", True),
     ]
     failures = []
     for runs, minute, want, *producing in cases:
@@ -196,17 +249,47 @@ def self_test():
     # Only main's own run counts. A pull_request run reports on its head
     # commit but tested a merge with the base of its day, and a docs-only PR's
     # ci-gate passes with every build skipped; main.yml is where both are checked.
+    # The full run must be of this commit on main: main.yml's on the push, or
+    # ci.yml's nightly or dispatched run -- never a pull request's.
     workflow_runs = [
-        {"check_suite_id": 1, "event": "push", "head_branch": "main", "path": PRODUCER["main-gate"]},
-        {"check_suite_id": 2, "event": "pull_request", "head_branch": "topic", "path": PRODUCER["main-gate"]},
-        {"check_suite_id": 3, "event": "push", "head_branch": "topic", "path": PRODUCER["main-gate"]},
+        {"check_suite_id": 1, "event": "push", "head_branch": "main", "path": MAIN_YML},
+        {"check_suite_id": 2, "event": "pull_request", "head_branch": "topic", "path": MAIN_YML},
+        {"check_suite_id": 3, "event": "push", "head_branch": "topic", "path": MAIN_YML},
         {"check_suite_id": 4, "event": "push", "head_branch": "main", "path": ".github/workflows/other.yml"},
+        {"check_suite_id": 5, "event": "pull_request", "head_branch": "topic", "path": CI_YML},
+        {"check_suite_id": 6, "event": "schedule", "head_branch": "main", "path": CI_YML},
+        {"check_suite_id": 7, "event": "workflow_dispatch", "head_branch": "main", "path": CI_YML},
+        {"check_suite_id": 8, "event": "workflow_dispatch", "head_branch": "topic", "path": CI_YML},
+        {"check_suite_id": 9, "event": "schedule", "head_branch": "main", "path": MAIN_YML},
+        # A fork's pull request from its own branch named main.
+        {"check_suite_id": 10, "event": "pull_request", "head_branch": "main", "path": CI_YML},
     ]
-    for suite, want in ((1, True), (2, False), (3, False), (4, False)):
-        check = dict(ok, check_suite={"id": suite})
-        got = bool(from_main_push([check], workflow_runs, PRODUCER["main-gate"]))
+    for name, check, suite, want in (
+            ("main-gate", "main-gate", 1, True), ("main-gate", "main-gate", 2, False),
+            ("main-gate", "main-gate", 3, False), ("main-gate", "main-gate", 4, False),
+            ("main-gate", "main-gate", 9, False),
+            ("ci.yml in full", "full / ci-gate", 1, True),
+            ("ci.yml in full", "full / ci-gate", 2, False),
+            ("ci.yml in full", "ci-gate", 5, False), ("ci.yml in full", "ci-gate", 6, True),
+            ("ci.yml in full", "ci-gate", 7, True), ("ci.yml in full", "ci-gate", 8, False),
+            ("ci.yml in full", "ci-gate", 1, False), ("ci.yml in full", "ci-gate", 10, False),
+            ("ci.yml in full", "main-gate", 1, False)):  # main-gate alone may be a reuse
+        run_ = dict(ok, check_suite={"id": suite})
+        got = bool(gather(name, workflow_runs, set(),
+                          lambda c, check=check, run_=run_: [run_] if c == check else [])[0])
         if got != want:
-            failures.append(f"a main-gate run of suite {workflow_runs[suite - 1]} counted={got}, want {want}")
+            failures.append(f"{check!r} in suite {workflow_runs[suite - 1]} counted for {name!r}: "
+                            f"{got}, want {want}")
+    if not gather("ci.yml in full", workflow_runs,
+                  producing_workflows([dict(workflow_runs[6], status="in_progress")]),
+                  lambda c: [])[1]:
+        failures.append("a dispatched ci.yml still running on main is not waited for")
+    if gather("ci.yml in full", workflow_runs,
+              producing_workflows([dict(workflow_runs[4], status="in_progress")]), lambda c: [])[1]:
+        failures.append("a pull request's ci.yml run is waited for as if it could release")
+    if gather("ci.yml in full", workflow_runs,
+              producing_workflows([dict(workflow_runs[7], status="in_progress")]), lambda c: [])[1]:
+        failures.append("a ci.yml dispatched on another branch is waited for as if it could release")
     # `analyze / c-cpp` succeeds whatever it finds; the alerts are the verdict.
     sha, newer, analysed = "a" * 40, "b" * 40, "2026-10-15T12:31:42Z"
 
@@ -229,27 +312,37 @@ def self_test():
                  "category": "supply-chain/local", "created_at": "2026-10-16T00:00:00Z"}]
     if codeql_analysed_at(analyses, sha) != analysed or codeql_analysed_at(analyses, newer) is not None:
         failures.append("codeql_analysed_at does not find exactly this commit's CodeQL analysis")
+    full = "ci.yml in full"
     combos = [
-        ({"main-gate": "pass", "analyze / c-cpp": "pass"}, "pass"),
-        ({"main-gate": "pass", "analyze / c-cpp": "wait"}, "wait"),
-        ({"main-gate": "pass", "analyze / c-cpp": "fail:finished as failure"}, "fail"),
-        ({"main-gate": "wait", "analyze / c-cpp": "fail:x"}, "fail"),
+        ({"main-gate": "pass", "analyze / c-cpp": "pass", full: "pass"}, "pass"),
+        ({"main-gate": "pass", "analyze / c-cpp": "wait", full: "pass"}, "wait"),
+        ({"main-gate": "pass", "analyze / c-cpp": "fail:finished as failure", full: "pass"}, "fail"),
+        ({"main-gate": "wait", "analyze / c-cpp": "fail:x", full: "pass"}, "fail"),
+        ({"main-gate": "pass", "analyze / c-cpp": "pass", full: "fail:x"}, "fail"),
+        ({"main-gate": "pass", "analyze / c-cpp": "pass", full: "wait"}, "wait"),
     ]
     for verdicts, want in combos:
         if overall(verdicts)[0] != want:
             failures.append(f"overall({verdicts}) = {overall(verdicts)[0]}, want {want}")
-    if set(PRODUCER) != set(REQUIRED):
-        failures.append(f"PRODUCER names {sorted(PRODUCER)}, REQUIRED {sorted(REQUIRED)}")
     # A renamed workflow or job would stop the wait silently, and the gate
     # would again fail a healthy CI run after NO_RUN_MINUTES.
     root = pathlib.Path(__file__).resolve().parent.parent
-    for name, path in PRODUCER.items():
-        workflow = root / path
-        if not workflow.is_file():
-            failures.append(f"PRODUCER[{name!r}] = {path}, which does not exist")
-        # Job level only: a step's `with: name:` (an artifact) sits deeper.
-        elif not re.search(rf"^    name: {re.escape(name)}\s*$", workflow.read_text(), re.MULTILINE):
-            failures.append(f"{path} has no job named {name!r}, so it cannot produce that check")
+    for name, sources in SOURCES.items():
+        for check, path, _ in sources:
+            problem = produces(root, path, check)
+            if problem:
+                failures.append(f"SOURCES[{name!r}]: {problem}, so it cannot produce {check!r}")
+    # "caller / job" is looked for in the called workflow, not the caller.
+    with tempfile.TemporaryDirectory() as scratch:
+        fake = pathlib.Path(scratch)
+        (fake / "a.yml").write_text("jobs:\n  full:\n    if: x\n    uses: ./b.yml\n"
+                                    "  gate:\n    name: ci-gate\n")
+        (fake / "b.yml").write_text("jobs:\n  other:\n    name: other\n")
+        for check, want in (("full / other", True), ("full / ci-gate", False), ("gate", False),
+                            ("ci-gate", True), ("none / other", False)):
+            if (produces(fake, "a.yml", check) is None) != want:
+                failures.append(f"produces(a.yml, {check!r}) = {produces(fake, 'a.yml', check)}, "
+                                f"want {'found' if want else 'a problem'}")
     # A failing command must surface as ApiError with its own output -- not as
     # a traceback that ends a release, after up to an hour of waiting, on one 502.
     try:
@@ -258,8 +351,10 @@ def self_test():
     except ApiError as error:
         if "HTTP 502" not in str(error):
             failures.append(f"run()'s error does not carry the command's output: {error}")
-    if set(REQUIRED) != {"main-gate", "analyze / c-cpp"}:
+    if set(REQUIRED) != {"main-gate", "analyze / c-cpp", "ci.yml in full"}:
         failures.append(f"REQUIRED changed to {REQUIRED}; update the docstring and this test")
+    if set(HINT) - set(REQUIRED):
+        failures.append(f"HINT names {sorted(set(HINT) - set(REQUIRED))}, which REQUIRED does not")
     if failures:
         print("SELF-TEST FAILED:\n  " + "\n  ".join(failures), file=sys.stderr)
         return 1
@@ -297,10 +392,11 @@ def main():
         try:
             workflow_runs = workflow_runs_on(args.repo, args.sha)
             running = producing_workflows(workflow_runs)
-            verdicts = {name: verdict(from_main_push(check_runs(args.repo, args.sha, name),
-                                                     workflow_runs, PRODUCER[name]),
-                                      minute, PRODUCER[name] in running)
-                        for name in REQUIRED}
+            verdicts = {}
+            for name in REQUIRED:
+                runs, producing = gather(name, workflow_runs, running,
+                                         lambda check: check_runs(args.repo, args.sha, check))
+                verdicts[name] = verdict(runs, minute, producing)
             failed_calls = 0
         except ApiError as error:
             failed_calls += 1
@@ -328,14 +424,15 @@ def main():
                 report_alerts(args.repo, args.sha, alerts)
                 return 1
             if analysed_at is not None:
-                print(f"main's {' and '.join(REQUIRED)} passed for {args.sha}, and CodeQL "
+                print(f"main's {', '.join(REQUIRED)} passed for {args.sha}, and CodeQL "
                       f"reports no open alert on it")
                 return 0
             state, detail = "wait", {"CodeQL's processed analysis": "wait"}
         if state == "fail":
             for name, why in detail.items():
                 print(f"::error::main's `{name}` for {args.sha}: {why.split(':', 1)[1]}. "
-                      f"Fix main, then tag a commit that passes.")
+                      + (f"{HINT[name]}." if name in HINT and why.startswith("fail:never")
+                         else "Fix main, then tag a commit that passes."))
             return 1
         if minute < WAIT_MINUTES:
             print(f"waiting for {', '.join(detail)} on {args.sha} (minute {minute + 1}/{WAIT_MINUTES})")
