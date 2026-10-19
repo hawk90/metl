@@ -125,7 +125,7 @@ metl is continuously exercised for memory safety:
 
 - **In-repo fuzz smoke** — the `fuzz-smoke` CI job builds the libFuzzer
   harnesses under `fuzz/` with `-fsanitize=fuzzer,address,undefined` and runs
-  each on every push/PR. The harnesses drive the containers with **contract-
+  each on every pull request and nightly. The harnesses drive the containers with **contract-
   valid operation streams only**, so any ASan/UBSan finding is a real defect.
 - **ClusterFuzzLite** — `.clusterfuzzlite/` plus the `cflite-*` workflows run
   the OSS-Fuzz toolchain directly in GitHub Actions: per-PR fuzzing of the code

@@ -4,10 +4,11 @@
 Documentation-only pull requests skip the builds in ci.yml and the heavy steps
 of CodeQL and PR fuzzing (.github/actions/classify-change calls this). A wrong
 "documentation-only" therefore skips every verification the repository has, so
-the classification is conservative: anything that is not provably Markdown or
-LICENSE is code.
+the classification is conservative: anything that is not provably Markdown is
+code. That includes LICENSE, which conanfile.py packages: the conan job is
+what shows a change to it still packages.
 
-    code=false   a pull request whose every changed path is *.md or LICENSE
+    code=false   a pull request whose every changed path is *.md
     code=true    everything else, including any non-PR event and an empty or
                  unreadable diff (a classification failure can only run more)
 
@@ -33,7 +34,7 @@ import subprocess
 import sys
 import tempfile
 
-DOCUMENTATION = re.compile(r"(\.md|^LICENSE)$")
+DOCUMENTATION = re.compile(r"\.md$")
 
 
 def _clean_env(**extra):
@@ -97,6 +98,10 @@ def self_test():
         with open(os.path.join(repo, "LICENSE"), "w") as handle:
             handle.write("license\n")
 
+    def markdown_only(repo):
+        with open(os.path.join(repo, "README.md"), "a") as handle:
+            handle.write("more\n")
+
     def docs_and_header(repo):
         docs_and_license(repo)
         with open(os.path.join(repo, "include", "a.hpp"), "a") as handle:
@@ -111,7 +116,9 @@ def self_test():
         _git(repo, "mv", "include/a.hpp", "a.md")
 
     cases = [
-        (docs_and_license, "pull_request", False),
+        (markdown_only, "pull_request", False),
+        # conanfile.py packages LICENSE, so the conan job must see it change.
+        (docs_and_license, "pull_request", True),
         (docs_and_header, "pull_request", True),
         (nested_markdown, "pull_request", False),
         (rename_header_to_markdown, "pull_request", True),

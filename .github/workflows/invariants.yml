@@ -1,0 +1,337 @@
+name: Invariants
+
+# The invariant gate and the measurement records, as one reusable workflow.
+# Two callers run it:
+#   * ci.yml, on every pull request (and nightly), as part of the merge gate;
+#   * main.yml, on every push to main, because each record names the commit it
+#     measured (GITHUB_SHA), and release.yml takes the records from main's run
+#     for the commit it releases. A pull request's records name its merge ref,
+#     so they cannot stand in for main's.
+# Under either caller the check runs report as `invariants / <cpu>`.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+# The probe sources only this workflow compiles. A reusable workflow does not
+# see its caller's `env:`, so they live here rather than in ci.yml.
+env:
+  METL_INVARIANT_PROBE_SRC: tests/embedded/invariant_probe.cpp
+  METL_INVARIANT_CANARY_SRC: tests/embedded/invariant_canary.cpp
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Invariant gate — proves I1 (no heap), I2 (no exceptions / no RTTI) by
+  # auditing the SYMBOL TABLE of a fully linked bare-metal image. See
+  # docs/SCOPE.md section 8 for the design rationale; the short version:
+  #
+  #   * Symbol audit, not linker poisoning: the "make operator new reference an
+  #     undefined symbol" trick depends on --gc-sections behaviour and differs
+  #     between GNU ld, lld and IAR. Reading the final symbol table is
+  #     linker-agnostic and proves all three properties in one pass.
+  #   * The image is LINKED but never RUN, so no QEMU and no semihosting. A new
+  #     target gets this gate with a cross toolchain alone.
+  #   * --specs=rdimon.specs must NOT be used: its crt0 sets up the heap via the
+  #     SYS_HEAPINFO semihosting call and is linked unconditionally, so heap
+  #     symbols would enter the image with nothing to do with METL. nosys.specs
+  #     is safe because libnosys is an archive — _sbrk only appears if something
+  #     actually references it, which makes it a true positive.
+  #   * -nostartfiles + our own _start: newlib's exit path (__call_exitprocs)
+  #     can reach _malloc_r, which would redden the gate for a libc reason.
+  #   * NO --gc-sections here (unlike the other cross jobs): section GC would
+  #     hide an allocation sitting in a path no caller reaches.
+  #   * The canary is mandatory. A gate that cannot fail is not a gate.
+  # ---------------------------------------------------------------------------
+  invariants:
+    name: ${{ matrix.cpu }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        cpu: [cortex-m0, cortex-m3, cortex-m4, cortex-m7]
+        # The QEMU machine each core's runtime measurements run on: the same
+        # boards as qemu-conformance. QEMU has no Cortex-M0 MPS2 board, so the
+        # M0 build runs on the AN385's ARMv7-M core, as it does there.
+        include:
+          - cpu: cortex-m0
+            machine: mps2-an385
+          - cpu: cortex-m3
+            machine: mps2-an385
+          - cpu: cortex-m4
+            machine: mps2-an386
+          - cpu: cortex-m7
+            machine: mps2-an500
+
+    # Single source of truth for the link flags, so the probe and its negative
+    # control cannot drift apart. Note the absence of -Wl,--gc-sections, which
+    # the other cross jobs do use: section GC would hide an allocation living in
+    # a path no caller reaches, and this gate wants everything the TU
+    # instantiates to stay in the image.
+    env:
+      METL_LINK_FLAGS: >-
+        -std=c++17 -mcpu=${{ matrix.cpu }} -mthumb -Os
+        -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti
+        --specs=nano.specs --specs=nosys.specs -nostartfiles
+      # The stack probe's compile flags: METL_LINK_FLAGS' compile half plus
+      # -fstack-usage. Named once so the measurement record states the flags
+      # that were actually used.
+      METL_STACK_PROBE_FLAGS: >-
+        -std=c++17 -mcpu=${{ matrix.cpu }} -mthumb -Os
+        -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti
+        -fstack-usage
+      METL_MEASUREMENTS: measurements-${{ matrix.cpu }}.json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      # picolibc and QEMU are for the runtime measurements at the end of this
+      # job. The same list and cache key as qemu-conformance, so the two share
+      # one cached set of packages. The probe and canary links below name
+      # newlib-nano's specs explicitly, so picolibc being installed changes
+      # nothing they link.
+      - name: Install ARM toolchain, picolibc and QEMU
+        uses: ./.github/actions/apt-install
+        with:
+          packages: gcc-arm-none-eabi picolibc-arm-none-eabi qemu-system-arm
+          cache-key: arm-picolibc-qemu
+
+      - name: Link the invariant probe (newlib-nano, nosys, no crt0)
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2086  # METL_LINK_FLAGS is a deliberate word list
+          arm-none-eabi-g++ $METL_LINK_FLAGS -Wl,-Map=invariant_probe.map \
+            -Iinclude "$METL_INVARIANT_PROBE_SRC" -o invariant_probe.elf
+
+      # The canary below proves the audit CAN fail -- but it is linked with the
+      # probe's flags, which are -fno-exceptions -fno-rtti, so it can only
+      # violate `heap`. A typo in an `exceptions` or `rtti` regex would leave
+      # the canary failing for its heap reason and every clean image passing,
+      # with two thirds of this gate dead and nothing to say so. This covers
+      # those, one representative symbol per pattern, with no toolchain.
+      - name: The invariant audit must still bite (canary)
+        run: python3 tools/check_invariants.py --self-test
+
+      - name: Audit the probe's symbol table
+        run: |
+          set -uo pipefail
+          if python3 tools/check_invariants.py \
+               --nm arm-none-eabi-nm invariant_probe.elf; then
+            exit 0
+          fi
+          # A bare symbol list answers "what" but not "who pulled it in", and the
+          # answer is usually an archive member two hops away (newlib's abort ->
+          # raise -> signal table -> _malloc_r is the classic one). ld's map file
+          # records exactly that chain, so print it rather than making the next
+          # person re-derive it.
+          echo "----- who pulled the offending archive members in -----"
+          # Only the "Archive member included to satisfy reference by file"
+          # section answers "who pulled it in". Terminating the range on the next
+          # top-level section matters: this job links WITHOUT --gc-sections, so
+          # ld emits no "Discarded input sections" and a naive range would run to
+          # EOF, letting the grep match unrelated addresses in the memory map and
+          # bury the one answer this diagnostic exists to give.
+          awk '/^Archive member included/ {inside = 1}
+               inside && /^(Allocating common symbols|Linker script and memory map|Memory Configuration)/ {inside = 0}
+               inside' invariant_probe.map \
+            | grep -B1 -E '_malloc|_free|_sbrk|_Znw|_Zna|_Unwind|__cxa' || true
+          echo "-------------------------------------------------------"
+          exit 1
+
+      - name: Link the canary (deliberately violates the invariants)
+        run: |
+          set -euo pipefail
+          # Same flags as the probe: the canary only differs in what the code
+          # does, so a flag drift between the two would silently weaken the
+          # negative control.
+          # shellcheck disable=SC2086
+          arm-none-eabi-g++ $METL_LINK_FLAGS \
+            -Iinclude "$METL_INVARIANT_CANARY_SRC" -o invariant_canary.elf
+
+      - name: Canary must FAIL the audit
+        run: |
+          set -uo pipefail
+          # Exit 1 is "violations found". Exit 2 is a tooling error -- nm failed
+          # or read no symbols -- which proves nothing about the rules.
+          status=0
+          python3 tools/check_invariants.py \
+            --nm arm-none-eabi-nm invariant_canary.elf || status=$?
+          if [[ "${status}" -ne 1 ]]; then
+            echo "::error::the canary's audit exited ${status}, not 1 (violations found) -- the gate is not shown to bite"
+            exit 1
+          fi
+          echo "canary correctly rejected; the audit can fail"
+
+      # Code-size ratchet. This replaces an "(informational)" size print, which
+      # is the same shape as bench-smoke: a step that can only pass.
+      #
+      # Size is the performance-ish number that CAN be gated here. A wall-clock
+      # threshold was rejected because "a threshold on a shared runner
+      # either fires spuriously or never fires" -- true, and it does not apply to
+      # a cross-compiled .text figure, which is a deterministic function of the
+      # source and the toolchain. On a Cortex-M an unnoticed kilobyte matters
+      # more than a percentage of throughput on a shared x86 runner anyway.
+      #
+      # The budgets are measured by THIS job and written down afterwards, never
+      # taken from a local figure -- there is no ARM toolchain on the dev
+      # machine, and even where a local one exists it has disagreed with CI
+      # three times running. Same two-step as the clang-tidy ratchet.
+      #
+      # The numbers themselves are in tools/check_size.py and deliberately not
+      # repeated here. They used to be, and when #66 raised them this comment
+      # kept the old ones -- so the repository stated two answers to "what is the
+      # Cortex-M0 budget" and the one a reader met first was wrong. check_docs.py
+      # rule D5 now fails the build on any restatement, this one included.
+      #
+      # A budget can only go DOWN. If a toolchain bump moves these, re-measure
+      # with --report and say so in the commit; do not pad.
+      - name: Probe code-size ratchet must still bite (canary)
+        run: tools/check_size.py --self-test
+
+      # Gates .text AND .rodata now. .rodata had been measured and printed by
+      # this very step since it was written, and compared against nothing --
+      # the "step that can only pass" shape, inside the tool whose header
+      # argues against it. It is not idle space either: #28 made CRC's nibble
+      # table the default, which is a deliberate trade of .rodata for speed,
+      # and a repository that gates one and not the other calls that trade free.
+      - name: Probe code size (.text and .rodata) against its budgets
+        run: |
+          tools/check_size.py \
+            --elf invariant_probe.elf \
+            --cpu ${{ matrix.cpu }} \
+            --record "$METL_MEASUREMENTS" --flags "$METL_LINK_FLAGS"
+
+      # Stack-depth ratchet. The size ratchet above measures FLASH; this
+      # measures what METL puts on the stack while it runs, which nothing here
+      # has ever looked at. See tests/embedded/stack_probe.cpp for why it needs
+      # its own probe rather than reusing invariant_probe.cpp: that one holds
+      # capacity 4-8 containers, and the regression this guards against — an
+      # operation that starts building into a local buffer — is invisible at
+      # that size and kilobytes at a realistic one.
+      #
+      # Compiled, not linked. -fstack-usage is a compile-stage flag and writes
+      # a .su file per TU, so there is nothing for a linker to contribute. The
+      # flags mirror METL_LINK_FLAGS' compile half; the --specs= and
+      # -nostartfiles entries are link-stage and deliberately absent.
+      - name: Compile the stack probe with -fstack-usage
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2086  # METL_STACK_PROBE_FLAGS is a word list
+          arm-none-eabi-g++ $METL_STACK_PROBE_FLAGS \
+            -Iinclude -c tests/embedded/stack_probe.cpp -o stack_probe.o
+
+      - name: Stack ratchet must still bite (canary)
+        run: tools/check_stack.py --self-test
+
+      # Enforcing since #80. The budgets came from this job's own --report
+      # output on #79 (run 32583708742) and never from a local figure — the same
+      # two-step check_size.py used, for the same reason: there is no ARM
+      # toolchain on the development machine and local numbers have disagreed
+      # with CI repeatedly.
+      #
+      # The numbers themselves live in tools/check_stack.py and are deliberately
+      # not repeated here; that is the mistake #76 fixed for the size budgets.
+      - name: Probe stack depth against its budget
+        run: |
+          tools/check_stack.py \
+            --su-dir . \
+            --cpu ${{ matrix.cpu }}
+
+      # Static RAM, the last unmeasured corner of the memory question. #77 pins
+      # `sizeof` per container with static_assert and #79 measures the stack;
+      # neither can see a hidden static inside a header, a function-local static
+      # and its guard variable, or a table that moved from .rodata into .data.
+      #
+      # No new artifact: stack_probe.o was compiled two steps up, and that probe
+      # already holds realistic-capacity containers in STATIC storage -- which is
+      # exactly what a .bss ratchet needs. No probe was thought suitable for a
+      # .bss ratchet, and that stopped being true when #79 landed.
+      #
+      # ENFORCING. The budgets came from this job's own --report output earlier
+      # in this PR (run 32613760217), never from a local figure -- the numbers
+      # themselves live in tools/check_size.py and are deliberately not repeated
+      # here, which is the mistake #76 fixed for the size budgets.
+      #
+      # Since #405 the sections are classified by ELF type and flags, not by
+      # name, and the ratchet covers thread-local storage as well.
+      - name: Probe static RAM (.bss + .data + TLS) against its budget
+        run: |
+          tools/check_size.py \
+            --ram-object stack_probe.o \
+            --cpu ${{ matrix.cpu }} \
+            --record "$METL_MEASUREMENTS" --flags "$METL_STACK_PROBE_FLAGS" \
+            --su-dir .
+
+      # What the shipped code DOES when it runs, which nothing above measures:
+      # the stack high-water mark of stack_probe.cpp's operations, painted and
+      # read back under QEMU, without and with LTO (#404) -- the static gate
+      # above sees single frames and never an LTO build -- and the guest
+      # instructions each benchmark region of qemu_bench_probe.cpp executes
+      # (#338). Instruction counts, never time: QEMU models no cycles.
+      #
+      # Enforcing from the first run. A missing budget fails and prints the
+      # number to write into tools/check_qemu_probes.py, so no run passes
+      # without one. The figures also go into the measurement record below.
+      - name: QEMU probe grading must still bite (canary)
+        run: tools/check_qemu_probes.py --self-test
+
+      - name: Runtime stack and instruction counts under QEMU
+        timeout-minutes: 8
+        run: |
+          tools/check_qemu_probes.py \
+            --cpu ${{ matrix.cpu }} \
+            --machine ${{ matrix.machine }} \
+            --record "$METL_MEASUREMENTS" --summary
+
+      - name: Upload the QEMU probe output on failure
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: qemu-probes-${{ matrix.cpu }}
+          path: build-qemu-probes/*.out
+          if-no-files-found: ignore
+
+      # The record of what the steps above measured (#405): per-class totals,
+      # every section, the static deepest frame, the QEMU runtime stack and
+      # instruction counts, and null for anything not measured. The summary is for reading a run; the artifact is what
+      # release.yml attaches to the release, so a later release has something
+      # to be compared against. Artifacts expire after 90 days; the release
+      # asset does not.
+      - name: Measurement record in the job summary
+        run: tools/check_size.py --summary "$METL_MEASUREMENTS" >> "$GITHUB_STEP_SUMMARY"
+
+      # The same record against the latest release's (#409), so a change too
+      # small for a budget's tolerance still shows. A report, not a gate: the
+      # budgets above are the gate. A release from before #405 has no record,
+      # and the summary says so instead of failing.
+      - name: Compare with the latest release's measurements
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)"
+          asset="metl-${tag#v}-measurements.json"
+          if ! gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" --json assets \
+              --jq '.assets[].name' | grep -qxF "${asset}"; then
+            printf '### Measurements compared\n\n%s has no measurement record to compare against.\n' \
+              "${tag}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh release download "${tag}" --repo "${GITHUB_REPOSITORY}" --pattern "${asset}" \
+            --dir previous-release
+          tools/check_size.py --compare "previous-release/${asset}" "$METL_MEASUREMENTS" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the measurement record
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: measurements-${{ matrix.cpu }}
+          path: ${{ env.METL_MEASUREMENTS }}
+          if-no-files-found: error
+          retention-days: 90

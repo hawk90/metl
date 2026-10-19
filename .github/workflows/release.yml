@@ -4,9 +4,10 @@ name: Release
 #
 # The tag is the trigger but not the authority. Everything published here is
 # regenerated from the tagged tree and re-verified before the release exists:
-# the amalgamation is built and the whole test suite is run through it, and the
-# tag is checked against the version in CMakeLists.txt. A release that would
-# ship something unverified fails instead.
+# main must have accepted the commit (`gate`), ci.yml runs in full on it again
+# (`verify`), the amalgamation is built and the whole test suite is run through
+# it, and the tag is checked against the version in CMakeLists.txt. A release
+# that would ship something unverified fails instead.
 
 on:
   push:
@@ -29,16 +30,22 @@ defaults:
     shell: bash
 
 jobs:
-  release:
-    name: release
+  # The build in `release` is one host compiler. What makes a commit releasable
+  # is the full CI -- GCC and Clang -Werror, sanitizers, ARM size/stack/RAM
+  # budgets, QEMU on four Cortex-M cores, Zephyr, ESP-IDF. So a tag releases
+  # only a commit that is on main and whose `main-gate` (main.yml: every ci.yml
+  # job passed on this exact tree, plus this commit's own measurements) and
+  # CodeQL analysis (`analyze / c-cpp`) passed; tools/release_gate.py has the
+  # rules. Tagging a branch commit, or a main commit that failed, stops here,
+  # before `verify` spends the runners. If main.yml is still running, wait.
+  gate:
+    name: gate
     runs-on: ubuntu-26.04
-    # Up to 60 minutes of that is waiting for main's CI on the tagged commit.
+    # Up to 60 minutes of that is waiting for main.yml on the tagged commit.
     timeout-minutes: 80
-
     permissions:
-      # Required to create the release and upload assets.
-      contents: write
-      # Required to read the tagged commit's `ci-gate` and CodeQL results.
+      contents: read
+      # Required to read the tagged commit's `main-gate` and CodeQL results.
       checks: read
       # Required to see whether the workflows that produce them are still
       # running on that commit; see tools/release_gate.py.
@@ -46,6 +53,39 @@ jobs:
       # Required to read CodeQL's open alerts on that commit: the analysis job
       # succeeds whatever it finds.
       security-events: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: The tagged commit is on main and passed main's CI and CodeQL
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          tools/release_gate.py --repo "${GITHUB_REPOSITORY}"
+          --sha "${GITHUB_SHA}" --ref "${GITHUB_REF_NAME}"
+
+  # ci.yml in full, on the tagged commit, now. `main-gate` may rest on the pull
+  # request's run, which can be days older than the merge (#431); the runner
+  # images and apt packages may have changed since. What is published must have
+  # passed on what the runners are today.
+  verify:
+    needs: gate
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      id-token: write  # ci.yml's coverage job uploads to Codecov with OIDC
+
+  release:
+    name: release
+    needs: verify
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+
+    permissions:
+      # Required to create the release and upload assets.
+      contents: write
+      # Required to find main.yml's run for the measurement records.
+      actions: read
       # Required to record the provenance attestation.
       attestations: write
       # Required for the Sigstore signing certificate. This is the whole reason
@@ -60,21 +100,6 @@ jobs:
           # Full history so the changelog section can be located and, if a
           # previous tag exists, referenced.
           fetch-depth: 0
-
-      # The build below is one host compiler. What makes a commit releasable is
-      # the full CI -- GCC and Clang -Werror, sanitizers, ARM size/stack/RAM
-      # budgets, QEMU on four Cortex-M cores, Zephyr, ESP-IDF -- and that runs
-      # on main, not on tags. So a tag releases only a commit that is on main
-      # and whose main CI (`ci-gate`, the fan-in of every ci.yml job) and CodeQL
-      # analysis (`analyze / c-cpp`) passed; tools/release_gate.py has the rules.
-      # Tagging a branch commit, or a main commit whose CI failed, now stops
-      # here instead of publishing it. If main's CI is still running, wait.
-      - name: The tagged commit is on main and passed main's CI and CodeQL
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          tools/release_gate.py --repo "${GITHUB_REPOSITORY}"
-          --sha "${GITHUB_SHA}" --ref "${GITHUB_REF_NAME}"
 
       - name: Install build deps
         uses: ./.github/actions/apt-install
@@ -97,22 +122,22 @@ jobs:
           fi
           echo "version=${tag_version}" >> "$GITHUB_ENV"
 
-      # The measurements main's CI made of this commit (#405): code, const, RAM
+      # The measurements main.yml made of this commit (#405): code, const, RAM
       # and TLS per Cortex-M target, every section, and the stack figures. CI
       # keeps them as artifacts for 90 days; a release asset keeps them for as
       # long as the release exists, so a later release can be compared with
-      # this one. The run is the push run on main for this commit -- the one
-      # whose `ci-gate` tools/release_gate.py has just verified. No record, no
+      # this one. The run is main.yml's push run for this commit -- the one
+      # whose `main-gate` tools/release_gate.py has just verified. No record, no
       # release: a gap here would be found only when someone needed it.
       - name: Fetch main's measurement records for this commit
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          run_id="$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow ci.yml \
+          run_id="$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow main.yml \
             --commit "${GITHUB_SHA}" --event push --status success --limit 1 \
             --json databaseId --jq '.[0].databaseId // empty')"
           if [[ -z "${run_id}" ]]; then
-            echo "::error::no successful push run of ci.yml on ${GITHUB_SHA} to take the measurement records from" >&2
+            echo "::error::no successful push run of main.yml on ${GITHUB_SHA} to take the measurement records from" >&2
             exit 1
           fi
           gh run download "${run_id}" --repo "${GITHUB_REPOSITORY}" \

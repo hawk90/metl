@@ -2,23 +2,36 @@
 """Refuse to release a commit that main's verification has not passed.
 
 release.yml runs one host build. What makes a commit releasable is what ran on
-main for it: `ci-gate` (the fan-in of every ci.yml job -- GCC/Clang/MSVC,
-sanitizers, ARM size/stack/RAM budgets, QEMU on four Cortex-M cores, Zephyr,
-ESP-IDF) and `analyze / c-cpp` (CodeQL). A tag releases a commit only when
+main for it: `main-gate` and `analyze / c-cpp` (CodeQL). `main-gate` (main.yml)
+passes only when every ci.yml job -- GCC/Clang/MSVC, sanitizers, ARM
+size/stack/RAM budgets, QEMU on four Cortex-M cores, Zephyr, ESP-IDF -- passed
+on this commit's exact tree: on the pull request that put the tree on main
+(tools/check_provenance.py shows which run), or in full on the push when that
+cannot be shown. It also requires the commit's own measurement records and its
+subject check.
+
+A pull request's run may be hours or days older than the merge, so a change in
+the runner images since then is not in `main-gate` (#431). The release does not
+rest on that: after this gate passes, release.yml runs ci.yml in full on the
+tagged commit itself, and publishes only if that passes too. This gate is the
+cheap half, run first: it refuses a commit main never accepted before an hour
+of runners is spent on it. A tag releases a commit only when
 
   * the commit is on main, and
   * CodeQL reports no open (undismissed) alert on that commit, and
   * every check in REQUIRED has a successful run on that commit, from a push
-    to main in the workflow that produces it. A pull_request run reports on
-    its head commit too, but it tested a merge with an older base, and a
-    documentation-only pull request's ci-gate passes with every build skipped.
+    to main in the workflow that produces it. A pull_request run's ci-gate
+    reports on its head commit too, but it tested a merge with the base of its
+    day, and a documentation-only pull request's ci-gate passes with every
+    build skipped; main.yml's provenance check is what closes both gaps, so
+    the gate reads main.yml and never a pull request run.
 
-A check still running is waited for (main's CI takes 10-25 minutes, most of it
-queueing for runners). A check that finished without success fails the release
-at once.
+A check still running is waited for (main.yml takes a few minutes, or 10-25
+when it runs ci.yml in full, most of it queueing for runners). A check that
+finished without success fails the release at once.
 
 A check that has not appeared yet is waited for while the workflow that
-produces it is still running on this commit. `ci-gate` is a fan-in: GitHub
+produces it is still running on this commit. `main-gate` is a fan-in: GitHub
 creates its check run only when every job it needs has finished, so for most of
 a healthy CI run it does not exist. Only when that workflow is not running here
 -- it never started, or finished without producing the check -- and
@@ -40,9 +53,9 @@ import subprocess
 import sys
 import time
 
-REQUIRED = ("ci-gate", "analyze / c-cpp")
+REQUIRED = ("main-gate", "analyze / c-cpp")
 # The workflow that produces each required check.
-PRODUCER = {"ci-gate": ".github/workflows/ci.yml", "analyze / c-cpp": ".github/workflows/codeql.yml"}
+PRODUCER = {"main-gate": ".github/workflows/main.yml", "analyze / c-cpp": ".github/workflows/codeql.yml"}
 WAIT_MINUTES = 60
 NO_RUN_MINUTES = 10
 # Consecutive minutes a GitHub API call may fail (a 502, a rate limit) before
@@ -189,18 +202,18 @@ def self_test():
                             f"want {want}")
     # Only main's own run counts. A pull_request run reports on its head
     # commit but tested a merge with the base of its day, and a docs-only PR's
-    # ci-gate passes with every build skipped.
+    # ci-gate passes with every build skipped; main.yml is where both are checked.
     workflow_runs = [
-        {"check_suite_id": 1, "event": "push", "head_branch": "main", "path": PRODUCER["ci-gate"]},
-        {"check_suite_id": 2, "event": "pull_request", "head_branch": "topic", "path": PRODUCER["ci-gate"]},
-        {"check_suite_id": 3, "event": "push", "head_branch": "topic", "path": PRODUCER["ci-gate"]},
+        {"check_suite_id": 1, "event": "push", "head_branch": "main", "path": PRODUCER["main-gate"]},
+        {"check_suite_id": 2, "event": "pull_request", "head_branch": "topic", "path": PRODUCER["main-gate"]},
+        {"check_suite_id": 3, "event": "push", "head_branch": "topic", "path": PRODUCER["main-gate"]},
         {"check_suite_id": 4, "event": "push", "head_branch": "main", "path": ".github/workflows/other.yml"},
     ]
     for suite, want in ((1, True), (2, False), (3, False), (4, False)):
         check = dict(ok, check_suite={"id": suite})
-        got = bool(from_main_push([check], workflow_runs, PRODUCER["ci-gate"]))
+        got = bool(from_main_push([check], workflow_runs, PRODUCER["main-gate"]))
         if got != want:
-            failures.append(f"a ci-gate run of suite {workflow_runs[suite - 1]} counted={got}, want {want}")
+            failures.append(f"a main-gate run of suite {workflow_runs[suite - 1]} counted={got}, want {want}")
     # `analyze / c-cpp` succeeds whatever it finds; the alerts are the verdict.
     sha, newer, analysed = "a" * 40, "b" * 40, "2026-10-15T12:31:42Z"
 
@@ -224,10 +237,10 @@ def self_test():
     if codeql_analysed_at(analyses, sha) != analysed or codeql_analysed_at(analyses, newer) is not None:
         failures.append("codeql_analysed_at does not find exactly this commit's CodeQL analysis")
     combos = [
-        ({"ci-gate": "pass", "analyze / c-cpp": "pass"}, "pass"),
-        ({"ci-gate": "pass", "analyze / c-cpp": "wait"}, "wait"),
-        ({"ci-gate": "pass", "analyze / c-cpp": "fail:finished as failure"}, "fail"),
-        ({"ci-gate": "wait", "analyze / c-cpp": "fail:x"}, "fail"),
+        ({"main-gate": "pass", "analyze / c-cpp": "pass"}, "pass"),
+        ({"main-gate": "pass", "analyze / c-cpp": "wait"}, "wait"),
+        ({"main-gate": "pass", "analyze / c-cpp": "fail:finished as failure"}, "fail"),
+        ({"main-gate": "wait", "analyze / c-cpp": "fail:x"}, "fail"),
     ]
     for verdicts, want in combos:
         if overall(verdicts)[0] != want:
@@ -252,7 +265,7 @@ def self_test():
     except ApiError as error:
         if "HTTP 502" not in str(error):
             failures.append(f"run()'s error does not carry the command's output: {error}")
-    if set(REQUIRED) != {"ci-gate", "analyze / c-cpp"}:
+    if set(REQUIRED) != {"main-gate", "analyze / c-cpp"}:
         failures.append(f"REQUIRED changed to {REQUIRED}; update the docstring and this test")
     if failures:
         print("SELF-TEST FAILED:\n  " + "\n  ".join(failures), file=sys.stderr)

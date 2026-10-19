@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/hawk90/metl/actions/workflows/ci.yml"><img src="https://github.com/hawk90/metl/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/hawk90/metl/actions/workflows/main.yml"><img src="https://github.com/hawk90/metl/actions/workflows/main.yml/badge.svg" alt="Main"></a>
   <a href="https://github.com/hawk90/metl/releases/latest"><img src="https://img.shields.io/github/v/release/hawk90/metl" alt="Release"></a>
   <a href="https://codecov.io/gh/hawk90/metl"><img src="https://codecov.io/gh/hawk90/metl/graph/badge.svg" alt="Coverage"></a>
   <img src="https://img.shields.io/badge/C%2B%2B-17%20%7C%2020%20%7C%2023%20%7C%2026-blue.svg" alt="C++17 | 20 | 23 | 26">
@@ -368,7 +369,7 @@ It is generated from the real headers rather than maintained alongside them, so
 it cannot drift — and it is not a reduced subset: CI redirects every
 `metl/*.hpp` at the amalgamated file and runs the **whole test suite** through
 it, except the tests of `metl/exp/` types, which the tool lists as left out. That file is attached to each GitHub Release; the `amalgamation` job builds
-it on every push.
+it on every pull request.
 
 ## Zephyr
 
@@ -520,7 +521,8 @@ Cortex-A is not exercised by any CI job.
 
 What CI actually exercises versus what is supported-but-not-automatically-verified.
 "CI-verified" means a job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
-builds (and, where noted, runs) METL on that platform on every push/PR.
+builds (and, where noted, runs) METL on that platform on every pull request,
+and nightly on `main`.
 
 ### CI-verified
 
