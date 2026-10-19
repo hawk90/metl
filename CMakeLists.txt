@@ -156,7 +156,7 @@ if(METL_BUILD_TESTS)
     vocab/optional vocab/optional_constexpr vocab/expected vocab/expected_regression
     vocab/variant vocab/variant_regression vocab/span vocab/function_ref
     vocab/fixed_function vocab/fixed_function_const vocab/fixed_function_null vocab/callable_reentrancy vocab/delegate
-    vocab/callable_reference_return vocab/vocab_std_parity
+    vocab/callable_reference_return vocab/vocab_std_parity vocab/vocab_constant_init
     vocab/intrusive_ptr vocab/intrusive_ptr_atomic vocab/intrusive_ptr_contract vocab/intrusive_ptr_alias vocab/scope_exit vocab/type_traits
     vocab/variant_selfassign vocab/emplace_self_alias vocab/vocab_assignment vocab/versioned_handle vocab/expected_reentrancy
     vocab/vocab_assert_trips vocab/expected_assert_trips
