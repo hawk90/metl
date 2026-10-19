@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Build and run every test through the single-header amalgamation.
+"""Build and run every Tier 1 test through the single-header amalgamation.
 
 The release ships one file, metl-X.Y.Z-single.hpp. Every public header gets a
 shim that includes it, so each test's `#include <metl/x.hpp>` resolves to the
 amalgamation instead of include/, and the whole suite runs against what users
-download. A test that exits with 77 (metl_test::skip_code) had nothing to check
+download. The tests of Tier 2 (metl/exp/) types are left out and listed: the
+amalgamation holds only what the umbrella includes. A test that exits with 77 (metl_test::skip_code) had nothing to check
 in this build and is reported as skipped, not passed. A test that CMakeLists.txt
 builds from several translation units (a metl_cc_test whose SRCS lists more than
 one file) is built from all of them, in the order listed, so a property that
