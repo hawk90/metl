@@ -54,11 +54,13 @@ Usage:
 """
 
 import argparse
+import os
 import pathlib
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 # Instructions executed, per benchmark, with the process baseline subtracted.
 # Keyed "<binary>::<benchmark name>".
@@ -158,9 +160,12 @@ def instruction_count(runner, argv):
 
 def benchmark_names(binary):
     """(countable, skipped) names, from the binary's own --list."""
-    result = subprocess.run(
-        [str(binary), "--list"], capture_output=True, text=True, check=True
-    )
+    try:
+        result = subprocess.run([str(binary), "--list"], capture_output=True, text=True)
+    except OSError as error:
+        raise RuntimeError(f"cannot run {binary} --list: {error}") from error
+    if result.returncode != 0:
+        raise RuntimeError(f"{binary} --list exited {result.returncode}\n{result.stderr}")
     countable, skipped = [], []
     for line in result.stdout.splitlines():
         name = line.strip()
@@ -173,11 +178,35 @@ def benchmark_names(binary):
     return countable, skipped
 
 
+# What bench/CMakeLists.txt names its targets: metl_bench_<name>, no suffix
+# except Windows' .exe.
+BINARY_NAME = re.compile(r"^metl_bench_[A-Za-z0-9_]+(\.exe)?$")
+
+
+def find_binaries(bench_dir):
+    """The benchmark executables under `bench_dir`, one per name, sorted.
+
+    Not everything the glob matches: CMakeFiles/ holds metl_bench_*.dir
+    trees, and a file with a suffix or without the executable bit is not a
+    benchmark. Two executables of one name would share every budget key, so
+    that is an error rather than a choice.
+    """
+    root = pathlib.Path(bench_dir)
+    found = {}
+    for path in sorted(root.rglob("metl_bench_*")):
+        if ("CMakeFiles" in path.relative_to(root).parts or not path.is_file()
+                or not BINARY_NAME.match(path.name) or not os.access(path, os.X_OK)):
+            continue
+        if path.name in found:
+            raise RuntimeError(f"two benchmark binaries named {path.name}: {found[path.name]} "
+                               f"and {path}. Point --bench-dir at one build.")
+        found[path.name] = path
+    return [found[name] for name in sorted(found)]
+
+
 def measure(bench_dir, iterations, runner):
     """{key: instructions} for every countable benchmark, baseline removed."""
-    binaries = sorted(
-        p for p in pathlib.Path(bench_dir).rglob("metl_bench_*") if p.is_file()
-    )
+    binaries = find_binaries(bench_dir)
     if not binaries:
         raise RuntimeError(
             f"no metl_bench_* binaries under {bench_dir} -- a run that measured "
@@ -269,6 +298,17 @@ def compare(measured, report, iterations=BUDGET_ITERATIONS):
             out.append(f"      NOTE: {budget - count:,} fewer than the budget. "
                        f"Lower BUDGETS['{key}'] to {count} so the ratchet keeps its grip.")
 
+    # A budget nothing measured: the benchmark was deleted or renamed, or its
+    # binary was not built. Its entry would otherwise leave the gate silently.
+    for key in sorted(set(BUDGETS) - set(measured)):
+        out.append(f"  {'':>12}  {key}   (budgeted, not measured)")
+        failures.append(
+            f"::error::{key} has a budget but this run did not measure it. If the "
+            f"benchmark was removed or renamed, remove or rename its entry in "
+            f"tools/check_instructions.py BUDGETS; if its binary is missing, "
+            f"build it."
+        )
+
     # Invalid measurements first, and they are not excused by --report.
     if hard:
         out.extend(hard)
@@ -349,6 +389,59 @@ def self_test():
         if code == 0:
             failures.append("a recorded budget let an optimised-away benchmark pass")
         del BUDGETS["b::optimised away"]
+
+        # A budget nothing measured fails: a benchmark deleted or renamed, or a
+        # whole binary no longer built, would otherwise drop out of the gate
+        # with every remaining entry passing.
+        BUDGETS["b::gone"] = 1_000_000
+        code, out = compare({"b::x": 1_000_000}, report=False)
+        if code == 0:
+            failures.append("passed with a budgeted benchmark that was never measured")
+        if not any("b::gone" in line for line in out):
+            failures.append("an unmeasured budget was not named")
+        code, _ = compare({"b::x": 1_000_000}, report=True)
+        if code != 0:
+            failures.append("--report refused a run that left a budget unmeasured")
+        BUDGETS.clear()
+
+        # A binary whose --list fails is an ::error::, not a traceback.
+        if os.name != "nt":
+            with tempfile.TemporaryDirectory() as tmp:
+                broken = pathlib.Path(tmp) / "metl_bench_broken"
+                broken.write_text("#!/bin/sh\nexit 3\n")
+                broken.chmod(0o755)
+                try:
+                    benchmark_names(broken)
+                    failures.append("a binary whose --list failed was read as listing nothing")
+                except RuntimeError:
+                    pass
+                except Exception as error:  # noqa: BLE001 -- the failure being tested
+                    failures.append(f"a failing --list raised {type(error).__name__}, "
+                                    f"not the RuntimeError main() reports")
+
+        # Only the benchmark executables are run, and each name once. A build
+        # tree also holds CMakeFiles/metl_bench_*.dir and whatever else
+        # matches the glob; two binaries of one name would share every key.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "bench" / "CMakeFiles" / "metl_bench_a.dir").mkdir(parents=True)
+            for rel, executable in (("bench/metl_bench_a", True),
+                                    ("bench/metl_bench_a.d", False),
+                                    ("bench/metl_bench_a.sh", True),
+                                    ("bench/CMakeFiles/metl_bench_a.dir/metl_bench_a", True)):
+                (root / rel).write_text("")
+                (root / rel).chmod(0o755 if executable else 0o644)
+            found = [p.relative_to(root).as_posix() for p in find_binaries(root)]
+            if found != ["bench/metl_bench_a"]:
+                failures.append(f"benchmark binaries found: {found}, want ['bench/metl_bench_a']")
+            (root / "other").mkdir()
+            (root / "other" / "metl_bench_a").write_text("")
+            (root / "other" / "metl_bench_a").chmod(0o755)
+            try:
+                find_binaries(root)
+                failures.append("two binaries named metl_bench_a were both measured")
+            except RuntimeError:
+                pass
 
         # ...and a benchmark just above the floor is fine.
         BUDGETS["b::thin but real"] = MIN_MEANINGFUL_COUNT

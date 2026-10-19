@@ -912,9 +912,13 @@ jobs:
       - name: Canary must FAIL the audit
         run: |
           set -uo pipefail
-          if python3 tools/check_invariants.py \
-               --nm arm-none-eabi-nm invariant_canary.elf; then
-            echo "::error::the canary passed the invariant audit — the gate is dead"
+          # Exit 1 is "violations found". Exit 2 is a tooling error -- nm failed
+          # or read no symbols -- which proves nothing about the rules.
+          status=0
+          python3 tools/check_invariants.py \
+            --nm arm-none-eabi-nm invariant_canary.elf || status=$?
+          if [[ "${status}" -ne 1 ]]; then
+            echo "::error::the canary's audit exited ${status}, not 1 (violations found) -- the gate is not shown to bite"
             exit 1
           fi
           echo "canary correctly rejected; the audit can fail"
@@ -1275,6 +1279,9 @@ jobs:
             qemu-system-arm -machine help | head -40
             exit 1
           fi
+
+      - name: The runner's grading must still bite (canary)
+        run: tools/run_qemu_tests.py --self-test
 
       - name: Cross-compile and run the test suite on ${{ matrix.cpu }}
         timeout-minutes: 10
