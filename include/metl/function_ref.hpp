@@ -92,11 +92,19 @@ class function_ref<R(Args...)> {
 
   /// @brief Deleted rvalue-binding overload.
   /// @warning Rejects temporaries to prevent dangling references. Bind
-  ///          only to lvalues that outlive the function_ref.
+  ///          only to lvalues that outlive the function_ref. To pass a lambda
+  ///          as an argument, name it first: `auto f = [&] {...}; call(f);`.
   // Reject rvalue callables: function_ref would store a pointer to a temporary
   // destroyed at the end of the full-expression (a dangling reference). This is
   // STRICTER than std::function_ref (P0792), which accepts temporaries. Function
   // pointers are unaffected — they use the dedicated pointer constructor above.
+  //
+  // Accepting rvalues would make `call([] {...})` work, and would rely on
+  // METL_LIFETIME_BOUND to catch `function_ref<R()> f = [] {...};`. It does not
+  // catch it reliably enough to replace this overload: Clang 21 warns
+  // (-Wdangling) for a local variable, a member of a local aggregate and a
+  // return, but not for an assignment (`f = [] {...};`), and GCC 16 and MSVC
+  // have no such attribute, so there the dangling binding would compile silently.
   template <typename F,
             typename Decayed = std::decay_t<F>,
             typename = std::enable_if_t<!std::is_lvalue_reference_v<F>>,
