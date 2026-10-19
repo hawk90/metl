@@ -53,7 +53,9 @@ struct non_atomic_obj final : metl::intrusive_ref_counter<non_atomic_obj, metl::
   explicit non_atomic_obj(int v) : value(v) {}
   // Declared: copy_construct_test copies one, and with the destructor below
   // an implicit copy is deprecated (-Wdeprecated-copy-with-user-provided-dtor).
+  // No test assigns one.
   non_atomic_obj(const non_atomic_obj&) = default;
+  non_atomic_obj& operator=(const non_atomic_obj&) = delete;
   ~non_atomic_obj() { ++destruction_count; }
   int value;
   static int destruction_count;
