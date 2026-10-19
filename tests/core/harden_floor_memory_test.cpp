@@ -202,6 +202,33 @@ int main() {
     CHECK_EQ(messages.size(), 0u);
   }
 
+  // static_message_queue::emplace on a full queue, with its METL_ASSERT gone:
+  // it builds nothing and hands back the newest element, not the slot at
+  // tail_ (the front's, still live). Once with tail_ at 0, where the newest
+  // element is in the last slot, and once with tail_ past it.
+  {
+    metl::static_message_queue<int, 4> messages;
+    int* newest = nullptr;
+    for (int i = 0; i < 4; ++i) {
+      newest = &messages.push(i);
+    }
+    int* got = nullptr;
+    CHECK(!guarded_against([&] { got = &messages.push(99); }));
+    CHECK_EQ(got, newest);
+    CHECK_EQ(messages.size(), 4u);
+
+    messages.pop();
+    newest = &messages.push(4);
+    CHECK(!guarded_against([&] { got = &messages.emplace(99); }));
+    CHECK_EQ(got, newest);
+    for (int expected = 1; expected <= 4; ++expected) {
+      int out = 0;
+      CHECK(messages.try_pop(out));
+      CHECK_EQ(out, expected);
+    }
+    CHECK(messages.empty());
+  }
+
   // fixed_vector: positions outside [begin, end], empty and reversed erase, a
   // resize that can never finish, an own-range assign, and emplace_back on a
   // Capacity-0 vector (back() would be data()[SIZE_MAX]).
@@ -237,6 +264,36 @@ int main() {
     metl::fixed_queue<int, 0> no_queue;
     CHECK(guarded_against([&] { (void)no_queue.push(1); }));
     CHECK_EQ(no_queue.size(), 0u);
+
+    // With room for elements the same emplace is not refused: it hands back
+    // the newest element (the front one, for emplace_front), an object that
+    // exists, and writes no slot.
+    metl::fixed_vector<int, 2> full_vector;
+    full_vector.push_back(1);
+    full_vector.push_back(2);
+    const int* from_vector = nullptr;
+    CHECK(!guarded_against([&] { from_vector = &full_vector.emplace_back(9); }));
+    CHECK(from_vector == &full_vector.back());
+    CHECK_EQ(full_vector.size(), 2u);
+    CHECK_EQ(full_vector.back(), 2);
+
+    metl::ring_buffer<int, 2> full_ring;
+    (void)full_ring.emplace_back(1);
+    (void)full_ring.emplace_back(2);
+    const int* from_ring = nullptr;
+    CHECK(!guarded_against([&] { from_ring = &full_ring.emplace_back(9); }));
+    CHECK(from_ring == &full_ring.back());
+    CHECK_EQ(full_ring.size(), 2u);
+    CHECK_EQ(full_ring.back(), 2);
+
+    metl::fixed_deque<int, 2> full_deque;
+    full_deque.push_back(1);
+    full_deque.push_back(2);
+    const int* from_deque = nullptr;
+    CHECK(!guarded_against([&] { from_deque = &full_deque.emplace_front(9); }));
+    CHECK(from_deque == &full_deque.front());
+    CHECK_EQ(full_deque.size(), 2u);
+    CHECK_EQ(full_deque.front(), 1);
 
     // Count and range inserts outside [begin, end] are refused too: by their
     // own check, or by the emplace each delegates to before anything moves.
@@ -421,6 +478,9 @@ int main() {
     CHECK(guarded_against([&] { metl::fixed_any_invocable<int(int)> f(null_fn); }));
     int (*null_exact)(int) = nullptr;
     CHECK(guarded_against([&] { metl::function_ref<int(int)> f(null_exact); }));
+    // A pointer of another signature takes the converting constructor, which
+    // has its own guard (#443).
+    CHECK(guarded_against([&] { metl::function_ref<int(int)> f(null_fn); }));
 
     metl::fixed_function<int(long)> empty_function;
     CHECK(guarded_against([&] { (void)empty_function(1); }));

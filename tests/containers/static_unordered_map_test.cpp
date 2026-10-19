@@ -408,5 +408,27 @@ int main() {
     CHECK_EQ(counting_hash::calls[0], 1);
   }
 
+  // operator[] with an lvalue key takes the const key_type& overload: a miss
+  // inserts a default value, a hit hands back the same stored value.
+  {
+    metl::static_unordered_map<int, int, 4> m;
+    const int key = 7;
+    int& slot = m[key];
+    CHECK_EQ(slot, 0);
+    CHECK_EQ(m.size(), 1u);
+    slot = 42;
+    int& again = m[key];
+    CHECK(&again == &slot);
+    CHECK_EQ(again, 42);
+    CHECK_EQ(m.size(), 1u);
+  }
+
+  // A zero-capacity map finds nothing.
+  {
+    metl::static_unordered_map<int, int, 0> zero;
+    CHECK(!zero.contains(3));
+    CHECK(zero.find(3) == nullptr);
+  }
+
   return metl_test::exit_code();
 }

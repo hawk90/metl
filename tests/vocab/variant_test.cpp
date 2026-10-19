@@ -441,6 +441,21 @@ int main() {
     }
   }
 
+  // ---- get<T> rvalue + const rvalue: the reference names the stored value ----
+  {
+    metl::variant<int, long> v(metl::in_place_index<1>, 8L);
+    long&& r = metl::get<long>(std::move(v));
+    r = 9L;
+    if (metl::get<1>(v) != 9L) {
+      return 70;
+    }
+    const metl::variant<int, long>& cv = v;
+    const long&& cr = metl::get<long>(std::move(cv));
+    if (&cr != metl::get_if<1>(&cv) || cr != 9L) {
+      return 71;
+    }
+  }
+
   // ---- cross-alternative copy assignment (backup pattern) ----
   {
     tracker::constructions = 0;
