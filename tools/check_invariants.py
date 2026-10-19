@@ -26,6 +26,8 @@ Exit status: 0 clean, 1 violations found, 2 usage/tooling error.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import re
 import shutil
 import subprocess
@@ -58,6 +60,8 @@ CATEGORIES: dict[str, list[tuple[str, str]]] = {
         (r"^__cxa_(begin|end)_catch$", "catch path"),
         (r"^_Unwind_", "unwinder"),
         (r"^__gxx_personality", "personality routine"),
+        (r"^__aeabi_unwind_cpp_pr\d+$", "ARM EHABI personality routine"),
+        (r"^__cxa_end_cleanup$", "cleanup path"),
     ],
     "rtti": [
         (r"^__dynamic_cast$", "dynamic_cast"),
@@ -145,7 +149,14 @@ def audit_symbols(
 def audit(
     image: str, nm: str, rules: list[tuple[str, re.Pattern[str], str]], allow: set[str]
 ) -> list[tuple[str, str, str, str]]:
-    return audit_symbols(read_symbols(nm, image), rules, allow)
+    symbols = read_symbols(nm, image)
+    # nm exits 0 on a stripped image and prints "no symbols" to stderr. An
+    # audit of an empty table finds nothing, which is not the same as clean.
+    if not symbols:
+        print(f"::error::{nm} read no symbols from {image}, so the audit has "
+              f"nothing to check. Audit an unstripped image.", file=sys.stderr)
+        raise SystemExit(2)
+    return audit_symbols(symbols, rules, allow)
 
 
 # --- Self-test fixtures -----------------------------------------------------
@@ -181,6 +192,10 @@ SELF_TEST_HITS = {
         "__cxa_begin_catch", "__cxa_end_catch",
         "_Unwind_RaiseException", "_Unwind_Resume",
         "__gxx_personality_v0",
+        # ARM EHABI: clang and GCC reference these from any frame with an
+        # unwind table (C with -funwind-tables, C++ with only cleanups).
+        "__aeabi_unwind_cpp_pr0", "__aeabi_unwind_cpp_pr1",
+        "__cxa_end_cleanup",
     ],
     "rtti": [
         "__dynamic_cast",
@@ -199,6 +214,8 @@ SELF_TEST_MISSES = [
     "free_list_init",     # ^free$ likewise
     "my_memalign",        # ^memalign$ likewise
     "sbrk_bytes_used",    # ^_?sbrk$ likewise -- a counter, not the syscall
+    "__aeabi_uidiv",      # an EABI helper, not an unwind routine
+    "__cxa_end_cleanup_count",  # ^__cxa_end_cleanup$ is anchored
     "_ZN4metl11fixed_arrayE",  # a normal mangled name: _ZN, not _Znw
     "_ZdvSomething",      # _Zd[la] wants delete, not divide
     "_ZTVN4metlE",        # a vtable is not a typeinfo (_ZTV, not _ZTI/_ZTS)
@@ -269,6 +286,30 @@ def self_test() -> int:
     if not rules:
         failures.append("compiled() produced no rules at all -- an audit over "
                         "nothing passes every image")
+
+    # 7. Every symbol type that can put a heap call in the image is audited.
+    #    Spelled out rather than read from RELEVANT_TYPES, which would let an
+    #    edit to the set pass its own test. `W` matters most: libsupc++ defines
+    #    operator new weak, so a linked operator new shows as `W`, not `T`.
+    for sym_type in "TtDdBbRrWwVvSsGgiU":
+        if not audit_symbols(parse_symbols(_table(["_Znwj"], sym_type=sym_type)), rules, set()):
+            failures.append(f"an nm type {sym_type!r} operator new was not reported")
+
+    # 8. An image nm finds no symbols in is not clean, it is unmeasured: `nm`
+    #    prints "no symbols" for a stripped image and still exits 0, so
+    #    without this a stripped image passes with any heap call in it.
+    original_reader = globals()["read_symbols"]
+    globals()["read_symbols"] = lambda nm, image: parse_symbols("")
+    try:
+        # Quiet: an ::error:: line from a passing self-test would annotate the run.
+        with contextlib.redirect_stderr(io.StringIO()):
+            audit("stripped.elf", "nm", rules, set())
+        failures.append("an image with no symbols at all passed the audit")
+    except SystemExit as exc:
+        if exc.code != 2:
+            failures.append(f"an image with no symbols exited {exc.code}, not 2")
+    finally:
+        globals()["read_symbols"] = original_reader
 
     if failures:
         for failure in failures:

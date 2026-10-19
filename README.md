@@ -353,7 +353,8 @@ against the packaged headers on every CI run.
 
 ## Single-header build
 
-`tools/amalgamate.py` flattens the public headers into one file:
+`tools/amalgamate.py` flattens the stable public headers (the umbrella
+`metl/metl.hpp`, so not the experimental `metl/exp/` ones) into one file:
 
 ```bash
 python3 tools/amalgamate.py -o metl-single.hpp
@@ -366,7 +367,7 @@ python3 tools/amalgamate.py -o metl-single.hpp
 It is generated from the real headers rather than maintained alongside them, so
 it cannot drift — and it is not a reduced subset: CI redirects every
 `metl/*.hpp` at the amalgamated file and runs the **whole test suite** through
-it. That file is attached to each GitHub Release; the `amalgamation` job builds
+it, except the tests of `metl/exp/` types, which the tool lists as left out. That file is attached to each GitHub Release; the `amalgamation` job builds
 it on every push.
 
 ## Zephyr
@@ -543,14 +544,14 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | No heap / no exceptions / no RTTI | Cortex-M0/M3/M4/M7, newlib-nano | link + **audit the image's symbol table**; a deliberate canary must fail it | `invariants` |
 | Lock-free capability | Cortex-M0/M3/M4/M7 | the trait must match the target **and** the opposite expectation must not compile | `handle-atomics` |
 | Non-default configs | `METL_CRC_TABLE=0`, **`-std=c++20`**, **`c++23`**, **`c++26`**, `-fno-exceptions` | build + `ctest` for each, the C++20/23/26 and `-fno-exceptions` legs under Clang and GCC (`#if` arms nothing else compiles) | `config-matrix` |
-| Coverage | host, Clang source-based | `include/metl` line + branch coverage against a floor; the same report is shown on [Codecov](https://codecov.io/gh/hawk90/metl), display only. Code evaluated only at compile time reads as uncovered lines | `coverage` |
+| Coverage | host, Clang source-based | `include/metl` line + branch coverage against a floor, and MC/DC reported without one; the line and branch report is shown on [Codecov](https://codecov.io/gh/hawk90/metl), display only. Code evaluated only at compile time reads as uncovered lines | `coverage` |
 | Benchmarks | host | build + run each suite (`--quick`); instructions executed per benchmark, counted under cachegrind, against a budget (`tools/check_instructions.py`); wall-clock numbers are informational only | `bench-smoke` |
-| Code size and RAM | Cortex-M0/M3/M4/M7, `-Os` | code, constants, static RAM including TLS and deepest stack frame of the probes against per-target budgets (`tools/check_size.py`, `tools/check_stack.py`); each release attaches the measurements as `metl-X.Y.Z-measurements.json` | `invariants` |
+| Code size and RAM | Cortex-M0/M3/M4/M7, `-Os` | code, constants, static RAM including TLS and deepest stack frame of the probes against per-target budgets (`tools/check_size.py`, `tools/check_stack.py`); under QEMU, the runtime stack high-water mark without and with LTO and guest instructions per benchmark region (`tools/check_qemu_probes.py`); each release attaches the measurements as `metl-X.Y.Z-measurements.json` | `invariants` |
 | Header hygiene | per-header self-containment + umbrella completeness | `-fsyntax-only` per header + `ctest` | `header-checks` |
 | API contract | every public header | every `try_*` is `[[nodiscard]]` and `try_` is reserved for recoverable forms; a self-test canary must still fail; a single-pass iterator must **not** compile | `api-contract` |
 | Install / consume | `find_package(metl)` downstream | install + build + **run** a consumer | `install-check` |
 | Conan package | `conan create` + `test_package/` | build + **run** a consumer against the *packaged* headers; a pre-C++17 profile must be refused | `conan` |
-| Single-header | generated amalgamation of every public header | redirect every `metl/*.hpp` at it and **run the whole test suite through it** | `amalgamation` |
+| Single-header | generated amalgamation of every stable public header | redirect every `metl/*.hpp` at it and **run the whole test suite through it** (less the `metl/exp/` tests) | `amalgamation` |
 | Static analysis | clang-tidy, deduplicated | distinct-finding count against a ratchet that only goes down, except on a clang-tidy version bump, which is recorded with its reason in `ci.yml` | `clang-tidy` |
 | Consumer warnings | clang and gcc × C++17 / C++20 | every host test, fuzz and example TU under a strict consumer warning set, as errors | `consumer-warnings` |
 | Fuzzing | libFuzzer + ASan/UBSan, every `fuzz/` harness | bounded run of each harness; fails on crash, leak or timeout | `fuzz-smoke` |

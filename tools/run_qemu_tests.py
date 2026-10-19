@@ -67,7 +67,9 @@ CANARY = REPO / "tests" / "embedded" / "qemu_canary.cpp"
 CAPABILITY_GATE_TEXT = "ARMv6-M (Cortex-M0/M0+)"
 LINKER_SCRIPT = REPO / "tests" / "embedded" / "mps2-an385.ld"
 TIMEOUT_SECONDS = 20
-SENTINEL = re.compile(r"^METL_QEMU_EXIT (\d+)$", re.MULTILINE)
+# The line terminator is part of the match: the log is read while QEMU writes
+# it a character at a time, and "METL_QEMU_EXIT 7" may be the first half of 77.
+SENTINEL = re.compile(r"^METL_QEMU_EXIT (\d+)\r?\n", re.MULTILINE)
 # metl_test::skip_code in tests/metl_check.hpp.
 SKIP_CODE = 77
 
@@ -166,7 +168,8 @@ def run_one(elf, machine, log):
             stdout=out, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + TIMEOUT_SECONDS
         while time.monotonic() < deadline:
-            if SENTINEL.search(run_log.read_text(errors="replace")) or qemu.poll() is not None:
+            if reported_code(run_log.read_text(errors="replace")) is not None \
+                    or qemu.poll() is not None:
                 break
             time.sleep(0.1)
         qemu.kill()
@@ -174,8 +177,62 @@ def run_one(elf, machine, log):
     output = run_log.read_text(errors="replace")
     with open(log, "a") as full:
         full.write(output)
+    return reported_code(output), output
+
+
+def reported_code(output):
+    """The status on the sentinel line, or None if no whole line is there yet."""
     match = SENTINEL.search(output)
-    return (int(match.group(1)) if match else None), output
+    return int(match.group(1)) if match else None
+
+
+def grade(rel, cpu, code):
+    """(passed, self_skipped, failure_or_None) for a test that reported `code`."""
+    if code == 0:
+        return True, False, None
+    if code == SKIP_CODE and cpu in EXPECTED_SELF_SKIP.get(rel, set()):
+        return False, True, None
+    if code == SKIP_CODE:
+        return False, False, f"unexpected self-skip on {cpu}"
+    if code is not None:
+        return False, False, f"exit {code}"
+    return False, False, "no exit line — hung or crashed before main returned"
+
+
+def self_test():
+    """The grading, without a toolchain or QEMU. The canary covers the shim."""
+    failures = []
+    # Semihosting writes a character at a time, and the log is polled while it
+    # is written: "METL_QEMU_EXIT 7" can be on disk with the second 7 of 77
+    # still to come. Only a whole line is a status.
+    for text, want in (("METL_QEMU_BEGIN\nMETL_QEMU_EXIT 7", None),
+                       ("METL_QEMU_EXIT 77\n", 77),
+                       ("METL_QEMU_EXIT 0\r\n", 0),
+                       ("METL_QEMU_BEGIN\n", None),
+                       ("x METL_QEMU_EXIT 0\n", None)):
+        got = reported_code(text)
+        if got != want:
+            failures.append(f"{text!r} read as {got}, want {want}")
+    skipper = "sync/irq_masking_test.cpp"
+    for rel, cpu, code, want in (
+            ("any_test.cpp", "cortex-m3", 0, (True, False, False)),
+            (skipper, "cortex-m0", SKIP_CODE, (False, True, False)),
+            (skipper, "cortex-m3", SKIP_CODE, (False, False, True)),
+            ("any_test.cpp", "cortex-m0", SKIP_CODE, (False, False, True)),
+            ("any_test.cpp", "cortex-m3", 1, (False, False, True)),
+            ("any_test.cpp", "cortex-m3", None, (False, False, True))):
+        passed, skipped, failure = grade(rel, cpu, code)
+        if (passed, skipped, failure is not None) != want:
+            failures.append(f"{rel} on {cpu} reporting {code} graded "
+                            f"{(passed, skipped, failure)}, want (passed, skipped, "
+                            f"failed) = {want}")
+    for failure in failures:
+        print(f"self-test FAILED: {failure}", file=sys.stderr)
+    if failures:
+        return 1
+    print("self-test passed: only a whole sentinel line is a status, and a self-skip "
+          "passes only where EXPECTED_SELF_SKIP allows it")
+    return 0
 
 
 def main():
@@ -191,7 +248,11 @@ def main():
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--only", default="",
                         help="comma-separated tests (as discovery names them) to run instead of all")
+    parser.add_argument("--self-test", action="store_true",
+                        help="check the grading without a toolchain or QEMU")
     args = parser.parse_args()
+    if args.self_test:
+        return self_test()
     sys.stdout.reconfigure(line_buffering=True)
 
     sources = discover()
@@ -308,27 +369,21 @@ def main():
             continue
 
         code, output = run_one(elf, args.machine, log)
-        if code == 0:
+        ok, self_skipped, failure = grade(rel, args.cpu, code)
+        if ok:
             print(f"{rel:<52} PASS")
             passed += 1
-        elif code == SKIP_CODE and args.cpu in EXPECTED_SELF_SKIP.get(rel, set()):
+        elif self_skipped:
             # The test found nothing it can check on this core (no VTOR on
             # ARMv6-M). Counted apart from passes so it cannot read as evidence.
             print(f"{rel:<52} SKIP  (reported by the test, expected on {args.cpu})")
             runtime_skipped += 1
-        elif code == SKIP_CODE:
-            print(f"{rel:<52} FAIL  (skipped itself; not expected to on {args.cpu})")
-            print(indented(output, 15))
-            failures.append(f"{rel} (unexpected self-skip on {args.cpu})")
-        elif code is not None:
-            print(f"{rel:<52} FAIL  (exit {code})")
-            print(indented(output, 15))
-            failures.append(f"{rel} (exit {code})")
         else:
-            # No sentinel: hung inside the test, crashed, or never started.
-            print(f"{rel:<52} FAIL  (no METL_QEMU_EXIT line)")
+            # A failing exit, a self-skip where none is expected, or no
+            # sentinel at all: hung inside the test, crashed, or never started.
+            print(f"{rel:<52} FAIL  ({failure})")
             print(indented(output, 15))
-            failures.append(f"{rel} (no exit line — hung or crashed before main returned)")
+            failures.append(f"{rel} ({failure})")
         if args.stop_on_first_failure and failures:
             break
 

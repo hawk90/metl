@@ -53,6 +53,7 @@ import argparse
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -196,8 +197,21 @@ def static_assert_messages(include_dir):
     return found
 
 
-def census(include_dir, case_dir):
+def _flatten(text):
+    """`text` without quotes and with whitespace runs collapsed. An `#error`
+    prints its string literals as written -- `"a " "b"` -- where the census
+    joins them, as a static_assert's message is joined, into `a b`."""
+    return re.sub(r"\s+", " ", text.replace('"', ""))
+
+
+def census(include_dir, case_dir, diagnostics):
     """(messages, covered, orphan_expectations).
+
+    `diagnostics` maps a case's file name to what its guarded compile printed.
+    A message is covered when a case's EXPECT-ERROR text is part of it AND the
+    message itself is in that case's diagnostic. The text alone is not enough:
+    "Count must not exceed Extent" is part of both first<Count>()'s message and
+    last<Count>()'s, and the one case that carries it fires only last<Count>().
 
     `orphan_expectations` are EXPECT-ERROR lines that match no assertion in the
     headers. Such a case still fails to compile and still matches its
@@ -205,20 +219,22 @@ def census(include_dir, case_dir):
     reworded or moved, and the census would quietly count it as uncovered.
     """
     messages = static_assert_messages(include_dir)
-    expectations = [expected_message(case)
-                    for case in sorted(pathlib.Path(case_dir).glob("*.cpp"))]
-    expectations = [text for text in expectations if text]
+    shown = {name: _flatten(text) for name, text in diagnostics.items()}
+    expectations = {case.name: expected_message(case)
+                    for case in sorted(pathlib.Path(case_dir).glob("*.cpp"))}
+    expectations = {name: text for name, text in expectations.items() if text}
 
     covered = {message for message in messages
-               if any(text in message for text in expectations)}
-    orphans = [text for text in expectations
+               if any(text in message and _flatten(message) in shown.get(name, "")
+                      for name, text in expectations.items())}
+    orphans = [text for text in expectations.values()
                if not any(text in message for message in messages)]
     return messages, covered, orphans
 
 
-def check_census(include_dir, case_dir, max_uncovered=MAX_UNCOVERED):
+def check_census(include_dir, case_dir, diagnostics, max_uncovered=MAX_UNCOVERED):
     """Failure strings for the coverage ratchet (empty means it held)."""
-    messages, covered, orphans = census(include_dir, case_dir)
+    messages, covered, orphans = census(include_dir, case_dir, diagnostics)
     failures = []
 
     if not messages:
@@ -267,8 +283,9 @@ def compile_once(cxx, std, include_dir, case, define_guard):
     return result.returncode, result.stdout + result.stderr
 
 
-def check_case(cxx, std, include_dir, case):
-    """Return a list of failure strings for one case (empty means it passed)."""
+def check_case(cxx, std, include_dir, case, diagnostics=None):
+    """Return a list of failure strings for one case (empty means it passed).
+    The guarded compile's output is stored in `diagnostics[case name]`."""
     failures = []
     name = pathlib.Path(case).name
 
@@ -288,6 +305,8 @@ def check_case(cxx, std, include_dir, case):
         return failures
 
     code, output = compile_once(cxx, std, include_dir, case, define_guard=True)
+    if diagnostics is not None:
+        diagnostics[name] = output
     if code == 0:
         failures.append(
             f"{name}: compiled with -D{GUARD} and was expected NOT to. The "
@@ -316,12 +335,17 @@ def run(cxx, std, include_dir, case_dir, quiet=False, jobs=None):
         say(f"no cases found in {case_dir}. A run over nothing reports success, "
             f"which is the failure this whole file is about.", error=True)
         return 1
+    if shutil.which(cxx) is None:
+        say(f"compiler {cxx!r} not found; no case can be compiled", error=True)
+        return 1
 
     # Cases are independent compiler processes, so they run in parallel; each
     # case still does its control compile before its guarded one. `map` keeps
     # the input order, so the report reads the same as a serial run.
+    diagnostics = {}
     with ThreadPoolExecutor(max_workers=jobs or os.cpu_count() or 1) as pool:
-        results = list(pool.map(lambda case: check_case(cxx, std, include_dir, case), cases))
+        results = list(pool.map(lambda case: check_case(cxx, std, include_dir, case, diagnostics),
+                                cases))
 
     failures = []
     for case, case_failures in zip(cases, results):
@@ -331,11 +355,11 @@ def run(cxx, std, include_dir, case_dir, quiet=False, jobs=None):
 
     say(f"{len(cases)} compile-failure case(s) under {cxx} -std={std}")
 
-    messages, covered, _ = census(include_dir, case_dir)
+    messages, covered, _ = census(include_dir, case_dir, diagnostics)
     say(f"census: {len(covered)} of {len(messages)} distinct user-facing "
         f"static_assert message(s) are pinned by a case "
         f"({len(messages) - len(covered)} uncovered, ratchet {MAX_UNCOVERED})")
-    failures.extend(check_census(include_dir, case_dir))
+    failures.extend(check_census(include_dir, case_dir, diagnostics))
 
     if failures:
         for failure in failures:
@@ -408,6 +432,15 @@ def self_test(cxx, std, include_dir):
         elif "CONTROL" not in result[0]:
             failures.append("a broken control was rejected for the wrong reason")
 
+        # A compiler that cannot be run is a failure with a message, not a
+        # traceback -- and never a pass.
+        try:
+            if run("no-such-compiler-for-the-self-test", std, include_dir, root, quiet=True) == 0:
+                failures.append("a run whose compiler does not exist reported success")
+        except OSError as error:
+            failures.append(f"a compiler that does not exist raised {type(error).__name__} "
+                            f"instead of failing the run")
+
         # An empty case directory must fail, not pass.
         empty = root / "empty"
         empty.mkdir()
@@ -432,7 +465,8 @@ def self_test(cxx, std, include_dir):
         (cases / "pins.cpp").write_text("// EXPECT-ERROR: pinned message\n")
         census_dir = str(headers.parent)
 
-        messages, covered, orphans = census(census_dir, cases)
+        diagnostics = {"pins.cpp": 'error: static assertion failed: pinned message'}
+        messages, covered, orphans = census(census_dir, cases, diagnostics)
         if len(messages) != 2:
             failures.append(f"the census counted {len(messages)} user-facing "
                             f"message(s), expected 2 -- a static_assert inside "
@@ -444,22 +478,38 @@ def self_test(cxx, std, include_dir):
             failures.append(f"the census reported orphans {orphans} on a "
                             f"fixture whose expectation matches")
 
-        if check_census(census_dir, cases, max_uncovered=0):
+        if check_census(census_dir, cases, diagnostics, max_uncovered=0):
             pass  # correct: 1 uncovered against a ratchet of 0
         else:
             failures.append("the census ratchet did not fire on an uncovered "
                             "static_assert -- a contract can ship with nothing "
                             "proving it fires")
-        if not check_census(census_dir, cases, max_uncovered=5):
+        if not check_census(census_dir, cases, diagnostics, max_uncovered=5):
             failures.append("the census accepted a ratchet with 4 slack. A "
                             "ratchet with slack cannot tell the next regression "
                             "from the slack it was left with")
-        if check_census(census_dir, cases, max_uncovered=1):
+        if check_census(census_dir, cases, diagnostics, max_uncovered=1):
             failures.append("the census rejected an exactly-tight ratchet")
+
+        # One expectation can be a substring of two messages -- "Count must not
+        # exceed Extent" is in both first<Count>()'s and last<Count>()'s. The
+        # case fires one of them; only the one in its diagnostic is covered.
+        (headers / "twins.hpp").write_text(
+            'template <int N> struct d { static_assert(N > 0, "first: Count too big"); };\n'
+            'template <int N> struct e { static_assert(N > 0, "last: Count too big"); };\n')
+        (cases / "twin.cpp").write_text("// EXPECT-ERROR: Count too big\n")
+        twin_diagnostics = dict(diagnostics, **{"twin.cpp": "error: static assertion failed: last: Count too big"})
+        _, twin_covered, _ = census(census_dir, cases, twin_diagnostics)
+        if twin_covered != {"pinned message", "last: Count too big"}:
+            failures.append(f"the census marked {sorted(twin_covered)} covered; a case covers only "
+                            f"the message its own diagnostic shows, not every message its "
+                            f"EXPECT-ERROR text is a substring of")
+        (cases / "twin.cpp").unlink()
+        (headers / "twins.hpp").unlink()
 
         # An expectation naming a message no header carries.
         (cases / "orphan.cpp").write_text("// EXPECT-ERROR: message that moved\n")
-        orphan_failures = check_census(census_dir, cases, max_uncovered=1)
+        orphan_failures = check_census(census_dir, cases, diagnostics, max_uncovered=1)
         if not any("matches no static_assert" in text for text in orphan_failures):
             failures.append("an EXPECT-ERROR matching no static_assert in the "
                             "headers was accepted -- the case stays green while "
@@ -470,7 +520,7 @@ def self_test(cxx, std, include_dir):
         # everything is covered.
         nothing = root / "nothing"
         nothing.mkdir()
-        if not check_census(nothing, cases, max_uncovered=0):
+        if not check_census(nothing, cases, diagnostics, max_uncovered=0):
             failures.append("a census over an include dir with NO headers "
                             "reported success")
 
