@@ -92,10 +92,18 @@ THE MEASUREMENT RECORD. `--record FILE` writes what was measured as JSON: cpu,
 commit, per artifact the toolchain (`.comment`), flags, per-class totals and
 every section, plus the stack figures in keys of their own -- the static deepest
 frame from `.su` (`--su-dir`) and the runtime high-water mark without and with
-LTO, which nothing measures yet (#404) and are therefore null. The `invariants`
-job uploads one record per CPU, and the release attaches all four, merged by
+LTO, which tools/check_qemu_probes.py adds to the same record (#404), with the
+QEMU instruction counts. The `invariants` job uploads one record per CPU, and the release attaches all four, merged by
 `--merge-records`, as metl-X.Y.Z-measurements.json, so a later release has
 something to be compared against.
+
+`--compare OLD NEW` prints that comparison as Markdown (#409): per CPU, every
+figure old and new with its delta, the sections behind each class that moved,
+"not measured" for a null (never 0, and no delta), and a CPU or figure on one
+side only listed as added or removed. The budgets only catch growth past their
+tolerance; this shows the change below it. The `invariants` job compares its
+record with the latest release's, and the release compares the new record with
+the previous release's and attaches it as metl-X.Y.Z-measurements.md.
 
 Usage:
     tools/check_size.py --elf invariant_probe.elf --cpu cortex-m3
@@ -105,6 +113,7 @@ Usage:
         --record m.json --flags "$FLAGS" --su-dir .
     tools/check_size.py --summary m.json
     tools/check_size.py --merge-records out.json --expect-commit SHA a.json b.json ...
+    tools/check_size.py --compare metl-1.4.0-measurements.json measurements-cortex-m3.json
     tools/check_size.py --self-test
 """
 
@@ -451,8 +460,9 @@ def empty_record(cpu, commit=None):
     return {"schema": RECORD_SCHEMA, "cpu": cpu, "commit": commit,
             "artifacts": {},
             # Separate keys, never one "stack" number: the static figure is the
-            # deepest single frame, the runtime ones are a high-water mark. No
-            # job measures the runtime figures yet (#404), so they are null.
+            # deepest single frame, the runtime ones are a high-water mark.
+            # tools/check_qemu_probes.py fills the runtime ones (#404); null
+            # until it has.
             "stack": {"static_max_frame": None, "runtime_hwm": None,
                       "runtime_hwm_lto": None}}
 
@@ -542,6 +552,121 @@ def merge_records(paths, expect_commit):
     return {"schema": RECORD_SCHEMA, "commit": commits.pop(), "records": records}
 
 
+def records_by_cpu(document, path):
+    """{cpu: record} from a merged release file or from one job's record."""
+    if document.get("schema") != RECORD_SCHEMA:
+        raise ElfError(f"{path}: schema {document.get('schema')}, expected {RECORD_SCHEMA}; "
+                       f"records of different schemas are not compared")
+    if "records" in document:
+        return document["records"]
+    return {document.get("cpu"): document}
+
+
+def figures(record):
+    """{(group, name): value} of everything a record measured, None where it
+    measured nothing. Absent keys are absent here too: a figure one side has
+    and the other does not is listed as added or removed, not as a change."""
+    out = {}
+    for artifact, entry in record.get("artifacts", {}).items():
+        for name, value in entry.get("classes", {}).items():
+            out[(f"`{artifact}`", name)] = value
+        for name, value in (entry.get("regions") or {}).items():
+            out[(f"`{artifact}`", f"region {name}")] = value
+    stack = record.get("stack", {})
+    frame = stack.get("static_max_frame")
+    out[("stack", "static deepest frame")] = frame and frame["bytes"]
+    for key, label in (("runtime_hwm", "runtime high-water mark"),
+                       ("runtime_hwm_lto", "runtime high-water mark, LTO")):
+        if key in stack:
+            out[("stack", label)] = stack[key]
+    for name, value in ((record.get("instructions") or {}).get("regions") or {}).items():
+        out[("instructions", name)] = value
+    return out
+
+
+def delta_cells(old, new):
+    """(delta, percent) cells. A side that measured nothing has no delta."""
+    if old is None or new is None:
+        return "", ""
+    change = new - old
+    percent = "" if old == 0 else f"{100.0 * change / old:+.1f}%"
+    return f"{change:+d}", percent
+
+
+def section_changes(old_entry, new_entry, classes):
+    """Rows naming the sections behind a change in `classes`, largest change
+    first."""
+    def sizes(entry):
+        # Summed by name: an object file can hold two sections of one name.
+        total = {}
+        for section in entry.get("sections", []):
+            if section["class"] in classes:
+                total[section["name"]] = total.get(section["name"], 0) + section["bytes"]
+        return total
+    before, after = sizes(old_entry), sizes(new_entry)
+    changed = [(name, before.get(name), after.get(name)) for name in set(before) | set(after)
+               if before.get(name) != after.get(name)]
+    changed.sort(key=lambda row: (-abs((row[2] or 0) - (row[1] or 0)), row[0]))
+    return [f"| `{name}` | {'absent' if old is None else old} | {'absent' if new is None else new} | "
+            f"{(new or 0) - (old or 0):+d} |" for name, old, new in changed]
+
+
+def compare_records(old_document, new_document, old_path="old", new_path="new"):
+    """Markdown comparing two records (or merged release files) per CPU. A
+    single job's record is compared with the same CPU of the other side only,
+    so a pull request's job does not list the other CPUs as removed."""
+    def cell(value):
+        return "not measured" if value is None else str(value)
+
+    def label(document):
+        commit = document.get("commit")
+        return commit[:12] if commit else "?"
+
+    old_cpus = records_by_cpu(old_document, old_path)
+    new_cpus = records_by_cpu(new_document, new_path)
+    for single, other in ((old_document, "new"), (new_document, "old")):
+        if "records" not in single:
+            keep = set(records_by_cpu(single, ""))
+            if other == "new":
+                new_cpus = {cpu: r for cpu, r in new_cpus.items() if cpu in keep}
+            else:
+                old_cpus = {cpu: r for cpu, r in old_cpus.items() if cpu in keep}
+    lines = [f"### Measurements compared: {label(old_document)} -> {label(new_document)}", ""]
+    for cpu in sorted(set(old_cpus) - set(new_cpus)):
+        lines += [f"#### {cpu}", "", "Removed: only the old side measured this CPU.", ""]
+    for cpu in sorted(set(new_cpus) - set(old_cpus)):
+        lines += [f"#### {cpu}", "", "Added: only the new side measured this CPU.", ""]
+    for cpu in sorted(set(old_cpus) & set(new_cpus)):
+        old, new = figures(old_cpus[cpu]), figures(new_cpus[cpu])
+        lines += [f"#### {cpu}", "", "| figure | old | new | delta | % |", "|---|---:|---:|---:|---:|"]
+        for key in sorted(set(old) | set(new)):
+            name = f"{key[0]} {key[1]}"
+            if key not in new:
+                lines.append(f"| {name} | {cell(old[key])} | removed | | |")
+            elif key not in old:
+                lines.append(f"| {name} | added | {cell(new[key])} | | |")
+            else:
+                change, percent = delta_cells(old[key], new[key])
+                lines.append(f"| {name} | {cell(old[key])} | {cell(new[key])} | {change} | {percent} |")
+        old_artifacts = old_cpus[cpu].get("artifacts", {})
+        new_artifacts = new_cpus[cpu].get("artifacts", {})
+        for artifact in sorted(set(old_artifacts) & set(new_artifacts)):
+            old_classes = old_artifacts[artifact].get("classes", {})
+            new_classes = new_artifacts[artifact].get("classes", {})
+            # The section class, and the totals it feeds.
+            for cls, totals in (("code", ("code",)), ("const", ("const",)),
+                                ("ram", ("ram", "ram_progbits", "ram_nobits")), ("tls", ("tls",)),
+                                ("init_arrays", ("init_arrays", "init_array_entries"))):
+                if all(old_classes.get(t) == new_classes.get(t) for t in totals):
+                    continue
+                rows = section_changes(old_artifacts[artifact], new_artifacts[artifact], {cls})
+                if rows:
+                    lines += ["", f"Sections behind the {cls} change in `{artifact}`:", "",
+                              "| section | old | new | delta |", "|---|---:|---:|---:|", *rows]
+        lines.append("")
+    return "\n".join(lines)
+
+
 def compare(label, measured, budget, tolerance, cpu, report, key):
     """Return (exit_code, lines). Shared by all three metrics."""
     out = []
@@ -599,6 +724,8 @@ def main():
     parser.add_argument("--merge-records", metavar="OUT",
                         help="merge the record files given as arguments into OUT")
     parser.add_argument("--expect-commit", help="with --merge-records: every record's commit")
+    parser.add_argument("--compare", nargs=2, metavar=("OLD", "NEW"),
+                        help="print a Markdown comparison of two records or merged release files")
     parser.add_argument("records", nargs="*", help=argparse.SUPPRESS)
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
@@ -609,6 +736,12 @@ def main():
     try:
         if args.summary:
             print(summary(json.loads(pathlib.Path(args.summary).read_text())), end="")
+            return 0
+        if args.compare:
+            old_path, new_path = args.compare
+            print(compare_records(json.loads(pathlib.Path(old_path).read_text()),
+                                  json.loads(pathlib.Path(new_path).read_text()),
+                                  old_path, new_path), end="")
             return 0
         if args.merge_records:
             if not args.records:
@@ -1040,6 +1173,59 @@ def self_test():
         expect("re-run record: commit", again["commit"], "b" * 40)
         expect("re-run record: artifacts", sorted(again["artifacts"]), ["invariant_probe.elf"])
 
+    # --compare: a grown and a shrunk class with the sections behind them, a
+    # null that must not read as 0, a CPU on one side only, a single job's
+    # record against a release, and a schema mismatch.
+    def fixture(cpu, code, ram, text_bytes, hwm, regions):
+        classes = dict.fromkeys(CLASSES, 0)
+        classes.update(code=code, ram=ram, ram_nobits=ram)
+        sections = [{"name": ".text.f", "type": "PROGBITS", "flags": "AX", "class": "code",
+                     "bytes": text_bytes},
+                    {"name": ".text.g", "type": "PROGBITS", "flags": "AX", "class": "code",
+                     "bytes": code - text_bytes},
+                    {"name": ".bss.pool", "type": "NOBITS", "flags": "WA", "class": "ram",
+                     "bytes": ram}]
+        record = empty_record(cpu, "c" * 40)
+        record["artifacts"]["invariant_probe.elf"] = {
+            "role": "linked-image", "toolchain": None, "flags": None, "classes": classes,
+            "regions": {"flash": None, "ram": None}, "sections": sections}
+        record["stack"].update(static_max_frame={"bytes": 96, "function": "f"}, runtime_hwm=hwm)
+        record["instructions"] = {"source": "fixture", "regions": regions}
+        return record
+    old = {"schema": RECORD_SCHEMA, "commit": "a" * 40, "records": {
+        "cortex-m3": fixture("cortex-m3", 1000, 256, 600, None, {"fill": 50}),
+        "cortex-m0plus": fixture("cortex-m0plus", 900, 256, 500, 300, {})}}
+    new = {"schema": RECORD_SCHEMA, "commit": "b" * 40, "records": {
+        "cortex-m3": fixture("cortex-m3", 1040, 200, 640, 412, {"fill": 50, "drain": 7}),
+        "cortex-m7": fixture("cortex-m7", 800, 256, 400, 300, {})}}
+    table = compare_records(old, new)
+    for want in ("| `invariant_probe.elf` code | 1000 | 1040 | +40 | +4.0% |",
+                 "| `invariant_probe.elf` ram | 256 | 200 | -56 | -21.9% |",
+                 "| `.text.f` | 600 | 640 | +40 |",
+                 "| `.bss.pool` | 256 | 200 | -56 |",
+                 "| stack runtime high-water mark | not measured | 412 |  |  |",
+                 "| instructions drain | added | 7 | | |",
+                 "| instructions fill | 50 | 50 | +0 | +0.0% |",
+                 "Removed: only the old side measured this CPU.",
+                 "Added: only the new side measured this CPU."):
+        if want not in table:
+            failures.append(f"--compare: no line {want!r} in\n{table}")
+    if "`.text.g`" in table:
+        failures.append("--compare: listed a section that did not change")
+    if "| stack runtime high-water mark | not measured | 412 | +" in table:
+        failures.append("--compare: read a null as 0 and printed a delta")
+    for cpu, side in (("cortex-m0plus", "Removed"), ("cortex-m7", "Added")):
+        if table.index(f"#### {cpu}") > table.index(f"{side}: only"):
+            failures.append(f"--compare: {cpu} is not the CPU marked {side.lower()}")
+    single = compare_records(old, new["records"]["cortex-m3"])
+    if "cortex-m0plus" in single or "#### cortex-m3" not in single:
+        failures.append(f"--compare: a single record was not compared with its own CPU only:\n{single}")
+    try:
+        compare_records(old, dict(new, schema=RECORD_SCHEMA + 1))
+        failures.append("--compare: records of different schemas were compared")
+    except ElfError:
+        pass
+
     for failure in failures:
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
@@ -1048,7 +1234,9 @@ def self_test():
           "at-budget and edge are accepted; every row of #405's table lands in its "
           "class in ELF32/64 LE/BE, an unknown ALLOC type fails, linked .data counts "
           "once in RAM and once in flash, a segment outside both regions fails, and "
-          "a release refuses an incomplete set of records")
+          "a release refuses an incomplete set of records; --compare shows growth, "
+          "shrinkage and the sections behind them, never reads null as 0, lists a CPU on "
+          "one side only, and refuses a schema mismatch")
     return 0
 
 
