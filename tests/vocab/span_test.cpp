@@ -148,10 +148,33 @@ void span_cxx20_ranges_and_rvalues() {
   static_assert(!std::is_constructible_v<metl::span<int>, std::vector<int>&&>,
                 "a span of non-const elements still does not bind an rvalue");
 }
+
+// #444: subspan<Offset>() with the count left to default, run rather than
+// constant-evaluated. fixed_extent_checks() covers it only at compile time and
+// only over a fixed extent; over a dynamic extent the count is size() - Offset
+// at run time, and no test reached that.
+void span_subspan_default_count() {
+  int values[] = {1, 2, 3, 4, 5};
+  metl::span<int> dyn(values);
+  auto rest = dyn.subspan<2>();
+  static_assert(decltype(rest)::extent == metl::dynamic_extent,
+                "subspan<Offset>() of a dynamic span stays dynamic");
+  CHECK_EQ(rest.size(), std::size_t{3});
+  CHECK(rest.data() == values + 2);
+  CHECK_EQ(dyn.subspan<5>().size(), std::size_t{0});  // Offset == size(): empty, not a trap
+
+  metl::span<int, 5> fixed(values);
+  auto tail = fixed.subspan<3>();
+  static_assert(decltype(tail)::extent == 2, "subspan<3>() of extent 5 has extent 2");
+  CHECK_EQ(tail.size(), std::size_t{2});
+  CHECK_EQ(tail[0], 4);
+  CHECK_EQ(tail[1], 5);
+}
 }  // namespace
 
 int main() {
   span_cxx20_ranges_and_rvalues();
+  span_subspan_default_count();
   int values[] = {10, 20, 30};
   metl::span<int> writable(values);
   metl::span<const int> readable(writable);
