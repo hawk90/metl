@@ -1,0 +1,38 @@
+name: METL CodeQL
+
+# `security-and-quality` over the default `security-extended`: this is a
+# library whose contract is correctness, so the quality suite's findings are
+# on-topic rather than noise. The suite lives here, not in the workflow's
+# `queries:` input, because that input would replace this list rather than
+# add to it.
+queries:
+  - uses: security-and-quality
+
+# Three quality rules are excluded; everything else in the suite still runs.
+#
+# cpp/unused-static-variable and cpp/unused-local-variable report a function
+# parameter pack (`Args&&... args`) as an unused variable even when it is
+# forwarded on the next line. Up to 2026-10-19 they raised 63 alerts, and none
+# was a defect: 44 dismissed as false positives, 4 dismissed as in tests,
+# 10 open (all forwarded packs), and 5 closed as fixed. Those 5, and 7 of the
+# dismissed ones, are forwarded `args` packs that closed only because an edit
+# nearby changed their fingerprint.
+#
+# The defect class itself is covered by the compilers. Every CI build of the
+# tests uses -Wall -Wextra -Werror (CMakeLists.txt; ci.yml, gcc and clang).
+# That enables -Wunused-variable, -Wunused-but-set-variable and
+# -Wunused-parameter (which covers a pack that really goes unused) inside the
+# headers, which are not included as SYSTEM.
+#
+# cpp/unused-static-function reports a constexpr helper as unreachable when it
+# is called only inside a static_assert or a constexpr variable. Up to
+# 2026-10-19 it raised 19 alerts, all dismissed as used in tests; none was a
+# defect. Clang's -Wunused-function, on in the -Werror clang build, flags an
+# uncalled static, static constexpr or anonymous-namespace function (checked
+# with clang and GCC 16; GCC skips the constexpr case, clang does not).
+query-filters:
+  - exclude:
+      id:
+        - cpp/unused-static-variable
+        - cpp/unused-local-variable
+        - cpp/unused-static-function

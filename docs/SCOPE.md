@@ -354,6 +354,7 @@ claim about a **gate** going stale, and nothing was checking those.
 | [`check_size.py`](../tools/check_size.py) | code, constants, and static RAM including TLS against per-target budgets, with sections classified by ELF type and flags rather than name; writes the measurement record each release attaches | `--self-test` |
 | [`check_stack.py`](../tools/check_stack.py) | deepest stack frame; rejects any `dynamic` frame outright | `--self-test` |
 | [`check_instructions.py`](../tools/check_instructions.py) | instructions executed per benchmark, via cachegrind | `--self-test` |
+| [`check_qemu_probes.py`](../tools/check_qemu_probes.py) | under QEMU: the runtime stack high-water mark without and with LTO, and guest instructions per benchmark region on each Cortex-M; a missing, saturated or unparseable measurement fails, and a canary must raise the mark | `--self-test` |
 | [`check_api_contract.py`](../tools/check_api_contract.py) | §9 R2/R3/R4 across every public header | `--self-test` |
 | [`check_progress_guarantee.py`](../tools/check_progress_guarantee.py) | I3: every public header states a progress guarantee | `--self-test` |
 | [`check_conformance.py`](../tools/check_conformance.py) | that every type holding user objects runs the property suite in `tests/conformance/`, so a bug class fixed in one type is checked in all | `--self-test` |
@@ -367,7 +368,7 @@ claim about a **gate** going stale, and nothing was checking those.
 | [`check_mutants.py`](../tools/check_mutants.py) | that the gates above notice a deliberately broken library | `--self-test` |
 | [`check_changelog.py`](../tools/check_changelog.py) | C1–C3: that every change to code under `include/` carries a well-formed fragment in `changelog.d/`, and that nobody writes into the shared `[Unreleased]` list the fragments replace (#272) | `--self-test` |
 | [`check_commit_message.py`](../tools/check_commit_message.py) | that a pull-request title -- the subject squash-merging puts on main -- follows Conventional Commits with the agreed types | `--self-test` |
-| [`check_ci_gate.py`](../tools/check_ci_gate.py) | G1–G5: that every gate above can actually stop a merge — each `ci.yml` job is inside the `ci-gate` fan-in, and each context in `.github/required-checks.txt` still reports on a pull request | `--self-test` |
+| [`check_ci_gate.py`](../tools/check_ci_gate.py) | G1–G7: that every gate above can actually stop a merge — each `ci.yml` job is inside the `ci-gate` fan-in, whose verdict is run against synthetic results and must fail on a failed, skipped or cancelled job, and each context in `.github/required-checks.txt` still reports on a pull request | `--self-test` |
 
 `check_ci_gate.py` is last for a reason: it is the gate on the gates. Every
 other row in this table was **advisory at the merge boundary** until 2026-08-25,
