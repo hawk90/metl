@@ -80,6 +80,14 @@ jobs:
         if: steps.classify.outputs.code == 'false'
         run: tools/check_docs.py
 
+      # CHANGELOG.md and changelog.d/ are Markdown, so a pull request that
+      # touches only them takes this path too, and api-contract -- where the
+      # changelog gate otherwise runs -- is skipped. C1 and C2 need no diff;
+      # C3 has nothing to check when nothing under include/ changed.
+      - name: Changelog gate (documentation-only changes)
+        if: steps.classify.outputs.code == 'false'
+        run: tools/check_changelog.py
+
   # ---------------------------------------------------------------------------
   # Preflight fast-gate — every other job `needs:` this, so a compile/test break
   # fails in well under a minute instead of spinning up the full
@@ -670,7 +678,10 @@ jobs:
               status=1
               continue
             fi
-            got=$(arm-none-eabi-objdump -d hints.o | grep -cE '[[:space:]](yield|sev|wfe)([[:space:]]|$)' || true)
+            # objdump on its own line: inside `$(... | grep -c ... || true)` its
+            # failure read as "0 hints", which is the expected answer for three rows.
+            arm-none-eabi-objdump -d hints.o > hints.dis
+            got=$(grep -cE '[[:space:]](yield|sev|wfe)([[:space:]]|$)' hints.dis || true)
             echo "${cpu}: ${got} hint instruction(s), expected ${want}"
             if [[ "${got}" != "${want}" ]]; then
               echo "::error::${cpu}: expected ${want} hint instruction(s), found ${got}"
@@ -799,6 +810,18 @@ jobs:
       fail-fast: false
       matrix:
         cpu: [cortex-m0, cortex-m3, cortex-m4, cortex-m7]
+        # The QEMU machine each core's runtime measurements run on: the same
+        # boards as qemu-conformance. QEMU has no Cortex-M0 MPS2 board, so the
+        # M0 build runs on the AN385's ARMv7-M core, as it does there.
+        include:
+          - cpu: cortex-m0
+            machine: mps2-an385
+          - cpu: cortex-m3
+            machine: mps2-an385
+          - cpu: cortex-m4
+            machine: mps2-an386
+          - cpu: cortex-m7
+            machine: mps2-an500
 
     # Single source of truth for the link flags, so the probe and its negative
     # control cannot drift apart. Note the absence of -Wl,--gc-sections, which
@@ -823,11 +846,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
-      - name: Install ARM toolchain
+      # picolibc and QEMU are for the runtime measurements at the end of this
+      # job. The same list and cache key as qemu-conformance, so the two share
+      # one cached set of packages. The probe and canary links below name
+      # newlib-nano's specs explicitly, so picolibc being installed changes
+      # nothing they link.
+      - name: Install ARM toolchain, picolibc and QEMU
         uses: ./.github/actions/apt-install
         with:
-          packages: gcc-arm-none-eabi
-          cache-key: gcc-arm-none-eabi
+          packages: gcc-arm-none-eabi picolibc-arm-none-eabi qemu-system-arm
+          cache-key: arm-picolibc-qemu
 
       - name: Link the invariant probe (newlib-nano, nosys, no crt0)
         run: |
@@ -994,6 +1022,35 @@ jobs:
             --cpu ${{ matrix.cpu }} \
             --record "$METL_MEASUREMENTS" --flags "$METL_STACK_PROBE_FLAGS" \
             --su-dir .
+
+      # What the shipped code DOES when it runs, which nothing above measures:
+      # the stack high-water mark of stack_probe.cpp's operations, painted and
+      # read back under QEMU, without and with LTO (#404) -- the static gate
+      # above sees single frames and never an LTO build -- and the guest
+      # instructions each benchmark region of qemu_bench_probe.cpp executes
+      # (#338). Instruction counts, never time: QEMU models no cycles.
+      #
+      # Enforcing from the first run. A missing budget fails and prints the
+      # number to write into tools/check_qemu_probes.py, so no run passes
+      # without one. The figures also go into the measurement record below.
+      - name: QEMU probe grading must still bite (canary)
+        run: tools/check_qemu_probes.py --self-test
+
+      - name: Runtime stack and instruction counts under QEMU
+        timeout-minutes: 8
+        run: |
+          tools/check_qemu_probes.py \
+            --cpu ${{ matrix.cpu }} \
+            --machine ${{ matrix.machine }} \
+            --record "$METL_MEASUREMENTS" --summary
+
+      - name: Upload the QEMU probe output on failure
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: qemu-probes-${{ matrix.cpu }}
+          path: build-qemu-probes/*.out
+          if-no-files-found: ignore
 
       # The record of what the steps above measured (#405): per-class totals,
       # every section, the static deepest frame, and null for what nothing
@@ -1395,9 +1452,9 @@ jobs:
   # What this number does NOT cover, stated here because a single percentage
   # invites the wrong conclusion:
   #   * `#if` arms this configuration does not compile. --configurations builds
-  #     C++20, -fno-exceptions, METL_HARDENING=0 and METL_CRC_TABLE=0 too and
-  #     requires every line only one of them compiles to have run (#387); their
-  #     figures are printed but not merged into these, which llvm-cov cannot do.
+  #     C++20, -fno-exceptions and METL_CRC_TABLE=0 too and requires every line
+  #     only one of them compiles to have run (#387); their figures are printed
+  #     but not merged into these, which llvm-cov cannot do.
   #   * Anything gated on being an MCU: irq_lock's PRIMASK path, the ARMv6-M
   #     capability rejections, the -fno-exceptions arms. Their evidence is
   #     qemu-conformance.
@@ -1412,7 +1469,7 @@ jobs:
     name: coverage
     runs-on: ubuntu-26.04
     needs: preflight
-    # Five instrumented builds and test runs: the default and --configurations.
+    # Four instrumented builds and test runs: the default and --configurations.
     timeout-minutes: 45
     # id-token: the Codecov upload authenticates with this run's OIDC token, so
     # no upload secret is stored anywhere. Nothing else here writes.
@@ -1508,13 +1565,22 @@ jobs:
           CXX: clang++
         run: |
           fail=0
+          checked=0
+          # find on its own line, so its failure stops the step; read from a
+          # process substitution, it was masked, and no headers read as clean.
+          find include/metl -name '*.hpp' -print0 > headers.lst
           while IFS= read -r -d '' h; do
+            checked=$((checked + 1))
             rel="${h#include/}"
             echo "checking ${rel}"
             printf '#include <%s>\n' "${rel}" \
               | "${CXX}" -std=c++17 -Wall -Wextra -Werror -Iinclude -fsyntax-only -x c++ - \
               || { echo "NOT SELF-CONTAINED: ${rel}"; fail=1; }
-          done < <(find include/metl -name '*.hpp' -print0)
+          done < headers.lst
+          if [ "${checked}" -eq 0 ]; then
+            echo "::error::no headers found under include/metl -- nothing was checked"
+            exit 1
+          fi
           exit "${fail}"
 
       # The same guarantees are also enforced through CMake/CTest so `ctest`
@@ -1592,6 +1658,12 @@ jobs:
       - name: Placement new is ::new in every public header
         run: tools/check_source_rules.py
 
+      - name: The tier checker must still bite (canary)
+        run: tools/check_tiers.py --self-test
+
+      - name: Tier 2 headers are labelled and opt-in
+        run: tools/check_tiers.py
+
       - name: The I3 checker must still bite (canary)
         run: tools/check_progress_guarantee.py --self-test
 
@@ -1602,7 +1674,7 @@ jobs:
         run: tools/check_conformance.py --self-test
 
       - name: Every public header is in the conformance registry or says why not
-        run: tools/check_conformance.py
+        run: tools/check_conformance.py --base "origin/${{ github.base_ref || 'main' }}"
 
       - name: The docs checker must still bite (canary)
         run: tools/check_docs.py --self-test
@@ -1922,6 +1994,9 @@ jobs:
         with:
           packages: build-essential clang
           cache-key: build-essential-clang
+
+      - name: The amalgamator must still refuse what it cannot flatten (canary)
+        run: python3 tools/amalgamate.py --self-test
 
       - name: Generate
         run: python3 tools/amalgamate.py -o metl-single.hpp
@@ -2413,10 +2488,10 @@ jobs:
   # module's zephyr/CMakeLists.txt include hook, compiles as C++17 with no
   # exceptions/RTTI, and links against Zephyr's C++ runtime on a Cortex-M target.
   #
-  # Approach: no container. zephyrproject-rtos/action-zephyr-setup builds a
-  # throwaway workspace from .github/zephyr/west.yml (upstream Zephyr pinned to
-  # the LTS release, plus only the CMSIS modules), installs west and Zephyr's
-  # Python requirements, and fetches the Zephyr SDK with only the
+  # Approach: no container. The job builds a throwaway workspace from
+  # .github/zephyr/west.yml (upstream Zephyr pinned to the LTS release, plus
+  # only the CMSIS modules), installs west and the Python packages that
+  # `west build` and twister need, and fetches the Zephyr SDK with only the
   # arm-zephyr-eabi toolchain plus the SDK host tools (which carry QEMU). metl
   # is then pointed at via EXTRA_ZEPHYR_MODULES.
   #   1. `west build` for qemu_cortex_m3 — the hard structural gate (compile +
@@ -2426,12 +2501,29 @@ jobs:
   #
   # Why no container: the job used to run in ghcr.io/zephyrproject-rtos/ci, and
   # pulling that multi-GB image took 235 s of a ~5 min job on every run, while
-  # the build and the QEMU run took 25 s. The action caches the SDK (keyed on
-  # its version and toolchain list) and pip downloads instead.
+  # the build and the QEMU run took 25 s. The SDK (keyed on its version and
+  # toolchain), pip downloads and ccache are cached instead.
+  #
+  # Why not zephyrproject-rtos/action-zephyr-setup: it installs Zephyr's FULL
+  # scripts/requirements.txt, whose extras pull spsdk -> spsdk-mcu-link ->
+  # hidapi, an NXP flashing stack this job never runs. hidapi ships wheels for
+  # a fixed set of CPython versions only; on any newer one pip builds it from
+  # source and fails without libusb headers. The steps below are the parts of
+  # that action this job uses, with only these requirement files:
+  #   * requirements-base.txt       — "required to build" (west build: dts,
+  #                                   Kconfig, zephyr_module, elftools)
+  #   * requirements-build-test.txt — twister itself (ply, colorama,
+  #                                   junitparser for the harness)
+  #   * requirements-run-test.txt   — twister imports twisterlib.hardwaremap
+  #                                   unconditionally, which imports natsort
+  # Neither of them pulls hidapi on Linux (pyocd depends on it only with
+  # `platform_system != "Linux"`). requirements-extras.txt and
+  # requirements-compliance.txt are developer and compliance tooling.
   #
   # NOTES:
-  #   * The SDK version comes from the pinned Zephyr's SDK_VERSION file
-  #     (`sdk-version: auto`), so a Zephyr bump moves the SDK with it.
+  #   * The SDK version comes from the pinned Zephyr's SDK_VERSION file, so a
+  #     Zephyr bump moves the SDK with it. Both SDK archives are checked
+  #     against the release's sha256.sum before use.
   #   * libc choice lives in the sample prj.conf (CONFIG_REQUIRES_FULL_LIBCPP=y,
   #     the low-risk default). See that file to try minimal libc.
   zephyr:
@@ -2445,6 +2537,10 @@ jobs:
     timeout-minutes: 30
     env:
       ZEPHYR_TOOLCHAIN_VARIANT: zephyr
+      # Zephyr's CMake launches compilers through ccache when it finds one.
+      # The SDK toolchain passes -specs=..., which ccache must not hash.
+      CCACHE_MAXSIZE: 512M
+      CCACHE_IGNOREOPTIONS: '-specs=* --specs=*'
 
     steps:
       - name: Checkout metl
@@ -2452,27 +2548,117 @@ jobs:
         with:
           path: metl
 
-      # The runner's system Python is externally managed (PEP 668), so the
-      # action's `pip3 install` needs a setup-python interpreter.
+      # The runner's system Python is externally managed (PEP 668), so pip
+      # needs a setup-python interpreter.
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
         with:
-          python-version: '3.14.8'
+          python-version: '3.15.0'
+
+      - name: Install west and ccache
+        run: |
+          set -euo pipefail
+          python -m pip install west==1.5.0
+          # man-db rebuilds its index on every package install; skip it.
+          sudo rm -f /var/lib/man-db/auto-update
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends ccache
+          echo "CCACHE_DIR=$HOME/.cache/ccache" >> "$GITHUB_ENV"
 
       # `west init -l` takes a manifest directory inside the workspace, so the
       # manifest is staged as zephyrproject/manifest/west.yml.
-      - name: Stage the west manifest
+      - name: Fetch the Zephyr workspace
         run: |
+          set -euo pipefail
           mkdir -p zephyrproject/manifest
           cp metl/.github/zephyr/west.yml zephyrproject/manifest/west.yml
+          cd zephyrproject
+          west init -l manifest --mf west.yml
+          west update -o=--depth=1 -n
 
-      - name: Set up Zephyr workspace and SDK
-        uses: zephyrproject-rtos/action-zephyr-setup@be8136a8bba01580485d98b7ad2d32477c36a49a  # v1.0.15
+      - name: Cache Python packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
-          base-path: zephyrproject
-          app-path: manifest
-          toolchains: arm-zephyr-eabi
-          ccache-cache-key: metl-zephyr
+          path: ~/.cache/pip
+          key: pip-zephyr-${{ runner.os }}-${{ hashFiles('zephyrproject/zephyr/scripts/requirements-base.txt', 'zephyrproject/zephyr/scripts/requirements-build-test.txt', 'zephyrproject/zephyr/scripts/requirements-run-test.txt') }}
+
+      - name: Install the Python packages west build and twister need
+        working-directory: zephyrproject/zephyr/scripts
+        run: |
+          set -euo pipefail
+          python -m pip install \
+            -r requirements-base.txt \
+            -r requirements-build-test.txt \
+            -r requirements-run-test.txt
+
+      - name: Resolve the Zephyr SDK version
+        id: sdk
+        run: |
+          set -euo pipefail
+          version="$(cat zephyrproject/zephyr/SDK_VERSION)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::unexpected zephyr/SDK_VERSION: '$version'"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the Zephyr SDK
+        id: sdk-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: zephyrproject/zephyr-sdk
+          key: zephyr-sdk-${{ steps.sdk.outputs.version }}-linux-x86_64-arm-zephyr-eabi
+
+      # setup.sh -t would download the toolchain without checking it, so both
+      # archives are fetched and verified here; setup.sh skips a toolchain
+      # whose directory already exists.
+      - name: Download the Zephyr SDK (checksum-verified)
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        working-directory: zephyrproject
+        env:
+          SDK_VERSION: ${{ steps.sdk.outputs.version }}
+        run: |
+          set -euo pipefail
+          base="https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${SDK_VERSION}"
+          minimal="zephyr-sdk-${SDK_VERSION}_linux-x86_64_minimal.tar.xz"
+          toolchain="toolchain_gnu_linux-x86_64_arm-zephyr-eabi.tar.xz"
+          dl="$RUNNER_TEMP/zephyr-sdk-download"
+          rm -rf "$dl" zephyr-sdk
+          mkdir -p "$dl" zephyr-sdk/gnu
+          for f in sha256.sum "$minimal" "$toolchain"; do
+            curl -fsSL --retry 5 --retry-all-errors -o "$dl/$f" "$base/$f"
+          done
+          for f in "$minimal" "$toolchain"; do
+            line="$(awk -v f="$f" '$2 == f' "$dl/sha256.sum")"
+            if [ -z "$line" ]; then
+              echo "::error::$f is not listed in the release's sha256.sum"
+              exit 1
+            fi
+            (cd "$dl" && printf '%s\n' "$line" | sha256sum --check --strict)
+          done
+          tar -xJf "$dl/$minimal" -C zephyr-sdk --strip-components=1
+          tar -xJf "$dl/$toolchain" -C zephyr-sdk/gnu
+          test -d zephyr-sdk/gnu/arm-zephyr-eabi
+          rm -rf "$dl"
+
+      # Host tools install into hosttools/sysroots (where the SDK's
+      # host-tools.cmake looks for QEMU), so a cache hit skips them. The CMake
+      # package registration lives in ~/.cmake and is redone every run.
+      - name: Set up the Zephyr SDK
+        working-directory: zephyrproject/zephyr-sdk
+        run: |
+          set -euo pipefail
+          if [ ! -d hosttools/sysroots ]; then
+            ./setup.sh -h
+          fi
+          ./setup.sh -c
+
+      - name: Cache ccache data
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/ccache
+          key: ccache-metl-zephyr-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ccache-metl-zephyr-
 
       - name: Build the sample for qemu_cortex_m3 (structural gate)
         working-directory: zephyrproject

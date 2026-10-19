@@ -23,6 +23,7 @@
 #include "metl/delegate.hpp"
 #include "metl/detail/addressof.hpp"
 #include "metl/detail/array_storage.hpp"
+#include "metl/detail/bitset.hpp"
 #include "metl/detail/constant_init.hpp"
 #include "metl/detail/construct.hpp"
 #include "metl/detail/crc.hpp"

@@ -58,6 +58,18 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 FINDING = re.compile(r"^[^ ]+:\d+:\d+: warning: .*\[([a-z][^]]*)\]$")
 COMPILE_ERROR = re.compile(r"^[^ ]+:\d+:\d+: (?:fatal )?error: ")
+WARNING = re.compile(r":\d+:\d+: warning: ")
+
+
+def tally(raw):
+    """(distinct findings, raw finding lines, unparsed warning lines) of
+    clang-tidy's combined output. A warning line FINDING does not recognise --
+    a path with a space, a format a new clang-tidy prints -- would otherwise
+    drop out of the count, and a count of zero passes any budget."""
+    lines = [line.replace(f"{REPO}/", "") for line in raw.splitlines()]
+    findings = [line for line in lines if FINDING.match(line)]
+    unparsed = [line for line in lines if WARNING.search(line) and not FINDING.match(line)]
+    return sorted(set(findings)), findings, unparsed
 
 
 def unanalysed(header, returncode, stdout, stderr):
@@ -92,8 +104,25 @@ def self_test():
         if (unanalysed(*args) is not None) != refused:
             print(f"self-test FAILED: {args} should {'' if refused else 'not '}be a failure")
             return 1
+    # The same finding reported from two includers counts once; one carrying
+    # two check names is one finding; a warning in a shape FINDING does not
+    # match is reported, not dropped.
+    raw = (f"{REPO}/include/metl/a.hpp:1:2: warning: w [readability-x]\n"
+           f"{REPO}/include/metl/a.hpp:1:2: warning: w [readability-x]\n"
+           "include/metl/b.hpp:3:4: warning: v [bugprone-y,cert-z]\n"
+           "include/metl/b.hpp:3:4: note: expanded from here\n"
+           "/dir with space/c.hpp:5:6: warning: u [misc-q]\n")
+    distinct, findings, unparsed = tally(raw)
+    if (len(distinct), len(findings)) != (2, 3):
+        print(f"self-test FAILED: tally counted {len(distinct)} distinct of {len(findings)} raw, "
+              f"expected 2 of 3")
+        return 1
+    if unparsed != ["/dir with space/c.hpp:5:6: warning: u [misc-q]"]:
+        print(f"self-test FAILED: an unparsable warning line was not reported: {unparsed}")
+        return 1
     print(f"self-test passed: {len(cases)} clang-tidy outcomes classified, "
-          "including a compiler error, a missing include and a killed run")
+          "including a compiler error, a missing include and a killed run; findings are "
+          "deduplicated, and a warning line that cannot be parsed is reported")
     return 0
 
 
@@ -131,9 +160,7 @@ def main():
     # A finding is identified by file:line:col plus its message and check name --
     # the same finding reported from two includers is byte-identical apart from
     # ordering, so a set is the whole dedup.
-    lines = [line.replace(f"{REPO}/", "") for line in raw.splitlines()]
-    findings = [line for line in lines if FINDING.match(line)]
-    distinct = sorted(set(findings))
+    distinct, findings, unparsed = tally(raw)
 
     print(f"clang-tidy: {len(distinct)} distinct findings ({len(findings)} raw warning lines)")
     print()
@@ -148,6 +175,14 @@ def main():
         print("Distinct findings:")
         for line in distinct:
             print(f"  {line}")
+
+    if unparsed:
+        print()
+        print(f"FAIL: {len(unparsed)} warning line(s) are not in the form this report counts, so "
+              "they are missing from the count above. Update FINDING:")
+        for line in unparsed[:20]:
+            print(f"  {line}")
+        return 2
 
     if failures:
         print()
