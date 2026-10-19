@@ -95,5 +95,17 @@ int main() {
     CHECK_EQ(cell.load(), handle(1, 1));
   }
 
+  // --- weak form fails and reports what it saw --------------------------------
+  // The loop above only fails spuriously, which x86 never does, so without this
+  // the failure branch ran only when the threaded test happened to contend. A
+  // mismatch fails the weak form too, every time.
+  {
+    metl::atomic_handle<handle> cell{handle{5, 2}};
+    handle expected{5, 1};  // right slot, wrong generation
+    CHECK(!cell.compare_exchange_weak(expected, handle{6, 2}));
+    CHECK_EQ(expected, handle(5, 2));
+    CHECK_EQ(cell.load(), handle(5, 2));
+  }
+
   return metl_test::exit_code();
 }
