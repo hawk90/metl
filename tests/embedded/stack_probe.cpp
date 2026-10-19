@@ -40,9 +40,10 @@
 //      is charged to whichever function it landed in. Filtering by filename
 //      would quietly stop measuring the thing this exists to measure.
 //
-// There is no `main`. This TU is compiled, not linked: `-fstack-usage` is a
-// compile-stage flag, and every frame it reports is emitted before any linker
-// runs.
+// There is no `main`. For the static gate this TU is compiled, not linked:
+// `-fstack-usage` is a compile-stage flag, and every frame it reports is
+// emitted before any linker runs. tests/embedded/qemu_stack_main.cpp links it
+// into a program for the runtime high-water mark, without and with LTO (#404).
 
 #include <cstddef>
 #include <cstdint>
@@ -104,6 +105,18 @@ void sink(u32 value) noexcept {
 /// `rehash_in_place`. If that rebuild ever stops being in place, it is this
 /// frame that grows.
 __attribute__((noinline)) void churn_map() noexcept {
+#if defined(METL_STACK_PROBE_CANARY)
+  // The runtime gate's negative control (tools/check_qemu_probes.py): the
+  // defect this file exists for, a rebuild into a local array, at 1 KiB. The
+  // canary build's mark must reach at least the array's size and exceed the
+  // no-LTO budget, or the gate could not reject it.
+  // Never defined for the static .su gate or a normal run.
+  volatile std::uint64_t scratch[128];
+  for (u32 i = 0; i < 128; ++i) {
+    scratch[i] = i;
+  }
+  sink(static_cast<u32>(scratch[g_sink % 128u]));
+#endif
   for (int round = 0; round < 4; ++round) {
     for (u32 i = 0; i < 200; ++i) {
       sink(g_map.try_emplace(i, i) ? 1u : 0u);

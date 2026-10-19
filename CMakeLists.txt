@@ -39,6 +39,7 @@ option(METL_BUILD_FUZZERS
        "Build the libFuzzer harnesses (Clang only; links -fsanitize=fuzzer,address,undefined)" OFF)
 option(METL_BUILD_BENCHMARKS "Build the micro-benchmarks (host only; always compiled -O2)" OFF)
 option(METL_ENABLE_COVERAGE "Instrument the tests for source-based coverage (Clang/GCC)" OFF)
+option(METL_ENABLE_COVERAGE_MCDC "With METL_ENABLE_COVERAGE on Clang 18+, also record MC/DC" OFF)
 
 # ---------------------------------------------------------------------------
 # Public library  (umbrella header-only target)
@@ -97,11 +98,19 @@ if(METL_BUILD_TESTS)
     # -O0 -g on purpose: an optimized build merges and reorders branches, so the
     # report describes code the compiler produced rather than code that was
     # written, and a branch that was inlined away reads as covered.
+    #
+    # Each test binary writes its profile under its own name: tools/coverage.py
+    # reads every binary with only its own profile, because the test programs
+    # share function names that a merged profile cannot tell apart.
     if(METL_ENABLE_COVERAGE)
       if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
         target_compile_options(metl_test_options INTERFACE
-          -fprofile-instr-generate -fcoverage-mapping -O0 -g)
+          -fprofile-instr-generate=${CMAKE_BINARY_DIR}/profraw/$<TARGET_PROPERTY:NAME>-%p.profraw
+          -fcoverage-mapping -O0 -g)
         target_link_options(metl_test_options INTERFACE -fprofile-instr-generate)
+        if(METL_ENABLE_COVERAGE_MCDC)
+          target_compile_options(metl_test_options INTERFACE -fcoverage-mcdc)
+        endif()
       else()
         target_compile_options(metl_test_options INTERFACE --coverage -O0 -g)
         target_link_options(metl_test_options INTERFACE --coverage)
@@ -136,7 +145,7 @@ if(METL_BUILD_TESTS)
     containers/throwing_element containers/array_storage containers/self_range containers/sequence_reentrancy
     containers/recoverable_unchanged
     containers/contract_edges containers/associative_erase_iterator containers/container_edges
-    containers/container_assert_trips
+    containers/container_assert_trips containers/container_swap
     # conformance/  (one property, every registered type -- #320)
     conformance/conformance_removal conformance/conformance_capacity conformance/conformance_move
     conformance/conformance_self conformance/conformance_copy conformance/conformance_throwing
@@ -156,7 +165,7 @@ if(METL_BUILD_TESTS)
     vocab/optional vocab/optional_constexpr vocab/expected vocab/expected_regression
     vocab/variant vocab/variant_regression vocab/span vocab/function_ref
     vocab/fixed_function vocab/fixed_function_const vocab/fixed_function_null vocab/callable_reentrancy vocab/delegate
-    vocab/callable_reference_return vocab/vocab_std_parity
+    vocab/callable_reference_return vocab/vocab_std_parity vocab/vocab_constant_init
     vocab/intrusive_ptr vocab/intrusive_ptr_atomic vocab/intrusive_ptr_contract vocab/intrusive_ptr_alias vocab/scope_exit vocab/type_traits
     vocab/variant_selfassign vocab/emplace_self_alias vocab/vocab_assignment vocab/versioned_handle vocab/expected_reentrancy
     vocab/vocab_assert_trips vocab/expected_assert_trips
@@ -166,6 +175,8 @@ if(METL_BUILD_TESTS)
     bits/bit bits/bitfield bits/crc8 bits/crc16 bits/crc32 bits/hash
     bits/hash_unique_repr bits/hash_by_value bits/endian bits/mmio bits/mmio_regression bits/register_access
     bits/crc_table_equivalence bits/format bits/parse
+    # exp/  (Tier 2: not in the umbrella header; docs/SCOPE.md section 3)
+    exp/bitset
     # control/
     control/fsm control/fsm_reentrancy control/event_dispatcher control/event_dispatcher_reentrancy
     control/coro_protothread control/coro_protothread_nested_switch control/coro_scheduler control/coro_scheduler_reentrancy

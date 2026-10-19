@@ -11,6 +11,7 @@
 ///   | `erase(iterator)` | wait-free, bounded by `bucket_count`; moves nothing |
 ///   | `erase_if` | wait-free, bounded by `bucket_count`; moves nothing |
 ///   | `clear`, iteration, destructor | wait-free, bounded by `bucket_count` |
+///   | `swap` | wait-free, bounded by `bucket_count`; no hashing |
 ///   | copy, move (construct and assign) | wait-free, one insert of <= `bucket_count` probes per element |
 ///
 /// Open addressing with linear probing: the worst case is a probe run the length of
@@ -93,6 +94,7 @@
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
+#include "metl/detail/constant_init.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
 #include "metl/hash.hpp"
@@ -157,6 +159,11 @@ class static_unordered_map {
       detail::nothrow_unary_call_v<Hash, const K&> &&
       detail::nothrow_binary_call_v<KeyEqual, const key_type&, const K&>;
   static constexpr bool hash_cannot_throw = detail::nothrow_unary_call_v<Hash, const key_type&>;
+  // swap swaps the elements in slots both tables hold and relocates the rest.
+  static constexpr bool swap_cannot_throw =
+      std::is_nothrow_move_constructible_v<value_type> && std::is_nothrow_swappable_v<Key> &&
+      std::is_nothrow_swappable_v<T> && std::is_nothrow_swappable_v<Hash> &&
+      std::is_nothrow_swappable_v<KeyEqual>;
 
   enum class slot_state : unsigned char {
     empty = 0,
@@ -276,12 +283,18 @@ class static_unordered_map {
 
   /// @brief Construct an empty map with all slots marked empty.
   /// @note noexcept exactly when default-constructing `Hash` and `KeyEqual` is.
-  /// @note Not constexpr: the slots are marked empty at run time, so a
-  ///       namespace-scope map is initialized at run time, in link order.
-  ///       Construct it before anything that runs earlier can reach it.
-  static_unordered_map() noexcept(std::is_nothrow_default_constructible_v<Hash> &&
-                                  std::is_nothrow_default_constructible_v<KeyEqual>)
+  /// Constant-initialized at namespace scope since C++20 (see
+  /// detail/constant_init.hpp): an empty slot's state is 0, so the constant
+  /// image is all zeros and lands in `.bss`. A local one writes its
+  /// `bucket_count` state bytes at run time, and nothing to the element slots.
+  constexpr static_unordered_map() noexcept(std::is_nothrow_default_constructible_v<Hash> &&
+                                            std::is_nothrow_default_constructible_v<KeyEqual>)
       : size_(0), hasher_(), key_equal_() {
+    if (detail::in_constant_evaluation()) {
+      for (auto& slot : storage_) {
+        detail::zero_for_constant_init(slot.bytes);
+      }
+    }
     initialize_states();
   }
 
@@ -667,7 +680,67 @@ class static_unordered_map {
     tombstones_ = 0;
   }
 
+  /// @brief Swaps contents, hashers and key comparisons with @p other, slot by slot.
+  ///
+  /// Both tables have the same `bucket_count`, so each element keeps its slot and
+  /// changes table: an element in a slot both hold is swapped in place, one in a slot
+  /// only one holds is moved across, and empty slots and tombstones are exchanged
+  /// as they are. Invalidates every iterator, pointer and reference into either.
+  /// @note If an element's move or swap, or the hashers' or key comparisons' swap,
+  ///       throws part-way, neither table's probe runs hold any more, so both are
+  ///       cleared before the exception propagates.
+  void swap(static_unordered_map& other) noexcept(swap_cannot_throw) {
+    if (this == &other) {
+      return;
+    }
+#if !METL_NO_EXCEPTIONS
+    if constexpr (!swap_cannot_throw) {
+      try {
+        swap_contents(other);
+      } catch (...) {
+        // The states say which slots hold an element, but size_ was not yet
+        // swapped, so clear() leaves it wrong: reset it.
+        clear();
+        size_ = 0;
+        other.clear();
+        other.size_ = 0;
+        throw;
+      }
+      return;
+    }
+#endif
+    swap_contents(other);
+  }
+
  private:
+  // The body of swap, without its clear-both-on-throw.
+  void swap_contents(static_unordered_map& other) noexcept(swap_cannot_throw) {
+    using std::swap;
+    swap(hasher_, other.hasher_);
+    swap(key_equal_, other.key_equal_);
+    for (size_type i = 0; i < bucket_count; ++i) {
+      const bool mine = states_[i] == slot_state::occupied;
+      const bool theirs = other.states_[i] == slot_state::occupied;
+      if (mine && theirs) {
+        swap(slot_value(i)->key, other.slot_value(i)->key);
+        swap(slot_value(i)->value, other.slot_value(i)->value);
+      } else if (mine || theirs) {
+        static_unordered_map& from = mine ? *this : other;
+        static_unordered_map& to = mine ? other : *this;
+        // Built before either state changes, so a throwing move leaves this
+        // slot as it was.
+        ::new (to.storage_[i].addr()) value_type(static_cast<value_type&&>(*from.slot_value(i)));
+        from.states_[i] = to.states_[i];
+        to.states_[i] = slot_state::occupied;
+        from.slot_value(i)->~value_type();
+      } else {
+        swap(states_[i], other.states_[i]);
+      }
+    }
+    swap(size_, other.size_);
+    swap(tombstones_, other.tombstones_);
+  }
+
   // The one call in rehash_in_place that can throw: element moves cannot (the
   // rebuild only runs for nothrow-movable elements), the hasher may. When it
   // does, `carry` holds a live element and every slot marked occupied (placed)
@@ -715,7 +788,7 @@ class static_unordered_map {
     initialize_states();
   }
 
-  void initialize_states() noexcept {
+  constexpr void initialize_states() noexcept {
     for (size_type i = 0; i < bucket_count; ++i) {
       states_[i] = slot_state::empty;
     }
@@ -946,6 +1019,23 @@ class static_unordered_map {
   Hash hasher_;
   KeyEqual key_equal_;
 };
+
+/// @brief Swaps the contents of two static_unordered_maps of the same type and capacity.
+/// Declared only when the elements, the hasher and the key comparison are
+/// swappable; otherwise `using std::swap; swap(a, b)` still finds std::swap,
+/// which moves both whole containers.
+template <typename Key,
+          typename T,
+          std::size_t N,
+          typename Hash,
+          typename KeyEqual,
+          std::enable_if_t<std::is_swappable_v<Key> && std::is_swappable_v<T> && std::is_swappable_v<Hash> &&
+                               std::is_swappable_v<KeyEqual>,
+                           int> = 0>
+inline void swap(static_unordered_map<Key, T, N, Hash, KeyEqual>& a,
+                 static_unordered_map<Key, T, N, Hash, KeyEqual>& b) noexcept(noexcept(a.swap(b))) {
+  a.swap(b);
+}
 
 /// @brief Erases every element of @p map for which @p pred returns true.
 /// @return The number of elements erased.

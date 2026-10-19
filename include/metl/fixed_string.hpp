@@ -7,6 +7,7 @@
 ///   |-----------|-----------|
 ///   | `size`, `empty`, `capacity`, indexing, `c_str` | wait-free, bounded |
 ///   | `append(span)`, `push_back`, comparison, hashing | wait-free, bounded by `Capacity` |
+///   | `swap` | wait-free, bounded by `Capacity` |
 ///   | construct, assign or append from `const char*` | **bounded by the caller's NUL, not `Capacity`** |
 ///
 /// Everything that works on characters already inside the string is bounded by
@@ -145,6 +146,20 @@ class fixed_string {
   void clear() noexcept {
     size_ = 0;
     storage_[0] = '\0';
+  }
+
+  /// Swaps contents with `other`: the characters up to the longer one's
+  /// terminator, and the sizes. Pointers and iterators keep their position.
+  void swap(fixed_string& other) noexcept {
+    const size_type through = size_ < other.size_ ? other.size_ : size_;
+    for (size_type i = 0; i <= through; ++i) {
+      const char ch = storage_[i];
+      storage_[i] = other.storage_[i];
+      other.storage_[i] = ch;
+    }
+    const size_type size = size_;
+    size_ = other.size_;
+    other.size_ = size;
   }
 
   /// Appends `ch` if there is room.
@@ -380,6 +395,12 @@ class fixed_string {
   char storage_[Capacity + 1];
   size_type size_;
 };
+
+/// Swaps the contents of two strings of the same capacity.
+template <std::size_t Capacity>
+inline void swap(fixed_string<Capacity>& a, fixed_string<Capacity>& b) noexcept {
+  a.swap(b);
+}
 
 /// Returns true if both strings have equal length and characters.
 ///

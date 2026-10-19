@@ -726,8 +726,7 @@ struct static_unordered_map_adapter {
   // erase(iterator) that skipped the next slot would still find the right
   // element (conformance_std_parity_test.cpp).
   static std::array<int, 3> parity_ids() { return colliding_ids<capacity>(); }
-  static constexpr constant_init constant_init_level = constant_init::never;
-  static constexpr const char* constant_init_refused = "its constructor marks every slot empty at run time";
+  static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace(id, probe(id));
@@ -796,8 +795,7 @@ struct static_unordered_set_adapter {
   // erase(iterator) that skipped the next slot would still find the right
   // element (conformance_std_parity_test.cpp).
   static std::array<int, 3> parity_ids() { return colliding_ids<capacity>(); }
-  static constexpr constant_init constant_init_level = constant_init::never;
-  static constexpr const char* constant_init_refused = "its constructor marks every slot empty at run time";
+  static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
     return c.try_emplace(probe(id));
@@ -1151,7 +1149,7 @@ struct optional_adapter {
 // An expected that starts in the error state, which here means "holds no
 // object": a default-constructed expected<probe, int> would hold a probe.
 struct expected_slot : metl::expected<probe, int> {
-  expected_slot() noexcept : metl::expected<probe, int>(metl::unexpect, 0) {}
+  constexpr expected_slot() noexcept : metl::expected<probe, int>(metl::unexpect, 0) {}
 };
 
 // conformance-header: expected.hpp
@@ -1168,9 +1166,7 @@ struct expected_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = false;
   static constexpr bool fixed_count = true;
-  static constexpr constant_init constant_init_level = constant_init::never;
-  static constexpr const char* constant_init_refused =
-      "its constexpr default constructor uses placement new, never constant-evaluated (#395)";
+  static constexpr constant_init constant_init_level = constant_init::always;
   template <typename C>
   static bool try_add(C& c, int id) {
     if (c.has_value()) {
@@ -1212,9 +1208,7 @@ struct variant_adapter {
   static constexpr bool movable = true;
   static constexpr bool move_empties_source = false;
   static constexpr bool fixed_count = true;
-  static constexpr constant_init constant_init_level = constant_init::never;
-  static constexpr const char* constant_init_refused =
-      "its constexpr default constructor uses placement new, never constant-evaluated (#395)";
+  static constexpr constant_init constant_init_level = constant_init::always;
   template <typename C>
   static bool try_add(C& c, int id) {
     if (metl::holds_alternative<probe>(c)) {

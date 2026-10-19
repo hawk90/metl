@@ -1,0 +1,2 @@
+- Tier 2 opens: `include/metl/exp/` holds experimental types in `metl::exp`. They are not in `<metl/metl.hpp>` or the single header, may change or be removed in a minor release, and each header names the issue that says when it is promoted or removed (#335).
+- `metl::exp::bitset<N>` (`<metl/exp/bitset.hpp>`): N bits packed into 32-bit words, with `test`/`set`/`reset`, `count`, `any`/`none`/`all`, `find_first_set`/`find_first_clear`, shifts and equality. Everything is `constexpr`, and an index past the end stops the program at every hardening level (#336).

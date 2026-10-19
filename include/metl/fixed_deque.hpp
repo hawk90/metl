@@ -8,6 +8,7 @@
 ///   | `push_front`, `push_back`, `pop_front`, `pop_back`, `emplace_*`, `try_*` | wait-free, bounded |
 ///   | element access, `size`, `empty`, `full` | wait-free, bounded |
 ///   | `clear`, destructor | wait-free, bounded by `size()` |
+///   | `swap` | wait-free, bounded by the larger `size()` |
 ///
 /// Both ends are index arithmetic on a ring, so a push or pop costs the same at
 /// either end and does not depend on how full the deque is -- nothing is shifted.
@@ -22,6 +23,7 @@
 #include "metl/scope_exit.hpp"
 
 #include <cstddef>
+#include <type_traits>
 #include <utility>
 
 namespace metl {
@@ -138,6 +140,22 @@ class fixed_deque : public detail::ring_core<T, Capacity> {
     --this->size_;  // shrink first, then destroy, as in pop_front
     this->storage_at(this->physical_index(this->size_)).~T();
   }
+
+  /// Swaps contents with `other` element by element: the elements both hold
+  /// are swapped in place, and the longer one's remaining elements are moved
+  /// across. Each keeps its own storage, so an iterator keeps its position,
+  /// and positions past the new size are invalid.
+  /// @note If an element's move or swap throws, both stay valid, holding
+  ///       elements of either, and nothing leaks.
+  void swap(fixed_deque& other) noexcept(base::swap_cannot_throw) { this->swap_core(other); }
 };
+
+/// Swaps the contents of two deques of the same type and capacity.
+/// Declared only for a swappable `T`; otherwise `using std::swap; swap(a, b)`
+/// still finds std::swap, which moves both whole containers.
+template <typename T, std::size_t N, std::enable_if_t<std::is_swappable_v<T>, int> = 0>
+inline void swap(fixed_deque<T, N>& a, fixed_deque<T, N>& b) noexcept(noexcept(a.swap(b))) {
+  a.swap(b);
+}
 
 }  // namespace metl

@@ -211,6 +211,53 @@ void check_constructor_throw(Fill fill) {
   }
 }
 
+// Swaps a container of two elements with one of four, with the n-th move,
+// assignment or copy of `armed` throwing, for every n until the swap gets
+// through. Nothing may leak or be destroyed twice. A container whose order is
+// an invariant (sorted, heap, hashed) must come out of a throw empty; the
+// others keep whatever elements each holds.
+template <typename Container, typename Fill>
+void check_swap_throw(Fill fill, bool clears_on_throw) {
+  for (int step = 0; step < 64; ++step) {
+    g_live = 0;
+    g_double_destroys = 0;
+    bool threw = false;
+    for (int direction = 0; direction < 2; ++direction) {
+      {
+        Container shorter;
+        Container longer;
+        fill(shorter, 0, 2);
+        fill(longer, 10, 4);
+        g_countdown = step;
+        try {
+          if (direction == 0) {
+            shorter.swap(longer);
+          } else {
+            longer.swap(shorter);
+          }
+        } catch (int) {
+          threw = true;
+        }
+        g_countdown = -1;
+        if (threw && clears_on_throw) {
+          CHECK(shorter.empty());
+          CHECK(longer.empty());
+        }
+        if (!threw) {
+          CHECK_EQ(shorter.size(), 4u);
+          CHECK_EQ(longer.size(), 2u);
+        }
+      }
+      CHECK_EQ(g_live, 0);
+      CHECK_EQ(g_double_destroys, 0);
+    }
+    if (!threw) {
+      return;
+    }
+  }
+  CHECK(false);  // still throwing after 64 steps
+}
+
 }  // namespace
 
 int main() {
@@ -644,6 +691,44 @@ int main() {
     CHECK(table.empty());
     CHECK(table.try_emplace(7, 70));  // and it is still usable
     CHECK(table.find(7) != nullptr);
+  }
+
+  // ---- swap: a throw at any step leaks nothing (#348) ------------------------
+  {
+    const auto back = [](auto& c, int first, int count) {
+      for (int i = 0; i < count; ++i) {
+        c.emplace_back(first + i);
+      }
+    };
+    const auto push = [](auto& c, int first, int count) {
+      for (int i = 0; i < count; ++i) {
+        c.emplace(first + i);
+      }
+    };
+    check_swap_throw<metl::ring_buffer<armed, 8>>(back, false);
+    check_swap_throw<metl::fixed_deque<armed, 8>>(back, false);
+    check_swap_throw<metl::fixed_priority_queue<armed, 8>>(push, true);
+    check_swap_throw<metl::flat_set<armed, 8>>(
+        [](auto& c, int first, int count) {
+          for (int i = 0; i < count; ++i) {
+            c.emplace(armed(first + i));
+          }
+        },
+        true);
+    check_swap_throw<metl::static_unordered_set<armed, 8, armed_hash>>(
+        [](auto& c, int first, int count) {
+          for (int i = 0; i < count; ++i) {
+            c.emplace(armed(first + i));
+          }
+        },
+        true);
+    const auto keyed = [](auto& c, int first, int count) {
+      for (int i = 0; i < count; ++i) {
+        c.emplace(first + i, armed(first + i));
+      }
+    };
+    check_swap_throw<metl::flat_map<int, armed, 8>>(keyed, true);
+    check_swap_throw<metl::static_unordered_map<int, armed, 8>>(keyed, true);
   }
 
   return metl_test::exit_code();
