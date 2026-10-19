@@ -242,6 +242,10 @@ int main() {
     if (nx_copy != nullptr) {
       return 23;
     }
+    metl::fixed_function<int(int) noexcept, 16> nx_moved(std::move(nx));
+    if (!nx_moved || nx_moved(3) != 6 || nx) {
+      return 38;
+    }
   }
 
   // ---- fixed_any_invocable: move-only callable -----------------------------
@@ -254,6 +258,12 @@ int main() {
     any = move_only_adder{11};
     if (!any || any(5) != 16) {
       return 25;
+    }
+
+    // From a function pointer: the pointer overload of assign.
+    metl::fixed_any_invocable<int(int), 32> any_fn(&add_one);
+    if (!any_fn || any_fn(1) != 2) {
+      return 39;
     }
 
     // Move construction.
@@ -332,6 +342,12 @@ int main() {
     any_nx_mo = mo_nx{50};
     if (any_nx_mo(2) != 52) {
       return 35;
+    }
+
+    // From a noexcept function pointer: the pointer overload of assign.
+    metl::fixed_any_invocable<int(int) noexcept, 32> any_nx_fn(&add_one_nx);
+    if (!any_nx_fn || any_nx_fn(1) != 2) {
+      return 40;
     }
   }
 

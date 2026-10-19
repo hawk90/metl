@@ -202,6 +202,33 @@ int main() {
     CHECK_EQ(messages.size(), 0u);
   }
 
+  // static_message_queue::emplace on a full queue, with its METL_ASSERT gone:
+  // it builds nothing and hands back the newest element, not the slot at
+  // tail_ (the front's, still live). Once with tail_ at 0, where the newest
+  // element is in the last slot, and once with tail_ past it.
+  {
+    metl::static_message_queue<int, 4> messages;
+    int* newest = nullptr;
+    for (int i = 0; i < 4; ++i) {
+      newest = &messages.push(i);
+    }
+    int* got = nullptr;
+    CHECK(!guarded_against([&] { got = &messages.push(99); }));
+    CHECK_EQ(got, newest);
+    CHECK_EQ(messages.size(), 4u);
+
+    messages.pop();
+    newest = &messages.push(4);
+    CHECK(!guarded_against([&] { got = &messages.emplace(99); }));
+    CHECK_EQ(got, newest);
+    for (int expected = 1; expected <= 4; ++expected) {
+      int out = 0;
+      CHECK(messages.try_pop(out));
+      CHECK_EQ(out, expected);
+    }
+    CHECK(messages.empty());
+  }
+
   // fixed_vector: positions outside [begin, end], empty and reversed erase, a
   // resize that can never finish, an own-range assign, and emplace_back on a
   // Capacity-0 vector (back() would be data()[SIZE_MAX]).
@@ -421,6 +448,9 @@ int main() {
     CHECK(guarded_against([&] { metl::fixed_any_invocable<int(int)> f(null_fn); }));
     int (*null_exact)(int) = nullptr;
     CHECK(guarded_against([&] { metl::function_ref<int(int)> f(null_exact); }));
+    // A pointer of another signature takes the converting constructor, which
+    // has its own guard (#443).
+    CHECK(guarded_against([&] { metl::function_ref<int(int)> f(null_fn); }));
 
     metl::fixed_function<int(long)> empty_function;
     CHECK(guarded_against([&] { (void)empty_function(1); }));
