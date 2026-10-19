@@ -53,14 +53,15 @@
 // NOT CONSTANT-EVALUABLE TODAY, and this is the one place parse.hpp does not
 // mirror format.hpp. `try_format_uint` returns a `span`, which is a literal
 // type, so a table of text can be built at compile time. These return
-// `metl::expected`, whose members live in laundered `storage_for` buffers rather
-// than a union of {T, E} -- `expected.hpp` says so at its `storage_union`, where
-// the rewrite is recorded as deferred. The
-// `constexpr` labels below are for the same reason `expected`'s own are: they
-// cost nothing, they document intent, and they start working the day that
-// rewrite lands. Until then a config table is parsed at startup, not at build
-// time. The arithmetic core in `detail` IS constant-evaluable and is tested that
-// way, so the rewrite will not be changing untested code.
+// `metl::expected`, which is not a literal type: `~expected` is user-provided
+// and not `constexpr`, and in C++17 no destructor can be. Its union storage lets
+// a namespace-scope `expected` be constant-initialized, but a constant
+// expression that creates one must also be able to destroy it. The `constexpr`
+// labels below are for the same reason `expected`'s own are: they cost nothing,
+// they document intent, and they start working the day `~expected` is
+// `constexpr` in C++20. Until then a config table is parsed at startup, not at
+// build time. The arithmetic core in `detail` IS constant-evaluable and is
+// tested that way, so that change will not be landing on untested code.
 
 #include "metl/assert.hpp"
 #include "metl/config.hpp"

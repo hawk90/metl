@@ -22,7 +22,7 @@ an untracked file would be tested here and be missing on CI.
      job does.
   5. the mutation gate (tools/check_mutants.py) for the mutants of the headers
      this branch changes, which also catches a mutant whose anchor text a
-     change has moved. CI runs every mutant; the full set takes ~15 minutes.
+     change has moved. CI runs every mutant, split across the `mutants` shards.
   6. every test built and run through the amalgamation
      (tools/check_amalgamation.py), as the `amalgamation` job does.
   7. clang-tidy, as a DELTA: the same local binary over the merge-base with
@@ -397,7 +397,7 @@ def main():
         return 1
 
     print("5. mutation gate (mutants of the headers this branch changes)")
-    # The whole set takes ~15 minutes; CI runs all of it. Locally, a mutant can
+    # CI runs the whole set (ci.yml `mutants`). Locally, a mutant can
     # only start surviving -- or stop applying, which is the anchor drift this
     # step exists to catch before CI -- if its header changed, so those are run.
     # A change to the gate itself runs everything.
