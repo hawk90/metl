@@ -8,6 +8,7 @@
 ///   | `push_overwrite`, `emplace_back`, `pop_front`, `try_*` | wait-free, bounded |
 ///   | element access, `size`, `empty`, `full` | wait-free, bounded |
 ///   | `clear`, destructor | wait-free, bounded by `size()` |
+///   | `swap` | wait-free, bounded by the larger `size()` |
 ///
 /// Every position is index arithmetic on a ring, so nothing is shifted and the cost
 /// does not depend on how full the buffer is. `push_overwrite` on a full buffer
@@ -100,6 +101,22 @@ class ring_buffer : public detail::ring_core<T, Capacity> {
 
     return this->emplace_back(std::forward<Args>(args)...);
   }
+
+  /// Swaps contents with `other` element by element: the elements both hold
+  /// are swapped in place, and the longer one's remaining elements are moved
+  /// across. Each keeps its own storage, so an iterator keeps its position,
+  /// and positions past the new size are invalid.
+  /// @note If an element's move or swap throws, both stay valid, holding
+  ///       elements of either, and nothing leaks.
+  void swap(ring_buffer& other) noexcept(base::swap_cannot_throw) { this->swap_core(other); }
 };
+
+/// Swaps the contents of two ring buffers of the same type and capacity.
+/// Declared only for a swappable `T`; otherwise `using std::swap; swap(a, b)`
+/// still finds std::swap, which moves both whole containers.
+template <typename T, std::size_t N, std::enable_if_t<std::is_swappable_v<T>, int> = 0>
+inline void swap(ring_buffer<T, N>& a, ring_buffer<T, N>& b) noexcept(noexcept(a.swap(b))) {
+  a.swap(b);
+}
 
 }  // namespace metl

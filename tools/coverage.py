@@ -14,10 +14,8 @@ WHAT THIS CANNOT SEE, and why the number is not the whole story:
   * `#if` arms of the other configurations, unless --configurations is given.
     Then each of CONFIGURATIONS is built and run too, and every line that only
     that configuration compiles must have run: the -fno-exceptions arms, the
-    C++20 comparisons, the bitwise CRC loops. Their figures cannot be merged
-    into this one -- llvm-cov keeps one mapping per function name, so handing it
-    both builds' binaries reported exactly the default build's numbers -- and
-    so they are a separate gate (#387).
+    C++20 comparisons, the bitwise CRC loops. Their figures are not merged
+    into this one, so they are a separate gate (#387).
   * Everything gated on being an MCU. irq_lock's PRIMASK path, the ARMv6-M
     capability rejections, the -fno-exceptions arms of expected.hpp -- none of
     that code exists in a host build. Its evidence is the qemu-conformance job,
@@ -41,6 +39,49 @@ WHAT THIS CANNOT SEE, and why the number is not the whole story:
 So: this measures host-visible RUNTIME branch depth. It is a floor on quality,
 not a summary of it.
 
+MC/DC IS REPORTED, NOT GATED (#342). Branch coverage can reach 100% on
+`if (a && b)` without ever showing that `b` alone changes the outcome. So one
+more build is measured with -fcoverage-mcdc (Clang 18+), through the CMake
+option METL_ENABLE_COVERAGE_MCDC. The report prints the share of conditions
+shown to affect their decision independently, the weakest files, and the
+decisions with conditions missing. A floor comes later, from the CI figure.
+Read it with these limits:
+
+  * Clang caps the conditions in one decision and does not instrument a
+    decision over the cap; it says so in a -Wpgo-coverage warning. Those
+    decisions are absent from the figure, not counted as missed, so every one
+    the build skipped is listed.
+  * It is its own build because -fcoverage-mcdc moves the line and branch
+    figures (+1 point of lines on Apple Clang 21, mostly constexpr headers),
+    and those must stay the ones the floors were set against.
+  * LLVM 23.1's llvm-cov crashes (SIGILL) on the MC/DC records of
+    variant.hpp; Apple Clang 21 does not. A crash fails this run rather than
+    printing no figure.
+
+ONE BINARY AT A TIME. Every test is its own program, and the programs share
+function names: each has a `main`, and every header function exists in every
+binary that includes it, used or not. Neither llvm tool keys on the program:
+
+  * llvm-profdata keys a record by (name, structural hash). Two tests' mains
+    with the same hash and different counters failed to merge ("counter
+    mismatch") and were dropped.
+  * llvm-cov, given several -object binaries, keeps the FIRST record of each
+    function name and skips the rest. A header function that the first binary
+    only includes, never calls, comes as an empty record, so the run of every
+    later binary was discarded: coro::stepper::poll() ran 20 times and read 0,
+    and lines compiled only by later binaries were not reported at all. The
+    result depended on the order of the binaries.
+
+So each binary writes its profile under its own name (CMakeLists.txt), and is
+exported on its own with only that profile. The include/metl records are then
+merged here, per source line and per lcov branch, taking the highest count. A
+function's record from a binary that includes it but never calls it is left
+out when another binary uses it (see unused_records).
+`llvm-cov export` numbers a line's branches by their position on the line,
+across instantiations, so the same branch has the same key in every binary.
+A test that compiles a line with its own macros can give it other branches;
+those lines are printed, and their branches merged as lcov_merge() says.
+
 ONE FILE, ONE FORMULA (#308). The gated figures are computed from the same
 include/metl lcov export that Codecov receives, with Codecov's formula, so the
 badge and the gate report the same number for the same commit:
@@ -48,7 +89,7 @@ badge and the gate report the same number for the same commit:
   lines     hits / (hits + partials + misses), where a partial is a line that
             ran but has a branch that never went one of its ways. llvm-cov's
             own line figure counts a partial line as covered, which is why it
-            read 91.5% while Codecov showed 87%.
+            read 91.5% while Codecov showed 87%; it is printed for reference.
   branches  branches taken / branches found, from the same lcov records.
 
 THE NUMBERS ARE COMPILER-VERSION DEPENDENT. Different Clang releases lower the
@@ -66,7 +107,10 @@ The floors here stay the gate; Codecov only displays.
 """
 
 import argparse
+import json
+from concurrent.futures import ThreadPoolExecutor
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -74,7 +118,6 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 BUILD_DIR = REPO / "build-coverage"
-PROF_DIR = BUILD_DIR / "profraw"
 
 # The configurations whose `#if` arms the default build does not compile, each
 # with the flags that select it. Each is measured on its own (#387), and each
@@ -90,6 +133,18 @@ CONFIGURATIONS = {
     "no-exceptions": "-fno-exceptions -fno-rtti",
     "crc-table-off": "-DMETL_CRC_TABLE=0",
 }
+
+
+# Clang's -Wpgo-coverage warning for a decision it leaves out of MC/DC: over the
+# condition cap (or, before Clang 19, a nested boolean expression).
+MCDC_SKIPPED = re.compile(r"^(?P<path>[^:\s][^:]*):(?P<line>\d+):(?P<col>\d+): warning: "
+                          r"unsupported MC/DC boolean expression; (?P<why>.*?)(?: \[-W[\w-]+\])?$")
+
+# The kind llvm-cov gives a region the preprocessor or a comment left out.
+SKIPPED_REGION = 2
+
+# How many of the weakest decisions the report lists.
+MCDC_WEAKEST = 25
 
 
 def find_tool(name):
@@ -120,10 +175,6 @@ def lcov_filtered(text, marker):
                 out.extend(record)
             record, keep = [], False
     return "\n".join(out) + "\n" if out else ""
-
-
-def lcov_records_under(text, marker):
-    return sum(1 for line in text.splitlines() if line.startswith("SF:") and marker in line)
 
 
 def lcov_totals(text):
@@ -195,6 +246,235 @@ def configuration_only_unexecuted(default_lcov, configuration_lcov, source_line)
     return only, sorted(key for key, count in only.items() if count == 0)
 
 
+def repo_relative(path):
+    return os.path.relpath(path, REPO) if path.startswith(str(REPO) + os.sep) else path
+
+
+def mcdc_skipped(build_output, marker):
+    """{(file, line, col): reason} for each decision under `marker` that Clang
+    did not instrument. A header's decision is reported once per translation
+    unit, so they are deduplicated."""
+    skipped = {}
+    for raw in build_output.splitlines():
+        found = MCDC_SKIPPED.match(raw.strip())
+        if found and marker in found["path"]:
+            key = (repo_relative(found["path"]), int(found["line"]), int(found["col"]))
+            skipped[key] = found["why"]
+    return skipped
+
+
+def mcdc_shown(export_json, marker):
+    """{(file, line, col, conditions): (shown, vectors)} from one binary's
+    `llvm-cov export -format=text`, for the files under `marker`: whether some
+    record shows each condition, and the test vectors the records executed,
+    each a (conditions, result) with None for a condition not evaluated. The
+    vectors are None when this llvm-cov does not export them (Apple's 21 does
+    not; LLVM 23 does).
+
+    A record starts with its line and column. Its first list is one flag per
+    condition; a later list, where the LLVM release writes one, holds the test
+    vectors. The fields between them changed across releases and are not
+    read."""
+    shown = {}
+    for data in json.loads(export_json)["data"]:
+        for entry in data["files"]:
+            path = repo_relative(entry["filename"])
+            if marker not in path:
+                continue
+            for record in entry.get("mcdc_records", []):
+                lists = [field for field in record if isinstance(field, list)]
+                flags = lists[0]
+                key = (path, record[0], record[1], len(flags))
+                before, vectors = shown.get(key, ([False] * len(flags), set()))
+                if len(lists) > 1 and vectors is not None:
+                    vectors = vectors | {(tuple(vector["conditions"]), vector["result"])
+                                         for vector in lists[1]
+                                         if isinstance(vector, dict) and vector.get("executed")}
+                else:
+                    vectors = None
+                shown[key] = ([a or b for a, b in zip(before, flags)], vectors)
+    return shown
+
+
+def independent_conditions(vectors, count):
+    """Which of `count` conditions a pair of `vectors` shows independent: the
+    results differ, and the condition is the only one both vectors evaluated
+    and gave different values (llvm-cov's own rule)."""
+    shown = [False] * count
+    for conditions, result in vectors:
+        for other, other_result in vectors:
+            if result == other_result:
+                continue
+            differ = [index for index in range(count)
+                      if conditions[index] is not None and other[index] is not None
+                      and conditions[index] != other[index]]
+            if len(differ) == 1:
+                shown[differ[0]] = True
+    return shown
+
+
+def mcdc_summary(per_binary):
+    """Merges mcdc_shown() of every binary. Returns (covered, count, files,
+    decisions, pooled): condition totals, [(file, covered, count)] per file,
+    [(file, line, col, uncovered, conditions)] per decision with a condition no
+    test showed, and whether every record carried its test vectors.
+
+    MC/DC is judged per source decision, as it is written: a template's
+    decision has one record per instantiation and per binary, and the test
+    vectors of all of them are pooled before the independence pairs are
+    sought. Without the vectors, a condition counts when one record shows it,
+    which reads lower for a decision whose instantiations each saw only one
+    outcome. A decision written in a macro body is recorded where the macro is
+    defined, so its uses share one location; there the vectors of different
+    uses are not pooled, and a condition counts when some record shows it.
+    llvm-cov's own totals are not used: they come from one binary per
+    function (see ONE BINARY AT A TIME)."""
+    shown, pooled = {}, {}
+    for binary in per_binary:
+        for key, (flags, vectors) in binary.items():
+            before = shown.get(key, [False] * len(flags))
+            shown[key] = [a or b for a, b in zip(before, flags)]
+            pooled[key] = None if vectors is None or pooled.get(key, set()) is None \
+                else pooled.get(key, set()) | vectors
+    per_file, decisions = {}, []
+    for key, flags in sorted(shown.items()):
+        path, line, col, total = key
+        if pooled[key] is not None and \
+                not read_source_line(path, line).lstrip().startswith("#define"):
+            flags = [a or b for a, b in zip(flags, independent_conditions(pooled[key], total))]
+        hit, count = per_file.get(path, (0, 0))
+        per_file[path] = (hit + sum(flags), count + total)
+        if not all(flags):
+            decisions.append((path, line, col, flags.count(False), total))
+    files = [(path, hit, count) for path, (hit, count) in sorted(per_file.items())]
+    return (sum(hit for _, hit, _ in files), sum(count for _, _, count in files), files,
+            decisions, all(vectors is not None for vectors in pooled.values()))
+
+
+def lcov_merge(texts):
+    """Merges lcov exports of the same sources from different binaries into one.
+
+    Per file, a line's count and a branch's count are the highest any binary
+    reports ('-', never evaluated, is below 0); a function's FNDA likewise.
+
+    A line's branches are merged only between binaries that give that line
+    the same branch keys. Where they differ, a test compiled the line with its
+    own macros -- METL_ASSERT is a `?:` with one branch pair, not an `if`
+    with two, under the METL_HARDENING 0 that harden_floor_memory_test sets
+    -- and merging by position would credit one expansion's branch to the
+    other. The keys most binaries give are kept, the larger set on a tie.
+    Returns (the merged lcov, [(file, line)] whose keys differ)."""
+    parsed = []
+    for text in texts:
+        records, record = [], None
+        for raw in text.splitlines():
+            if raw.startswith("SF:"):
+                record = {"path": raw[3:], "fn": {}, "fnda": {}, "da": {}, "brda": {}}
+                records.append(record)
+            elif raw.startswith("FN:"):
+                line, name = raw[3:].split(",", 1)
+                record["fn"].setdefault(name, int(line))
+            elif raw.startswith("FNDA:"):
+                count, name = raw[5:].split(",", 1)
+                record["fnda"][name] = max(record["fnda"].get(name, 0), int(count))
+            elif raw.startswith("DA:"):
+                line, count = (int(field) for field in raw[3:].split(",")[:2])
+                record["da"][line] = max(record["da"].get(line, 0), count)
+            elif raw.startswith("BRDA:"):
+                line, block, branch, taken = raw[5:].split(",")
+                record["brda"].setdefault(int(line), {})[(int(block), int(branch))] = \
+                    -1 if taken == "-" else int(taken)
+        parsed.append(records)
+
+    shapes = {}
+    for records in parsed:
+        for record in records:
+            for line, branches in record["brda"].items():
+                key = frozenset(branches)
+                counts = shapes.setdefault((record["path"], line), {})
+                counts[key] = counts.get(key, 0) + 1
+    kept = {where: max(counts, key=lambda shape: (counts[shape], len(shape), sorted(shape)))
+            for where, counts in shapes.items()}
+
+    files = {}
+    for records in parsed:
+        for record in records:
+            merged = files.setdefault(record["path"], {"fn": {}, "fnda": {}, "da": {},
+                                                       "brda": {}})
+            for name, line in record["fn"].items():
+                merged["fn"].setdefault(name, line)
+            for name, count in record["fnda"].items():
+                merged["fnda"][name] = max(merged["fnda"].get(name, 0), count)
+            for line, count in record["da"].items():
+                merged["da"][line] = max(merged["da"].get(line, 0), count)
+            for line, branches in record["brda"].items():
+                if frozenset(branches) != kept[(record["path"], line)]:
+                    continue
+                for (block, branch), taken in branches.items():
+                    key = (line, block, branch)
+                    merged["brda"][key] = max(merged["brda"].get(key, -1), taken)
+    differing = sorted(where for where, counts in shapes.items() if len(counts) > 1)
+    out = []
+    for path, record in sorted(files.items()):
+        out.append(f"SF:{path}")
+        for name, line in sorted(record["fn"].items(), key=lambda item: (item[1], item[0])):
+            out.append(f"FN:{line},{name}")
+        for name, line in sorted(record["fn"].items(), key=lambda item: (item[1], item[0])):
+            out.append(f"FNDA:{record['fnda'].get(name, 0)},{name}")
+        out.append(f"FNF:{len(record['fn'])}")
+        out.append(f"FNH:{sum(1 for name in record['fn'] if record['fnda'].get(name, 0))}")
+        for line, count in sorted(record["da"].items()):
+            out.append(f"DA:{line},{count}")
+        for (line, block, branch), taken in sorted(record["brda"].items()):
+            out.append(f"BRDA:{line},{block},{branch},{'-' if taken < 0 else taken}")
+        out.append(f"BRF:{len(record['brda'])}")
+        out.append(f"BRH:{sum(1 for taken in record['brda'].values() if taken > 0)}")
+        out.append(f"LF:{len(record['da'])}")
+        out.append(f"LH:{sum(1 for count in record['da'].values() if count)}")
+        out.append("end_of_record")
+    return ("\n".join(out) + "\n" if out else ""), differing
+
+
+def lcov_per_file(text):
+    """{file: lcov_totals()} for each record of `text`."""
+    totals, record = {}, []
+    for raw in text.splitlines():
+        record.append(raw)
+        if raw == "end_of_record":
+            totals[record[0][3:]] = lcov_totals("\n".join(record))
+            record = []
+    return totals
+
+
+def print_mcdc(covered, count, files, decisions, pooled, skipped):
+    """Prints the MC/DC report. Returns False when the export holds no MC/DC
+    record at all, which means the measurement did not happen."""
+    print("\n=== include/metl MC/DC (reported, no floor yet; #342) ===")
+    if not count:
+        print("FAIL: the MC/DC build exported no MC/DC record for include/metl")
+        return False
+    print(f"  conditions {pct(count, count - covered):6.2f}%  ({covered}/{count} shown to "
+          f"affect their decision independently)")
+    if not pooled:
+        print("  this llvm-cov exports no test vectors, so a condition counts only when one "
+              "instantiation shows it; a template whose instantiations each saw one outcome "
+              "reads lower than its tests together show")
+    print(f"  decisions not instrumented (left out of the figure): {len(skipped)}")
+    for (path, line, col), why in sorted(skipped.items()):
+        print(f"    {path}:{line}:{col}  {why}")
+    print("  weakest files:")
+    for path, hit, total in sorted(files, key=lambda f: (f[1] / f[2], f[0]))[:10]:
+        print(f"    {pct(total, total - hit):6.2f}%  ({hit}/{total})  {path}")
+    print(f"  decisions with conditions no instantiation showed independent "
+          f"({len(decisions)} in all, most missing first, {min(len(decisions), MCDC_WEAKEST)} "
+          f"shown):")
+    for path, line, col, uncovered, total in sorted(
+            decisions, key=lambda d: (-d[3], d[0], d[1], d[2]))[:MCDC_WEAKEST]:
+        print(f"    {uncovered}/{total} missing  {path}:{line}:{col}  "
+              f"{read_source_line(path, line).strip()[:70]}")
+    return True
+
+
 def configuration_failures(name, only, unexecuted, source_line):
     """FAIL lines for one configuration: each line only it compiles that no
     test ran -- and, if it compiles no line of its own, that, because then
@@ -250,6 +530,123 @@ def self_test():
         print(f"SELF-TEST FAILED: configuration-only lines {sorted(only)}, unexecuted {unexecuted}",
               file=sys.stderr)
         return 1
+    # MC/DC: the LLVM 18 record layout and a later, wider one; a test file left
+    # out. Line 3 has two instantiations that each miss a condition, line 5 two
+    # that together show both; line 7 misses two in one binary, and a second
+    # binary shows one of them. On line 9 neither instantiation shows a
+    # condition, but their test vectors together show both: one only ever
+    # found the key, the other only missed it.
+    first = json.dumps({"data": [{"files": [
+        {"filename": str(REPO / "include/metl/a.hpp"),
+         "mcdc_records": [[3, 9, 3, 20, 0, 5, [True, False], []],
+                          [3, 9, 3, 20, 0, 5, [True, False], []],
+                          [5, 9, 5, 20, 0, 5, [True, False], []],
+                          [5, 9, 5, 20, 0, 5, [False, True], []],
+                          [7, 5, 7, 30, 1, 1, 0, 0, 5, [False, False, True], [{"result": True}]],
+                          [9, 9, 9, 40, 1, 0, 0, 0, 5, [False, False],
+                           [{"conditions": [True, True], "executed": True, "result": True}]],
+                          [9, 9, 9, 40, 2, 0, 0, 0, 5, [False, False],
+                           [{"conditions": [False, None], "executed": True, "result": False},
+                            {"conditions": [True, False], "executed": True, "result": False},
+                            {"conditions": [True, True], "executed": False, "result": True}]]]},
+        {"filename": str(REPO / "include/metl/b.hpp"), "mcdc_records": []},
+        {"filename": str(REPO / "tests/t.cpp"),
+         "mcdc_records": [[1, 1, 1, 9, 0, 5, [False, False]]]},
+    ]}]})
+    second = json.dumps({"data": [{"files": [
+        {"filename": str(REPO / "include/metl/a.hpp"),
+         "mcdc_records": [[7, 5, 7, 30, 1, 1, 0, 0, 5, [True, False, False], []]]},
+    ]}]})
+    got = mcdc_summary([mcdc_shown(first, "include/metl/"), mcdc_shown(second, "include/metl/")])
+    want = (7, 9, [("include/metl/a.hpp", 7, 9)],
+            [("include/metl/a.hpp", 3, 9, 1, 2), ("include/metl/a.hpp", 7, 5, 1, 3)], True)
+    if got != want:
+        print(f"SELF-TEST FAILED: mcdc_summary gave {got}, expected {want}", file=sys.stderr)
+        return 1
+    # An llvm-cov that writes no test vectors: nothing is pooled, and it says so.
+    bare = json.dumps({"data": [{"files": [
+        {"filename": str(REPO / "include/metl/a.hpp"),
+         "mcdc_records": [[9, 9, 9, 40, 1, 0, 0, 0, 5, [False, False]],
+                          [9, 9, 9, 40, 0, 2, 0, 0, 5, [False, False]]]}]}]})
+    got = mcdc_summary([mcdc_shown(bare, "include/metl/"), mcdc_shown(first, "include/metl/")])
+    if got[4] or ("include/metl/a.hpp", 9, 9, 2, 2) not in got[3]:
+        print(f"SELF-TEST FAILED: mcdc_summary without vectors gave {got}", file=sys.stderr)
+        return 1
+    # Two binaries' exports of a.hpp. Line 2 ran only in the second (the first
+    # has the function as an unused, empty record); line 4 only the first
+    # compiles; the branch on line 2 went one way in each binary, and line 6
+    # has a different branch shape in each. b.hpp is only in the second.
+    one = ("SF:include/metl/a.hpp\nFN:1,f\nFNDA:0,f\nFNF:1\nFNH:0\nDA:2,0\nDA:4,1\n"
+           "BRDA:2,0,0,0\nBRDA:2,0,1,3\nBRDA:6,0,0,1\nBRF:3\nBRH:2\nLF:2\nLH:1\nend_of_record\n")
+    two = ("SF:include/metl/a.hpp\nFN:1,f\nFNDA:5,f\nFNF:1\nFNH:1\nDA:2,5\n"
+           "BRDA:2,0,0,2\nBRDA:2,0,1,-\nBRDA:6,0,0,1\nBRDA:6,1,1,1\nBRF:4\nBRH:3\nLF:1\nLH:1\n"
+           "end_of_record\nSF:include/metl/b.hpp\nDA:1,0\nend_of_record\n")
+    # A third binary compiles line 6 as the first does, so their one branch
+    # is kept and the second's two are not merged into it.
+    three = "SF:include/metl/a.hpp\nDA:6,7\nBRDA:6,0,0,0\nend_of_record\n"
+    merged, differing = lcov_merge([one, two])
+    want = ("SF:include/metl/a.hpp\nFN:1,f\nFNDA:5,f\nFNF:1\nFNH:1\nDA:2,5\nDA:4,1\n"
+            "BRDA:2,0,0,2\nBRDA:2,0,1,3\nBRDA:6,0,0,1\nBRDA:6,1,1,1\nBRF:4\nBRH:4\nLF:2\nLH:2\n"
+            "end_of_record\nSF:include/metl/b.hpp\nFNF:0\nFNH:0\nDA:1,0\nBRF:0\nBRH:0\nLF:1\n"
+            "LH:0\nend_of_record\n")
+    if merged != want or differing != [("include/metl/a.hpp", 6)]:
+        print(f"SELF-TEST FAILED: lcov_merge gave\n{merged}differing {differing}", file=sys.stderr)
+        return 1
+    merged, _ = lcov_merge([one, two, three])
+    if "BRDA:6,0,0,1\nBRF:3\n" not in merged or "DA:6,7" not in merged:
+        print(f"SELF-TEST FAILED: lcov_merge with three binaries gave\n{merged}", file=sys.stderr)
+        return 1
+    warning = ("unsupported MC/DC boolean expression; number of conditions (7) exceeds max (6). "
+               "Expression will not be covered [-Wpgo-coverage]")
+    build = (f"{REPO}/include/metl/a.hpp:12:20: warning: {warning}\n"
+             f"{REPO}/include/metl/a.hpp:12:20: warning: {warning}\n"
+             f"{REPO}/tests/t.cpp:4:1: warning: {warning}\n"
+             f"{REPO}/include/metl/b.hpp:3:3: warning: unused variable 'x' [-Wunused-variable]\n")
+    got = mcdc_skipped(build, "include/metl/")
+    want = {("include/metl/a.hpp", 12, 20):
+            "number of conditions (7) exceeds max (6). Expression will not be covered"}
+    if got != want:
+        print(f"SELF-TEST FAILED: mcdc_skipped gave {got}, expected {want}", file=sys.stderr)
+        return 1
+    # Binary 1 uses f (lines 1-3, line 2 skipped) and only includes g and h.
+    # Binary 2 uses g, whose own record skips line 5, and includes h, whose
+    # record there skips the comment on line 11. g's unused record in binary 1
+    # is left out except line 3, which f covers; h, used nowhere, keeps the
+    # lines both its records list.
+    export = json.dumps({"data": [{"functions": [
+        {"name": "f", "filenames": [str(REPO / "include/metl/a.hpp")],
+         "regions": [[1, 1, 3, 2, 1, 0, 0, 0], [2, 1, 2, 9, 0, 0, 0, SKIPPED_REGION]]},
+        {"name": "g", "filenames": [str(REPO / "include/metl/a.hpp")],
+         "regions": [[3, 1, 6, 2, 0, 0, 0, 0]]},
+        {"name": "h", "filenames": [str(REPO / "include/metl/a.hpp")],
+         "regions": [[10, 1, 12, 2, 0, 0, 0, 0]]},
+        {"name": "t", "filenames": [str(REPO / "tests/t.cpp")],
+         "regions": [[1, 1, 9, 2, 1, 0, 0, 0]]},
+    ]}]})
+    first = function_lines(export, {"f", "t"}, "include/metl/")
+    if first["t"] != (True, set(), set()) or first["g"][0] or \
+            first["f"][2] != {("include/metl/a.hpp", 2)}:
+        print(f"SELF-TEST FAILED: function_lines gave {first}", file=sys.stderr)
+        return 1
+    # Binary 2 also includes k, used nowhere, over lines 20-22, and uses m,
+    # whose record skips line 21.
+    second = {"g": (True, {("include/metl/a.hpp", line) for line in (3, 4, 6)}, set()),
+              "h": (False, {("include/metl/a.hpp", line) for line in (10, 12)}, set()),
+              "k": (False, {("include/metl/a.hpp", line) for line in (20, 21, 22)}, set()),
+              "m": (True, {("include/metl/a.hpp", line) for line in (20, 22)},
+                    {("include/metl/a.hpp", 21)})}
+    got = unused_records([first, second])
+    want = [({("include/metl/a.hpp", line) for line in (4, 5, 6, 11)}, {"g"}),
+            ({("include/metl/a.hpp", 21)}, set())]
+    if got != want:
+        print(f"SELF-TEST FAILED: unused_records gave {got}, expected {want}", file=sys.stderr)
+        return 1
+    kept = lcov_without("SF:include/metl/a.hpp\nFN:1,f\nFN:3,g\nFNDA:1,f\nFNDA:0,g\nDA:1,1\n"
+                        "DA:4,0\nBRDA:4,0,0,-\nBRDA:1,0,0,1\nend_of_record\n", want[0][0], {"g"})
+    if kept != ("SF:include/metl/a.hpp\nFN:1,f\nFNDA:1,f\nDA:1,1\nBRDA:1,0,0,1\n"
+                "end_of_record\n"):
+        print(f"SELF-TEST FAILED: lcov_without gave\n{kept}", file=sys.stderr)
+        return 1
     if configuration_failures("fixture", only, unexecuted, lambda _path, n: source.get(n, "")) != [
             "FAIL: include/metl/a.hpp:8 is compiled only in fixture and no test ran it: std::abort();"]:
         print("SELF-TEST FAILED: a configuration-only line that never ran was not reported",
@@ -272,14 +669,160 @@ def self_test():
         print("SELF-TEST FAILED: lcov_filtered kept a record outside the marker", file=sys.stderr)
         return 1
     print("self-test passed: partial lines and untaken branches are counted as Codecov counts them, "
-          "only include/metl records are measured, and a configuration's own code lines are found "
-          "and checked -- and a configuration with none fails")
+          "only include/metl records are measured, a configuration's own code lines are found "
+          "and checked (one with none fails), binaries are merged per line and branch without "
+          "their unused records, and MC/DC conditions and skipped decisions are read")
     return 0
 
 
-def measure(build_dir, cxx_flags, profdata, cov):
+def test_binaries(build_dir):
+    """The instrumented executables: those that carry a coverage mapping. A
+    header check such as metl_header_odr_link is linked without the test
+    options and has none."""
+    return [binary for binary in sorted(build_dir.glob("metl_*"))
+            if binary.is_file() and os.access(binary, os.X_OK)
+            and b"__llvm_covmap" in binary.read_bytes()]
+
+
+def function_lines(export_json, profiled, marker):
+    """{name: (used, {(file, line)}, {(file, line)})} for the functions of one
+    binary's `llvm-cov export -format=text`: the lines under `marker` their
+    regions cover, and those their skipped regions cover (comments, `#if`
+    arms not compiled, discarded `if constexpr` branches). `used` says whether
+    the name is in the binary's own profile, `profiled`."""
+    functions = {}
+    for data in json.loads(export_json)["data"]:
+        for function in data["functions"]:
+            lines, skipped = set(), set()
+            for line_start, _, line_end, _, _, file_id, _, kind in function["regions"]:
+                path = repo_relative(function["filenames"][file_id])
+                if marker in path:
+                    (skipped if kind == SKIPPED_REGION else lines).update(
+                        (path, line) for line in range(line_start, line_end + 1))
+            name = function["name"]
+            used, before, before_skipped = functions.get(name, (False, set(), set()))
+            functions[name] = (used or name in profiled, before | lines, before_skipped | skipped)
+    return functions
+
+
+def unused_records(per_binary):
+    """What to leave out of each binary's export: [(lines, names)], given
+    function_lines() of every binary.
+
+    A header function that a translation unit includes but never calls still
+    gets a coverage record, with no profile behind it. Its line set is not
+    the one the compiled function has: depending on the translation unit it
+    also lists comments and the lines of `#if` arms that were not compiled
+    (the MSVC and ARM paths of wait.hpp read as 42 missed lines). So:
+
+      * a function some binary uses is reported only from the binaries that
+        use it: its unused records, and their lines, are left out;
+      * a function no binary uses is reported as never run, on the lines
+        every one of its records lists, less the lines a used function's
+        record skips. bit_ceil<unsigned char>, evaluated only in static_assert,
+        is such a function, and bit_ceil<unsigned long>, which runs, marks its
+        comments as skipped. A function no used record overlaps keeps every
+        line its records share.
+
+    A line a binary's own used function also covers is never left out."""
+    used_names = {name for functions in per_binary
+                  for name, (used, _, _) in functions.items() if used}
+    skipped_when_used = set().union(*(skipped for functions in per_binary
+                                      for used, _, skipped in functions.values() if used))
+    everywhere = {}
+    for functions in per_binary:
+        for name, (used, lines, _) in functions.items():
+            if not used and name not in used_names:
+                everywhere[name] = everywhere[name] & lines if name in everywhere else set(lines)
+    result = []
+    for functions in per_binary:
+        own = set().union(*(lines for used, lines, _ in functions.values() if used))
+        drop, names = set(), set()
+        for name, (used, lines, _) in functions.items():
+            if used:
+                continue
+            if name in used_names:
+                drop |= lines
+                names.add(name)
+            else:
+                drop |= (lines - everywhere[name]) | (lines & skipped_when_used)
+        result.append((drop - own, names))
+    return result
+
+
+def lcov_without(text, lines, names):
+    """`text` without the DA and BRDA records of `lines` and the FN and FNDA
+    records of the functions `names`. The per-record totals are left as they
+    are: lcov_merge() recomputes them."""
+    out, path = [], None
+    for raw in text.splitlines():
+        if raw.startswith("SF:"):
+            path = raw[3:]
+        elif raw.startswith(("DA:", "BRDA:")):
+            if (path, int(raw.split(":", 1)[1].split(",", 1)[0])) in lines:
+                continue
+        elif raw.startswith(("FN:", "FNDA:")):
+            if raw.split(",", 1)[1] in names:
+                continue
+        out.append(raw)
+    return "\n".join(out) + "\n" if out else ""
+
+
+def export_each(build_dir, binaries, profdata, cov, mcdc):
+    """Per binary, with only its own profile: the include/metl lcov and, with
+    `mcdc`, mcdc_shown(), both without its unused records (unused_records).
+    Returns [(lcov, mcdc or None)], or None after saying why."""
+    def run(command):
+        done = subprocess.run(command, capture_output=True, text=True)
+        # A warning such as "N functions have mismatched data" means records
+        # were skipped, so it fails the run as an error does.
+        if done.returncode or done.stderr.strip():
+            raise RuntimeError(f"{Path(command[0]).name} {command[1]} (exit {done.returncode}): "
+                               f"{done.stderr.strip()}")
+        return done.stdout
+
+    def one(binary):
+        profile = build_dir / f"{binary.name}.profdata"
+        raws = sorted((build_dir / "profraw").glob(f"{binary.name}-*.profraw"))
+        if not raws:
+            raise RuntimeError("no test ran it, so it wrote no profile")
+        run([profdata, "merge", "-sparse", *map(str, raws), "-o", str(profile)])
+        profiled = {line[2:-1] for line in run([profdata, "show", "--all-functions",
+                                                str(profile)]).splitlines()
+                    if line.startswith("  ") and not line.startswith("   ") and line.endswith(":")}
+        as_lcov = run([cov, "export", "-format=lcov", str(binary), f"-instr-profile={profile}"])
+        as_json = run([cov, "export", "-format=text", "-skip-expansions", str(binary),
+                       f"-instr-profile={profile}"])
+        return (lcov_filtered(as_lcov, "include/metl/"),
+                function_lines(as_json, profiled, "include/metl/"),
+                mcdc_shown(as_json, "include/metl/") if mcdc else None)
+
+    def guarded(binary):
+        try:
+            return None, one(binary)
+        except RuntimeError as error:
+            return f"error: {binary.name}: {error}", None
+
+    with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
+        results = list(pool.map(guarded, binaries))
+    errors = [error for error, _ in results if error]
+    for error in errors:
+        print(error, file=sys.stderr)
+    if errors:
+        return None
+    exports = [result for _, result in results]
+    leave_out = unused_records([functions for _, functions, _ in exports])
+    return [(lcov_without(lcov, lines, names),
+             None if shown is None else
+             {key: flags for key, flags in shown.items() if key[:2] not in lines})
+            for (lcov, _, shown), (lines, names) in zip(exports, leave_out)]
+
+
+def measure(build_dir, cxx_flags, profdata, cov, mcdc=False):
     """Builds `build_dir` instrumented with `cxx_flags`, runs every test and
-    returns (the lcov export, llvm-cov's report), or None after saying why."""
+    returns (the merged include/metl lcov, the lines whose branch keys differ
+    between binaries, the per-binary MC/DC or None, the build's output), or
+    None after saying why. `mcdc` adds -fcoverage-mcdc and reads its records."""
     prof_dir = build_dir / "profraw"
     shutil.rmtree(build_dir, ignore_errors=True)
     prof_dir.mkdir(parents=True)
@@ -289,14 +832,21 @@ def measure(build_dir, cxx_flags, profdata, cov):
                  "-DMETL_ENABLE_COVERAGE=ON", "-DMETL_INSTALL=OFF"]
     if cxx_flags:
         configure.append(f"-DCMAKE_CXX_FLAGS={cxx_flags}")
+    if mcdc:
+        configure.append("-DMETL_ENABLE_COVERAGE_MCDC=ON")
     if subprocess.run(configure, **quiet).returncode:
         print(f"error: configuring {build_dir.name} failed", file=sys.stderr)
         return None
-    if subprocess.run(["cmake", "--build", str(build_dir), "-j"], **quiet).returncode:
+    built = subprocess.run(["cmake", "--build", str(build_dir), "-j"], stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT, text=True)
+    if built.returncode:
+        print(built.stdout)
         print(f"error: building {build_dir.name} failed", file=sys.stderr)
         return None
 
-    env = dict(os.environ, LLVM_PROFILE_FILE=str(prof_dir / "%p.profraw"))
+    # The binaries name their own profiles (CMakeLists.txt); an inherited
+    # LLVM_PROFILE_FILE would send them all to one name again.
+    env = {key: value for key, value in os.environ.items() if key != "LLVM_PROFILE_FILE"}
     ctest = subprocess.run(["ctest", "--no-tests=error", "--test-dir", str(build_dir), "-j4",
                             "--output-on-failure"], env=env, capture_output=True, text=True)
     (build_dir / "ctest.log").write_text(ctest.stdout + ctest.stderr)
@@ -308,29 +858,21 @@ def measure(build_dir, cxx_flags, profdata, cov):
         return None
     print("\n".join((ctest.stdout + ctest.stderr).splitlines()[-3:]))
 
-    profile = build_dir / "coverage.profdata"
-    if subprocess.run([profdata, "merge", "-sparse", *map(str, prof_dir.glob("*.profraw")),
-                       "-o", str(profile)]).returncode:
-        print(f"error: llvm-profdata could not merge the profiles in {prof_dir}", file=sys.stderr)
+    exported = export_each(build_dir, test_binaries(build_dir), profdata, cov, mcdc)
+    if exported is None:
         return None
+    lcov, differing = lcov_merge([lcov for lcov, _ in exported])
+    return lcov, differing, [shown for _, shown in exported] if mcdc else None, built.stdout
 
-    # Every test is its own binary, so every one has to be handed to llvm-cov or
-    # the functions only that binary exercised are reported as unexecuted.
-    objects = []
-    for binary in sorted(build_dir.glob("metl_*")):
-        if binary.is_file() and os.access(binary, os.X_OK):
-            objects += ["-object", str(binary)]
-    report = subprocess.run([cov, "report", *objects, f"-instr-profile={profile}"],
-                            capture_output=True, text=True).stdout
-    (build_dir / "report.txt").write_text(report)
 
-    exported = subprocess.run([cov, "export", "-format=lcov", *objects,
-                               f"-instr-profile={profile}"],
-                              capture_output=True, text=True)
-    if exported.returncode:
-        print(exported.stderr, file=sys.stderr)
-        return None
-    return exported.stdout, report
+def print_differing(differing):
+    """Lists the lines whose branch keys differ between binaries; lcov_merge()
+    kept the keys most binaries give."""
+    if differing:
+        print(f"  lines compiled with different branches by different binaries (the "
+              f"branches most compile are kept): {len(differing)}")
+        for path, line in differing:
+            print(f"    {path}:{line}  {read_source_line(path, line).strip()[:70]}")
 
 
 def configurations_ran(default_lcov, profdata, cov):
@@ -345,7 +887,8 @@ def configurations_ran(default_lcov, profdata, cov):
             print(f"FAIL: the {name} configuration did not build and run")
             all_ran = False
             continue
-        lcov = lcov_filtered(measured[0], "include/metl/")
+        lcov = measured[0]
+        print_differing(measured[1])
         hits, partials, misses, br_hit, br_found = lcov_totals(lcov)
         only, unexecuted = configuration_only_unexecuted(default_lcov, lcov, read_source_line)
         lines = hits + partials + misses
@@ -383,44 +926,50 @@ def main():
     measured = measure(BUILD_DIR, "", profdata, cov)
     if measured is None:
         return 1
-    exported_lcov, report = measured
-    kept = lcov_records_under(exported_lcov, "include/metl/")
-    if kept == 0:
+    lcov, differing = measured[0], measured[1]
+    per_file = lcov_per_file(lcov)
+    if not per_file:
         print("error: the lcov export has no include/metl record", file=sys.stderr)
         return 1
-    lcov = lcov_filtered(exported_lcov, "include/metl/")
     (BUILD_DIR / "metl.lcov").write_text(lcov)
     if args.lcov is not None:
         args.lcov.write_text(lcov)
-        print(f"lcov: {kept} include/metl file(s) written to {args.lcov}")
+        print(f"lcov: {len(per_file)} include/metl file(s) written to {args.lcov}")
+    print_differing(differing)
 
-    # Columns: file, regions, missed, cover, functions, missed, executed,
-    # lines, missed, cover, branches, missed, cover.
-    rows = [line.split() for line in report.splitlines() if "include/metl" in line]
-    rows = [row for row in rows if len(row) >= 13]
+    table = ["=== per-file, weakest branch coverage first ==="]
+    for path, (hit, partial, miss, br_hit, br_found) in sorted(
+            ((path, totals) for path, totals in per_file.items() if totals[4]),
+            key=lambda item: (item[1][3] / item[1][4], item[0])):
+        table.append(f"  branches {100.0 * br_hit / br_found:7.2f}%   lines "
+                     f"{100.0 * hit / (hit + partial + miss):6.2f}%   {path}")
+    print("\n" + "\n".join(table))
+    (BUILD_DIR / "report.txt").write_text("\n".join(table) + "\n")
 
-    print("\n=== per-file, weakest branch coverage first ===")
-    with_branches = [row for row in rows if float(row[10]) > 0]
-    for row in sorted(with_branches, key=lambda row: float(row[12].rstrip("%"))):
-        print(f"  branches {float(row[12].rstrip('%')):7.2f}%   lines {row[9]:<9} {row[0]}")
-
-    total = [sum(int(row[i]) for row in rows) for i in (1, 2, 4, 5, 7, 8)]
-    reg, regmiss, fn, fnmiss, ln, lnmiss = total
     hits, partials, misses, br_hit, br_found = lcov_totals(lcov)
+    functions = [int(line[4:]) for line in lcov.splitlines() if line.startswith(("FNF:", "FNH:"))]
+    fn_found, fn_hit = sum(functions[0::2]), sum(functions[1::2])
     lines_pct = 100.0 * hits / (hits + partials + misses) if hits + partials + misses else 0.0
     branch_pct = 100.0 * br_hit / br_found if br_found else 0.0
     print("\n=== include/metl totals (gated, from the lcov file Codecov receives) ===")
     print(f"  lines     {lines_pct:6.2f}%  ({hits} hit, {partials} partial, {misses} missed)"
           f"   floor {args.min_lines:g}%")
     print(f"  branches  {branch_pct:6.2f}%  ({br_hit}/{br_found})   floor {args.min_branches:g}%")
-    print("=== llvm-cov report, for reference (a partial line counts as covered) ===")
-    print(f"  regions   {pct(reg, regmiss):6.2f}%  ({reg - regmiss}/{reg})")
-    print(f"  functions {pct(fn, fnmiss):6.2f}%  ({fn - fnmiss}/{fn})")
-    print(f"  lines     {pct(ln, lnmiss):6.2f}%  ({ln - lnmiss}/{ln})")
+    print("=== for reference ===")
+    print(f"  lines     {pct(hits + partials + misses, misses):6.2f}%  (a partial line counted "
+          f"as covered, as llvm-cov counts it)")
+    print(f"  functions {pct(fn_found, fn_found - fn_hit):6.2f}%  ({fn_hit}/{fn_found})")
 
     failed = False
-    if args.configurations:
-        failed = not configurations_ran(lcov, profdata, cov)
+    print("\n--- MC/DC build (-fcoverage-mcdc)")
+    measured = measure(REPO / "build-coverage-mcdc", "", profdata, cov, mcdc=True)
+    if measured is None:
+        print("FAIL: the MC/DC build did not build, run and export")
+        failed = True
+    elif not print_mcdc(*mcdc_summary(measured[2]), mcdc_skipped(measured[3], "include/metl/")):
+        failed = True
+    if args.configurations and not configurations_ran(lcov, profdata, cov):
+        failed = True
     if lines_pct < args.min_lines:
         print(f"\nFAIL: line coverage {lines_pct:.2f}% is below the {args.min_lines:g}% floor")
         failed = True

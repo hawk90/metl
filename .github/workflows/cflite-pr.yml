@@ -14,7 +14,10 @@ name: ClusterFuzzLite PR
 #
 # It also stays READ-ONLY. It reads the corpus the nightly batch run grows, and
 # must not be able to write to it: a PR's token writing to the corpus branch
-# would let an untrusted change poison every later run.
+# would let an untrusted change poison every later run. The corpus is read from
+# git -- the `clusterfuzzlite` branch cflite-batch.yml pushes to -- so both
+# ClusterFuzzLite steps below are given the same storage-repo; see the run step
+# for why leaving it out is not a harmless default.
 on:
   pull_request:
     branches: [main]
@@ -87,3 +90,23 @@ jobs:
           mode: 'code-change'
           sanitizer: ${{ matrix.sanitizer }}
           output-sarif: true
+          # The storage repo is what makes this run start from the nightly
+          # corpus. Without it ClusterFuzzLite falls back to GitHub artifacts and
+          # looks for a `cifuzz-corpus-<target>` artifact that nothing creates
+          # (the batch run stores the corpus in git), so every target fuzzed from
+          # an empty corpus. Worse, the fallback finds that out by listing every
+          # artifact in the repository, per target and per sanitizer, with a
+          # pager that keeps requesting pages until it has seen the total count
+          # from page one -- when the list comes up short of that count it asks
+          # for empty pages without end. One run did that ~4,700 times until the
+          # API rate limit stopped it, and the exhausted budget failed CodeQL on
+          # every PR for the next hour.
+          #
+          # Read-only and unauthenticated: the repository is public, so the
+          # clone and fetches need no token, and code-change mode never pushes
+          # (only batch and prune upload a corpus, only coverage uploads a
+          # report). Unlike cflite-batch.yml, no token goes in the URL, so a
+          # push could not authenticate even if one were attempted.
+          storage-repo: https://github.com/${{ github.repository }}.git
+          storage-repo-branch: clusterfuzzlite
+          storage-repo-branch-coverage: clusterfuzzlite-coverage

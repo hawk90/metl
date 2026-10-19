@@ -361,6 +361,36 @@ class ring_core {
  protected:
   using storage_type = storage_for<T>;
 
+  static constexpr bool swap_cannot_throw =
+      std::is_nothrow_move_constructible_v<T> && std::is_nothrow_swappable_v<T>;
+
+  // Swaps the elements at each logical position both rings hold, then moves
+  // the longer ring's tail across. Each ring keeps its own head, so an
+  // iterator keeps its logical position.
+  void swap_core(ring_core& other) noexcept(swap_cannot_throw) {
+    if (this == &other) {
+      return;
+    }
+    const size_type common = (size_ < other.size_) ? size_ : other.size_;
+    using std::swap;
+    for (size_type i = 0; i < common; ++i) {
+      swap(at(i), other.at(i));
+    }
+    if (size_ != other.size_) {
+      ring_core& shorter = (size_ < other.size_) ? *this : other;
+      ring_core& longer = (size_ < other.size_) ? other : *this;
+      // emplace_back counts each element into `shorter` as soon as it exists,
+      // so a throwing move leaves each ring owning exactly what it holds.
+      for (size_type i = common; i < longer.size_; ++i) {
+        (void)shorter.emplace_back(static_cast<T&&>(longer.at(i)));
+      }
+      while (longer.size_ > common) {
+        --longer.size_;  // shrink first, then destroy, as in pop_front
+        longer.storage_at(longer.physical_index(longer.size_)).~T();
+      }
+    }
+  }
+
   // `if constexpr`, not `?:`: a zero-capacity ring must not even instantiate
   // the `% Capacity`, or MSVC warns of a possible division by zero (C4724).
   constexpr size_type advance(size_type index) const noexcept {

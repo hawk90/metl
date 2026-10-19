@@ -912,9 +912,13 @@ jobs:
       - name: Canary must FAIL the audit
         run: |
           set -uo pipefail
-          if python3 tools/check_invariants.py \
-               --nm arm-none-eabi-nm invariant_canary.elf; then
-            echo "::error::the canary passed the invariant audit — the gate is dead"
+          # Exit 1 is "violations found". Exit 2 is a tooling error -- nm failed
+          # or read no symbols -- which proves nothing about the rules.
+          status=0
+          python3 tools/check_invariants.py \
+            --nm arm-none-eabi-nm invariant_canary.elf || status=$?
+          if [[ "${status}" -ne 1 ]]; then
+            echo "::error::the canary's audit exited ${status}, not 1 (violations found) -- the gate is not shown to bite"
             exit 1
           fi
           echo "canary correctly rejected; the audit can fail"
@@ -1276,6 +1280,9 @@ jobs:
             exit 1
           fi
 
+      - name: The runner's grading must still bite (canary)
+        run: tools/run_qemu_tests.py --self-test
+
       - name: Cross-compile and run the test suite on ${{ matrix.cpu }}
         timeout-minutes: 10
         run: |
@@ -1457,13 +1464,19 @@ jobs:
   #   * Constant conditions are counted as missed branches. llvm-cov's lcov
   #     export counts the `while (false)` of every assertion macro that way, so
   #     the branch figure reads about 8 points low; see tools/coverage.py, #363.
+  #
+  # MC/DC is printed after lines and branches, with no floor yet (#342): the
+  # share of conditions shown to change their decision on their own, the
+  # weakest decisions, and the decisions Clang left uninstrumented. The floor
+  # is set from this job's figure once it has been read.
   # ---------------------------------------------------------------------------
   coverage:
     name: coverage
     runs-on: ubuntu-26.04
     needs: preflight
-    # Four instrumented builds and test runs: the default and --configurations.
-    timeout-minutes: 45
+    # Five instrumented builds and test runs: the default, --configurations and
+    # the MC/DC build.
+    timeout-minutes: 55
     # id-token: the Codecov upload authenticates with this run's OIDC token, so
     # no upload secret is stored anywhere. Nothing else here writes.
     permissions:
@@ -1650,6 +1663,12 @@ jobs:
 
       - name: Placement new is ::new in every public header
         run: tools/check_source_rules.py
+
+      - name: The tier checker must still bite (canary)
+        run: tools/check_tiers.py --self-test
+
+      - name: Tier 2 headers are labelled and opt-in
+        run: tools/check_tiers.py
 
       - name: The I3 checker must still bite (canary)
         run: tools/check_progress_guarantee.py --self-test
