@@ -721,6 +721,34 @@ int main() {
     CHECK(table.find(7) != nullptr);
   }
 
+  // ---- fixed_deque::try_emplace_front: a throwing constructor gives the slot back
+  {
+    g_live = 0;
+    g_double_destroys = 0;
+    {
+      metl::fixed_deque<armed, 4> deque;
+      deque.emplace_back(1);
+      deque.emplace_back(2);
+      const armed source(9);
+      g_countdown = 0;
+      bool threw = false;
+      try {
+        (void)deque.try_emplace_front(source);
+      } catch (int) {
+        threw = true;
+      }
+      g_countdown = -1;
+      CHECK(threw);
+      CHECK_EQ(deque.size(), 2u);
+      CHECK_EQ(deque.front().value, 1);  // head is back on a live element
+      CHECK(deque.try_emplace_front(source));
+      CHECK_EQ(deque.front().value, 9);
+      CHECK_EQ(deque.size(), 3u);
+    }
+    CHECK_EQ(g_live, 0);
+    CHECK_EQ(g_double_destroys, 0);
+  }
+
   // ---- swap: a throw at any step leaks nothing (#348) ------------------------
   {
     const auto back = [](auto& c, int first, int count) {

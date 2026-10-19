@@ -265,6 +265,36 @@ int main() {
     CHECK(guarded_against([&] { (void)no_queue.push(1); }));
     CHECK_EQ(no_queue.size(), 0u);
 
+    // With room for elements the same emplace is not refused: it hands back
+    // the newest element (the front one, for emplace_front), an object that
+    // exists, and writes no slot.
+    metl::fixed_vector<int, 2> full_vector;
+    full_vector.push_back(1);
+    full_vector.push_back(2);
+    const int* from_vector = nullptr;
+    CHECK(!guarded_against([&] { from_vector = &full_vector.emplace_back(9); }));
+    CHECK(from_vector == &full_vector.back());
+    CHECK_EQ(full_vector.size(), 2u);
+    CHECK_EQ(full_vector.back(), 2);
+
+    metl::ring_buffer<int, 2> full_ring;
+    (void)full_ring.emplace_back(1);
+    (void)full_ring.emplace_back(2);
+    const int* from_ring = nullptr;
+    CHECK(!guarded_against([&] { from_ring = &full_ring.emplace_back(9); }));
+    CHECK(from_ring == &full_ring.back());
+    CHECK_EQ(full_ring.size(), 2u);
+    CHECK_EQ(full_ring.back(), 2);
+
+    metl::fixed_deque<int, 2> full_deque;
+    full_deque.push_back(1);
+    full_deque.push_back(2);
+    const int* from_deque = nullptr;
+    CHECK(!guarded_against([&] { from_deque = &full_deque.emplace_front(9); }));
+    CHECK(from_deque == &full_deque.front());
+    CHECK_EQ(full_deque.size(), 2u);
+    CHECK_EQ(full_deque.front(), 1);
+
     // Count and range inserts outside [begin, end] are refused too: by their
     // own check, or by the emplace each delegates to before anything moves.
     const int source[2] = {7, 8};
