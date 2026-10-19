@@ -368,7 +368,7 @@ It is generated from the real headers rather than maintained alongside them, so
 it cannot drift — and it is not a reduced subset: CI redirects every
 `metl/*.hpp` at the amalgamated file and runs the **whole test suite** through
 it, except the tests of `metl/exp/` types, which the tool lists as left out. That file is attached to each GitHub Release; the `amalgamation` job builds
-it on every push.
+it on every pull request.
 
 ## Zephyr
 
@@ -520,7 +520,8 @@ Cortex-A is not exercised by any CI job.
 
 What CI actually exercises versus what is supported-but-not-automatically-verified.
 "CI-verified" means a job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
-builds (and, where noted, runs) METL on that platform on every push/PR.
+builds (and, where noted, runs) METL on that platform on every pull request,
+and nightly on `main`.
 
 ### CI-verified
 

@@ -46,6 +46,12 @@ about the workflow file would look wrong. This script closes that hole.
       results -- every job succeeded, one failed, one skipped, one cancelled,
       none at all, and the documentation-only shape -- and requires it to pass
       and fail exactly as a gate must.
+  G8  main.yml's `main-gate`, which tools/release_gate.py requires before a
+      tag releases a commit, is wired the same way: it needs every main.yml
+      job, declares `if: always()`, and takes its verdict from
+      `tools/check_provenance.py --gate` fed `toJSON(needs)` (that tool's
+      self-test proves the verdict fails where it must). A main.yml job left
+      out of the fan-in would stop no release.
 
 What this file deliberately does NOT do is read the live branch protection and
 compare. Reading it needs an admin token, which CI does not have and should not
@@ -71,6 +77,9 @@ import textwrap
 WORKFLOW_DIR = ".github/workflows"
 CI_WORKFLOW = "ci.yml"
 GATE_JOB = "ci-gate"
+MAIN_WORKFLOW = "main.yml"
+MAIN_GATE = "main-gate"
+MAIN_VERDICT = "tools/check_provenance.py --gate"
 REQUIRED_LIST = ".github/required-checks.txt"
 
 # Jobs that are allowed to be outside ci-gate's `needs:`, each with the reason.
@@ -174,6 +183,32 @@ def _verdict_problems(gate_body, wired):
     return problems
 
 
+def _main_gate_problems(root):
+    """G8: main.yml's fan-in is wired, unskippable, and runs the tested verdict."""
+    path = pathlib.Path(root) / WORKFLOW_DIR / MAIN_WORKFLOW
+    if not path.is_file():
+        return [f"{WORKFLOW_DIR}/{MAIN_WORKFLOW} is missing -- tools/release_gate.py "
+                f"waits for its `{MAIN_GATE}`, so no commit could be released"]
+    jobs = _workflow_jobs(path.read_text())
+    if MAIN_GATE not in jobs:
+        return [f"{MAIN_WORKFLOW} has no `{MAIN_GATE}` job, which tools/release_gate.py requires"]
+    body = jobs[MAIN_GATE]
+    wired = _needs(body)
+    problems = [f"{MAIN_WORKFLOW} job `{job_id}` is not in `{MAIN_GATE}`'s needs -- "
+                f"it stops no release" for job_id in jobs
+                if job_id != MAIN_GATE and job_id not in wired]
+    problems += [f"`{MAIN_GATE}` needs `{name}`, which is not a job in {MAIN_WORKFLOW}"
+                 for name in wired if name not in jobs]
+    if not re.search(r"^    if:\s*always\(\)\s*$", body, re.M):
+        problems.append(f"`{MAIN_GATE}` does not declare `if: always()`; skipped when a job "
+                        f"fails, it would report as passing")
+    if MAIN_VERDICT not in body or not _VERDICT_INPUT.search(body):
+        problems.append(f"`{MAIN_GATE}`'s verdict is not `{MAIN_VERDICT}` fed "
+                        f"`RESULTS: ${{{{ toJSON(needs) }}}}`, the verdict that tool's "
+                        f"self-test proves can fail")
+    return problems
+
+
 def _triggers(text):
     """The event names in a workflow's `on:` block."""
     head = text.split("\njobs:")[0]
@@ -251,6 +286,9 @@ def check(root):
 
     # G7: the verdict at the end of the fan-in can fail.
     problems.extend(("G7", message) for message in _verdict_problems(gate_body, wired))
+
+    # G8: the release's fan-in on main.
+    problems.extend(("G8", message) for message in _main_gate_problems(root))
 
     # G4/G5: the recorded required list must describe checks that can report.
     contexts = _required_contexts(root)
@@ -414,10 +452,43 @@ jobs:
     runs-on: ubuntu-latest
 """
 
-    def tree(stack, ci=clean_ci, required=clean_required, extra=None):
+    clean_main = """\
+name: Main
+on:
+  push:
+    branches: [main]
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  provenance:
+    name: provenance
+    runs-on: ubuntu-latest
+
+  full:  # the fallback
+    needs: provenance
+    uses: ./.github/workflows/ci.yml
+
+  main-gate:
+    name: main-gate
+    needs: [provenance, full]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verdict
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: tools/check_provenance.py --gate
+"""
+
+    def tree(stack, ci=clean_ci, required=clean_required, extra=None, main=clean_main):
         root = pathlib.Path(stack)
         (root / WORKFLOW_DIR).mkdir(parents=True, exist_ok=True)
         (root / WORKFLOW_DIR / CI_WORKFLOW).write_text(ci)
+        if main is not None:
+            (root / WORKFLOW_DIR / MAIN_WORKFLOW).write_text(main)
         (root / WORKFLOW_DIR / "codeql.yml").write_text(codeql)
         (root / WORKFLOW_DIR / "cflite-pr.yml").write_text(cflite)
         for name, text in (extra or {}).items():
@@ -585,6 +656,23 @@ jobs:
         if "G1" not in fired(root):
             failures.append("a ci.yml with no fan-in job at all was not flagged")
 
+    # G8: main.yml's fan-in, which the release gate reads, in each broken shape.
+    for label, main in (
+            ("main.yml missing", None),
+            ("a main.yml job left out of main-gate",
+             clean_main.replace("    needs: [provenance, full]\n", "    needs: [provenance]\n")),
+            ("main-gate needing a job that does not exist",
+             clean_main.replace("    needs: [provenance, full]\n", "    needs: [provenance, full, ghost]\n")),
+            ("main-gate without `if: always()`", clean_main.replace("    if: always()\n", "")),
+            ("main-gate with a verdict that always passes",
+             clean_main.replace("run: tools/check_provenance.py --gate", "run: echo ok")),
+            ("main-gate whose verdict reads no results",
+             clean_main.replace("RESULTS: ${{ toJSON(needs) }}", "RESULTS: '{}'")),
+            ("no main-gate job at all", clean_main.split("  main-gate:")[0])):
+        with tempfile.TemporaryDirectory() as stack:
+            if "G8" not in fired(tree(stack, main=main)):
+                failures.append(f"G8 did not fire on {label}")
+
     # In CI a problem must reach the run's annotations: `::error::` on stderr,
     # and exit 1.
     with tempfile.TemporaryDirectory() as stack:
@@ -599,7 +687,7 @@ jobs:
         for failure in failures:
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
-    print("self-test passed: G1-G7 each bite, a job id containing the gate's "
+    print("self-test passed: G1-G8 each bite, a job id containing the gate's "
           "name is not mistaken for it, a commented job header is still a job, "
           "and a clean tree is not flagged")
     return 0
@@ -629,9 +717,12 @@ def main():
     # does not have (deploy-docs is kept for the self-test's G5 fixture).
     gated = sum(1 for job_id in jobs if job_id not in EXEMPT)
     contexts = _required_contexts(root)
+    main_jobs = _workflow_jobs((root / WORKFLOW_DIR / MAIN_WORKFLOW).read_text())
     print(f"merge boundary OK: `{GATE_JOB}` fans in {wired} of "
           f"{gated} ci.yml jobs with `if: always()` and a verdict proven to fail, and all "
-          f"{len(contexts)} required context(s) report on every pull request")
+          f"{len(contexts)} required context(s) report on every pull request; "
+          f"`{MAIN_GATE}` fans in {len(_needs(main_jobs[MAIN_GATE]))} of "
+          f"{len(main_jobs) - 1} {MAIN_WORKFLOW} jobs")
     return 0
 
 

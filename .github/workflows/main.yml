@@ -1,0 +1,111 @@
+name: Main
+
+# What a push to main still has to do once ci.yml has verified the tree on the
+# pull request (#431):
+#   * subject     -- the squash merge's subject, which the merge dialog lets the
+#                    merger edit after pr-title checked the title;
+#   * provenance  -- whether a pull request run passed ci-gate on this exact
+#                    tree (tools/check_provenance.py);
+#   * invariants  -- the measurement records, which name this commit and which
+#                    release.yml takes from this workflow's run;
+#   * full        -- ci.yml in full, only when provenance could not be shown.
+#                    It produces the measurement records itself, so exactly one
+#                    of `invariants` and `full` runs;
+#   * main-gate   -- the verdict tools/release_gate.py requires before a tag
+#                    releases this commit.
+on:
+  push:
+    branches: [main]
+
+# One group per commit, never cancelled: each commit on main needs its own
+# verdict and records. Not `ci-...`, so ci.yml called from here (whose group
+# is evaluated in this workflow's context) never waits on its caller.
+concurrency:
+  group: main-${{ github.sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # pr-title checks a pull request's title, which squash merging makes the
+  # commit subject -- but the merge dialog (and `gh pr merge --subject`) lets
+  # the merger edit it. So the subject that landed is checked here; a bad one
+  # fails main-gate, and the release gate then refuses to tag the commit.
+  # GitHub's " (#NNN)" suffix is not counted.
+  subject:
+    name: subject
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Commit subject on main follows Conventional Commits
+        run: |
+          set -euo pipefail
+          subject="$(git log -1 --format=%s)"
+          tools/check_commit_message.py --title "$(sed -E 's/ \(#[0-9]+\)$//' <<< "${subject}")"
+
+  provenance:
+    name: provenance
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read        # the pull request's ci.yml runs and their artifacts
+      pull-requests: read  # which pull request was merged as this commit
+    outputs:
+      reused: ${{ steps.check.outputs.reused }}
+      source: ${{ steps.check.outputs.source }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          # The parent, for the documentation-only rule.
+          fetch-depth: 2
+
+      - name: The provenance check must still bite (canary)
+        run: tools/check_provenance.py --self-test
+
+      - name: Was this tree verified on its pull request?
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/check_provenance.py --repo "${GITHUB_REPOSITORY}" --sha "${GITHUB_SHA}"
+
+  invariants:
+    needs: provenance
+    if: needs.provenance.outputs.reused == 'true'
+    uses: ./.github/workflows/invariants.yml
+
+  # The fallback. `!cancelled()` rather than success(): when the provenance job
+  # itself fails, nothing has been shown, so everything runs.
+  full:
+    needs: provenance
+    if: ${{ !cancelled() && needs.provenance.outputs.reused != 'true' }}
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      id-token: write  # ci.yml's coverage job uploads to Codecov with OIDC
+
+  # `if: always()`: a skipped job reports, and a skipped check passes. The
+  # verdict is tools/check_provenance.py --gate, self-tested above.
+  main-gate:
+    name: main-gate
+    needs: [subject, provenance, invariants, full]
+    if: always()
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: This commit is verified and measured
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: tools/check_provenance.py --gate
