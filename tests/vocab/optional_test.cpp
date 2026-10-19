@@ -154,6 +154,21 @@ int main() {
     CHECK_EQ(*d, 99);
   }
 
+  // ---- rvalue observers: the reference names the stored value -------------
+  {
+    metl::optional<int> a(5);
+    int&& moved = *static_cast<metl::optional<int>&&>(a);
+    moved = 6;
+    CHECK_EQ(*a, 6);
+
+    const metl::optional<int> ca(7);
+    const int&& via_star = *static_cast<const metl::optional<int>&&>(ca);
+    const int&& via_value = static_cast<const metl::optional<int>&&>(ca).value();
+    CHECK(&via_star == &*ca);
+    CHECK(&via_value == &*ca);
+    CHECK_EQ(via_value, 7);
+  }
+
   // ---- comparisons: optional vs optional ---------------------------------
   {
     metl::optional<int> a(1);
