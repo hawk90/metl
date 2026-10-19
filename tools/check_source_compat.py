@@ -14,7 +14,8 @@ A failure is one of two things, and the fix says which:
     asserted a bug since fixed. It goes in EXPECTED_BREAKS with the issue that
     explains it.
 
-The baseline is the newest vX.Y.Z tag reachable from HEAD. EXPECTED_BREAKS is
+The baseline is the newest vX.Y.Z tag reachable from HEAD, other than one on
+HEAD itself (release.yml runs this on the tagged commit). EXPECTED_BREAKS is
 keyed by that tag, so a new release starts with a clean slate, and an entry for
 the current tag that no longer breaks is an error rather than a silent pass.
 
@@ -104,12 +105,36 @@ PARSE_CASES = [
 ]
 
 
-def git(*args):
-    return subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True, check=True).stdout.strip()
+def git(*args, cwd=REPO):
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()
 
 
-def previous_release():
-    return git("describe", "--tags", "--abbrev=0", "--match", "v[0-9]*.[0-9]*.[0-9]*", "HEAD")
+def previous_release(cwd=REPO):
+    # Not a tag on HEAD itself: release.yml runs ci.yml on the tagged commit,
+    # and that release is not the one whose tests these headers must still pass.
+    on_head = git("tag", "--points-at", "HEAD", cwd=cwd).split()
+    return git("describe", "--tags", "--abbrev=0", "--match", "v[0-9]*.[0-9]*.[0-9]*",
+               *(f"--exclude={tag}" for tag in on_head), "HEAD", cwd=cwd)
+
+
+def previous_release_failures():
+    """previous_release() in a scratch history: v1.0.0, then v1.1.0, then an untagged commit."""
+    failures = []
+    with tempfile.TemporaryDirectory() as scratch:
+        env = ("-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false")
+        git("init", "-q", cwd=scratch)
+        for tag, want in (("v1.0.0", None), ("v1.1.0", "v1.0.0"), (None, "v1.1.0")):
+            git(*env, "commit", "-q", "--allow-empty", "-m", tag or "next", cwd=scratch)
+            if tag:
+                git(*env, "tag", "-a", "-m", tag, tag, cwd=scratch)
+            if want is None:
+                continue
+            got = previous_release(cwd=scratch)
+            if got != want:
+                # The release run of ci.yml is on the tagged commit itself: compared with
+                # itself, the check would pass whatever the headers did to the last release.
+                failures.append(f"previous_release() on {tag or 'an untagged commit'} = {got}, want {want}")
+    return failures
 
 
 def stage(tag, root):
@@ -233,6 +258,9 @@ def self_test(tag, compiler=None):
             print(f"::error::self-test: build_failures({output!r}) = {build_failures(output)}, want {names}",
                   file=sys.stderr)
             return 1
+    for failure in previous_release_failures():
+        print(f"::error::self-test: {failure}", file=sys.stderr)
+        return 1
     for generator, flags in (("Unix Makefiles", ["-k"]), ("Ninja", ["-k", "0"]),
                              ("Ninja Multi-Config", ["-k", "0"]), ("Xcode", [])):
         if keep_going(generator) != flags:
@@ -271,7 +299,7 @@ def self_test(tag, compiler=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--tag", help="release to check against (default: the newest one reachable from HEAD)")
+    parser.add_argument("--tag", help="release to check against (default: the newest one reachable from HEAD, not on it)")
     parser.add_argument("--compiler", help="CMAKE_CXX_COMPILER for the build")
     parser.add_argument("--keep", help="build here and keep it, instead of a temporary directory")
     parser.add_argument("--self-test", action="store_true")

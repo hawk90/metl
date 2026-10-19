@@ -4,9 +4,10 @@ name: Release
 #
 # The tag is the trigger but not the authority. Everything published here is
 # regenerated from the tagged tree and re-verified before the release exists:
-# the amalgamation is built and the whole test suite is run through it, and the
-# tag is checked against the version in CMakeLists.txt. A release that would
-# ship something unverified fails instead.
+# main must have accepted the commit (`gate`), ci.yml runs in full on it again
+# (`verify`), the amalgamation is built and the whole test suite is run through
+# it, and the tag is checked against the version in CMakeLists.txt. A release
+# that would ship something unverified fails instead.
 
 on:
   push:
@@ -29,17 +30,22 @@ defaults:
     shell: bash
 
 jobs:
-  release:
-    name: release
+  # The build in `release` is one host compiler. What makes a commit releasable
+  # is the full CI -- GCC and Clang -Werror, sanitizers, ARM size/stack/RAM
+  # budgets, QEMU on four Cortex-M cores, Zephyr, ESP-IDF. So a tag releases
+  # only a commit that is on main and whose `main-gate` (main.yml: every ci.yml
+  # job passed on this exact tree, plus this commit's own measurements) and
+  # CodeQL analysis (`analyze / c-cpp`) passed; tools/release_gate.py has the
+  # rules. Tagging a branch commit, or a main commit that failed, stops here,
+  # before `verify` spends the runners. If main.yml is still running, wait.
+  gate:
+    name: gate
     runs-on: ubuntu-26.04
     # Up to 60 minutes of that is waiting for main.yml on the tagged commit.
     timeout-minutes: 80
-
     permissions:
-      # Required to create the release and upload assets.
-      contents: write
-      # Required to read the tagged commit's `main-gate`, full ci.yml run and
-      # CodeQL results.
+      contents: read
+      # Required to read the tagged commit's `main-gate` and CodeQL results.
       checks: read
       # Required to see whether the workflows that produce them are still
       # running on that commit; see tools/release_gate.py.
@@ -47,6 +53,39 @@ jobs:
       # Required to read CodeQL's open alerts on that commit: the analysis job
       # succeeds whatever it finds.
       security-events: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: The tagged commit is on main and passed main's CI and CodeQL
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          tools/release_gate.py --repo "${GITHUB_REPOSITORY}"
+          --sha "${GITHUB_SHA}" --ref "${GITHUB_REF_NAME}"
+
+  # ci.yml in full, on the tagged commit, now. `main-gate` may rest on the pull
+  # request's run, which can be days older than the merge (#431); the runner
+  # images and apt packages may have changed since. What is published must have
+  # passed on what the runners are today.
+  verify:
+    needs: gate
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      id-token: write  # ci.yml's coverage job uploads to Codecov with OIDC
+
+  release:
+    name: release
+    needs: verify
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+
+    permissions:
+      # Required to create the release and upload assets.
+      contents: write
+      # Required to find main.yml's run for the measurement records.
+      actions: read
       # Required to record the provenance attestation.
       attestations: write
       # Required for the Sigstore signing certificate. This is the whole reason
@@ -61,25 +100,6 @@ jobs:
           # Full history so the changelog section can be located and, if a
           # previous tag exists, referenced.
           fetch-depth: 0
-
-      # The build below is one host compiler. What makes a commit releasable is
-      # the full CI -- GCC and Clang -Werror, sanitizers, ARM size/stack/RAM
-      # budgets, QEMU on four Cortex-M cores, Zephyr, ESP-IDF -- and that runs
-      # on the pull request (or on main, when main.yml falls back to it), never
-      # on tags. So a tag releases only a commit that is on main and whose
-      # `main-gate` (main.yml: every ci.yml job passed on this exact tree, plus
-      # this commit's own measurements) and CodeQL analysis (`analyze / c-cpp`)
-      # passed, and ci.yml ran in full on this commit on main -- main.yml does
-      # that for the commit that bumps the version, and `gh workflow run ci.yml
-      # --ref main` for any other; tools/release_gate.py has the rules. Tagging a branch commit,
-      # or a main commit that failed, stops here instead of publishing it. If
-      # main.yml is still running, wait.
-      - name: The tagged commit is on main and passed main's CI and CodeQL
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          tools/release_gate.py --repo "${GITHUB_REPOSITORY}"
-          --sha "${GITHUB_SHA}" --ref "${GITHUB_REF_NAME}"
 
       - name: Install build deps
         uses: ./.github/actions/apt-install
