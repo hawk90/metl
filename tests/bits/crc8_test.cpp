@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <cstdint>
 
 #include <metl/crc8.hpp>
@@ -34,6 +35,18 @@ int main() {
   const auto seeded_crc = metl::crc8("123456789", metl::crc8_params{0xFFu, 0x00u});
   if (seeded_crc != 0xFBu) {
     return 4;
+  }
+
+  // The same string in a buffer filled at run time, as a received one would
+  // be. The literal calls above initialize const locals, which the compiler
+  // evaluates as constants, so only this runs the NUL scan and the C-string
+  // fold at run time.
+  char received[10] = {};
+  for (std::size_t i = 0; i < 9; ++i) {
+    received[i] = static_cast<char>('1' + i);
+  }
+  if (metl::crc8(received) != 0xF4u) {
+    return 5;
   }
 
   return 0;

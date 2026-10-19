@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <cstdint>
 
 #include <metl/crc32.hpp>
@@ -34,6 +35,18 @@ int main() {
   const auto seeded_crc = metl::crc32("123456789", metl::crc32_params{0u, 0u});
   if (seeded_crc != 0x2DFD2D88u) {
     return 4;
+  }
+
+  // The same string in a buffer filled at run time, as a received one would
+  // be. The literal calls above initialize const locals, which the compiler
+  // evaluates as constants, so only this runs the NUL scan and the C-string
+  // fold at run time.
+  char received[10] = {};
+  for (std::size_t i = 0; i < 9; ++i) {
+    received[i] = static_cast<char>('1' + i);
+  }
+  if (metl::crc32(received) != 0xCBF43926u) {
+    return 5;
   }
 
   return 0;

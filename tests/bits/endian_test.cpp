@@ -80,5 +80,11 @@ int main() {
     }
   }
 
+  // A one-byte swap at run time: the only other one is inside static_assert.
+  volatile std::uint8_t one_byte = 0xa5u;
+  if (metl::byteswap<std::uint8_t>(one_byte) != 0xa5u) {
+    return 10;
+  }
+
   return 0;
 }
