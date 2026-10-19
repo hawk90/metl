@@ -61,6 +61,14 @@ VERSION_FILE = "include/metl/config.hpp"
 VERSION_LINE = re.compile(r"^inline constexpr int version_(major|minor|patch) = (\d+);$")
 
 
+def git(root, *args):
+    """stdout of git in `root`. GIT_* is dropped: a pre-push hook exports
+    GIT_DIR, and with it git answers about the hook's repository, not `root`."""
+    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=True,
+                          env=env).stdout
+
+
 def fragments(root):
     directory = root / FRAGMENTS
     return sorted(p for p in directory.iterdir() if p.name != "README.md") if directory.is_dir() else []
@@ -97,8 +105,7 @@ def releases(root, merge_base):
     if set(parts) != {"major", "minor", "patch"}:
         return False
     heading = f"+## [{parts['major']}.{parts['minor']}.{parts['patch']}]"
-    diff = subprocess.run(["git", "diff", "-U0", merge_base, "--", CHANGELOG], cwd=root,
-                          capture_output=True, text=True, check=True).stdout
+    diff = git(root, "diff", "-U0", merge_base, "--", CHANGELOG)
     return any(line.startswith(heading) for line in diff.splitlines())
 
 
@@ -108,10 +115,11 @@ def code_lines_changed(root, base):
     A release PR's bump of the version constants is not counted, so it needs no
     fragment, when the same branch adds that version's CHANGELOG section.
     """
-    merge_base = subprocess.run(["git", "merge-base", base, "HEAD"], cwd=root,
-                                capture_output=True, text=True, check=True).stdout.strip()
-    diff = subprocess.run(["git", "diff", "-U0", merge_base, "--", "include/"], cwd=root,
-                          capture_output=True, text=True, check=True).stdout
+    merge_base = git(root, "merge-base", base, "HEAD").strip()
+    # --no-renames: a moved header is a deletion plus an addition. With rename
+    # detection a pure move has no +/- lines and would need no fragment,
+    # though it breaks every user's #include.
+    diff = git(root, "diff", "-U0", "--no-renames", merge_base, "--", "include/")
     released = releases(root, merge_base)
     changed = []
     path = None
@@ -132,10 +140,8 @@ def code_lines_changed(root, base):
 
 
 def fragments_added(root, merge_base):
-    diff = subprocess.run(["git", "diff", "--name-only", "--diff-filter=A", merge_base, "--", FRAGMENTS],
-                          cwd=root, capture_output=True, text=True, check=True).stdout
-    untracked = subprocess.run(["git", "ls-files", "--others", "--exclude-standard", "--", FRAGMENTS],
-                               cwd=root, capture_output=True, text=True, check=True).stdout
+    diff = git(root, "diff", "--name-only", "--no-renames", "--diff-filter=A", merge_base, "--", FRAGMENTS)
+    untracked = git(root, "ls-files", "--others", "--exclude-standard", "--", FRAGMENTS)
     return [name for name in (diff + untracked).split() if name.endswith(".md")]
 
 
@@ -154,7 +160,13 @@ def check(root, base=None):
         problems.append(("C2", f"`{UNRELEASED}` in {CHANGELOG} is not empty. Move each entry to "
                                f"its own file in {FRAGMENTS}/ (see tools/check_changelog.py)"))
     if base:
-        changed, merge_base = code_lines_changed(root, base)
+        try:
+            changed, merge_base = code_lines_changed(root, base)
+        except subprocess.CalledProcessError as error:
+            problems.append(("C3", f"cannot diff against --base {base}: `{' '.join(error.cmd)}` failed: "
+                                   f"{(error.stderr or '').strip() or error.returncode}. Fetch it "
+                                   f"(CI checks out with fetch-depth: 0)"))
+            return problems
         if changed and not fragments_added(root, merge_base):
             problems.append(("C3", f"this branch changes {len(changed)} line(s) of code under include/ "
                                    f"and adds no {FRAGMENTS}/<slug>.<type>.md. First: {changed[0][:100]}"))
@@ -175,6 +187,10 @@ def assemble(root, version, date):
     heading = f"## [{version}] - {date}"
     if f"## [{version}]" in text:
         raise SystemExit(f"::error::{CHANGELOG} already has a `## [{version}]` section")
+    if UNRELEASED + "\n" not in text:
+        # Without it the replace below writes nothing, and the fragments
+        # deleted after it would be lost.
+        raise SystemExit(f"::error::{CHANGELOG} has no `{UNRELEASED}` line to write the release under")
     text = text.replace(UNRELEASED + "\n", f"{UNRELEASED}\n\n{heading}\n\n" + "\n\n".join(sections) + "\n", 1)
     (root / CHANGELOG).write_text(re.sub(r"\n{3,}", "\n\n", text), encoding="utf-8")
     for path in fragments(root):
@@ -300,13 +316,70 @@ def self_test():
         if [rule for rule, _ in check(root, base="main")] != ["C3"]:
             failures.append(f"a release should still need a fragment for other code: {check(root, base='main')}")
 
+    # C3 and a moved header: renaming include/a.hpp changes every user's
+    # #include line. git diff's rename detection reports it with no +/- lines
+    # at all, so the diff must be read without it.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / FRAGMENTS).mkdir()
+        (root / "include").mkdir()
+        (root / "include" / "a.hpp").write_text("int f();\nint g();\n")
+        (root / CHANGELOG).write_text(f"# Changelog\n\n{UNRELEASED}\n\n## [1.0.0] - 2026-01-01\n\n- old\n")
+        git(root, "init", "-q", "-b", "main")
+        git(root, "add", "-A")
+        git(root, "commit", "-q", "-m", "base")
+        git(root, "checkout", "-q", "-b", "move")
+        git(root, "mv", "include/a.hpp", "include/b.hpp")
+        git(root, "commit", "-q", "-m", "move")
+        if [rule for rule, _ in check(root, base="main")] != ["C3"]:
+            failures.append(f"C3 should flag a header renamed without a fragment: {check(root, base='main')}")
+
+        # Inside a git hook GIT_DIR names the hook's repository; the checks
+        # must still read the tree they were given.
+        with tempfile.TemporaryDirectory() as other:
+            git(pathlib.Path(other), "init", "-q", "-b", "main")
+            saved = os.environ.get("GIT_DIR")
+            os.environ["GIT_DIR"] = str(pathlib.Path(other) / ".git")
+            try:
+                hooked = [rule for rule, _ in check(root, base="main")]
+            except subprocess.CalledProcessError as error:
+                hooked = [f"git failed: {error}"]
+            finally:
+                if saved is None:
+                    del os.environ["GIT_DIR"]
+                else:
+                    os.environ["GIT_DIR"] = saved
+            if hooked != ["C3"]:
+                failures.append(f"with GIT_DIR set, C3 read another repository: {hooked}")
+
+        # A base that does not resolve is a finding with a reason, not a traceback.
+        try:
+            missing = [message for rule, message in check(root, base="no-such-ref") if rule == "C3"]
+        except subprocess.CalledProcessError as error:
+            missing = [f"traceback: {error}"]
+        if len(missing) != 1 or "no-such-ref" not in missing[0] or "traceback" in missing[0]:
+            failures.append(f"an unknown --base should be one C3 problem naming it: {missing}")
+
+        # --assemble with no `## [Unreleased]` heading has nowhere to write the
+        # notes; it must refuse, and keep the fragments it could not place.
+        (root / FRAGMENTS / "5-m.fixed.md").write_text("- `m` no longer hangs.\n")
+        (root / CHANGELOG).write_text("# Changelog\n\n## [1.0.0] - 2026-01-01\n\n- old\n")
+        try:
+            assemble(root, "1.1.0", "2026-02-02")
+            failures.append("--assemble without an Unreleased heading should refuse")
+        except SystemExit:
+            pass
+        if not (root / FRAGMENTS / "5-m.fixed.md").exists():
+            failures.append("--assemble deleted a fragment it never wrote into CHANGELOG.md")
+
     if failures:
         for failure in failures:
             print(f"::error::self-test: {failure}", file=sys.stderr)
         return 1
     print("self-test passed: bad fragment names, empty fragments, entries under Unreleased and a code "
           "change without a fragment are rejected; comments need none; an internal fragment satisfies C3 and is dropped by --assemble, which orders and cleans up; "
-          "a version bump needs no fragment only beside its own release section")
+          "a version bump needs no fragment only beside its own release section; a moved header needs one; "
+          "GIT_DIR does not redirect the diff; an unknown base is a finding; --assemble keeps what it cannot place")
     return 0
 
 

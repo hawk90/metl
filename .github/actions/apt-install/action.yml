@@ -102,6 +102,12 @@ runs:
         echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' \
           | sudo tee /etc/apt/apt.conf.d/99keep-downloads > /dev/null
 
+        # dpkg fsyncs every unpacked file; the ARM toolchain is thousands of
+        # them, and that was most of the 27-38 s a cached install still took.
+        # A runner is thrown away after the job, so there is no crash to
+        # survive.
+        echo force-unsafe-io | sudo tee /etc/dpkg/dpkg.cfg.d/99unsafe-io > /dev/null
+
         CACHE_DIR="${HOME}/.cache/metl-apt"
         mkdir -p "${CACHE_DIR}"
 
@@ -141,8 +147,11 @@ runs:
           # `update` gets a slice, `install` whatever is still left, so a slow
           # index refresh cannot starve the download it exists to enable.
           updated=0
+          # `timeout 0` means NO limit, so a budget used up by `update` must stop
+          # the attempt rather than start an unbounded install.
           if timeout $(( remaining / 4 + 1 )) sudo apt-get "${APT_OPTS[@]}" update && \
              updated=1 && \
+             (( deadline - SECONDS > 0 )) && \
              timeout $(( deadline - SECONDS )) \
                sudo apt-get "${APT_OPTS[@]}" install -y ${APT_PACKAGES}; then
             # Copy the archives somewhere the post-step cache save can actually

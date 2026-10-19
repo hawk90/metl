@@ -36,10 +36,18 @@ import tempfile
 DOCUMENTATION = re.compile(r"(\.md|^LICENSE)$")
 
 
+def _clean_env(**extra):
+    """The environment without GIT_*. A git hook exports GIT_DIR, and with it
+    `git -C repo` acts on the hook's repository instead of `repo`."""
+    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    env.update(extra)
+    return env
+
+
 def changed_paths(repo):
     """Paths changed by the merge commit at HEAD, or None if unreadable."""
     result = subprocess.run(["git", "-C", repo, "diff", "--name-only", "--no-renames",
-                             "HEAD^1", "HEAD"], capture_output=True, text=True)
+                             "HEAD^1", "HEAD"], capture_output=True, text=True, env=_clean_env())
     if result.returncode != 0:
         return None
     return [line for line in result.stdout.splitlines() if line.strip()]
@@ -58,8 +66,8 @@ def is_code(event, paths):
 
 def _git(repo, *args):
     subprocess.run(["git", "-C", repo, *args], check=True, capture_output=True,
-                   env=dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
-                            GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t"))
+                   env=_clean_env(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+                                  GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t"))
 
 
 def _merged_repo(root, change):
@@ -116,6 +124,30 @@ def self_test():
             got, reason = is_code(event, changed_paths(repo))
             if got != want:
                 failures.append(f"{change.__name__} ({event}): code={got}, want {want} -- {reason}")
+        # Inside a git hook GIT_DIR names the hook's repository. The fixtures
+        # must still be built, and diffed, where they were asked for -- never
+        # as commits and branches in that repository.
+        bystander = os.path.join(root, "bystander")
+        os.makedirs(bystander)
+        subprocess.run(["git", "-C", bystander, "init", "-q", "-b", "main"], check=True,
+                       env=_clean_env())
+        saved = os.environ.get("GIT_DIR")
+        os.environ["GIT_DIR"] = os.path.join(bystander, ".git")
+        try:
+            repo = _merged_repo(os.path.join(root, "hooked"), docs_and_header)
+            got, reason = is_code("pull_request", changed_paths(repo))
+        except subprocess.CalledProcessError as error:
+            got, reason = None, f"git failed: {error}"
+        finally:
+            if saved is None:
+                del os.environ["GIT_DIR"]
+            else:
+                os.environ["GIT_DIR"] = saved
+        touched = subprocess.run(["git", "-C", bystander, "rev-parse", "-q", "--verify", "HEAD"],
+                                 capture_output=True, env=_clean_env()).returncode == 0
+        if got is not True or touched:
+            failures.append(f"with GIT_DIR set: code={got} ({reason}); "
+                            f"commits written into GIT_DIR's repository: {touched}")
     if is_code("pull_request", [])[0] is not True:
         failures.append("an empty diff was classified documentation-only")
     if is_code("pull_request", None)[0] is not True:
