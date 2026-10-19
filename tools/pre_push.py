@@ -8,7 +8,9 @@ was a GCC 15 -Werror diagnostic that the GCC installed on the maintainer's
 machine reproduced exactly. This script is the habit that would have caught it,
 made automatic: `pre-commit install` registers it as a pre-push hook.
 
-WHAT RUNS, cheapest first, stopping at the first failure:
+WHAT RUNS, cheapest first, stopping at the first failure -- and, except with
+--quick, only on a tree that is the commit being pushed: an uncommitted edit or
+an untracked file would be tested here and be missing on CI.
 
   1. every tools/*.py --self-test   -- the checkers can still fail
   2. the source gates               -- docs, API contract, progress guarantees,
@@ -115,6 +117,34 @@ def step(title, command, **kwargs):
     return True
 
 
+def untested_push():
+    """Why this tree is not what the push carries, or None.
+
+    Every step below builds and tests the working tree, but the push carries
+    commits: an edit not committed, or a new file not added, would be tested
+    here and missing on CI -- a header the commit includes but does not hold
+    passes this hook and fails every CI job. pre-commit names the commit being
+    pushed in PRE_COMMIT_TO_REF; pushing another branch than the one checked
+    out would test the wrong tree entirely."""
+    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True,
+                          env=env).stdout.strip()
+    pushed = os.environ.get("PRE_COMMIT_TO_REF", "")
+    if pushed and head and pushed != head:
+        return (f"the push carries {pushed[:9]}, but this tree is HEAD {head[:9]}. Check out the "
+                f"branch being pushed and push from there.")
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True,
+                            env=env)
+    if status.returncode != 0:
+        return f"`git status` failed: {status.stderr.strip()}"
+    if status.stdout.strip():
+        listing = "\n".join("      | " + line for line in status.stdout.splitlines()[:20])
+        return ("the working tree differs from the commit being pushed, so the checks would test "
+                "files the push does not carry. Commit or stash these (or add them to .gitignore):\n"
+                + listing)
+    return None
+
+
 def newest_gcc():
     """The highest-numbered g++-NN on PATH, or a `g++` that really is GCC."""
     versions = []
@@ -218,7 +248,13 @@ def clang_tidy_delta(python):
                            capture_output=True, env=env)
         after = tidy_findings(python, tidy, REPO, BUILD_ROOT / "tidy-head", env)
     except subprocess.CalledProcessError as error:
+        # The command's own output is the diagnosis; the exception text alone
+        # says only which command exited non-zero.
+        detail = error.stderr or error.stdout or ""
+        if isinstance(detail, bytes):
+            detail = detail.decode(errors="replace")
         print(f" FAILED to run\n      | {error}")
+        print("\n".join("      | " + line for line in detail.strip().splitlines()[-30:]))
         return False
     elapsed = time.monotonic() - started
     added = sorted((after - before).elements())
@@ -247,14 +283,26 @@ def consumer_matrix():
     text = (REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     job = text[text.index("\n  consumer-warnings:\n"):]
     job = job[:re.search(r"\n  [a-z][a-z0-9-]*:\n", job[1:]).start() + 1]
-    flags_block = re.search(r"METL_CONSUMER_WARNINGS: >-\n((?:[ \t]+[^\n]*\n)+?)\n", job).group(1)
-    flags = " ".join(flags_block.split())
-    cells = re.findall(r"cxx: ([^,}\s]+), std: ([^,}\s]+)", job)
+    flags_block = re.search(r"METL_CONSUMER_WARNINGS: >-\n((?:[ \t]+[^\n]*\n)+?)\n", job)
+    flags = " ".join(flags_block.group(1).split()) if flags_block else ""
+    # One matrix entry per `- `, in flow ({ cxx: g++, std: c++17 }) or block style.
+    cells = []
+    for entry in re.split(r"\n\s*- ", job.split("include:", 1)[-1].split("\n    steps:", 1)[0])[1:]:
+        cxx, std = re.search(r"\bcxx: ([^,}\s]+)", entry), re.search(r"\bstd: ([^,}\s]+)", entry)
+        if cxx and std:
+            cells.append((cxx.group(1), std.group(1)))
     return flags, cells
 
 
 def consumer_warnings():
     flags, cells = consumer_matrix()
+    # Read from ci.yml, so a reformatted job must not turn this step into one
+    # that checks nothing and passes.
+    if not flags or not cells:
+        print("  FAILED: could not read METL_CONSUMER_WARNINGS and the cxx/std matrix from the "
+              "consumer-warnings job in .github/workflows/ci.yml; update consumer_matrix() in "
+              "tools/pre_push.py to the job's new layout")
+        return False
     gcc = newest_gcc()
     files = sorted(str(p.relative_to(REPO)) for pattern in ("tests/**/*.cpp", "fuzz/*.cpp", "examples/*.cpp")
                    for p in REPO.glob(pattern)
@@ -297,6 +345,11 @@ def main():
     python = sys.executable
 
     print("pre-push: the CI checks that can run on this machine")
+    if not args.quick:
+        problem = untested_push()
+        if problem:
+            print(f"pre-push: FAILED before any check ran: {problem}")
+            return 1
     print("1. checker self-tests")
     for tool in sorted((REPO / "tools").glob("*.py")):
         if "--self-test" in tool.read_text(encoding="utf-8") and tool.name != Path(__file__).name:
@@ -349,15 +402,21 @@ def main():
     # A change to the gate itself runs everything.
     base = subprocess.run(["git", "merge-base", "HEAD", "origin/main"], cwd=REPO,
                           capture_output=True, text=True).stdout.strip()
-    changed = subprocess.run(["git", "diff", "--name-only", base or "HEAD"], cwd=REPO,
-                             capture_output=True, text=True).stdout.split()
+    if not base:
+        # `git diff HEAD` would list only uncommitted files -- none, on a clean
+        # tree -- and read as "no mutated header changed".
+        print("  (no merge-base with origin/main, so what this branch changes is unknown: "
+              "fetch origin; CI runs every mutant)")
+    changed = subprocess.run(["git", "diff", "--name-only", base], cwd=REPO,
+                             capture_output=True, text=True).stdout.split() if base else []
     sys.path.insert(0, str(REPO / "tools"))
     import check_mutants  # noqa: E402 -- it loads the mutants from tools/mutants/
     everything = "tools/check_mutants.py" in changed
     selected = [m for m in check_mutants.MUTANTS
                 if everything or m["file"] in changed or m["source"] in changed]
     if not selected:
-        print("  (no mutated header changed -- CI runs all of them)")
+        if base:
+            print("  (no mutated header changed -- CI runs all of them)")
     else:
         # The tree CI's `mutants` job builds: Debug, without -Werror. A mutant
         # is a behaviour change; one that only trips a warning (a variable left

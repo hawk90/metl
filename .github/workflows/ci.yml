@@ -678,7 +678,10 @@ jobs:
               status=1
               continue
             fi
-            got=$(arm-none-eabi-objdump -d hints.o | grep -cE '[[:space:]](yield|sev|wfe)([[:space:]]|$)' || true)
+            # objdump on its own line: inside `$(... | grep -c ... || true)` its
+            # failure read as "0 hints", which is the expected answer for three rows.
+            arm-none-eabi-objdump -d hints.o > hints.dis
+            got=$(grep -cE '[[:space:]](yield|sev|wfe)([[:space:]]|$)' hints.dis || true)
             echo "${cpu}: ${got} hint instruction(s), expected ${want}"
             if [[ "${got}" != "${want}" ]]; then
               echo "::error::${cpu}: expected ${want} hint instruction(s), found ${got}"
@@ -1509,13 +1512,22 @@ jobs:
           CXX: clang++
         run: |
           fail=0
+          checked=0
+          # find on its own line, so its failure stops the step; read from a
+          # process substitution, it was masked, and no headers read as clean.
+          find include/metl -name '*.hpp' -print0 > headers.lst
           while IFS= read -r -d '' h; do
+            checked=$((checked + 1))
             rel="${h#include/}"
             echo "checking ${rel}"
             printf '#include <%s>\n' "${rel}" \
               | "${CXX}" -std=c++17 -Wall -Wextra -Werror -Iinclude -fsyntax-only -x c++ - \
               || { echo "NOT SELF-CONTAINED: ${rel}"; fail=1; }
-          done < <(find include/metl -name '*.hpp' -print0)
+          done < headers.lst
+          if [ "${checked}" -eq 0 ]; then
+            echo "::error::no headers found under include/metl -- nothing was checked"
+            exit 1
+          fi
           exit "${fail}"
 
       # The same guarantees are also enforced through CMake/CTest so `ctest`
