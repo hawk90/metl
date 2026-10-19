@@ -43,6 +43,7 @@ Usage:
 
 import argparse
 import re
+import subprocess
 import sys
 
 TYPES = ("build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "revert", "style",
@@ -123,6 +124,14 @@ def self_test():
             failures.append(f"accepted git's own {subject!r} as a pull-request title")
     if subject_of("# comment\n\nfix: x\n\nbody\n") != "fix: x":
         failures.append("subject_of did not skip git's comment lines")
+    # A message file that cannot be read is a usage error with a reason, not a
+    # traceback a hook prints in place of one.
+    unreadable = subprocess.run([sys.executable, __file__, "--file", "/nonexistent/COMMIT_EDITMSG"],
+                                capture_output=True, text=True)
+    if unreadable.returncode != 2 or "Traceback" in unreadable.stderr \
+            or "/nonexistent/COMMIT_EDITMSG" not in unreadable.stderr:
+        failures.append(f"an unreadable --file was not a clean exit 2: {unreadable.returncode} "
+                        f"{unreadable.stderr.strip()[-200:]!r}")
     if failures:
         print("SELF-TEST FAILED:\n  " + "\n  ".join(failures), file=sys.stderr)
         return 1
@@ -143,8 +152,12 @@ def main():
     if args.self_test:
         return self_test()
     if args.file:
-        with open(args.file, encoding="utf-8") as handle:
-            subject = subject_of(handle.read())
+        try:
+            with open(args.file, encoding="utf-8") as handle:
+                subject = subject_of(handle.read())
+        except (OSError, UnicodeDecodeError) as error:
+            print(f"::error::cannot read the commit message {args.file}: {error}", file=sys.stderr)
+            return 2
         found = problems(subject, allow_git_generated=True)
     else:
         subject = args.title

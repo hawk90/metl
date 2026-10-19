@@ -77,6 +77,8 @@ class fixed_priority_queue {
   // whose `<` is noexcept -- keeps its noexcept (this replaced a
   // scalar-only rule).
   static constexpr bool comparator_cannot_throw = detail::nothrow_binary_call_v<Compare, const T&, const T&>;
+  static constexpr bool swap_cannot_throw =
+      std::is_nothrow_swappable_v<fixed_vector<T, Capacity>> && std::is_nothrow_swappable_v<Compare>;
 
  public:
   /// Constructs an empty queue with a default-constructed comparator.
@@ -167,6 +169,30 @@ class fixed_priority_queue {
   /// Removes all elements.
   void clear() noexcept { storage_.clear(); }
 
+  /// @brief Swaps contents and comparators with @p other, element by element (see
+  ///        `fixed_vector::swap`).
+  /// @note If an element's move or swap, or the comparators' swap, throws part-way,
+  ///       neither array is a heap any more, so both queues are cleared before the
+  ///       exception propagates, as for any other step that reorders the heap.
+  void swap(fixed_priority_queue& other) noexcept(swap_cannot_throw) {
+    if (this == &other) {
+      return;
+    }
+#if !METL_NO_EXCEPTIONS
+    if constexpr (!swap_cannot_throw) {
+      try {
+        swap_contents(other);
+      } catch (...) {
+        clear();
+        other.clear();
+        throw;
+      }
+      return;
+    }
+#endif
+    swap_contents(other);
+  }
+
   /// @brief Removes every element satisfying @p pred, then restores the heap.
   /// @return How many elements were removed.
   /// @note This is the only way to remove something that is not on top, and it is
@@ -204,6 +230,13 @@ class fixed_priority_queue {
   METL_NODISCARD span<const T> as_span() const noexcept { return storage_.as_span(); }
 
  private:
+  // The body of swap, without its clear-both-on-throw.
+  void swap_contents(fixed_priority_queue& other) noexcept(swap_cannot_throw) {
+    using std::swap;
+    swap(comp_, other.comp_);
+    storage_.swap(other.storage_);
+  }
+
   /// Runs a step that reorders the heap. If an element move or the comparator
   /// throws part-way, the heap property is gone and later pops would come out in
   /// the wrong order, so the queue is cleared before rethrowing -- the same rule
@@ -277,5 +310,18 @@ class fixed_priority_queue {
   fixed_vector<T, Capacity> storage_;
   Compare comp_;
 };
+
+/// Swaps the contents of two priority queues of the same type, capacity and
+/// comparator. Declared only for a swappable `T` and `Compare`; otherwise
+/// `using std::swap; swap(a, b)` still finds std::swap, which moves both whole
+/// containers.
+template <typename T,
+          std::size_t N,
+          typename Compare,
+          std::enable_if_t<std::is_swappable_v<T> && std::is_swappable_v<Compare>, int> = 0>
+inline void swap(fixed_priority_queue<T, N, Compare>& a,
+                 fixed_priority_queue<T, N, Compare>& b) noexcept(noexcept(a.swap(b))) {
+  a.swap(b);
+}
 
 }  // namespace metl
