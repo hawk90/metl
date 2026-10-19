@@ -69,6 +69,13 @@ int main() {
     return 3;
   }
 
+  // The const overloads are separate functions; before this they ran only in
+  // the death tests (#442).
+  const auto& cset = set;
+  if (cset[0] != 1 || cset.at(2) != 3) {
+    return 43;
+  }
+
   if (!set.contains(2) || set.contains(9)) {
     return 4;
   }

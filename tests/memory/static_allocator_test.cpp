@@ -78,5 +78,22 @@ int main() {
     return 9;
   }
 
+  // allocate() that succeeds: the block starts where try_allocate's would, is
+  // counted in used_bytes(), and holds the objects built in it.
+  allocator.reset();
+  pair_value* const expected = allocator.try_allocate();
+  allocator.reset();
+  pair_value* checked = allocator.allocate(2);
+  if (checked != expected || allocator.used_bytes() != 2 * sizeof(pair_value)) {
+    return 10;
+  }
+  allocator.construct(checked, 7, 8);
+  allocator.construct(checked + 1, 9, 10);
+  if (checked[0].lhs != 7 || checked[1].rhs != 10) {
+    return 11;
+  }
+  allocator.destroy(checked);
+  allocator.destroy(checked + 1);
+
   return 0;
 }
