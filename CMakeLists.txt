@@ -39,6 +39,7 @@ option(METL_BUILD_FUZZERS
        "Build the libFuzzer harnesses (Clang only; links -fsanitize=fuzzer,address,undefined)" OFF)
 option(METL_BUILD_BENCHMARKS "Build the micro-benchmarks (host only; always compiled -O2)" OFF)
 option(METL_ENABLE_COVERAGE "Instrument the tests for source-based coverage (Clang/GCC)" OFF)
+option(METL_ENABLE_COVERAGE_MCDC "With METL_ENABLE_COVERAGE on Clang 18+, also record MC/DC" OFF)
 
 # ---------------------------------------------------------------------------
 # Public library  (umbrella header-only target)
@@ -97,11 +98,19 @@ if(METL_BUILD_TESTS)
     # -O0 -g on purpose: an optimized build merges and reorders branches, so the
     # report describes code the compiler produced rather than code that was
     # written, and a branch that was inlined away reads as covered.
+    #
+    # Each test binary writes its profile under its own name: tools/coverage.py
+    # reads every binary with only its own profile, because the test programs
+    # share function names that a merged profile cannot tell apart.
     if(METL_ENABLE_COVERAGE)
       if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
         target_compile_options(metl_test_options INTERFACE
-          -fprofile-instr-generate -fcoverage-mapping -O0 -g)
+          -fprofile-instr-generate=${CMAKE_BINARY_DIR}/profraw/$<TARGET_PROPERTY:NAME>-%p.profraw
+          -fcoverage-mapping -O0 -g)
         target_link_options(metl_test_options INTERFACE -fprofile-instr-generate)
+        if(METL_ENABLE_COVERAGE_MCDC)
+          target_compile_options(metl_test_options INTERFACE -fcoverage-mcdc)
+        endif()
       else()
         target_compile_options(metl_test_options INTERFACE --coverage -O0 -g)
         target_link_options(metl_test_options INTERFACE --coverage)
