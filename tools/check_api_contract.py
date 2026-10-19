@@ -35,6 +35,7 @@ import argparse
 import pathlib
 import re
 import sys
+import tempfile
 
 # R4: a bare `bool` that is an answer, not a failure report. `m.erase(k);` is a
 # legitimate idiom; `v.try_push_back(x);` is a dropped overflow.
@@ -78,9 +79,6 @@ BOOL_ALLOWLIST = {
     "poll": "cooperative step protocol: 'still wants to run'",
     "stepper_poll": "cooperative step protocol trampoline",
     "protothread_poll": "cooperative step protocol trampoline",
-    "run": "cooperative step protocol: 'still wants to run'",
-    "run_once": "cooperative step protocol: 'something yielded'",
-    "run_until_idle": "cooperative step protocol: 'settled before max_rounds'",
     # --- private helpers whose bool is an internal predicate ---
     "locate_insert_index": "private helper: 'was a slot found'",
     "is_decimal_digit": "private helper predicate: is this character a digit?",
@@ -126,10 +124,33 @@ DECL_RESULT_ONLY = re.compile(
 DISCARDABLE = {"erase", "destroy", "unsubscribe", "detach", "cancel", "dispatch"}
 
 DECL_BOOL = re.compile(
-    r"^\s*(?P<nodiscard>METL_NODISCARD\s+)?"
-    r"(?:(?:constexpr|static|inline|friend|explicit)\s+)*"
+    r"^\s*(?P<head>(?:template\s*<.*>\s*)?"
+    r"(?:(?:METL_NODISCARD|constexpr|static|inline|friend|explicit|virtual)\s+)*)"
     r"bool\s+(?P<name>[A-Za-z_][A-Za-z_0-9]*)\s*\("
 )
+
+# A return type alone on a line, as clang-format leaves it when the signature
+# is long: `constexpr bool` above `try_push_back(T value) noexcept`.
+RETURN_TYPE_LINE = re.compile(r"^\s*[A-Za-z_][A-Za-z_0-9:<>,&*\s]*$")
+ALONE = re.compile(r"^\s*[A-Za-z_][A-Za-z_0-9]*\s*\(")
+
+
+def with_return_type(lines, index):
+    """Line `index`, preceded by the return-type lines above it, if it starts
+    with a bare name and they read as a declaration's head rather than as a
+    statement wrapped onto this line."""
+    line = lines[index]
+    if not ALONE.match(line):
+        return line
+    head = []
+    for above in reversed(lines[max(0, index - 3):index]):
+        text = above.strip()
+        if not text or not RETURN_TYPE_LINE.match(above) or text.endswith((",", "&&", "||")):
+            break
+        head.insert(0, text)
+    if not head or head[0].split()[0] in NOT_A_RETURN_TYPE:
+        return line
+    return " ".join(head) + " " + line.strip()
 
 BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 LINE_COMMENT = re.compile(r"//[^\n]*")
@@ -143,17 +164,21 @@ def strip_comments(text):
     return LINE_COMMENT.sub(blank, BLOCK_COMMENT.sub(blank, text))
 
 
-def check_text(text, path="<memory>"):
-    """Return a list of (path, line_number, rule, message)."""
+def check_text(text, path="<memory>", declared=None):
+    """Return a list of (path, line_number, rule, message). The names of the
+    bool functions declared are added to `declared` when it is given."""
     violations = []
-    for number, line in enumerate(strip_comments(text).splitlines(), 1):
+    lines = strip_comments(text).splitlines()
+    for number, line in enumerate(lines, 1):
+        line = with_return_type(lines, number - 1)
         match = DECL_TRY.match(line)
         if match:
             prefix = (match.group("prefix") or "").strip()
             first = prefix.split()[0] if prefix else ""
+            nodiscard = match.group("nodiscard") or "METL_NODISCARD" in prefix.split()
             # A return type must be present, and must not be a statement keyword
             # (`return try_emplace_back(...)` is a call, not a declaration).
-            if prefix and first not in NOT_A_RETURN_TYPE and not match.group("nodiscard"):
+            if prefix and first not in NOT_A_RETURN_TYPE and not nodiscard:
                 violations.append((
                     path, number, "R3",
                     f"`{match.group('name')}` is missing METL_NODISCARD -- "
@@ -164,7 +189,8 @@ def check_text(text, path="<memory>"):
         if match:
             prefix = (match.group("prefix") or "").strip()
             first = prefix.split()[0] if prefix else ""
-            if prefix and first not in NOT_A_RETURN_TYPE and not match.group("nodiscard"):
+            nodiscard = match.group("nodiscard") or "METL_NODISCARD" in prefix.split()
+            if prefix and first not in NOT_A_RETURN_TYPE and not nodiscard:
                 name = match.group("name")
                 violations.append((
                     path, number, "R3",
@@ -173,7 +199,7 @@ def check_text(text, path="<memory>"):
                 ))
 
         match = DECL_BOOL.match(line)
-        if match and match.group("name") in DISCARDABLE and match.group("nodiscard"):
+        if match and match.group("name") in DISCARDABLE and "METL_NODISCARD" in match.group("head").split():
             violations.append((
                 path, number, "R4",
                 f"`{match.group('name')}` is METL_NODISCARD, but its bool "
@@ -183,6 +209,8 @@ def check_text(text, path="<memory>"):
             ))
         if match:
             name = match.group("name")
+            if declared is not None:
+                declared.add(name)
             if not name.startswith("try_") and name not in BOOL_ALLOWLIST:
                 violations.append((
                     path, number, "R2",
@@ -242,6 +270,21 @@ class widget {
 """
 
 
+def check_tree(root):
+    """Every header under `root`. Returns (violations, headers)."""
+    headers = sorted(pathlib.Path(root).rglob("*.hpp"))
+    violations = []
+    declared = set()
+    for header in headers:
+        violations += check_text(header.read_text(encoding="utf-8"), str(header), declared)
+    for name in sorted(set(BOOL_ALLOWLIST) - declared):
+        violations.append((f"{root}", 0, "R2",
+                           f"BOOL_ALLOWLIST excuses `{name}`, but no header declares a `bool {name}(`. "
+                           f"Remove the entry: a stale reason would excuse the next function given "
+                           f"that name"))
+    return violations, headers
+
+
 def self_test():
     failures = []
 
@@ -261,6 +304,33 @@ def self_test():
     if "R2" not in caught:
         failures.append("R2 canary was NOT reported -- the naming check is dead")
 
+    # Declarations written any way the headers may write them: a template head
+    # on the same line, `virtual`, the specifiers in another order, and a
+    # return type clang-format put on the line above the name.
+    for text, rule in (("template <typename T> bool stash(T value);", "R2"),
+                       ("virtual bool stash(int value);", "R2"),
+                       ("constexpr METL_NODISCARD bool erase(int key);", "R4"),
+                       ("template <typename T>\nconstexpr bool\ntry_push_back(T value) noexcept;", "R3")):
+        if rule not in {r for _, _, r, _ in check_text(text, "<canary-shape>")}:
+            failures.append(f"{rule} missed {text!r}")
+    # The line above a `try_` call is not its return type.
+    for text in ("const bool pushed = ok &&\n    try_push_back(value);",
+                 "consume(first,\n        try_push_back(value));",
+                 "return\n    try_push_back(value);",
+                 "METL_NODISCARD constexpr bool\ntry_push_back(int value) noexcept;"):
+        if check_text(text, "<canary-call>"):
+            failures.append(f"a wrapped call or a nodiscard declaration was flagged: {text!r}")
+
+    # An allowlist entry no header declares is an error: the list must not
+    # outlive the code it excuses, or a new `bool run_once()` that reports a
+    # failure would inherit the reason written for one that no longer exists.
+    with tempfile.TemporaryDirectory() as tmp:
+        (pathlib.Path(tmp) / "a.hpp").write_text("METL_NODISCARD bool empty() const;\n")
+        stale = [message for _, _, rule, message in check_tree(tmp)[0] if "BOOL_ALLOWLIST" in message]
+        if len(stale) != len(BOOL_ALLOWLIST) - 1 or any("`empty`" in m for m in stale):
+            failures.append(f"stale BOOL_ALLOWLIST entries were not each reported: {len(stale)} of "
+                            f"{len(BOOL_ALLOWLIST) - 1}")
+
     noise = check_text(CANARY_CLEAN, "<canary-clean>")
     if noise:
         failures.append(f"contract-abiding code was flagged: {noise}")
@@ -269,7 +339,7 @@ def self_test():
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
         return 1
-    print("self-test passed: R2, R3 and R4 bite, and clean code is not flagged")
+    print("self-test passed: R2, R3 and R4 bite on every declaration shape, a stale allowlist entry is reported, and clean code and wrapped calls are not flagged")
     return 0
 
 
@@ -287,14 +357,10 @@ def main():
         print(f"error: {root} is not a directory", file=sys.stderr)
         return 2
 
-    headers = sorted(root.rglob("*.hpp"))
+    violations, headers = check_tree(root)
     if not headers:
         print(f"error: no headers under {root}", file=sys.stderr)
         return 2
-
-    violations = []
-    for header in headers:
-        violations += check_text(header.read_text(), str(header))
 
     for path, number, rule, message in violations:
         print(f"{path}:{number}: [{rule}] {message}", file=sys.stderr)
