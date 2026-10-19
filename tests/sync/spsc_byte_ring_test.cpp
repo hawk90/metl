@@ -160,6 +160,11 @@ int main() {
     CHECK(ring.try_write(metl::span<const std::byte>(six, std::size_t{0})));
     CHECK_EQ(ring.readable_size(), 8u);
     drain_and_check(ring, 0, 8);
+
+    // write() is try_write for a caller that knows the bytes fit.
+    ring.write(metl::span<const std::byte>(six, 6));
+    CHECK_EQ(ring.readable_size(), 6u);
+    drain_and_check(ring, 1, 6);
   }
 
   // ---------------------------------------------------------------------
