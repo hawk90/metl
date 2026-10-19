@@ -126,6 +126,22 @@ An experimental type has a tracking issue that states, before the type lands,
 when it is promoted to Tier 0 or 1 and when it is removed. Removing one needs no
 deprecation cycle, only a CHANGELOG entry that gives the reason.
 
+What is checked, so the rules above do not rest on review:
+
+- `tools/check_tiers.py`: every header under `include/metl/exp/` carries the
+  notice above and names its tracking issue, declares into `metl::exp`, and no
+  header outside `exp/` opens that namespace or includes an `exp/` header. A
+  core type that wants an experiment's implementation includes it from
+  `detail/`, as `metl::exp::bitset` keeps its own in `detail/bitset.hpp`.
+- `cmake/CheckUmbrella.cmake`: the umbrella header includes every public header
+  except those under `exp/`, and fails if it includes one of them.
+- `header-checks` builds each `exp/` header on its own, like any other.
+- `tools/check_conformance.py` gives `exp/` headers no blanket exemption: one that
+  holds user objects is registered in the property suite like any other.
+- The single header built for each release comes from the umbrella, so it holds
+  no Tier 2 type, and `tools/check_amalgamation.py` leaves out the tests of
+  `exp/` headers and lists them.
+
 `CODEOWNERS` may delegate an experimental area to the contributor who brought
 it.
 
@@ -188,7 +204,9 @@ compile-time string map remains deferred on exactly that basis. `fixed_bitset` w
 deferred on it too, and that premise was wrong: `handle_pool` keeps one `bool` per
 slot in `active_`, so it has a caller. One bit per slot instead of one byte is not
 a free win, as a packed bit is a read-modify-write, so #336 measures both forms in
-`handle_pool` and tries the type in Tier 2 first.
+`handle_pool` and tries the type in Tier 2 first, as `metl::exp::bitset`
+(`metl/exp/bitset.hpp`). Whether `handle_pool` switches is decided from those
+measurements, in its own change.
 
 ### Green — works on every current CI target, zero policy change
 
@@ -336,11 +354,13 @@ claim about a **gate** going stale, and nothing was checking those.
 | [`check_size.py`](../tools/check_size.py) | code, constants, and static RAM including TLS against per-target budgets, with sections classified by ELF type and flags rather than name; writes the measurement record each release attaches | `--self-test` |
 | [`check_stack.py`](../tools/check_stack.py) | deepest stack frame; rejects any `dynamic` frame outright | `--self-test` |
 | [`check_instructions.py`](../tools/check_instructions.py) | instructions executed per benchmark, via cachegrind | `--self-test` |
+| [`check_qemu_probes.py`](../tools/check_qemu_probes.py) | under QEMU: the runtime stack high-water mark without and with LTO, and guest instructions per benchmark region on each Cortex-M; a missing, saturated or unparseable measurement fails, and a canary must raise the mark | `--self-test` |
 | [`check_api_contract.py`](../tools/check_api_contract.py) | §9 R2/R3/R4 across every public header | `--self-test` |
 | [`check_progress_guarantee.py`](../tools/check_progress_guarantee.py) | I3: every public header states a progress guarantee | `--self-test` |
 | [`check_conformance.py`](../tools/check_conformance.py) | that every type holding user objects runs the property suite in `tests/conformance/`, so a bug class fixed in one type is checked in all | `--self-test` |
 | [`check_assert_trips.py`](../tools/check_assert_trips.py) | that a test trips every `METL_ASSERT` precondition, as a per-header ratchet that may only fall, so a check that no test trips cannot be deleted or inverted unnoticed (#364) | `--self-test` |
 | [`check_source_rules.py`](../tools/check_source_rules.py) | S1: placement new is `::new`; S2: a check shaped like a memory-safety guard is `METL_HARDEN` or carries its reason; S3: no `constexpr` function that can never be constant-evaluated | `--self-test` |
+| [`check_tiers.py`](../tools/check_tiers.py) | T1–T4: every Tier 2 header under `exp/` carries the experimental notice and names its tracking issue, declares into `metl::exp`, and no other header includes one; `cmake/CheckUmbrella.cmake` keeps them out of the umbrella | `--self-test` |
 | [`check_amalgamation.py`](../tools/check_amalgamation.py) | the shipped single header builds and runs the whole suite | `--self-test` |
 | [`check_docs.py`](../tools/check_docs.py) | D1–D8: the documentation claims a machine can settle | `--self-test` |
 | [`check_compile_fail.py`](../tools/check_compile_fail.py) | that the public `static_assert`s actually fire, and that the gap between how many there are and how many are pinned only shrinks | `--self-test` |
