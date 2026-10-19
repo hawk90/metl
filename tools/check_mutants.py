@@ -119,20 +119,24 @@ MUTANTS = load_mutants()
 def shard(mutants, index, total):
     """Shard `index` of `total` (0-based) of `mutants`, for a CI matrix.
 
-    Dealt round-robin within each gate kind, in name order, so a kind whose
-    mutants cost more (tsan: builds a second tree) spreads across shards
-    instead of landing in one. Deterministic: every shard computes the same
-    split, and the shards together hold every mutant exactly once."""
-    dealt = [[] for _ in range(total)]
-    by_kind = {}
+    Whole files, never split. A mutant rebuilds every translation unit that
+    includes its file, and restoring the file costs that rebuild again at the
+    next mutant of another file; mutants of one file run back to back share it.
+    A file split across shards pays for it in each. Files are packed largest
+    first onto the shard holding the fewest mutants (ties: the lower index),
+    and each shard runs its files one after another. Deterministic: every
+    shard computes the same split, and the shards together hold every mutant
+    exactly once."""
+    by_file = {}
     for mutant in sorted(mutants, key=lambda m: m["name"]):
-        by_kind.setdefault(mutant["kills"].partition(":")[0], []).append(mutant)
-    turn = 0
-    for kind in sorted(by_kind):
-        for mutant in by_kind[kind]:
-            dealt[turn % total].append(mutant)
-            turn += 1
-    return dealt[index]
+        by_file.setdefault(mutant["file"], []).append(mutant)
+    loads = [0] * total
+    dealt = [[] for _ in range(total)]
+    for path in sorted(by_file, key=lambda p: (-len(by_file[p]), p)):
+        target = min(range(total), key=lambda i: (loads[i], i))
+        dealt[target].extend(by_file[path])
+        loads[target] += len(by_file[path])
+    return sorted(dealt[index], key=lambda m: (m["file"], m["name"]))
 
 
 def shard_spec(text):
@@ -595,17 +599,28 @@ def self_test():
                 pass
             (directory / f"{bad_name}.py").unlink()
 
-    # --shard: the shards of any N hold every mutant exactly once, and each
-    # gate kind is spread rather than dealt to one shard.
+    # --shard: the shards of any N hold every mutant exactly once, never split
+    # a file, keep a file's mutants back to back, and differ in size by no more
+    # than the largest file's mutant count.
     names = sorted(m["name"] for m in MUTANTS)
+    largest = max(sum(m["file"] == f for m in MUTANTS) for f in {m["file"] for m in MUTANTS})
     for total in (1, 2, 3, 4, 7, len(MUTANTS) + 3):
         shards = [shard(MUTANTS, index, total) for index in range(total)]
         if sorted(m["name"] for part in shards for m in part) != names:
             failures.append(f"--shard */{total} does not cover every mutant exactly once")
-        for kind in {m["kills"].partition(":")[0] for m in MUTANTS}:
-            counts = [sum(m["kills"].startswith(kind + ":") for m in part) for part in shards]
-            if max(counts) - min(counts) > 1:
-                failures.append(f"--shard */{total} deals {kind}: mutants unevenly: {counts}")
+        owners = {}
+        for number, part in enumerate(shards):
+            for mutant in part:
+                owners.setdefault(mutant["file"], set()).add(number)
+            runs = [m["file"] for i, m in enumerate(part) if i == 0 or part[i - 1]["file"] != m["file"]]
+            if len(runs) != len(set(runs)):
+                failures.append(f"--shard {number}/{total} interleaves files: {runs}")
+        split = sorted(path for path, numbers in owners.items() if len(numbers) > 1)
+        if split:
+            failures.append(f"--shard */{total} splits {split} across shards")
+        sizes = [len(part) for part in shards]
+        if max(sizes) - min(sizes) > largest:
+            failures.append(f"--shard */{total} is unbalanced: {sizes}")
     for bad in ("1", "2/2", "-1/4", "0/0", "a/4", "1/b", ""):
         try:
             shard_spec(bad)
