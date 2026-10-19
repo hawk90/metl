@@ -122,6 +122,30 @@ jobs:
           tools/check_size.py --merge-records "metl-${version}-measurements.json" \
             --expect-commit "${GITHUB_SHA}" "${records[@]}"
 
+      # The new record against the previous release's (#409), in the release
+      # notes and as an asset. A previous release from before #405 has no
+      # record; the notes then say so.
+      - name: Compare with the previous release's measurements
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          previous="$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)"
+          asset="metl-${previous#v}-measurements.json"
+          {
+            echo "### Measurements compared with ${previous}"
+            echo ""
+          } > "metl-${version}-measurements.md"
+          if gh release view "${previous}" --repo "${GITHUB_REPOSITORY}" --json assets \
+              --jq '.assets[].name' | grep -qxF "${asset}"; then
+            gh release download "${previous}" --repo "${GITHUB_REPOSITORY}" --pattern "${asset}" \
+              --dir previous-release
+            tools/check_size.py --compare "previous-release/${asset}" \
+              "metl-${version}-measurements.json" >> "metl-${version}-measurements.md"
+          else
+            echo "${previous} has no measurement record to compare against." \
+              >> "metl-${version}-measurements.md"
+          fi
+
       - name: Build and verify the tree
         env:
           CC: clang
@@ -214,6 +238,8 @@ jobs:
             echo "commit on each Cortex-M target: code, constants, RAM and thread-local"
             echo "storage of the size probes, section by section, and the stack figures."
             echo "A value that was not measured is \`null\`."
+            echo ""
+            cat "metl-${version}-measurements.md"
           } >> release-notes.md
 
       # Build provenance: a signed statement that THIS file came out of THIS
@@ -254,4 +280,5 @@ jobs:
             ${prerelease} \
             "metl-${version}-single.hpp" \
             "metl-${version}-single.hpp.intoto.jsonl" \
-            "metl-${version}-measurements.json"
+            "metl-${version}-measurements.json" \
+            "metl-${version}-measurements.md"
