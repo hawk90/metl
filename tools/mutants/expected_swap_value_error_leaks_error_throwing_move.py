@@ -8,6 +8,6 @@ MUTANT = {
            "nothrow-movable: the old error is overwritten, not destroyed.",
     "kills": "ctest:expected_test",
     "old": """      e.error_ptr()->~E();
-      ::new (e.storage_addr()) T(static_cast<T&&>(tmp));""",
-    "new": """      ::new (e.storage_addr()) T(static_cast<T&&>(tmp));""",
+      e.construct_value(static_cast<T&&>(tmp));""",
+    "new": """      e.construct_value(static_cast<T&&>(tmp));""",
 }

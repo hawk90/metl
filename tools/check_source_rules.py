@@ -40,10 +40,10 @@ import argparse
 import pathlib
 import re
 import sys
+import tempfile
 
 UNQUALIFIED_PLACEMENT_NEW = re.compile(r"(?<![:\w])new\s*\(")
 
-METL_ASSERT_CALL = re.compile(r"\bMETL_ASSERT\((.*)\);")
 # The shapes of a memory-safety guard (config.hpp, "The rule").
 GUARD_SHAPE = re.compile(r"!= *nullptr|\bpos\b|\bfirst\b|\blast\b|Extent|\b[Cc]ount\b|"
                          r"\b[Oo]ffset\b|prev *!= *0|align|aliases_own_storage|\bn *<= *Capacity")
@@ -91,6 +91,37 @@ NEVER_CONSTANT = re.compile(r"\breinterpret_cast\b")
 VOID_POINTER_PARAMETER = re.compile(r"\bvoid\s*\*\s*(?P<name>\w+)\s*[,)]")
 
 
+def unconditional_lines(body):
+    """`body` without the lines inside a preprocessor conditional."""
+    kept, depth = [], 0
+    for line in body.splitlines():
+        directive = line.strip()
+        if re.match(r"#\s*if", directive):
+            depth += 1
+        elif re.match(r"#\s*endif", directive):
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            kept.append(line)
+    return "\n".join(kept)
+
+
+def assert_calls(text):
+    """(line number, condition) of every METL_ASSERT, however it is wrapped.
+
+    Comments and #define lines are blanked first, keeping line numbers; the
+    condition runs to the matching parenthesis and its whitespace is
+    collapsed, so a condition clang-format wrapped reads as written on one line.
+    """
+    code = "\n".join("" if "#define" in strip_comment(line) else strip_comment(line)
+                     for line in text.splitlines())
+    for match in re.finditer(r"\bMETL_ASSERT\(", code):
+        depth, end = 1, match.end()
+        while end < len(code) and depth:
+            depth += {"(": 1, ")": -1}.get(code[end], 0)
+            end += 1
+        yield code.count("\n", 0, match.start()) + 1, " ".join(code[match.end():end - 1].split())
+
+
 def never_constant_functions(text, path):
     """S3: constexpr functions whose body can never be a constant expression."""
     code = re.sub(r"//[^\n]*", "", text)
@@ -108,8 +139,12 @@ def never_constant_functions(text, path):
                 break
             end += 1
         body = code[match.end() - 1:end + 1]
-        if "#if" in body or "constant_evaluated" in body:
+        if "constant_evaluated" in body:
             continue
+        # A cast inside an #if arm is exempt -- another arm can be constant --
+        # but only that cast: an unrelated #if elsewhere in the body exempts
+        # nothing else.
+        body = unconditional_lines(body)
         reasons = []
         if NEVER_CONSTANT.search(body):
             reasons.append("reinterpret_cast")
@@ -133,11 +168,9 @@ def check_text(text, path, used=None):
         code = strip_comment(line)
         if UNQUALIFIED_PLACEMENT_NEW.search(code):
             violations.append((path, number, "S1", "placement new must be written ::new"))
-        if "#define" in code:
-            continue
-        match = METL_ASSERT_CALL.search(code)
-        if match and GUARD_SHAPE.search(match.group(1)):
-            key = (header, match.group(1).strip())
+    for number, condition in assert_calls(text):
+        if GUARD_SHAPE.search(condition):
+            key = (header, condition)
             if key in ASSERT_ALLOWLIST:
                 if used is not None:
                     used.add(key)
@@ -147,6 +180,20 @@ def check_text(text, path, used=None):
                                    "make it METL_HARDEN, or list it in ASSERT_ALLOWLIST with the "
                                    "reason stripping it is safe (rule: include/metl/config.hpp)"))
     return violations + never_constant_functions(text, path)
+
+
+def check_tree(root):
+    """Every header under `root`, plus the ASSERT_ALLOWLIST entries none of them used."""
+    headers = sorted(pathlib.Path(root).rglob("*.hpp"))
+    violations = []
+    used = set()
+    for header in headers:
+        violations += check_text(header.read_text(encoding="utf-8"), str(header), used)
+    for header, condition in sorted(set(ASSERT_ALLOWLIST) - used):
+        violations.append((f"{root}/{header}", 0, "S2",
+                           f"ASSERT_ALLOWLIST names METL_ASSERT({condition}), which no longer "
+                           "exists there: remove the entry"))
+    return violations, headers
 
 
 CANARY_S1 = """
@@ -198,9 +245,27 @@ def self_test():
     caught = [rule for _, _, rule, _ in check_text(CANARY_S3, "<canary-S3>")]
     if caught != ["S3", "S3"]:
         failures.append(f"S3 canary reported {caught}, wanted two S3 -- the constexpr check is dead")
+    # S2 across lines: clang-format wraps a long condition, and the guard is no
+    # less a guard for it.
+    wrapped = "void at(int* first, int* pos) {\n  METL_ASSERT(pos >= first &&\n              pos != nullptr);\n}\n"
+    if [(line, rule) for _, line, rule, _ in check_text(wrapped, "canary.hpp")] != [(2, "S2")]:
+        failures.append(f"S2 missed a METL_ASSERT wrapped over two lines: {check_text(wrapped, 'canary.hpp')}")
+    # S3 is exempt only for a cast INSIDE an #if arm. An unrelated #if block in
+    # the same body -- a hardening check, say -- exempts nothing else.
+    guarded = ("template <typename T> constexpr T* get(void* p) noexcept {\n#if METL_HARDENING\n"
+               "  check(p);\n#endif\n  return reinterpret_cast<T*>(p);\n}\n")
+    if [rule for _, _, rule, _ in check_text(guarded, "<canary-S3-if>")] != ["S3"]:
+        failures.append("S3 let an unconditional reinterpret_cast through because the body has an #if")
     allowed = 'void f(int* p) { METL_ASSERT(pointer != nullptr); }'
     if check_text(allowed, "variant.hpp"):
         failures.append("an ASSERT_ALLOWLIST entry was flagged anyway")
+    # An allowlist entry whose METL_ASSERT is gone is an error, so the list
+    # cannot outlive the code it excuses.
+    with tempfile.TemporaryDirectory() as tmp:
+        (pathlib.Path(tmp) / "variant.hpp").write_text(allowed + "\n")
+        stale = [message for _, _, rule, message in check_tree(pathlib.Path(tmp))[0] if rule == "S2"]
+        if len(stale) != len(ASSERT_ALLOWLIST) - 1 or any("pointer != nullptr" in m for m in stale):
+            failures.append(f"stale ASSERT_ALLOWLIST entries were not each reported: {stale}")
     noise = check_text(CANARY_CLEAN, "<canary-clean>")
     if noise:
         failures.append(f"rule-abiding code was flagged: {noise}")
@@ -208,7 +273,7 @@ def self_test():
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
         return 1
-    print("self-test passed: S1, S2 and S3 bite, the allowlist is honoured, clean code is not flagged")
+    print("self-test passed: S1, S2 (one line or wrapped) and S3 bite, an #if elsewhere exempts no cast, the allowlist is honoured and a stale entry reported, clean code is not flagged")
     return 0
 
 
@@ -222,19 +287,10 @@ def main():
         return self_test()
 
     root = pathlib.Path(args.include_dir)
-    headers = sorted(root.rglob("*.hpp"))
+    violations, headers = check_tree(root)
     if not headers:
         print(f"error: no headers under {root}", file=sys.stderr)
         return 2
-
-    violations = []
-    used = set()
-    for header in headers:
-        violations += check_text(header.read_text(encoding="utf-8"), str(header), used)
-    for header, condition in sorted(set(ASSERT_ALLOWLIST) - used):
-        violations.append((f"{root}/{header}", 0, "S2",
-                           f"ASSERT_ALLOWLIST names METL_ASSERT({condition}), which no longer "
-                           "exists there: remove the entry"))
     for path, number, rule, message in violations:
         print(f"{path}:{number}: [{rule}] {message}", file=sys.stderr)
     if violations:
