@@ -353,7 +353,8 @@ against the packaged headers on every CI run.
 
 ## Single-header build
 
-`tools/amalgamate.py` flattens the public headers into one file:
+`tools/amalgamate.py` flattens the stable public headers (the umbrella
+`metl/metl.hpp`, so not the experimental `metl/exp/` ones) into one file:
 
 ```bash
 python3 tools/amalgamate.py -o metl-single.hpp
@@ -366,7 +367,7 @@ python3 tools/amalgamate.py -o metl-single.hpp
 It is generated from the real headers rather than maintained alongside them, so
 it cannot drift — and it is not a reduced subset: CI redirects every
 `metl/*.hpp` at the amalgamated file and runs the **whole test suite** through
-it. That file is attached to each GitHub Release; the `amalgamation` job builds
+it, except the tests of `metl/exp/` types, which the tool lists as left out. That file is attached to each GitHub Release; the `amalgamation` job builds
 it on every push.
 
 ## Zephyr
@@ -550,7 +551,7 @@ builds (and, where noted, runs) METL on that platform on every push/PR.
 | API contract | every public header | every `try_*` is `[[nodiscard]]` and `try_` is reserved for recoverable forms; a self-test canary must still fail; a single-pass iterator must **not** compile | `api-contract` |
 | Install / consume | `find_package(metl)` downstream | install + build + **run** a consumer | `install-check` |
 | Conan package | `conan create` + `test_package/` | build + **run** a consumer against the *packaged* headers; a pre-C++17 profile must be refused | `conan` |
-| Single-header | generated amalgamation of every public header | redirect every `metl/*.hpp` at it and **run the whole test suite through it** | `amalgamation` |
+| Single-header | generated amalgamation of every stable public header | redirect every `metl/*.hpp` at it and **run the whole test suite through it** (less the `metl/exp/` tests) | `amalgamation` |
 | Static analysis | clang-tidy, deduplicated | distinct-finding count against a ratchet that only goes down, except on a clang-tidy version bump, which is recorded with its reason in `ci.yml` | `clang-tidy` |
 | Consumer warnings | clang and gcc × C++17 / C++20 | every host test, fuzz and example TU under a strict consumer warning set, as errors | `consumer-warnings` |
 | Fuzzing | libFuzzer + ASan/UBSan, every `fuzz/` harness | bounded run of each harness; fails on crash, leak or timeout | `fuzz-smoke` |

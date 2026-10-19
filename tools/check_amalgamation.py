@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Build and run every test through the single-header amalgamation.
+"""Build and run every Tier 1 test through the single-header amalgamation.
 
 The release ships one file, metl-X.Y.Z-single.hpp. Every public header gets a
 shim that includes it, so each test's `#include <metl/x.hpp>` resolves to the
 amalgamation instead of include/, and the whole suite runs against what users
-download. A test that exits with 77 (metl_test::skip_code) had nothing to check
-in this build and is reported as skipped, not passed. A test that CMakeLists.txt
-builds from several translation units (a metl_cc_test whose SRCS lists more than
-one file) is built from all of them, in the order listed, so a property that
-only shows across translation units -- link order, ODR -- is checked against
-the amalgamation too.
+download. The tests of Tier 2 (metl/exp/) types are left out and listed: the
+amalgamation holds only what the umbrella includes. A test that exits with 77
+(metl_test::skip_code) had nothing to check in this build and is reported as
+skipped, not passed. A test that CMakeLists.txt builds from several translation
+units (a metl_cc_test whose SRCS lists more than one file) is built from all of
+them, in the order listed, so a property that only shows across translation
+units -- link order, ODR -- is checked against the amalgamation too.
 
 Every test is compiled with the METL_EXPECTED_VERSION_* values CMake gives
 tests/core/version_test.cpp, read from project(VERSION) in CMakeLists.txt, so
@@ -83,6 +84,17 @@ def multi_tu_sources(cmake_text):
             if f.endswith("_test.cpp"):
                 tests[REPO / f] = [REPO / g for g in files]
     return tests
+
+
+TIER2_INCLUDE = re.compile(r'^\s*#\s*include\s*[<"]metl/exp/', re.M)
+
+
+def tier2_tests(tests):
+    """The tests that include a Tier 2 header. The single header is built from
+    the umbrella, which holds no Tier 2 type (docs/SCOPE.md section 3), so these
+    cannot build against it; they are left out and listed, never skipped
+    silently."""
+    return [t for t in tests if TIER2_INCLUDE.search(t.read_text(encoding="utf-8"))]
 
 
 def run_test(cxx, shim_root, out_dir, test, sources=None, defines=()):
@@ -179,6 +191,13 @@ def self_test(cxx):
         got, _ = run_test(cxx, shim_root, scratch, main_tu)
         if got != "build":
             failures.append(f"a two-TU test built alone was classified {got!r}")
+    with tempfile.TemporaryDirectory() as scratch:
+        tier2 = Path(scratch) / "exp_test.cpp"
+        tier2.write_text('#include <metl/exp/bitset.hpp>\nint main() { return 0; }\n')
+        core = Path(scratch) / "core_test.cpp"
+        core.write_text('// mentions metl/exp/ in a comment only\n#include <metl/span.hpp>\n')
+        if tier2_tests([tier2, core]) != [tier2]:
+            failures.append("a test including a Tier 2 header was not told apart")
     # The version: read from project(VERSION), passed to every compile, and a
     # CMakeLists.txt without one refused rather than skipped.
     try:
@@ -241,6 +260,10 @@ def main():
     if not tests:
         print("error: no tests found", file=sys.stderr)
         return 2
+    left_out = tier2_tests(tests)
+    for test in left_out:
+        print(f"not in the single header (Tier 2): {test.relative_to(REPO).as_posix()}")
+    tests = [t for t in tests if t not in left_out]
 
     cmake_text = (REPO / "CMakeLists.txt").read_text(encoding="utf-8")
     multi_tu = multi_tu_sources(cmake_text)
