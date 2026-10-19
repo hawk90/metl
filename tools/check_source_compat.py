@@ -36,7 +36,13 @@ import tempfile
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
 # {tag: {old test source or ctest name: "why it may break (#issue)"}}
-EXPECTED_BREAKS = {}
+EXPECTED_BREAKS = {
+    "v1.3.0": {
+        "metl_umbrella_complete": "it requires the umbrella to include every header under metl/, but "
+                                  "SCOPE.md section 3 already kept metl/exp/ (Tier 2) out of the umbrella "
+                                  "in v1.3.0; the first exp header lands with #335",
+    },
+}
 
 # Where a tree states its own version: (file, pattern whose group 2 is the version).
 VERSION_STAMPS = [
