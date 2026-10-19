@@ -810,6 +810,18 @@ jobs:
       fail-fast: false
       matrix:
         cpu: [cortex-m0, cortex-m3, cortex-m4, cortex-m7]
+        # The QEMU machine each core's runtime measurements run on: the same
+        # boards as qemu-conformance. QEMU has no Cortex-M0 MPS2 board, so the
+        # M0 build runs on the AN385's ARMv7-M core, as it does there.
+        include:
+          - cpu: cortex-m0
+            machine: mps2-an385
+          - cpu: cortex-m3
+            machine: mps2-an385
+          - cpu: cortex-m4
+            machine: mps2-an386
+          - cpu: cortex-m7
+            machine: mps2-an500
 
     # Single source of truth for the link flags, so the probe and its negative
     # control cannot drift apart. Note the absence of -Wl,--gc-sections, which
@@ -834,11 +846,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
-      - name: Install ARM toolchain
+      # picolibc and QEMU are for the runtime measurements at the end of this
+      # job. The same list and cache key as qemu-conformance, so the two share
+      # one cached set of packages. The probe and canary links below name
+      # newlib-nano's specs explicitly, so picolibc being installed changes
+      # nothing they link.
+      - name: Install ARM toolchain, picolibc and QEMU
         uses: ./.github/actions/apt-install
         with:
-          packages: gcc-arm-none-eabi
-          cache-key: gcc-arm-none-eabi
+          packages: gcc-arm-none-eabi picolibc-arm-none-eabi qemu-system-arm
+          cache-key: arm-picolibc-qemu
 
       - name: Link the invariant probe (newlib-nano, nosys, no crt0)
         run: |
@@ -1001,6 +1018,35 @@ jobs:
             --cpu ${{ matrix.cpu }} \
             --record "$METL_MEASUREMENTS" --flags "$METL_STACK_PROBE_FLAGS" \
             --su-dir .
+
+      # What the shipped code DOES when it runs, which nothing above measures:
+      # the stack high-water mark of stack_probe.cpp's operations, painted and
+      # read back under QEMU, without and with LTO (#404) -- the static gate
+      # above sees single frames and never an LTO build -- and the guest
+      # instructions each benchmark region of qemu_bench_probe.cpp executes
+      # (#338). Instruction counts, never time: QEMU models no cycles.
+      #
+      # Enforcing from the first run. A missing budget fails and prints the
+      # number to write into tools/check_qemu_probes.py, so no run passes
+      # without one. The figures also go into the measurement record below.
+      - name: QEMU probe grading must still bite (canary)
+        run: tools/check_qemu_probes.py --self-test
+
+      - name: Runtime stack and instruction counts under QEMU
+        timeout-minutes: 8
+        run: |
+          tools/check_qemu_probes.py \
+            --cpu ${{ matrix.cpu }} \
+            --machine ${{ matrix.machine }} \
+            --record "$METL_MEASUREMENTS" --summary
+
+      - name: Upload the QEMU probe output on failure
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: qemu-probes-${{ matrix.cpu }}
+          path: build-qemu-probes/*.out
+          if-no-files-found: ignore
 
       # The record of what the steps above measured (#405): per-class totals,
       # every section, the static deepest frame, and null for what nothing
