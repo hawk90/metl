@@ -409,8 +409,11 @@ int main() {
   // Every element move of the insert in turn: building the entry, each step of
   // the shift, and the final move of the entry into the gap. Only throwing at
   // one of them left the last one, whose failure destroyed a dead slot and
-  // leaked a live one, untested (#258).
-  for (int which = 0; which < 2; ++which) {
+  // leaked a live one, untested (#258). Inserted at the front and in the
+  // middle: only the middle leaves live elements before the gap for the
+  // handler to destroy (#442).
+  for (int which = 0; which < 4; ++which) {
+    const int key = which < 2 ? 0 : 25;
     for (int countdown = 0;; ++countdown) {
       g_live = 0;
       g_double_destroys = 0;
@@ -424,10 +427,10 @@ int main() {
         }
         g_countdown = countdown;
         try {
-          if (which == 0) {
-            map.emplace(0, pinned_armed(0));
+          if (which % 2 == 0) {
+            map.emplace(key, pinned_armed(key));
           } else {
-            set.emplace(pinned_armed(0));
+            set.emplace(pinned_armed(key));
           }
         } catch (int) {
           threw = true;
@@ -435,7 +438,7 @@ int main() {
         g_countdown = -1;
         if (threw) {
           // Cleared, or untouched when the throw came before anything moved.
-          const std::size_t size = which == 0 ? map.size() : set.size();
+          const std::size_t size = which % 2 == 0 ? map.size() : set.size();
           CHECK(size == 0 || size == 5);
         }
       }
@@ -654,10 +657,35 @@ int main() {
       for (int i = 0; i < 5; ++i) {
         map.emplace(i, armed(i));
       }
-      g_countdown = 1;  // the second relocation throws
+      g_countdown = 1;  // moving the erased element out, then the first relocation throws
       bool threw = false;
       try {
         (void)map.erase(0);
+      } catch (int) {
+        threw = true;
+      }
+      g_countdown = -1;
+      CHECK(threw);
+      CHECK(map.empty());
+    }
+    CHECK_EQ(g_live, 0);
+    CHECK_EQ(g_double_destroys, 0);
+  }
+
+  // The same, erasing from the middle with a later relocation throwing, so the
+  // handler has live elements before the failed slot to destroy (#442).
+  {
+    g_live = 0;
+    g_double_destroys = 0;
+    {
+      metl::flat_map<int, armed, 8> map;
+      for (int i = 0; i < 5; ++i) {
+        map.emplace(i, armed(i));
+      }
+      g_countdown = 2;  // moving the erased element out, relocating 2 -> 1, then 3 -> 2 throws
+      bool threw = false;
+      try {
+        (void)map.erase(1);
       } catch (int) {
         threw = true;
       }
