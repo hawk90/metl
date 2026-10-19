@@ -112,7 +112,8 @@ that is what everything else in this document and in CI is for.
   alerts arrive whenever they are published. `renovate.json` is the source of
   truth.
 - **CodeQL** runs on every push and PR, and weekly so a newly published query
-  finds the code without waiting for a commit.
+  finds the code without waiting for a commit. A release tag is refused while
+  CodeQL reports an open alert on the tagged commit (`tools/release_gate.py`).
 - **OpenSSF Scorecard** runs weekly against this repository. Its results go to
   the Security tab and are **not published** to the public OpenSSF API; the
   `scorecard.yml` header explains what the score is and is not good for, and

@@ -44,17 +44,58 @@ VERSION_STAMPS = [
     ("components/metl/idf_component.yml", re.compile(r"(\nversion: \")([0-9.]+)(\"\n)")),
 ]
 
-# make, on a failed object or link step. GNU make 4 puts the makefile and line
-# before the target; make 3.81 (macOS) does not:
-#   make[2]: *** [CMakeFiles/metl_x_test.dir/build.make:79: CMakeFiles/metl_x_test.dir/tests/x_test.cpp.o] Error 1
-#   make[2]: *** [CMakeFiles/metl_x_test.dir/tests/x_test.cpp.o] Error 1
-#   make[2]: *** [CMakeFiles/metl_x_test.dir/build.make:120: metl_x_test] Error 1
-FAILED_OBJECT = re.compile(r"\*\*\* \[(?:[^\]]*?:\d+: )?CMakeFiles/[^/\]]+\.dir/(.+?)\.o\] Error")
-FAILED_LINK = re.compile(r"\*\*\* \[(?:[^\]]*?:\d+: )?([A-Za-z0-9_]+)\] Error")
+# The target a failed build step names. make: GNU make 4 puts the makefile and
+# line before it, make 3.81 (macOS) does not. Ninja: newer releases add the
+# exit code. PARSE_CASES has one line of each.
+FAILED_MAKE = re.compile(r"\*\*\* \[(?:[^\]]*?:\d+: )?([^\]]+)\] Error")
+FAILED_NINJA = re.compile(r"^FAILED: (?:\[code=\d+\] )?(.+?)\s*$", re.MULTILINE)
+# An object, at the top level or in a subdirectory: <dir/>CMakeFiles/<t>.dir/<source>.o,
+# where <source> is relative to <dir>.
+OBJECT = re.compile(r"^((?:.*/)?)CMakeFiles/[^/]+\.dir/(.+?)\.(?:o|obj)$")
 # ctest, after "The following tests FAILED:":
 #   	 12 - metl_x_test (Failed)
 FAILED_TEST = re.compile(r"^\s*\d+ - (\S+) \((Failed|SEGFAULT|Subprocess aborted|Timeout|Exception|"
                          r"Child aborted|ILLEGAL|BUS error|OTHER_FAULT)\)", re.MULTILINE)
+
+
+def build_failures(output):
+    """The old sources and link targets a build's output says failed."""
+    broken = set()
+    for target in FAILED_MAKE.findall(output) + [name for line in FAILED_NINJA.findall(output)
+                                                 for name in line.split()]:
+        obj = OBJECT.match(target)
+        if obj:
+            broken.add(obj.group(1) + obj.group(2))
+        elif "CMakeFiles/" not in target and pathlib.PurePosixPath(target).name != "all":
+            broken.add(pathlib.PurePosixPath(target).name)  # a link step: the target's name
+    return broken
+
+
+def keep_going(generator):
+    """The native build tool's keep-going flag for a CMake generator."""
+    if "Ninja" in generator:
+        return ["-k", "0"]  # `ninja -k` takes a count; 0 means no limit
+    if "Makefiles" in generator:
+        return ["-k"]
+    return []
+
+
+# (build output, what it must name), in the forms make 3.81, make 4 and Ninja
+# print, for targets at the top level and in a subdirectory.
+PARSE_CASES = [
+    ("make[2]: *** [CMakeFiles/metl_x_test.dir/build.make:79: CMakeFiles/metl_x_test.dir/tests/x_test.cpp.o] Error 1",
+     {"tests/x_test.cpp"}),
+    ("make[2]: *** [CMakeFiles/metl_x_test.dir/tests/x_test.cpp.o] Error 1", {"tests/x_test.cpp"}),
+    ("make[2]: *** [CMakeFiles/metl_x_test.dir/build.make:120: metl_x_test] Error 1", {"metl_x_test"}),
+    ("make[2]: *** [tests/CMakeFiles/metl_x_test.dir/build.make:76: "
+     "tests/CMakeFiles/metl_x_test.dir/containers/x_test.cpp.o] Error 1", {"tests/containers/x_test.cpp"}),
+    ("make[2]: *** [tests/CMakeFiles/metl_x_test.dir/build.make:120: tests/metl_x_test] Error 1", {"metl_x_test"}),
+    ("make[1]: *** [CMakeFiles/Makefile2:1234: tests/CMakeFiles/metl_x_test.dir/all] Error 2\n"
+     "make: *** [Makefile:146: all] Error 2", set()),
+    ("FAILED: CMakeFiles/metl_x_test.dir/tests/x_test.cpp.o \n/usr/bin/c++ -c x", {"tests/x_test.cpp"}),
+    ("FAILED: [code=1] tests/CMakeFiles/metl_x_test.dir/containers/x_test.cpp.o", {"tests/containers/x_test.cpp"}),
+    ("FAILED: [code=1] tests/metl_x_test \n: && /usr/bin/c++ ...", {"metl_x_test"}),
+]
 
 
 def git(*args):
@@ -118,12 +159,16 @@ def build_and_test(tree, build, targets=None, compiler=None):
     command = ["cmake", "--build", str(build), "-j"]
     for target in targets or []:
         command += ["--target", target]
-    # Keep going past the first failure, so one run names every old file that broke.
-    command += ["--", "-k"]
+    # Keep going past the first failure, so one run names every old file that
+    # broke. The flag is the native tool's: `-- -k` alone stops Ninja at once.
+    cache = (pathlib.Path(build) / "CMakeCache.txt").read_text(encoding="utf-8", errors="replace")
+    generator = re.search(r"^CMAKE_GENERATOR:INTERNAL=(.*)$", cache, re.MULTILINE)
+    flags = keep_going(generator.group(1) if generator else "")
+    if flags:
+        command += ["--", *flags]
     result = subprocess.run(command, capture_output=True, text=True)
     output = result.stdout + result.stderr
-    broken = set(FAILED_OBJECT.findall(output))
-    broken |= {name for name in FAILED_LINK.findall(output) if name != "all"}
+    broken = build_failures(output)
     if targets is None:
         tests = subprocess.run(["ctest", "--output-on-failure", "--no-tests=error", "-j", "4",
                                 "--timeout", "300"],
@@ -175,6 +220,19 @@ def check(tag, compiler=None, keep=None):
 
 def self_test(tag, compiler=None):
     """A deliberate signature change must fail, naming the old test it broke."""
+    # The parsing first: it needs no build, and a form it misses would leave
+    # the build below reporting "could not build" instead of the file's name.
+    for output, names in PARSE_CASES:
+        if build_failures(output) != names:
+            print(f"::error::self-test: build_failures({output!r}) = {build_failures(output)}, want {names}",
+                  file=sys.stderr)
+            return 1
+    for generator, flags in (("Unix Makefiles", ["-k"]), ("Ninja", ["-k", "0"]),
+                             ("Ninja Multi-Config", ["-k", "0"]), ("Xcode", [])):
+        if keep_going(generator) != flags:
+            print(f"::error::self-test: keep_going({generator!r}) = {keep_going(generator)}, want {flags}",
+                  file=sys.stderr)
+            return 1
     root = pathlib.Path(tempfile.mkdtemp(prefix="metl-compat-self-test-"))
     try:
         tree = stage(tag, root)
