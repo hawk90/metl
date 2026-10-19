@@ -167,6 +167,93 @@ void fallbacks(int s) {
   CHECK(counts_are(values(s), errors(s)));
 }
 
+// Every accessor through every reference qualifier, in the state it is for.
+void observers(int s) {
+  result x = make(s);
+  const result& cx = x;
+  if (s > 0) {
+    CHECK_EQ((*x).value, s);
+    CHECK_EQ((*cx).value, s);
+    CHECK_EQ(value_type(*make(s)).value, s);
+    CHECK_EQ(value_type(*std::move(cx)).value, s);
+    CHECK_EQ(x.value().value, s);
+    CHECK_EQ(cx.value().value, s);
+    CHECK_EQ(value_type(make(s).value()).value, s);
+    CHECK_EQ(value_type(std::move(cx).value()).value, s);
+  } else {
+    CHECK_EQ(x.error().value, -s);
+    CHECK_EQ(cx.error().value, -s);
+    CHECK_EQ(error_type(make(s).error()).value, -s);
+    CHECK_EQ(error_type(std::move(cx).error()).value, -s);
+  }
+  CHECK(counts_are(values(s), errors(s)));
+}
+
+// The monadic operations through every reference qualifier. Only the side that
+// matches the state may run its callable, and it must see the stored member.
+void monadic(int s) {
+  int calls = 0;
+  const auto next = [&calls](const value_type& v) {
+    ++calls;
+    return metl::expected<int, error_type>(v.value + 10);
+  };
+  const auto produce = [&calls](const value_type& v) {
+    ++calls;
+    return v.value + 20;
+  };
+  const auto recover = [&calls](const error_type& e) {
+    ++calls;
+    return metl::expected<value_type, int>(metl::unexpect, e.value + 30);
+  };
+  const auto relabel = [&calls](const error_type& e) {
+    ++calls;
+    return e.value + 40;
+  };
+
+  result x = make(s);
+  const result& cx = x;
+  const bool ok = s > 0;
+
+  const metl::expected<int, error_type> chained[] = {
+      x.and_then(next), cx.and_then(next), make(s).and_then(next), std::move(cx).and_then(next)};
+  const metl::expected<int, error_type> produced[] = {x.transform(produce),
+                                                      cx.transform(produce),
+                                                      make(s).transform(produce),
+                                                      std::move(cx).transform(produce)};
+  for (int i = 0; i < 4; ++i) {
+    CHECK_EQ(chained[i].has_value(), ok);
+    CHECK_EQ(produced[i].has_value(), ok);
+    if (ok) {
+      CHECK_EQ(*chained[i], s + 10);
+      CHECK_EQ(*produced[i], s + 20);
+    } else {
+      CHECK_EQ(chained[i].error().value, -s);
+      CHECK_EQ(produced[i].error().value, -s);
+    }
+  }
+  CHECK_EQ(calls, ok ? 8 : 0);
+
+  calls = 0;
+  const metl::expected<value_type, int> recovered[] = {
+      x.or_else(recover), cx.or_else(recover), make(s).or_else(recover), std::move(cx).or_else(recover)};
+  const metl::expected<value_type, int> relabelled[] = {x.transform_error(relabel),
+                                                        cx.transform_error(relabel),
+                                                        make(s).transform_error(relabel),
+                                                        std::move(cx).transform_error(relabel)};
+  for (int i = 0; i < 4; ++i) {
+    CHECK_EQ(recovered[i].has_value(), ok);
+    CHECK_EQ(relabelled[i].has_value(), ok);
+    if (ok) {
+      CHECK_EQ(recovered[i]->value, s);
+      CHECK_EQ(relabelled[i]->value, s);
+    } else {
+      CHECK_EQ(recovered[i].error(), 30 - s);
+      CHECK_EQ(relabelled[i].error(), 40 - s);
+    }
+  }
+  CHECK_EQ(calls, ok ? 0 : 8);
+}
+
 // ---- expected<void, E> --------------------------------------------------------
 
 void void_construction(int s) {
@@ -270,6 +357,26 @@ void void_modifiers(int s) {
   CHECK(counts_are(0, 0));
 }
 
+// value(), operator* and error() through every reference qualifier, in the
+// state each is for.
+void void_observers(int s) {
+  void_result x = make_void(s);
+  const void_result& cx = x;
+  if (s == 0) {
+    x.value();
+    cx.value();
+    make_void(s).value();
+    *cx;
+  } else {
+    CHECK_EQ(x.error().value, -s);
+    CHECK_EQ(cx.error().value, -s);
+    CHECK_EQ(error_type(make_void(s).error()).value, -s);
+    CHECK_EQ(error_type(std::move(cx).error()).value, -s);
+  }
+  CHECK(holds(x, s));
+  CHECK(counts_are(0, errors(s)));
+}
+
 // The monadic operations through every reference qualifier. Only the side that
 // matches the state may run its callable.
 void void_monadic(int s) {
@@ -339,6 +446,8 @@ int main() {
     construction(a);
     self_assignment(a);
     fallbacks(a);
+    observers(a);
+    monadic(a);
     for (const int b : states) {
       assignment_and_swap(a, b);
       comparisons(a, b);
@@ -348,6 +457,7 @@ int main() {
     void_construction(a);
     void_self_assignment(a);
     void_modifiers(a);
+    void_observers(a);
     void_monadic(a);
     for (const int b : void_states) {
       void_assignment_and_swap(a, b);

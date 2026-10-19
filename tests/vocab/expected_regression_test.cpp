@@ -5,6 +5,9 @@
 //   (2) cross-state swap (value <-> error) must roll back on a throwing move.
 //   (4) emplace from the error state must restore the error when building
 //       or moving the new value throws.
+//   (5) the same rollbacks with the throw in the other member: the error's
+//       move, for value -> error and for swap, and the final move of a
+//       same-state emplace.
 
 #include "metl_check.hpp"
 
@@ -110,6 +113,27 @@ struct pinned_bomb {
 };
 
 bool pinned_bomb::arm = false;
+
+// Its move throws on the `fuse`-th move from now (0 = never). A same-state
+// emplace moves the old value into a backup first and the new one into place
+// second, so only a fuse of 2 reaches the throw that needs the backup.
+struct fused_move {
+  static int fuse;
+  int x;
+
+  explicit fused_move(int v) noexcept : x(v) {}
+  fused_move(const fused_move&) = delete;
+  fused_move(fused_move&& o) noexcept(false) : x(o.x) {
+    if (fuse != 0 && --fuse == 0) {
+      throw 7;
+    }
+  }
+  fused_move& operator=(const fused_move&) = delete;
+  fused_move& operator=(fused_move&&) = default;
+  ~fused_move() = default;
+};
+
+int fused_move::fuse = 0;
 
 }  // namespace
 
@@ -312,6 +336,82 @@ int main() {
       CHECK_EQ(err::live, 0);
     }
     CHECK_EQ(err::live, 0);
+  }
+
+  // ---- (5) the throw in the error's move, or in the last move of emplace ----
+  {
+    val::live = 0;
+    {
+      // value -> error: the new error is built aside, then moved in after the
+      // value is gone; that move throws and the value must come back.
+      metl::expected<val, move_bomb> e(metl::in_place, 3);
+      move_bomb::arm = true;
+      bool threw = false;
+      try {
+        e.emplace_error(5);
+      } catch (int) {
+        threw = true;
+      }
+      CHECK(threw);
+      CHECK(e.has_value());
+      CHECK_EQ(e->x, 3);
+      CHECK_EQ(val::live, 1);
+
+      e.emplace_error(6);  // unarmed: the same path completes
+      CHECK(!e.has_value());
+      CHECK_EQ(e.error().x, 6);
+      CHECK_EQ(val::live, 0);
+    }
+    CHECK_EQ(val::live, 0);
+  }
+  {
+    err::live = 0;
+    {
+      // Cross-state swap where E's move is the one that can throw: the value
+      // is set aside, and the error's move into its place throws.
+      metl::expected<err, move_bomb> a(metl::in_place, 1);  // value
+      metl::expected<err, move_bomb> b(metl::unexpect, 2);  // error
+      move_bomb::arm = true;
+      bool threw = false;
+      try {
+        a.swap(b);
+      } catch (int) {
+        threw = true;
+      }
+      CHECK(threw);
+      CHECK(a.has_value());
+      CHECK_EQ(a->x, 1);
+      CHECK(!b.has_value());
+      CHECK_EQ(b.error().x, 2);
+      CHECK_EQ(err::live, 1);
+
+      a.swap(b);  // unarmed: the same path completes
+      CHECK(!a.has_value());
+      CHECK_EQ(a.error().x, 2);
+      CHECK(b.has_value());
+      CHECK_EQ(b->x, 1);
+      CHECK_EQ(err::live, 1);
+    }
+    CHECK_EQ(err::live, 0);
+  }
+  {
+    // Same-state emplace: the final move into the slot throws after the old
+    // value was destroyed; the backup must be moved back.
+    metl::expected<fused_move, int> e(metl::in_place, 1);
+    fused_move::fuse = 2;
+    bool threw = false;
+    try {
+      e.emplace(2);
+    } catch (int) {
+      threw = true;
+    }
+    CHECK(threw);
+    CHECK(e.has_value());
+    CHECK_EQ(e->x, 1);
+
+    e.emplace(3);  // unarmed: the same path completes
+    CHECK(e.has_value());
+    CHECK_EQ(e->x, 3);
   }
 
   return metl_test::exit_code();
