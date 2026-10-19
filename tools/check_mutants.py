@@ -82,9 +82,11 @@ CTEST_TIMEOUT_SECONDS = 120
 # sequence. The host suite cannot kill such a mutant, since the mutated line is
 # not even built there (#388). The ARM toolchain and QEMU must be installed; a
 # run without them is broken, not killed, and the CI `mutants` job leaves these
-# to `qemu-conformance` with --skip-kinds qemu. Each qemu: gate is run once on
-# the unmutated tree first and must pass, so a test failing for another reason
-# cannot pass for a kill.
+# to `qemu-conformance` with --skip-kinds qemu.
+#
+# Every gate, of every kind, is run once on the unmutated tree first and must
+# pass, so a test failing for another reason, a regex selecting no test or a
+# tool that cannot start cannot pass for a kill.
 #
 # Each mutant lives in its own file, tools/mutants/<name>.py, which defines one
 # dict, MUTANT. One list in this file meant every PR that added a mutant
@@ -163,19 +165,36 @@ def force_rebuild(path):
     os.utime(path, (stamp, stamp))
 
 
+class StaleAnchor(RuntimeError):
+    """A mutant's `old` text no longer occurs exactly once in its file."""
+
+
 def apply_mutant(mutant):
     """Patch the file. Returns the original text so it can be restored."""
     path = REPO / mutant["file"]
     original = path.read_text(encoding="utf-8")
     occurrences = original.count(mutant["old"])
     if occurrences != 1:
-        raise RuntimeError(
+        raise StaleAnchor(
             f"{mutant['name']}: its anchor matched {occurrences} times in "
             f"{mutant['file']}, expected exactly 1. The code moved; re-read the "
             f"mutant rather than loosening the anchor.")
     path.write_text(original.replace(mutant["old"], mutant["new"]), encoding="utf-8")
     force_rebuild(path)
     return original
+
+
+# What ThreadSanitizer prints when it finds a race; a tsan: kill must show it.
+TSAN_REPORT = "WARNING: ThreadSanitizer"
+
+
+def run_tsan_ctest(build_dir, target):
+    """Runs `target` in the ThreadSanitizer tree, with its output on failure:
+    without it, ctest prints no report to look for."""
+    return subprocess.run(["ctest", "--test-dir", tsan_build_dir(build_dir), "-R", f"^{target}$",
+                           "--timeout", str(CTEST_TIMEOUT_SECONDS), "--no-tests=error",
+                           "--output-on-failure"],
+                          capture_output=True, text=True, cwd=REPO)
 
 
 def tsan_build_dir(build_dir):
@@ -203,36 +222,60 @@ def build_tsan_target(build_dir, target):
                           capture_output=True, text=True, cwd=REPO)
 
 
-def run_gate(spec, build_dir):
-    """True if the gate REJECTED the tree (i.e. the mutant was killed)."""
+def cmake_build(build_dir, targets=None):
+    """Builds `build_dir`, or only `targets` in it."""
+    command = ["cmake", "--build", build_dir, "-j"]
+    if targets:
+        command += ["--target", *targets]
+    return subprocess.run(command, capture_output=True, text=True, cwd=REPO)
+
+
+def run_ctest(build_dir, regex):
+    """Runs the tests `regex` selects. Selecting none is an error, not a pass:
+    a regex that matches nothing would otherwise read as a gate that did not
+    notice -- or, on the unmutated tree, as a gate that passes."""
+    # A mutant can make a test loop forever. ctest's default timeout is 1500 s,
+    # so one such mutant cost 25 minutes and stalled pre_push.py; a timed-out
+    # test fails, which is a kill, but a gate should not need half an hour to
+    # say so. The slowest target here runs in seconds.
+    return subprocess.run(["ctest", "--test-dir", build_dir, "-R", regex, "-j",
+                           "--timeout", str(CTEST_TIMEOUT_SECONDS), "--no-tests=error"],
+                          capture_output=True, text=True, cwd=REPO)
+
+
+def first_error(build):
+    errors = [line for line in (build.stdout + build.stderr).splitlines() if "error" in line]
+    return errors[0].strip() if errors else "(no error line in the build output)"
+
+
+def run_gate(spec, build_dir, build=True):
+    """True if the gate REJECTED the tree (i.e. the mutant was killed), None if
+    it could not give a verdict. `build=False` runs a ctest: gate on the tree as
+    already built."""
     kind, _, rest = spec.partition(":")
     if kind == "tsan":
         build = build_tsan_target(build_dir, rest)
         if build.returncode != 0:
-            errors = [line for line in (build.stdout + build.stderr).splitlines() if "error" in line]
-            first = errors[0].strip() if errors else "(no error line in the build output)"
-            return None, f"the mutated tree did not build under ThreadSanitizer: {first}"
-        result = subprocess.run(["ctest", "--test-dir", tsan_build_dir(build_dir), "-R", f"^{rest}$",
-                                 "--timeout", str(CTEST_TIMEOUT_SECONDS), "--no-tests=error"],
-                                capture_output=True, text=True, cwd=REPO)
-        return result.returncode != 0, result.stdout[-800:]
+            return None, f"the tree did not build under ThreadSanitizer: {first_error(build)}"
+        result = run_tsan_ctest(build_dir, rest)
+        output = result.stdout + result.stderr
+        if result.returncode == 0:
+            return False, output[-800:]
+        # The kill is the race report. A threaded test can fail for other
+        # reasons -- a crash, a timeout, a ThreadSanitizer that cannot map its
+        # shadow memory -- and none of those shows the weakened order races.
+        if TSAN_REPORT not in output:
+            return None, f"{rest} failed without a ThreadSanitizer report: {output.strip()[-300:]}"
+        return True, output[output.index(TSAN_REPORT):][:800]
     if kind == "ctest":
-        build = subprocess.run(["cmake", "--build", build_dir, "-j"],
-                               capture_output=True, text=True, cwd=REPO)
-        if build.returncode != 0:
-            # A mutant that stops the build is not a useful mutant: it proves the
-            # compiler noticed, not that a test did.
-            errors = [line for line in (build.stdout + build.stderr).splitlines() if "error" in line]
-            first = errors[0].strip() if errors else "(no error line in the build output)"
-            return None, f"the mutated tree did not build: {first}"
-        # A mutant can make a test loop forever. ctest's default timeout is 1500 s,
-        # so one such mutant cost 25 minutes and stalled pre_push.py; a timed-out
-        # test fails, which is a kill, but a gate should not need half an hour to
-        # say so. The slowest target here runs in seconds.
-        result = subprocess.run(["ctest", "--test-dir", build_dir, "-R", rest, "-j",
-                                 "--timeout", str(CTEST_TIMEOUT_SECONDS)],
-                                capture_output=True, text=True, cwd=REPO)
-        return result.returncode != 0, result.stdout[-800:]
+        if build:
+            built = cmake_build(build_dir)
+            if built.returncode != 0:
+                # A mutant that stops the build is not a useful mutant: it proves
+                # the compiler noticed, not that a test did.
+                return None, f"the tree did not build: {first_error(built)}"
+        result = run_ctest(build_dir, rest)
+        return result.returncode != 0, (result.stdout + result.stderr)[-800:]
     if kind == "qemu":
         result = run_qemu_gate(rest)
         if result.returncode == QEMU_NOT_RUN:
@@ -241,7 +284,11 @@ def run_gate(spec, build_dir):
             return None, (result.stdout + result.stderr).strip()[-300:]
         return result.returncode != 0, result.stdout[-800:]
     if kind == "tool":
-        result = subprocess.run(rest.split(), capture_output=True, text=True, cwd=REPO)
+        try:
+            result = subprocess.run(rest.split(), capture_output=True, text=True, cwd=REPO)
+        except OSError as error:
+            # A command that cannot start is not a gate that rejected the tree.
+            return None, f"{rest.split()[0]} cannot run: {error.strerror}"
         return result.returncode != 0, (result.stdout + result.stderr)[-800:]
     raise RuntimeError(f"unknown gate kind {kind!r}")
 
@@ -260,18 +307,27 @@ def run_qemu_gate(spec):
                            "--only", test], capture_output=True, text=True, cwd=REPO)
 
 
-def qemu_baselines_pass(mutants, say):
-    """Each distinct qemu: gate must pass on the unmutated tree."""
+def baselines_pass(mutants, build_dir, say):
+    """Each distinct gate must PASS on the unmutated tree. A gate that already
+    rejects it -- a test failing for another reason, a ctest regex that selects
+    no test, a tool that is not installed, a ThreadSanitizer that cannot start
+    -- would report every mutant it names as killed."""
+    specs = sorted({m["kills"] for m in mutants})
+    if any(spec.startswith("ctest:") for spec in specs):
+        built = cmake_build(build_dir)
+        if built.returncode != 0:
+            say(f"the unmutated tree does not build in {build_dir}: {first_error(built)}", error=True)
+            return False
     ok = True
-    for spec in sorted({m["kills"].partition(":")[2] for m in mutants if m["kills"].startswith("qemu:")}):
-        result = run_qemu_gate(spec)
-        if result.returncode == QEMU_NOT_RUN:
-            say(f"qemu:{spec} cannot run: the ARM toolchain or QEMU is missing "
-                f"(use --skip-kinds qemu)", error=True)
+    for spec in specs:
+        killed, detail = run_gate(spec, build_dir, build=False)
+        if killed is None:
+            say(f"{spec} cannot run on the unmutated tree, so no mutant could be told killed: "
+                f"{detail}", error=True)
             ok = False
-        elif result.returncode != 0:
-            say(f"qemu:{spec} fails on the unmutated tree, so no mutant could be told killed:\n"
-                f"{result.stdout[-800:]}", error=True)
+        elif killed:
+            say(f"{spec} fails on the unmutated tree, so no mutant could be told killed:\n"
+                f"{detail}", error=True)
             ok = False
     return ok
 
@@ -287,7 +343,7 @@ def check(mutants, build_dir, quiet=False):
 
     survivors, broken = [], []
 
-    if not qemu_baselines_pass(mutants, say):
+    if not baselines_pass(mutants, build_dir, say):
         return 1
 
     for mutant in mutants:
@@ -297,6 +353,11 @@ def check(mutants, build_dir, quiet=False):
         try:
             original = apply_mutant(mutant)
             killed, detail = run_gate(mutant["kills"], build_dir)
+        except StaleAnchor as error:
+            # Reported with the others rather than raised: a traceback here
+            # abandoned every mutant after this one, and left the build
+            # directory holding the previous mutant's binaries.
+            killed, detail = None, str(error)
         finally:
             if original is not None:
                 path.write_text(original, encoding="utf-8")
@@ -322,11 +383,15 @@ def check(mutants, build_dir, quiet=False):
     # this the last mutant's binaries stay on disk -- the tree reads clean and a
     # `ctest` in that directory fails for reasons nothing in the source explains.
     # Observed: 2 phantom failures out of 90 after a clean, all-killed run.
+    rebuilds = []
     if any(m["kills"].startswith("ctest:") for m in mutants):
-        subprocess.run(["cmake", "--build", build_dir, "-j"],
-                       capture_output=True, text=True, cwd=REPO)
+        rebuilds.append((build_dir, cmake_build(build_dir)))
     for target in sorted({m["kills"].partition(":")[2] for m in mutants if m["kills"].startswith("tsan:")}):
-        build_tsan_target(build_dir, target)
+        rebuilds.append((f"{tsan_build_dir(build_dir)} ({target})", build_tsan_target(build_dir, target)))
+    for where, rebuilt in rebuilds:
+        if rebuilt.returncode != 0:
+            broken.append(f"the restored tree did not rebuild in {where}, so it still holds a "
+                          f"mutant's binaries: {first_error(rebuilt)}")
 
     say(f"{len(mutants)} mutant(s), {len(survivors)} survivor(s), {len(broken)} broken")
 
@@ -351,15 +416,27 @@ def self_test():
     """Prove the driver reports a survivor, and always restores the tree."""
     failures = []
 
+    def attempt(label, mutants):
+        """check(), with an escaping exception recorded rather than raised: a
+        traceback is not a verdict."""
+        try:
+            return check(mutants, build_dir="unused", quiet=True)
+        except Exception as error:  # noqa: BLE001 -- any escape is the failure
+            failures.append(f"{label}: check() raised {type(error).__name__}: {error}")
+            return None
+
     with tempfile.TemporaryDirectory() as tmp:
         fake = pathlib.Path(tmp) / "fake.hpp"
         fake.write_text("int marker = 1;\n")
         relative = fake.relative_to(fake.anchor)
+        # Exits 0 on the unmutated fixture and 1 on the mutated one: a gate that
+        # passes the baseline and rejects the mutant.
+        rejects = f"tool:grep -q marker.=.1 {fake}"
 
         # A mutant whose gate does NOT reject it must be reported as a survivor.
         survivor = {
             "name": "fixture_survivor",
-            "file": str(fake),
+            "file": str(relative),
             "why": "fixture",
             "kills": "tool:true",  # `true` always exits 0 == did not reject
             "old": "int marker = 1;",
@@ -369,47 +446,126 @@ def self_test():
         original_repo = globals()["REPO"]
         globals()["REPO"] = pathlib.Path(fake.anchor)
         try:
-            code = check([dict(survivor, file=str(relative))], build_dir="unused", quiet=True)
-            if code == 0:
+            if attempt("survivor", [survivor]) == 0:
                 failures.append("a SURVIVING mutant was reported as success")
             if fake.read_text() != "int marker = 1;\n":
                 failures.append("the fixture file was not restored")
 
             # A killed mutant passes.
-            killed = dict(survivor, name="fixture_killed", kills="tool:false",
-                          file=str(relative))
-            if check([killed], build_dir="unused", quiet=True) != 0:
+            killed = dict(survivor, name="fixture_killed", kills=rejects)
+            if attempt("killed", [killed]) != 0:
                 failures.append("a KILLED mutant was reported as a failure")
             if fake.read_text() != "int marker = 1;\n":
                 failures.append("the fixture file was not restored after a kill")
 
-            # An anchor that no longer matches must be an error, not a silent skip.
-            stale = dict(survivor, name="fixture_stale", old="int gone = 0;",
-                         file=str(relative))
-            try:
-                check([stale], build_dir="unused", quiet=True)
+            # The mutated file must look newer than anything built from it, or
+            # make skips the rebuild and the verdict comes from the previous
+            # mutant's binaries; and so must the restored file. `built` stands
+            # for a binary written within make's one-second granularity: the
+            # gate passes while it is newer than the fixture, as it is on the
+            # unmutated tree, and rejects the mutant only if that is stamped
+            # beyond it.
+            built = fake.parent / "built"
+            built.touch()
+            os.utime(fake, (0, 0))
+            os.utime(built, (time.time() + 2, time.time() + 2))
+            stamped = dict(survivor, name="fixture_stamped", kills=f"tool:test {built} -nt {fake}")
+            if attempt("stamped", [stamped]) != 0:
+                failures.append("a mutated file was not stamped newer than the build "
+                                "-- make would test the previous binaries")
+            if fake.stat().st_mtime <= built.stat().st_mtime:
+                failures.append("a restored file was not stamped newer than the build")
+
+            # A gate that already rejects the UNMUTATED tree cannot tell a kill
+            # from its own failure: the run must fail before mutating anything.
+            for kills, label in (("tool:false", "a gate failing on the unmutated tree"),
+                                 ("tool:no-such-command-for-the-self-test", "a gate that cannot run")):
+                if attempt(label, [dict(survivor, name="fixture_baseline", kills=kills)]) in (0, None):
+                    failures.append(f"{label} passed; every mutant it names would read as killed")
+                if fake.read_text() != "int marker = 1;\n":
+                    failures.append(f"the fixture changed although {label} should stop the run first")
+
+            # An anchor that no longer matches must be an error, not a silent
+            # skip -- and not a traceback that abandons the mutants after it.
+            stale = dict(survivor, name="fixture_stale", old="int gone = 0;")
+            after = dict(killed, name="fixture_after_stale")
+            if attempt("stale anchor", [stale, after]) in (0, None):
                 failures.append("a mutant whose anchor no longer matches was accepted")
-            except RuntimeError:
-                pass
             if fake.read_text() != "int marker = 1;\n":
                 failures.append("the fixture file was not restored after a stale anchor")
 
             # An empty run must fail.
-            if check([], build_dir="unused", quiet=True) == 0:
+            if attempt("empty", []) == 0:
                 failures.append("a run over NO mutants reported success")
+
+            # A ctest: gate, with the build and ctest replaced: it is killed when
+            # ctest fails on the mutated tree, broken when the build fails, and
+            # the run fails when the build left behind cannot be rebuilt.
+            original_build, original_ctest = globals()["cmake_build"], globals()["run_ctest"]
+            builds = []
+
+            def fake_build(_build_dir, targets=None, fail_at=None):
+                builds.append(targets)
+                status = 1 if fail_at is not None and len(builds) == fail_at else 0
+                return subprocess.CompletedProcess([], status, "", "error: fixture" if status else "")
+
+            def fake_ctest(_build_dir, _regex):
+                mutated = fake.read_text() != "int marker = 1;\n"
+                return subprocess.CompletedProcess([], 8 if mutated else 0, "", "")
+
+            ctest_mutant = dict(survivor, name="fixture_ctest", kills="ctest:fixture")
+            try:
+                globals()["run_ctest"] = fake_ctest
+                for fail_at, want, label in ((None, 0, "a ctest: gate that rejects the mutant"),
+                                             (2, 1, "a mutated tree that does not build"),
+                                             (3, 1, "a restored tree that does not rebuild")):
+                    builds.clear()
+                    globals()["cmake_build"] = (
+                        lambda build_dir, targets=None, fail_at=fail_at: fake_build(build_dir, targets, fail_at))
+                    if attempt(label, [ctest_mutant]) != want:
+                        failures.append(f"{label} gave the wrong verdict (wanted exit {want})")
+                    if fake.read_text() != "int marker = 1;\n":
+                        failures.append(f"the fixture was not restored after {label}")
+            finally:
+                globals()["cmake_build"], globals()["run_ctest"] = original_build, original_ctest
+
+            # A tsan: gate kills only with a ThreadSanitizer report. A test that
+            # fails without one -- a crash, a timeout, an assertion -- did not
+            # show that the weakened ordering races, so it is BROKEN.
+            original_tsan = globals()["build_tsan_target"], globals()["run_tsan_ctest"]
+
+            def fake_tsan(output):
+                def run(_build_dir, _target):
+                    if fake.read_text() == "int marker = 1;\n":
+                        return subprocess.CompletedProcess([], 0, "1 tests passed", "")
+                    return subprocess.CompletedProcess([], 8, output, "")
+                return run
+
+            tsan_mutant = dict(survivor, name="fixture_tsan", kills="tsan:fixture_threaded_test")
+            try:
+                globals()["build_tsan_target"] = lambda _b, _t: subprocess.CompletedProcess([], 0, "", "")
+                for output, want, label in (
+                        ("WARNING: ThreadSanitizer: data race (pid=1)", 0, "a ThreadSanitizer report"),
+                        ("Segmentation fault", 1, "a failure without a ThreadSanitizer report")):
+                    globals()["run_tsan_ctest"] = fake_tsan(output)
+                    if attempt(label, [tsan_mutant]) != want:
+                        failures.append(f"a tsan: gate failing with {label} gave the wrong verdict "
+                                        f"(wanted exit {want})")
+            finally:
+                globals()["build_tsan_target"], globals()["run_tsan_ctest"] = original_tsan
 
             # A qemu: gate that cannot run -- no toolchain or QEMU -- must fail
             # the run before mutating anything, never read as a kill; and one
             # whose test already fails on the unmutated tree must too.
             original_gate = globals()["run_qemu_gate"]
-            qemu_mutant = dict(survivor, name="fixture_qemu", file=str(relative),
+            qemu_mutant = dict(survivor, name="fixture_qemu",
                                kills="qemu:cortex-m3:sync/lock_test.cpp")
             try:
                 for status, label in ((QEMU_NOT_RUN, "a missing toolchain"),
                                       (1, "a test failing on the unmutated tree")):
                     globals()["run_qemu_gate"] = (
                         lambda _spec, status=status: subprocess.CompletedProcess([], status, "", ""))
-                    if check([qemu_mutant], build_dir="unused", quiet=True) == 0:
+                    if attempt(f"qemu with {label}", [qemu_mutant]) in (0, None):
                         failures.append(f"a qemu: gate with {label} passed")
                     if fake.read_text() != "int marker = 1;\n":
                         failures.append(f"the fixture changed although {label} should stop the run first")
@@ -461,8 +617,11 @@ def self_test():
         for failure in failures:
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
-    print("self-test passed: survivors, stale anchors, empty runs and malformed mutant "
-          "files are rejected, killed mutants pass, and the tree is restored in every case")
+    print("self-test passed: survivors, stale anchors, broken builds, gates that fail or "
+          "cannot run on the unmutated tree, tsan: failures without a race report, empty "
+          "runs and malformed mutant files are "
+          "rejected, killed mutants pass, mutated and restored files are stamped newer "
+          "than the build, and the tree is restored in every case")
     return 0
 
 
@@ -481,6 +640,9 @@ def main():
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
 
+    # Each verdict as it happens: buffered, a run the job's timeout cancels
+    # printed nothing, and no one could tell which mutant it was stuck on.
+    sys.stdout.reconfigure(line_buffering=True)
     if args.self_test:
         return self_test()
 
