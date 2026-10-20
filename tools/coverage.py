@@ -1189,8 +1189,8 @@ def configurations_ran(default_lcov, profdata, cov):
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--min-lines", type=float, default=89.4)
-    parser.add_argument("--min-branches", type=float, default=83.0)
+    parser.add_argument("--min-lines", type=float, default=92.1)
+    parser.add_argument("--min-branches", type=float, default=86.0)
     parser.add_argument("--lcov", type=Path,
                         help="also write the include/metl lcov file it measured here")
     parser.add_argument("--configurations", action="store_true",
