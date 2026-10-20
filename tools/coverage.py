@@ -39,13 +39,37 @@ WHAT THIS CANNOT SEE, and why the number is not the whole story:
 So: this measures host-visible RUNTIME branch depth. It is a floor on quality,
 not a summary of it.
 
+EVERY MISSED OR PARTIAL LINE IS EITHER TESTED OR RECORDED (#418). A floor lets
+a new gap hide behind the margin, so each include/metl line that never ran, or
+ran with a branch that never went one of its ways, is covered by a test or
+recorded in tools/coverage_records.txt with the reason no test can reach it.
+The record stays out of the headers, which users include: a header states its
+contract, not how this repository measures it.
+
+    include/metl/variant.hpp
+        unreachable: <why, in the present tense>
+            <the line's code as the header has it, without the indentation>
+
+A line is named by its code, not its number, so an edit elsewhere in the
+header does not invalidate the record; a header with the same code on several
+gap lines lists it once for each. The kinds are RECORD_KINDS. A gap without a
+record fails, and so does a recorded line that is no longer a gap: a record
+that no longer describes a line is deleted, not kept as history. Two kinds of
+gap need no record, because the export makes them and the code does not:
+lines that hold no run-time code (a lone brace, a comment, a preprocessor
+directive), and the constant condition of an assertion macro's
+`while (false)` or of a `} while (0)` line (#363; see folded_first). Any other
+untaken branch on such a line -- an assertion no test makes fail -- still
+needs a test or a record.
+
 MC/DC IS REPORTED, NOT GATED (#342). Branch coverage can reach 100% on
 `if (a && b)` without ever showing that `b` alone changes the outcome. So one
 more build is measured with -fcoverage-mcdc (Clang 18+), through the CMake
 option METL_ENABLE_COVERAGE_MCDC. The report prints the share of conditions
 shown to affect their decision independently, the weakest files, and the
-decisions with conditions missing. A floor comes later, from the CI figure.
-Read it with these limits:
+decisions with conditions missing. It has no floor, by decision (2026-10-20):
+the missed conditions are read and classified, not ratcheted. Read it with
+these limits:
 
   * Clang caps the conditions in one decision and does not instrument a
     decision over the cap; it says so in a -Wpgo-coverage warning. Those
@@ -100,6 +124,7 @@ one the floor is set against. Do not chase a local figure.
 
 Usage:
     tools/coverage.py [--min-lines N] [--min-branches N] [--lcov PATH] [--configurations]
+    tools/coverage.py --check-records LCOV
     tools/coverage.py --self-test
 
 --lcov writes the include/metl lcov file it measured, for Codecov to upload.
@@ -107,6 +132,7 @@ The floors here stay the gate; Codecov only displays.
 """
 
 import argparse
+import functools
 import json
 from concurrent.futures import ThreadPoolExecutor
 import os
@@ -145,6 +171,25 @@ SKIPPED_REGION = 2
 
 # How many of the weakest decisions the report lists.
 MCDC_WEAKEST = 25
+
+# Why a missed or partial line can have no test, for its record in RECORDS_FILE.
+RECORD_KINDS = {
+    "unreachable": "no input reaches it: the callers' preconditions or an earlier check exclude it",
+    "compile-time": "it runs only during constant evaluation, or Clang folds the call out of the "
+                    "profile while a test checks its value",
+    "unmeasurable": "it runs, but the process ends without writing its profile (std::abort)",
+    "artifact": "llvm-cov reports it wrong: a test runs it, and the record says which",
+}
+RECORDS_FILE = REPO / "tools" / "coverage_records.txt"
+
+# A folded `while (false)` (#363): an assertion macro's invocation, or the
+# `} while (0)` closing a statement macro. It is the line's first lcov branch
+# when nothing before it on the line branches (see folded_first).
+ASSERTION_MACRO = re.compile(r"\bMETL_(ASSERT|DASSERT|HARDEN|PANIC)\s*\(")
+MACRO_LOOP_END = re.compile(r"^\s*\}\s*while\s*\((0|false)\)")
+BRANCHING = re.compile(r"\b(if|while|for|switch|case)\b|\?|&&|\|\|")
+# A member function's ref-qualifier, `f() &&` or `f() const&`: not a branch.
+REF_QUALIFIER = re.compile(r"\)(\s*const)?\s*&&?(?=\s*(noexcept\b|\{|->))")
 
 
 def find_tool(name):
@@ -449,7 +494,7 @@ def lcov_per_file(text):
 def print_mcdc(covered, count, files, decisions, pooled, skipped):
     """Prints the MC/DC report. Returns False when the export holds no MC/DC
     record at all, which means the measurement did not happen."""
-    print("\n=== include/metl MC/DC (reported, no floor yet; #342) ===")
+    print("\n=== include/metl MC/DC (reported, not gated; #342) ===")
     if not count:
         print("FAIL: the MC/DC build exported no MC/DC record for include/metl")
         return False
@@ -487,11 +532,164 @@ def configuration_failures(name, only, unexecuted, source_line):
             f"{source_line(path, number).strip()}" for path, number in unexecuted]
 
 
-def read_source_line(path, number):
+def parse_records(text, name=RECORDS_FILE.name):
+    """The records in RECORDS_FILE's `text`: ({path: [(kind, why, [code])]},
+    [error]). A path starts at column 0, its `kind: why` lines are indented
+    four spaces and their code lines eight; blank lines and lines starting
+    with # are comments."""
+    records, errors, path, group = {}, [], None, None
+    for number, raw in enumerate(text.splitlines(), start=1):
+        if not raw.strip() or raw.startswith("#"):
+            continue
+        indent = len(raw) - len(raw.lstrip(" "))
+        body = raw.strip()
+        if indent == 0:
+            path, group = body, None
+            if not path.startswith("include/metl/"):
+                errors.append(f"{name}:{number}: {path!r} is not an include/metl header")
+        elif indent == 4 and path is not None:
+            kind, _, why = body.partition(":")
+            if kind not in RECORD_KINDS:
+                errors.append(f"{name}:{number}: unknown kind {kind!r}; the kinds are "
+                              f"{', '.join(sorted(RECORD_KINDS))}")
+            if not why.strip():
+                errors.append(f"{name}:{number}: a record must say why after the kind")
+            group = (kind, why.strip(), [], number)
+            records.setdefault(path, []).append(group)
+        elif indent == 8 and group is not None:
+            group[2].append(body)
+        else:
+            errors.append(f"{name}:{number}: expected a path at column 0, `kind: why` at 4 or a "
+                          f"code line at 8, under the ones before it")
+    for path, groups in records.items():
+        for kind, _, code, number in groups:
+            if not code:
+                errors.append(f"{name}:{number}: the {kind} record of {path} lists no line")
+    return ({path: [group[:3] for group in groups] for path, groups in records.items()},
+            errors)
+
+
+def folded_first(text):
+    """Whether a source line's first lcov branch is a folded `while (false)`:
+    the line closes a statement macro, or invokes an assertion macro with no
+    branch before it on the line (`void f() { METL_ASSERT(x); }` too)."""
+    if MACRO_LOOP_END.match(text):
+        return True
+    found = ASSERTION_MACRO.search(text)
+    return bool(found) and not BRANCHING.search(REF_QUALIFIER.sub(")", text[:found.start()]))
+
+
+def lcov_untaken(text):
+    """{(file, line): {(block, branch)}}: the lcov branches never taken, a
+    count of 0 or '-' (never evaluated)."""
+    untaken, path = {}, None
+    for raw in text.splitlines():
+        if raw.startswith("SF:"):
+            path = raw[3:]
+        elif raw.startswith("BRDA:"):
+            line, block, branch, taken = raw[5:].split(",")
+            if taken in ("-", "0"):
+                untaken.setdefault((path, int(line)), set()).add((int(block), int(branch)))
+    return untaken
+
+
+def line_gap(count, untaken, text):
+    """'missed', 'partial' or None for one source line `text` that ran
+    `count` times with the `untaken` lcov branches, less what the export alone
+    causes (see EVERY MISSED OR PARTIAL LINE)."""
+    if not carries_code(text) or text.lstrip().startswith("#"):
+        return None
+    if folded_first(text):
+        # The constant condition decides nothing, on either side; whether the
+        # assertion ever passed is the next pair's second branch.
+        untaken = {key for key in untaken if key[0] != 0}
+    if count == 0:
+        return "missed"
+    return "partial" if untaken else None
+
+
+def lcov_gaps(text, source_lines):
+    """{(file, line): 'missed' | 'partial'} for the lines of `text`, by
+    line_gap(). `source_lines(path)` returns a file's lines."""
+    untaken, gaps = lcov_untaken(text), {}
+    for (path, line), count in line_counts(text).items():
+        lines = source_lines(path)
+        gap = line_gap(count, untaken.get((path, line), set()),
+                       lines[line - 1] if line <= len(lines) else "")
+        if gap:
+            gaps[(path, line)] = gap
+    return gaps
+
+
+def match_records(gaps, records, source_lines):
+    """Matches parse_records()' `records` to lcov_gaps() by code text. Returns
+    (stale, unrecorded): [(file, kind, code)] recorded but no longer a gap of
+    its file, and [(file, line, code)] gaps no record names, in line order. A
+    code line on several gap lines is matched once for each time it is
+    recorded."""
+    open_lines = {}
+    for path, line in sorted(gaps):
+        open_lines.setdefault((path, source_lines(path)[line - 1].strip()), []).append(line)
+    stale = []
+    for path, groups in records.items():
+        for kind, _, code in groups:
+            for text in code:
+                if open_lines.get((path, text)):
+                    open_lines[(path, text)].pop(0)
+                else:
+                    stale.append((path, kind, text))
+    unrecorded = sorted((path, line, text) for (path, text), lines in open_lines.items()
+                        for line in lines)
+    return stale, unrecorded
+
+
+def record_failures(gaps, records, source_lines):
+    """FAIL lines for match_records(): each stale record, then each unrecorded
+    gap."""
+    stale, unrecorded = match_records(gaps, records, source_lines)
+    return ([f"FAIL: {path}: `{text}` is recorded as {kind} but is no longer a missed or "
+             f"partial line; delete the record" for path, kind, text in stale]
+            + [f"FAIL: {path}:{line} is {gaps[(path, line)]} and has no record in "
+               f"{RECORDS_FILE.relative_to(REPO)}: {text[:70]}" for path, line, text in unrecorded])
+
+
+def recorded_counts(records):
+    """{kind: number of code lines} over parse_records()' `records`."""
+    counts = {}
+    for groups in records.values():
+        for kind, _, code in groups:
+            counts[kind] = counts.get(kind, 0) + len(code)
+    return counts
+
+
+def records_checked(lcov, records_text):
+    """Checks `records_text`, RECORDS_FILE's content, against `lcov` and
+    prints the result. Returns whether every gap is recorded and every record
+    still names one."""
+    records, errors = parse_records(records_text)
+    gaps = lcov_gaps(lcov, source_lines)
+    failures = [f"FAIL: {error}" for error in errors] + record_failures(gaps, records, source_lines)
+    print("\n=== missed and partial lines: each is tested or recorded (#418) ===")
+    print(f"  missed or partial code lines: {len(gaps)}; recorded: "
+          + (", ".join(f"{count} {kind}" for kind, count in sorted(recorded_counts(records).items()))
+             or "none"))
+    for failure in failures:
+        print(failure)
+    return not failures
+
+
+@functools.lru_cache(maxsize=None)
+def source_lines(path):
+    """A repository file's lines, read once; none when it cannot be read."""
     try:
-        return (REPO / path).read_text().splitlines()[number - 1]
-    except (OSError, IndexError):
-        return ""
+        return tuple((REPO / path).read_text().splitlines())
+    except OSError:
+        return ()
+
+
+def read_source_line(path, number):
+    lines = source_lines(path)
+    return lines[number - 1] if 0 < number <= len(lines) else ""
 
 
 SELF_TEST_LCOV = """SF:include/metl/a.hpp
@@ -668,10 +866,96 @@ def self_test():
     if lcov_filtered(exported, "no-such-dir/"):
         print("SELF-TEST FAILED: lcov_filtered kept a record outside the marker", file=sys.stderr)
         return 1
+    # Records. Line 2 is partial and recorded; 3 missed with no record; 4 a
+    # brace; 5 an assertion whose only untaken branch is its constant
+    # condition; 6 one whose trap side never ran; 7 and 8 the same code, both
+    # missed, recorded once; 9 a record over a line that ran; 10 asserts in a
+    # one-line body; on 11 an `if` comes first, so its untaken branch is a
+    # gap; 12 closes a statement macro after a return, so its constant
+    # condition never ran; 13 is a directive; on 14 the `&&` is an rvalue
+    # ref-qualifier, not a branch.
+    header = ["int f(int x) {",
+              "  if (x == 3) {",
+              "    return 0;",
+              "  }",
+              "  METL_ASSERT(x > 0);",
+              "  METL_HARDEN(x < 9);",
+              "  int t = g();",
+              "  int t = g();",
+              "  return x + t;",
+              "  auto v = [] { METL_ASSERT(true); };",
+              "  if (x) { METL_HARDEN(x != 0); }",
+              "  } while (0)",
+              "#endif",
+              "  void value() && noexcept { METL_ASSERT(x); }",
+              "}"]
+    measured = ("SF:include/metl/a.hpp\nDA:1,2\nDA:2,2\nBRDA:2,0,0,2\nBRDA:2,0,1,0\nDA:3,0\nDA:4,0\n"
+                "DA:5,2\nBRDA:5,0,0,0\nBRDA:5,0,1,2\nBRDA:5,1,2,1\nBRDA:5,1,3,2\n"
+                "DA:6,2\nBRDA:6,0,0,0\nBRDA:6,0,1,2\nBRDA:6,1,2,-\nBRDA:6,1,3,2\n"
+                "DA:7,0\nDA:8,0\nDA:9,2\nDA:10,2\nBRDA:10,0,0,0\nBRDA:10,0,1,2\nBRDA:10,1,2,1\n"
+                "BRDA:10,1,3,2\nDA:11,2\nBRDA:11,0,0,0\nBRDA:11,0,1,2\nDA:12,2\nBRDA:12,0,0,-\n"
+                "BRDA:12,0,1,-\nDA:13,0\nDA:14,2\nBRDA:14,0,0,0\nBRDA:14,0,1,1\nBRDA:14,1,2,1\n"
+                "BRDA:14,1,3,1\nDA:15,2\nend_of_record\n")
+    records, errors = parse_records("# a comment\n"
+                                    "include/metl/a.hpp\n"
+                                    "    unreachable: no caller passes 3\n"
+                                    "        if (x == 3) {\n"
+                                    "\n"
+                                    "    compile-time: only a constexpr initializer calls g\n"
+                                    "        int t = g();\n"
+                                    "    artifact: a stale record\n"
+                                    "        return x + t;\n")
+    if errors or records != {"include/metl/a.hpp": [
+            ("unreachable", "no caller passes 3", ["if (x == 3) {"]),
+            ("compile-time", "only a constexpr initializer calls g", ["int t = g();"]),
+            ("artifact", "a stale record", ["return x + t;"])]}:
+        print(f"SELF-TEST FAILED: parse_records gave {records}, errors {errors}", file=sys.stderr)
+        return 1
+    gaps = lcov_gaps(measured, lambda _path: header)
+    if gaps != {("include/metl/a.hpp", 2): "partial", ("include/metl/a.hpp", 3): "missed",
+                ("include/metl/a.hpp", 6): "partial", ("include/metl/a.hpp", 7): "missed",
+                ("include/metl/a.hpp", 8): "missed", ("include/metl/a.hpp", 11): "partial"}:
+        print(f"SELF-TEST FAILED: lcov_gaps gave {gaps}", file=sys.stderr)
+        return 1
+    got = record_failures(gaps, records, lambda _path: header)
+    want = ["FAIL: include/metl/a.hpp: `return x + t;` is recorded as artifact but is no longer a "
+            "missed or partial line; delete the record",
+            "FAIL: include/metl/a.hpp:3 is missed and has no record in tools/coverage_records.txt: "
+            "return 0;",
+            "FAIL: include/metl/a.hpp:6 is partial and has no record in tools/coverage_records.txt: "
+            "METL_HARDEN(x < 9);",
+            "FAIL: include/metl/a.hpp:8 is missed and has no record in tools/coverage_records.txt: "
+            "int t = g();",
+            "FAIL: include/metl/a.hpp:11 is partial and has no record in tools/coverage_records.txt: "
+            "if (x) { METL_HARDEN(x != 0); }"]
+    if got != want:
+        print("SELF-TEST FAILED: record_failures gave\n  " + "\n  ".join(got), file=sys.stderr)
+        return 1
+    _, errors = parse_records("    unreachable: before any path\n"
+                              "include/metl/a.hpp\n"
+                              "    guess: x\n"
+                              "        int a;\n"
+                              "    unreachable:\n"
+                              "        int b;\n"
+                              "      odd indent\n"
+                              "tests/x.cpp\n"
+                              "    unreachable: why\n", name="r")
+    if errors != ["r:1: expected a path at column 0, `kind: why` at 4 or a code line at 8, under "
+                  "the ones before it",
+                  "r:3: unknown kind 'guess'; the kinds are artifact, compile-time, unmeasurable, "
+                  "unreachable",
+                  "r:5: a record must say why after the kind",
+                  "r:7: expected a path at column 0, `kind: why` at 4 or a code line at 8, under "
+                  "the ones before it",
+                  "r:8: 'tests/x.cpp' is not an include/metl header",
+                  "r:9: the unreachable record of tests/x.cpp lists no line"]:
+        print("SELF-TEST FAILED: malformed records gave\n  " + "\n  ".join(errors), file=sys.stderr)
+        return 1
     print("self-test passed: partial lines and untaken branches are counted as Codecov counts them, "
           "only include/metl records are measured, a configuration's own code lines are found "
           "and checked (one with none fails), binaries are merged per line and branch without "
-          "their unused records, and MC/DC conditions and skipped decisions are read")
+          "their unused records, MC/DC conditions and skipped decisions are read, and every "
+          "missed or partial line needs a record that still names it")
     return 0
 
 
@@ -912,10 +1196,15 @@ def main():
     parser.add_argument("--configurations", action="store_true",
                         help="also build each of CONFIGURATIONS and require every line only it "
                              "compiles to have run")
+    parser.add_argument("--check-records", type=Path, metavar="LCOV",
+                        help="only check the coverage records against this include/metl lcov "
+                             "file (one --lcov wrote), without building")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
         return self_test()
+    if args.check_records is not None:
+        return 0 if records_checked(args.check_records.read_text(), RECORDS_FILE.read_text()) else 1
     sys.stdout.reconfigure(line_buffering=True)
 
     profdata, cov = find_tool("llvm-profdata"), find_tool("llvm-cov")
@@ -960,7 +1249,7 @@ def main():
           f"as covered, as llvm-cov counts it)")
     print(f"  functions {pct(fn_found, fn_found - fn_hit):6.2f}%  ({fn_hit}/{fn_found})")
 
-    failed = False
+    failed = not records_checked(lcov, RECORDS_FILE.read_text())
     print("\n--- MC/DC build (-fcoverage-mcdc)")
     measured = measure(REPO / "build-coverage-mcdc", "", profdata, cov, mcdc=True)
     if measured is None:

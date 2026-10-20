@@ -385,8 +385,8 @@ required (editing the matrix would leave the branch pending forever), and a
 Not in the table because they are not `tools/check_*.py` gates: `metl_header_odr_link`
 (two TUs that each include every public header, linked into one program), the `sizeof` ratchet
 (`tests/core/ram_footprint_test.cpp`), the comparison-count bound
-(`tests/containers/operation_count_test.cpp`), the coverage floor
-(`tools/coverage.py`), the clang-tidy finding ratchet
+(`tests/containers/operation_count_test.cpp`), the coverage floor and the
+missed-line records (`tools/coverage.py`, `tools/coverage_records.txt`), the clang-tidy finding ratchet
 (`tools/clang_tidy_report.py`), and the
 consumer-warning matrix in `ci.yml`.
 
