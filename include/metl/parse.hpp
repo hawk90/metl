@@ -50,18 +50,13 @@
 //     const metl::span<const char> line(reinterpret_cast<const char*>(bytes.data()), bytes.size());
 //     const auto parsed = metl::try_parse_uint<std::uint16_t>(line);
 //
-// NOT CONSTANT-EVALUABLE TODAY, and this is the one place parse.hpp does not
-// mirror format.hpp. `try_format_uint` returns a `span`, which is a literal
-// type, so a table of text can be built at compile time. These return
-// `metl::expected`, which is not a literal type: `~expected` is user-provided
-// and not `constexpr`, and in C++17 no destructor can be. Its union storage lets
-// a namespace-scope `expected` be constant-initialized, but a constant
-// expression that creates one must also be able to destroy it. The `constexpr`
-// labels below are for the same reason `expected`'s own are: they cost nothing,
-// they document intent, and they start working the day `~expected` is
-// `constexpr` in C++20. Until then a config table is parsed at startup, not at
-// build time. The arithmetic core in `detail` IS constant-evaluable and is
-// tested that way, so that change will not be landing on untested code.
+// CONSTANT-EVALUABLE SINCE C++20, NOT IN C++17. These return `metl::expected`,
+// which is a literal type since C++20, so a table of text can be parsed at
+// build time there, and a bad entry fails the build. In C++17 no destructor can
+// be `constexpr`, so `expected` is not a literal type and a table is parsed at
+// startup; that is the one place parse.hpp does not mirror format.hpp, whose
+// `span` results are literal in every standard. The arithmetic core in
+// `detail` is constant-evaluable in C++17 too, and is tested that way.
 
 #include "metl/assert.hpp"
 #include "metl/config.hpp"
