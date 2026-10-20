@@ -114,7 +114,7 @@ class bitset {
       }
       words_[k] = value;
     }
-    words_[word_count - 1] &= valid_mask(word_count - 1);
+    words_[word_count - 1] &= last_word_mask();
     return *this;
   }
 
@@ -155,11 +155,11 @@ class bitset {
  private:
   static constexpr word_type bit(size_type index) noexcept { return word_type{1} << (index % word_bits); }
 
-  /// The bits of word `k` that hold a value: all of them, except in the last
-  /// word when N is not a multiple of the word size.
-  static constexpr word_type valid_mask(size_type k) noexcept {
+  /// The bits of the last word that hold a value: all of them, unless N is not
+  /// a multiple of the word size.
+  static constexpr word_type last_word_mask() noexcept {
     const size_type tail = N % word_bits;
-    if (k + 1 < word_count || tail == 0) {
+    if (tail == 0) {
       return ~word_type{0};
     }
     return static_cast<word_type>((word_type{1} << tail) - 1U);

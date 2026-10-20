@@ -680,9 +680,10 @@ class variant {
   //   `other` first, so a throw there leaves *this untouched; then reset() and
   //   move the backup's value in. A throw from that final move leaves *this
   //   valueless (valueless_by_exception()). Where that copy or move cannot
-  //   throw and `other` does not live inside this variant's storage, the
-  //   backup buys nothing and costs a whole alternative of stack (#315), so
-  //   the value is constructed straight into the storage instead.
+  //   throw, the backup buys nothing and costs a whole alternative of stack
+  //   (#315), so the value is constructed straight into the storage instead.
+  //   `other` cannot lie inside this variant's storage: an alternative is
+  //   smaller than the variant that holds it, so it cannot contain one.
   void assign_from(const variant& other) {
     if (index_ == other.index_) {
       const std::size_t active = index_;
@@ -696,7 +697,7 @@ class variant {
       index_ = active;
       return;
     }
-    if (copies_in_place()[other.index_] && !points_into_storage(&other)) {
+    if (copies_in_place()[other.index_]) {
       reset();
       copy_ops()[other.index_](raw_addr(), other.raw_addr());
       index_ = other.index_;
@@ -718,7 +719,7 @@ class variant {
       index_ = active;
       return;
     }
-    if (moves_in_place()[other.index_] && !points_into_storage(&other)) {
+    if (moves_in_place()[other.index_]) {
       reset();
       move_ops()[other.index_](raw_addr(), other.raw_addr());
       index_ = other.index_;
