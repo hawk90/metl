@@ -28,7 +28,8 @@ Anything else -- no pull request, a fork, no matching run, an API error -- is
 
 What reuse gives up is stated on #431: the tests ran on the pull request's run,
 not on a run of this commit, so a change in the runner images between the two
-is not seen here. ci.yml's nightly run on main covers that.
+is not seen here. ci.yml's nightly run on main covers that, and release.yml
+runs ci.yml in full on a tagged commit before it publishes.
 
 --gate is main-gate's verdict over main.yml's jobs: the subject check and the
 provenance check succeeded, and exactly one of the two paths ran and passed --

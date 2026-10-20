@@ -21,10 +21,10 @@ WHAT THIS CANNOT SEE, and why the number is not the whole story:
     that code exists in a host build. Its evidence is the qemu-conformance job,
     not this one.
   * Anything evaluated at COMPILE time. A constexpr function exercised only by
-    static_assert never runs, so its lines read as uncovered: bit.hpp reports
-    ~29% lines with 100% branches for exactly that reason, and so do
-    lookup_table.hpp and detail/crc.hpp. Those are measurement artifacts, not
-    test gaps -- do not "fix" them by adding runtime tests that duplicate a
+    static_assert never runs, so its lines read as uncovered: detail/crc.hpp
+    reports 58% lines with 100% branches for exactly that reason. Those lines
+    are recorded as compile-time in tools/coverage_records.txt, not test gaps
+    -- do not "fix" them by adding runtime tests that duplicate a
     static_assert.
   * A constant condition reads as a MISSED branch. llvm-cov's lcov export
     writes the folded side of a branch -- the `while (false)` of every
