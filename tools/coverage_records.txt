@@ -1,0 +1,284 @@
+# Lines of include/metl that no test can run or measure, with the reason.
+# tools/coverage.py fails on a missed or partial line not named here, and on a
+# line named here that is no longer missed or partial; see its docstring.
+#
+# <header>
+#     <kind>: <why>
+#         <the line's code, as the header has it, without the indentation>
+
+include/metl/arena_allocator.hpp
+    unreachable: align_up's `alignment == 0` arm: its only caller HARDENs `alignment != 0` first (#461 decides whether to keep it)
+        return alignment == 0 ? value : (value + (alignment - 1)) & ~(alignment - 1);
+
+include/metl/assert.hpp
+    unmeasurable: the default assert and panic handlers end in std::abort(), which exits before the profile is written
+        [[noreturn]] inline void default_assert_handler(const char*, const char*, int) noexcept {
+        std::abort();
+        [[noreturn]] inline void default_panic_handler(const char*, const char*, int) noexcept {
+        std::abort();
+
+include/metl/atomic_ref.hpp
+    unreachable: the switch's no-match branch: every std::memory_order value has a case
+        switch (order) {
+        switch (order) {
+
+include/metl/bit.hpp
+    compile-time: Clang folds these calls; a run-time-only wrong result fails bit_test (bit_floor, bit_ceil, and the shift past the width)
+        METL_NODISCARD constexpr T bit_floor(T value) noexcept {
+        if (value == 0) {
+        return 0;
+        return static_cast<T>(T{1} << (bit_width(value) - 1));
+        if (value <= 1) {
+        return 1;
+        if (width >= detail::bit_width_v<T>) {
+        return 0;
+
+include/metl/coro/scheduler.hpp
+    compile-time: Clang folds the static constexpr call; coro_scheduler_test checks the value
+        METL_NODISCARD static constexpr size_type capacity() noexcept { return Capacity; }
+
+include/metl/coro/stepper.hpp
+    unreachable: `error_` alone is never true: every error path also sets `done_`, which short-circuits first
+        if (done_ || error_) {
+
+include/metl/detail/bitset.hpp
+    unreachable: valid_mask's only caller passes the last word, so `k + 1 < word_count` is never true (#461)
+        if (k + 1 < word_count || tail == 0) {
+
+include/metl/detail/constant_init.hpp
+    compile-time: Clang folds in_constant_evaluation() to its constant at each call; the callers' run-time arms run
+        constexpr bool in_constant_evaluation() noexcept {
+        return std::is_constant_evaluated();
+        return __builtin_is_constant_evaluated();
+        return false;
+    compile-time: zeroes storage only during constant evaluation
+        if (in_constant_evaluation()) {
+        for (std::size_t i = 0; i < N; ++i) {
+        bytes[i] = 0;
+
+include/metl/detail/crc.hpp
+    compile-time: the nibble-table builders run only to initialize constexpr tables
+        constexpr crc_nibble_table<Crc, Polynomial, true> make_crc_nibble_table_reflected() noexcept {
+        crc_nibble_table<Crc, Polynomial, true> table{};
+        for (unsigned index = 0; index < 16u; ++index) {
+        Crc value = static_cast<Crc>(index);
+        for (int step = 0; step < 4; ++step) {
+        value = ((value & Crc{1}) != Crc{0}) ? static_cast<Crc>((value >> 1u) ^ Polynomial)
+        : static_cast<Crc>(value >> 1u);
+        table.entries[index] = value;
+        return table;
+        constexpr crc_nibble_table<Crc, Polynomial, false> make_crc_nibble_table_forward() noexcept {
+        constexpr unsigned width = sizeof(Crc) * 8u;
+        constexpr Crc top_bit = static_cast<Crc>(Crc{1} << (width - 1u));
+        crc_nibble_table<Crc, Polynomial, false> table{};
+        for (unsigned index = 0; index < 16u; ++index) {
+        Crc value = static_cast<Crc>(static_cast<Crc>(index) << (width - 4u));
+        for (int step = 0; step < 4; ++step) {
+        value = ((value & top_bit) != Crc{0}) ? static_cast<Crc>((value << 1u) ^ Polynomial)
+        : static_cast<Crc>(value << 1u);
+        table.entries[index] = value;
+        return table;
+
+include/metl/detail/low_bits.hpp
+    compile-time: low_bits is called only in constant expressions
+        constexpr U low_bits(std::size_t count) noexcept {
+        if (count >= sizeof(U) * 8) {
+        return static_cast<U>(~U{0});
+        return static_cast<U>(static_cast<U>(U{1} << count) - U{1});
+
+include/metl/detail/ring_core.hpp
+    unreachable: the iterator `==`'s container side: comparing iterators of different containers is outside `==`'s domain
+        return lhs.index_ == rhs.index_ && lhs.container_ == rhs.container_;
+    compile-time: zeroes storage only during constant evaluation
+        if (in_constant_evaluation()) {
+        for (auto& slot : storage_) {
+        zero_for_constant_init(slot.bytes);
+    compile-time: Clang folds the constexpr capacity() call; the tests check the value
+        METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
+    unreachable: advance at Capacity 0: its only caller, pop_front, HARDENs `size_ > 0` first, which a zero-capacity ring never satisfies
+        (void)index;
+        return 0;
+
+include/metl/detail/transparent.hpp
+    compile-time: compute_bucket_count runs only in static constexpr bucket counts
+        return capacity == 0 ? 1 : bit_ceil(capacity * 2);
+
+include/metl/endian.hpp
+    compile-time: Clang folds these calls; a run-time-only wrong result fails endian_test
+        METL_NODISCARD constexpr T to_little_endian(T value) noexcept {
+        if constexpr (sizeof(T) == 1 || endian::native == endian::little) {
+        return value;
+        } else {
+        return byteswap(value);
+        METL_NODISCARD constexpr T to_big_endian(T value) noexcept {
+        if constexpr (sizeof(T) == 1 || endian::native == endian::big) {
+        return value;
+        } else {
+        return byteswap(value);
+        METL_NODISCARD constexpr T from_little_endian(T value) noexcept {
+        return to_little_endian(value);
+        METL_NODISCARD constexpr T from_big_endian(T value) noexcept {
+        return to_big_endian(value);
+
+include/metl/event_dispatcher.hpp
+    unreachable: the id counter wraps only after 2^64 subscriptions, and it is private
+        if (next_id_ == 0) {
+        next_id_ = 1;  // wrapped: keep 0 unissued, it marks a free slot
+    compile-time: Clang folds the constexpr capacity() call; the tests check the value
+        METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
+
+include/metl/expected.hpp
+    unreachable: swap's `!other.holds_value()` is implied by the branch above; only the `switching` state could break it, and require_settled() rules that out
+        } else if (holds_value() && !other.holds_value()) {
+        } else if (holds_value() && !other.holds_value()) {
+
+include/metl/fixed_queue.hpp
+    compile-time: Clang folds the constexpr capacity() call; the tests check the value
+        METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
+
+include/metl/fixed_stack.hpp
+    compile-time: Clang folds the constexpr capacity() call; the tests check the value
+        METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
+
+include/metl/fixed_vector.hpp
+    compile-time: zeroes storage only during constant evaluation
+        if (detail::in_constant_evaluation()) {
+        detail::zero_for_constant_init(storage_.bytes);
+
+include/metl/in_place.hpp
+    compile-time: only the inline constexpr `nullopt` object calls it
+        explicit constexpr nullopt_t(private_tag) noexcept {}
+
+include/metl/intrusive_ptr.hpp
+    compile-time: only the inline constexpr tag objects call these constructors
+        explicit constexpr adopt_ref_t(int) noexcept {}
+        explicit constexpr retain_ref_t(int) noexcept {}
+
+include/metl/monotonic_buffer.hpp
+    compile-time: Clang folds the constexpr capacity() call; the tests check the value
+        METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
+    unreachable: align_up's `alignment == 0` arm: its only caller HARDENs `alignment != 0` first (#461 decides whether to keep it)
+        return alignment == 0 ? value : (value + (alignment - 1)) & ~(alignment - 1);
+
+include/metl/object_pool.hpp
+    compile-time: Clang folds the constexpr capacity() call; the tests check the value
+        METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
+
+include/metl/optional.hpp
+    unreachable: swap's second operands are implied by the branch above
+        } else if (has_value_ && !other.has_value_) {
+        } else if (!has_value_ && other.has_value_) {
+
+include/metl/parse.hpp
+    unreachable: the hex `digit > limit_tail` clause: limit_tail is 15 for every unsigned T (#461)
+        if (value > limit_head || (value == limit_head && digit > limit_tail)) {
+    compile-time: negative_limit_of only initializes a constexpr local
+        constexpr parse_accumulator_t<T> negative_limit_of() noexcept {
+        using accumulator_t = parse_accumulator_t<T>;
+        return static_cast<accumulator_t>(static_cast<accumulator_t>(std::numeric_limits<T>::max()) + 1);
+
+include/metl/ring_buffer.hpp
+    artifact: it runs: ring_buffer_test fails when it is replaced with std::abort(). llvm-cov reads 0 for the line after an `if constexpr` whose taken branch returns
+        return this->emplace_back(std::forward<Args>(args)...);
+
+include/metl/span.hpp
+    compile-time: kResultExtent is a constexpr initializer over template parameters
+        (Count != dynamic_extent ? Count : (Extent != dynamic_extent ? Extent - Offset : dynamic_extent));
+
+include/metl/static_message_queue.hpp
+    compile-time: zeroes storage only during constant evaluation
+        if (detail::in_constant_evaluation()) {
+        for (auto& slot : storage_) {
+        detail::zero_for_constant_init(slot.bytes);
+    compile-time: Clang folds the constexpr capacity() call; the tests check the value
+        METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
+    unreachable: the `Capacity == 0` arm: static_assert(Capacity > 0) excludes it
+        return Capacity == 0 ? 0 : (index + 1) % Capacity;
+        return Capacity == 0 ? 0 : (head_ + offset) % Capacity;
+
+include/metl/static_unordered_map.hpp
+    unreachable: the iterator `==`'s container side: comparing iterators of different containers is outside `==`'s domain
+        return lhs.map_ == rhs.map_ && lhs.index_ == rhs.index_;
+        return lhs.map_ == rhs.map_ && lhs.index_ == rhs.index_;
+    unreachable: skip_to_occupied's null-container check: every caller passes `this`
+        if (map_ == nullptr) {
+        return;
+        if (map_ == nullptr) {
+        return;
+    compile-time: zeroes storage only during constant evaluation
+        if (detail::in_constant_evaluation()) {
+        for (auto& slot : storage_) {
+        detail::zero_for_constant_init(slot.bytes);
+    unreachable: after `size_ < Capacity` holds, a free slot always exists; tools/check_assert_trips.py's ALLOWED records the same
+        METL_ASSERT(available);
+        METL_ASSERT(states_[index] != slot_state::occupied);
+        METL_ASSERT(available);
+        METL_ASSERT(states_[index] != slot_state::occupied);
+        METL_ASSERT(available);
+        METL_ASSERT(states_[index] != slot_state::occupied);
+    unreachable: locate fails only when the table is full, and `bucket_count >= 2 * Capacity` leaves a free slot whenever `size_ < Capacity`
+        if (!locate_insert_index(key, &index)) {
+        return npos;
+    unreachable: after the rebuild a free slot always exists; the HARDEN is defence against a rebuild bug
+        METL_HARDEN(index < bucket_count);
+    unreachable: rehash_in_place at Capacity 0: a zero-capacity table never has a tombstone
+        if (Capacity == 0) {
+        return;
+
+include/metl/static_unordered_set.hpp
+    unreachable: the iterator `==`'s container side: comparing iterators of different containers is outside `==`'s domain
+        return lhs.set_ == rhs.set_ && lhs.index_ == rhs.index_;
+        return lhs.set_ == rhs.set_ && lhs.index_ == rhs.index_;
+    unreachable: skip_to_occupied's null-container check: every caller passes `this`
+        if (set_ == nullptr) {
+        return;
+        if (set_ == nullptr) {
+        return;
+    compile-time: zeroes storage only during constant evaluation
+        if (detail::in_constant_evaluation()) {
+        for (auto& slot : storage_) {
+        detail::zero_for_constant_init(slot.bytes);
+    unreachable: after `size_ < Capacity` holds, a free slot always exists; tools/check_assert_trips.py's ALLOWED records the same
+        METL_ASSERT(available);
+        METL_ASSERT(states_[index] != slot_state::occupied);
+    unreachable: after the rebuild a free slot always exists; the HARDEN is defence against a rebuild bug
+        METL_HARDEN(index < bucket_count);
+    unreachable: rehash_in_place at Capacity 0: a zero-capacity table never has a tombstone
+        if (Capacity == 0) {
+        return;
+
+include/metl/variant.hpp
+    compile-time: the assignment-table entries run only in static constexpr initializers
+        constexpr void (*copy_assign_entry())(void*, const void*) {
+        if constexpr (std::is_copy_assignable_v<T>) {
+        return &copy_assign_value<T>;
+        } else {
+        return nullptr;
+        constexpr void (*move_assign_entry())(void*, void*) {
+        if constexpr (std::is_move_assignable_v<T>) {
+        return &move_assign_value<T>;
+        } else {
+        return nullptr;
+    compile-time: static constexpr table initializers
+        static constexpr bool table[] = {(METL_NO_EXCEPTIONS || std::is_nothrow_copy_constructible_v<Ts>)...};
+        static constexpr bool table[] = {(METL_NO_EXCEPTIONS || std::is_nothrow_move_constructible_v<Ts>)...};
+    unreachable: a variant cannot lie inside its own storage_, so `!points_into_storage(&other)` is always true (#461)
+        if (copies_in_place()[other.index_] && !points_into_storage(&other)) {
+        if (moves_in_place()[other.index_] && !points_into_storage(&other)) {
+    unreachable: visit_impl's terminal panic needs a valueless variant or a bad index, which the callers' preconditions exclude
+        METL_PANIC("invalid variant index");
+        METL_UNREACHABLE();
+        METL_PANIC("invalid variant index");
+        METL_UNREACHABLE();
+        METL_PANIC("invalid variant index");
+        METL_UNREACHABLE();
+        METL_PANIC("invalid variant index");
+        METL_UNREACHABLE();
+    unreachable: compare_alternative's terminal case: index() is always a valid alternative
+        (void)lhs;
+        (void)rhs;
+        return false;  // Unreachable: index() is always a valid alternative here.
+
+include/metl/versioned_handle.hpp
+    unreachable: the issuer-only constructor: handle_pool never issues generation 0
+        METL_DASSERT(generation != 0);
