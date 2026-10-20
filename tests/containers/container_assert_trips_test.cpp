@@ -9,6 +9,10 @@
 // longjmps out, so each container lives in static storage, and a constructor
 // that trips is run on storage that is never destroyed.
 //
+// flat_map and flat_set's erase(pos) also HARDENs that `pos` is one of the
+// elements: end(), or an address inside the elements that is not an
+// element's start, would make the shift move and destroy outside them.
+//
 // static_unordered_map/set also assert, after `size_ < Capacity`, that a slot
 // was found and that it is free. Once the size check holds, a free slot always
 // exists, so those two are internal invariants no caller can break; they stay
@@ -17,6 +21,7 @@
 #include "assert_trip.hpp"
 #include "metl_check.hpp"
 
+#include <array>
 #include <initializer_list>
 #include <new>
 
@@ -132,6 +137,31 @@ void flat_trips() {
   CHECK(trips([] { (void)one.nth(1); }));
   CHECK(trips([] { (void)static_cast<const set&>(one).nth(1); }));
   CHECK(trips([] { (void)one.emplace(2); }));
+
+  // erase(pos) with a position that is not an element. Two-byte elements of
+  // alignment one, so a pointer one byte into an element is still a valid
+  // pointer value and only the stride check rejects it.
+  using byte_map = metl::flat_map<char, char, 2>;
+  static byte_map pairs;
+  (void)pairs.try_emplace('a', 'x');
+  (void)pairs.try_emplace('b', 'y');
+  CHECK(trips([] { (void)pairs.erase(pairs.end()); }));
+  CHECK(trips([] {
+    (void)pairs.erase(
+        reinterpret_cast<byte_map::const_iterator>(reinterpret_cast<const char*>(pairs.begin()) + 1));
+  }));
+  CHECK(pairs.size() == 2);
+
+  using byte_set = metl::flat_set<std::array<char, 2>, 2>;
+  static byte_set keys;
+  (void)keys.try_emplace(std::array<char, 2>{'a', 'x'});
+  (void)keys.try_emplace(std::array<char, 2>{'b', 'y'});
+  CHECK(trips([] { (void)keys.erase(keys.end()); }));
+  CHECK(trips([] {
+    (void)keys.erase(
+        reinterpret_cast<byte_set::const_iterator>(reinterpret_cast<const char*>(keys.begin()) + 1));
+  }));
+  CHECK(keys.size() == 2);
 }
 
 // ---- static_message_queue ---------------------------------------------------------------------
