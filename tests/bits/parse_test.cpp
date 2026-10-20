@@ -348,5 +348,41 @@ int main() {
     CHECK(hex_folded);
   }
 
+#if METL_DETAIL_CONSTEXPR_LIFETIME
+  // ---------------------------------------------------------------------
+  // C++20: the public parsers are constant-evaluable, so a table of text is
+  // parsed at build time (#430). A constant expression that returns an
+  // `expected` must also destroy it, so this needs a constexpr ~expected.
+  // ---------------------------------------------------------------------
+  {
+    static constexpr char decimal[] = {'4', '2', ','};
+    constexpr auto u16 = metl::try_parse_uint<std::uint16_t>(metl::span<const char>(decimal, 3));
+    static_assert(u16.has_value() && u16->value == 42u && u16->tail.size() == 1,
+                  "try_parse_uint must be usable in a constant expression");
+
+    static constexpr char negative[] = {'-', '1', '2', '8'};
+    constexpr auto i8 = metl::try_parse_int<std::int8_t>(metl::span<const char>(negative, 4));
+    static_assert(i8.has_value() && i8->value == -128,
+                  "try_parse_int must be usable in a constant expression");
+
+    static constexpr char hex[] = {'f', 'F'};
+    constexpr auto u8 = metl::try_parse_hex<std::uint8_t>(metl::span<const char>(hex, 2));
+    static_assert(u8.has_value() && u8->value == 0xffu,
+                  "try_parse_hex must be usable in a constant expression");
+
+    // An error is a constant too: a bad entry in a table fails the build.
+    static constexpr char over[] = {'2', '5', '6'};
+    constexpr auto overflow = metl::try_parse_uint<std::uint8_t>(metl::span<const char>(over, 3));
+    static_assert(!overflow.has_value() && overflow.error() == metl::parse_error::out_of_range,
+                  "a parse error must be usable in a constant expression");
+
+    static_assert(metl::parse_uint<std::uint16_t>(metl::span<const char>(decimal, 3)).value == 42u,
+                  "the asserting parse_uint must be usable in a constant expression");
+
+    CHECK(u16.has_value());
+    CHECK_EQ(i8->value, -128);
+  }
+#endif
+
   return metl_test::exit_code();
 }

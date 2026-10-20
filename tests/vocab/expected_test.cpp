@@ -662,5 +662,27 @@ int main() {
   }
 
   run_lifetime_checks();
+#if METL_DETAIL_CONSTEXPR_LIFETIME
+  // ------- C++20: created, read and destroyed in a constant expression (#430)
+  {
+    constexpr metl::expected<int, int> value(5);
+    constexpr metl::expected<int, int> error(metl::unexpect, 4);
+    static_assert(value.has_value() && *value == 5 && value.value() == 5 && value.error_or(0) == 0);
+    static_assert(!error.has_value() && error.error() == 4 && error.value_or(7) == 7 &&
+                  error.error_or(0) == 4);
+
+    constexpr bool void_specialization = [] {
+      const metl::expected<void, int> success;
+      const metl::expected<void, int> failure(metl::unexpect, 3);
+      success.value();
+      *success;
+      return success.has_value() && !failure.has_value() && failure.error() == 3 &&
+             success.error_or(9) == 9 && failure.error_or(9) == 3;
+    }();
+    static_assert(void_specialization);
+    CHECK(void_specialization);
+  }
+#endif
+
   return metl_test::exit_code();
 }
