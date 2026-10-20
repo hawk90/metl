@@ -208,8 +208,9 @@ class arena_allocator {
     std::launder(static_cast<T*>(memory))->~T();
   }
 
+  // `alignment` is a power of two: allocate_impl HARDENs it before calling.
   static constexpr std::uintptr_t align_up(std::uintptr_t value, size_type alignment) noexcept {
-    return alignment == 0 ? value : (value + (alignment - 1)) & ~(alignment - 1);
+    return (value + (alignment - 1)) & ~(alignment - 1);
   }
 
   void* allocate_impl(size_type bytes, size_type alignment, destroy_fn_t destroy) noexcept {

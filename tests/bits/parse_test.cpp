@@ -225,6 +225,20 @@ int main() {
     CHECK(!over_u16.has_value());
     CHECK(over_u16.error() == metl::parse_error::out_of_range);
 
+    // The limit of every unsigned width ends in hex F, so the last digit is
+    // never compared: at the limit's head any digit fits, past it none does.
+    // uint8_t folds in a wider accumulator, uint64_t in its own width.
+    const auto max_u8 = metl::try_parse_hex<std::uint8_t>(TEXT("ff"));
+    CHECK(max_u8.has_value());
+    CHECK_EQ(max_u8->value, std::uint8_t{0xff});
+    CHECK(metl::try_parse_hex<std::uint8_t>(TEXT("100")).error() == metl::parse_error::out_of_range);
+
+    const auto max_u64 = metl::try_parse_hex<std::uint64_t>(TEXT("ffffffffffffffff"));
+    CHECK(max_u64.has_value());
+    CHECK_EQ(max_u64->value, ~std::uint64_t{0});
+    CHECK(metl::try_parse_hex<std::uint64_t>(TEXT("10000000000000000")).error() ==
+          metl::parse_error::out_of_range);
+
     const auto garbage = metl::try_parse_hex<std::uint32_t>(TEXT("ghi"));
     CHECK(!garbage.has_value());
     CHECK(garbage.error() == metl::parse_error::not_a_number);
@@ -327,7 +341,7 @@ int main() {
 
     constexpr bool hex_folded = []() constexpr {
       const char digits[] = {'f', 'F', '0', 'g'};
-      const auto run = metl::detail::fold_hex<unsigned>(metl::span<const char>(digits, 4), 0xfffu, 0xfu);
+      const auto run = metl::detail::fold_hex<unsigned>(metl::span<const char>(digits, 4), 0xfffu);
       return run.value == 0xff0u && run.consumed == 3 && !run.overflowed;
     }();
     static_assert(hex_folded, "the hex fold must be usable in a constant expression");

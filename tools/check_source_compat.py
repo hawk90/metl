@@ -43,6 +43,11 @@ EXPECTED_BREAKS = {
                                   "SCOPE.md section 3 already kept metl/exp/ (Tier 2) out of the umbrella "
                                   "in v1.3.0; the first exp header lands with #335",
     },
+    "v1.5.0": {
+        "tests/bits/parse_test.cpp": "it calls metl::detail::fold_hex, which is not public (README "
+                                     "Status: metl::detail is not covered), and #461 dropped its "
+                                     "limit_tail parameter",
+    },
 }
 
 # Where a tree states its own version: (file, pattern whose group 2 is the version).

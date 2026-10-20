@@ -119,8 +119,9 @@ class monotonic_buffer {
   METL_NODISCARD constexpr bool empty() const noexcept { return offset_ == 0; }
 
  private:
+  // `alignment` is a power of two: allocate HARDENs it before calling.
   static constexpr std::uintptr_t align_up(std::uintptr_t value, size_type alignment) noexcept {
-    return alignment == 0 ? value : (value + (alignment - 1)) & ~(alignment - 1);
+    return (value + (alignment - 1)) & ~(alignment - 1);
   }
 
   size_type offset_;

@@ -6,10 +6,6 @@
 #     <kind>: <why>
 #         <the line's code, as the header has it, without the indentation>
 
-include/metl/arena_allocator.hpp
-    unreachable: align_up's `alignment == 0` arm: its only caller HARDENs `alignment != 0` first (#461 decides whether to keep it)
-        return alignment == 0 ? value : (value + (alignment - 1)) & ~(alignment - 1);
-
 include/metl/assert.hpp
     unmeasurable: the default assert and panic handlers end in std::abort(), which exits before the profile is written
         [[noreturn]] inline void default_assert_handler(const char*, const char*, int) noexcept {
@@ -40,10 +36,6 @@ include/metl/coro/scheduler.hpp
 include/metl/coro/stepper.hpp
     unreachable: `error_` alone is never true: every error path also sets `done_`, which short-circuits first
         if (done_ || error_) {
-
-include/metl/detail/bitset.hpp
-    unreachable: valid_mask's only caller passes the last word, so `k + 1 < word_count` is never true (#461)
-        if (k + 1 < word_count || tail == 0) {
 
 include/metl/detail/constant_init.hpp
     compile-time: Clang folds in_constant_evaluation() to its constant at each call; the callers' run-time arms run
@@ -157,8 +149,6 @@ include/metl/intrusive_ptr.hpp
 include/metl/monotonic_buffer.hpp
     compile-time: Clang folds the constexpr capacity() call; the tests check the value
         METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
-    unreachable: align_up's `alignment == 0` arm: its only caller HARDENs `alignment != 0` first (#461 decides whether to keep it)
-        return alignment == 0 ? value : (value + (alignment - 1)) & ~(alignment - 1);
 
 include/metl/object_pool.hpp
     compile-time: Clang folds the constexpr capacity() call; the tests check the value
@@ -170,8 +160,6 @@ include/metl/optional.hpp
         } else if (!has_value_ && other.has_value_) {
 
 include/metl/parse.hpp
-    unreachable: the hex `digit > limit_tail` clause: limit_tail is 15 for every unsigned T (#461)
-        if (value > limit_head || (value == limit_head && digit > limit_tail)) {
     compile-time: negative_limit_of only initializes a constexpr local
         constexpr parse_accumulator_t<T> negative_limit_of() noexcept {
         using accumulator_t = parse_accumulator_t<T>;
@@ -262,9 +250,6 @@ include/metl/variant.hpp
     compile-time: static constexpr table initializers
         static constexpr bool table[] = {(METL_NO_EXCEPTIONS || std::is_nothrow_copy_constructible_v<Ts>)...};
         static constexpr bool table[] = {(METL_NO_EXCEPTIONS || std::is_nothrow_move_constructible_v<Ts>)...};
-    unreachable: a variant cannot lie inside its own storage_, so `!points_into_storage(&other)` is always true (#461)
-        if (copies_in_place()[other.index_] && !points_into_storage(&other)) {
-        if (moves_in_place()[other.index_] && !points_into_storage(&other)) {
     unreachable: visit_impl's terminal panic needs a valueless variant or a bad index, which the callers' preconditions exclude
         METL_PANIC("invalid variant index");
         METL_UNREACHABLE();

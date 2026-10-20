@@ -181,16 +181,18 @@ constexpr digit_run<Acc> fold_decimal(span<const char> text, Acc limit_head, Acc
 }
 
 /// Fold hex digits from the front of @p text. Same shape and the same
-/// pre-divided limit as `fold_decimal`.
+/// pre-divided limit as `fold_decimal`, without the tail: the limit of every
+/// unsigned type ends in the hex digit F, so a value equal to @p limit_head
+/// (`limit / 16`) takes any digit.
 template <typename Acc>
-constexpr digit_run<Acc> fold_hex(span<const char> text, Acc limit_head, Acc limit_tail) noexcept {
+constexpr digit_run<Acc> fold_hex(span<const char> text, Acc limit_head) noexcept {
   Acc value = 0;
   std::size_t index = 0;
   bool overflowed = false;
 
   while (index < text.size() && hex_digit_value(text[index]) < 16u) {
     const auto digit = static_cast<Acc>(hex_digit_value(text[index]));
-    if (value > limit_head || (value == limit_head && digit > limit_tail)) {
+    if (value > limit_head) {
       overflowed = true;
     } else {
       value = static_cast<Acc>(value * Acc{16} + digit);
@@ -380,10 +382,10 @@ METL_NODISCARD constexpr expected<parsed<T>, parse_error> try_parse_hex(span<con
   }
   using accumulator_t = detail::parse_accumulator_t<T>;
   constexpr auto limit = static_cast<accumulator_t>(std::numeric_limits<T>::max());
+  // No tail: T is unsigned (asserted above), so `limit` ends in hex F.
   constexpr accumulator_t limit_head = limit / accumulator_t{16};
-  constexpr accumulator_t limit_tail = limit % accumulator_t{16};
 
-  const auto run = detail::fold_hex(text, limit_head, limit_tail);
+  const auto run = detail::fold_hex(text, limit_head);
   if (run.consumed == 0) {
     return unexpected<parse_error>(parse_error::not_a_number);
   }
