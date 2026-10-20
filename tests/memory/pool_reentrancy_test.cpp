@@ -303,8 +303,16 @@ void a_throwing_constructor_releases_the_claim() {
   }
   CHECK(threw);
   CHECK_EQ(handles.size(), 0u);
-  CHECK(handles.try_emplace().valid());
-  CHECK(handles.try_emplace().valid());
+  // The slot that threw on its first use is reused at generation 1, the one a
+  // new slot issues, and its handle resolves: 0 is the null handle's.
+  const auto first = handles.try_emplace();
+  CHECK(first.valid());
+  CHECK_EQ(static_cast<unsigned>(first.index()), 0u);
+  CHECK_EQ(static_cast<unsigned>(first.generation()), 1u);
+  CHECK(handles.get(first) != nullptr);
+  const auto second = handles.try_emplace();
+  CHECK(second.valid());
+  CHECK(handles.get(second) != nullptr);
 }
 #endif
 

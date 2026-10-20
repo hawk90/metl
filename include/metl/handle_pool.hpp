@@ -4,6 +4,7 @@
 #include "metl/attributes.hpp"
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/constant_init.hpp"
 #include "metl/type_traits.hpp"
 #include "metl/versioned_handle.hpp"
 
@@ -113,14 +114,15 @@ class handle_pool {
                 "metl::handle_pool Capacity must fit the handle's slot index field");
 
   /// Constructs an empty pool with every slot free and generation 1.
-  /// @note Not constexpr: the free list is linked at run time, so a
-  ///       namespace-scope pool is initialized at run time, in link order.
-  ///       Construct it before anything that runs earlier can reach it.
-  handle_pool() noexcept : free_head_(0), size_(0) {
-    for (size_type i = 0; i < Capacity; ++i) {
-      next_[i] = static_cast<index_type>(i + 1);  // last one points at `Capacity` == end
-      generation_[i] = generation_type{1};        // 0 is reserved for the null handle
-      active_[i] = false;
+  ///
+  /// Constant-initialized at namespace scope since C++20 (see
+  /// detail/constant_init.hpp): an empty pool is all zero bits, so the
+  /// constant image lands in `.bss`. A local one zeroes its free-list,
+  /// generation and occupancy arrays at run time, and nothing in the object
+  /// slots.
+  constexpr handle_pool() noexcept : next_(), generation_(), active_() {
+    for (auto& slot : storage_) {
+      detail::zero_for_constant_init(slot.bytes);
     }
   }
 
@@ -140,12 +142,19 @@ class handle_pool {
   /// constructor throws, the slot goes back.
   template <typename... Args>
   METL_NODISCARD handle_type try_emplace(Args&&... args) {
-    if (free_head_ >= Capacity) {
+    const size_type index = free_head_;
+    if (index < never_used_) {
+      free_head_ = next_[index];
+    } else if (index < Capacity) {
+      // The free list is empty, so this is the first slot never handed out.
+      // Its generation is set before the constructor runs: if that throws,
+      // return_on_unwind frees the slot, and a freed slot must carry a
+      // generation a handle can have.
+      never_used_ = free_head_ = static_cast<index_type>(index + 1);
+      generation_[index] = generation_type{1};
+    } else {
       return handle_type{};
     }
-
-    const size_type index = free_head_;
-    free_head_ = next_[index];
     active_[index] = true;
     ++size_;
     return_on_unwind claim{this, index};
@@ -219,7 +228,8 @@ class handle_pool {
   /// for tests that need to drive the counter to wraparound.
   METL_NODISCARD generation_type generation_of(index_type index) const noexcept {
     METL_ASSERT(index < Capacity);
-    return generation_[index];
+    // A slot never handed out stores 0 and will first issue generation 1.
+    return generation_[index] == generation_type{0} ? generation_type{1} : generation_[index];
   }
 
  private:
@@ -265,8 +275,12 @@ class handle_pool {
 
     slot_ptr(index)->~T();
 
-    next_[index] = static_cast<index_type>(free_head_);
-    free_head_ = index;
+    push_free(index);
+  }
+
+  void push_free(size_type index) noexcept {
+    next_[index] = free_head_;
+    free_head_ = static_cast<index_type>(index);
   }
 
   // Puts a claimed slot back on the free list if T's constructor exits by an
@@ -282,8 +296,7 @@ class handle_pool {
       if (pool_ != nullptr) {
         pool_->active_[index_] = false;
         --pool_->size_;
-        pool_->next_[index_] = static_cast<index_type>(pool_->free_head_);
-        pool_->free_head_ = index_;
+        pool_->push_free(index_);
       }
     }
     void dismiss() noexcept { pool_ = nullptr; }
@@ -296,14 +309,26 @@ class handle_pool {
   // `Capacity == 0 ? 1 : Capacity` throughout: a zero-capacity pool is a valid
   // degenerate case (every other fixed-capacity METL container accepts one), and
   // a zero-length array is not. Every operation still behaves correctly --
-  // try_emplace returns a null handle because free_head_ (0) is already >=
-  // Capacity, and nothing ever indexes the padding element.
+  // try_emplace returns a null handle because free_head_ (0) is not below
+  // Capacity, and nothing indexes the padding element.
+  //
+  // An all-zero pool is a valid empty one, so a namespace-scope pool needs no
+  // code at startup:
+  //   - Slots below never_used_ have been handed out at least once. The rest
+  //     are taken in index order, and get generation 1 when they are.
+  //   - The free list chains the slots given back through next_, from
+  //     free_head_, and ends at never_used_: the list is empty when free_head_
+  //     equals it. never_used_ moves only while the list is empty, so the end
+  //     a push recorded is still never_used_ when the list reaches it. Every
+  //     value is at most Capacity, which fits index_type (max_capacity).
+  //   - A generation of 0 marks a slot never handed out; no handle carries 0.
   storage_type storage_[Capacity == 0 ? 1 : Capacity];
   index_type next_[Capacity == 0 ? 1 : Capacity];
   generation_type generation_[Capacity == 0 ? 1 : Capacity];
   bool active_[Capacity == 0 ? 1 : Capacity];
-  size_type free_head_;
-  size_type size_;
+  index_type free_head_ = 0;
+  index_type never_used_ = 0;
+  size_type size_ = 0;
 };
 
 }  // namespace metl
