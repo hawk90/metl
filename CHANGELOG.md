@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-20
+
+**Highlights.** This release is about test coverage. The library's code is
+unchanged from 1.4.0. New tests run the paths that no test reached before:
+rvalue accessors, error paths, rollbacks after a throwing move, and
+out-of-range erase positions in `flat_map` and `flat_set`. Line coverage of
+`include/metl` rose from 91.67% to 93.68%, and branch coverage from 84.83% to
+87.67%. Every line still missed now has a recorded reason, and CI keeps it
+that way. A release is now verified again on the tagged commit before it
+publishes.
+
+### Upgrading from 1.4.0
+
+No code change is needed. The only header change is the version constants in
+`<metl/config.hpp>`.
+
+### Added
+
+- **Every missed line has a reason (#418).** A line of `include/metl` that
+  never runs, or runs with a branch never taken, is either tested or listed in
+  `tools/coverage_records.txt` with the reason no test can reach it: 160
+  lines, of which 95 run only at compile time, 60 are unreachable, 4 end in
+  `std::abort()`, and 1 is misreported by llvm-cov. CI fails on a missed or
+  partial line that is not listed, and on a listed line that a test now
+  reaches. The coverage floors rose to 92.1% lines and 86.0% branches, from
+  89.4% and 83.0%. MC/DC stays reported and is not gated.
+
+### Changed
+
+- **A release is verified on the tagged commit itself.** A pull request's CI
+  run is no longer repeated when it merges: `main.yml` checks that the run
+  passed on the exact tree the merge put on `main` and measures the commit,
+  and runs the full CI when it cannot show that. A `v*` tag publishes only a
+  commit whose `main-gate` and CodeQL analysis passed, and only after the full
+  CI has run again on the tagged commit (`tools/release_gate.py`, #431). The
+  full CI also runs nightly on `main`.
+
 ## [1.4.0] - 2026-10-19
 
 **Highlights.** This release is about measurement. Each release now carries
