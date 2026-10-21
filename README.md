@@ -513,7 +513,8 @@ Tested targets:
 - Cortex-M0, Cortex-M3, Cortex-M4, Cortex-M7
 - RISC-V: 32-bit through an ESP-IDF build for the ESP32-C3, 64-bit as a
   syntax check. Neither runs; see the table below.
-- x86-64 host (Linux, Windows) and AArch64 host (macOS)
+- Hosts, for development and testing: x86-64 Linux and Windows, AArch64
+  macOS. Each is supported; see [Host platforms](docs/SCOPE.md#host-platforms).
 
 Cortex-A is not exercised by any CI job.
 

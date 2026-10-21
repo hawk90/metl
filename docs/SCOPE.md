@@ -145,6 +145,23 @@ What is checked, so the rules above do not rest on review:
 `CODEOWNERS` may delegate an experimental area to the contributor who brought
 it.
 
+### Host platforms
+
+METL targets embedded devices, but its tests, examples and benchmarks also
+build and run on a developer's machine, and three hosts are supported for that
+(#462). Supported means a change that breaks the build or a test on one of them
+is a bug, and CI builds and tests on each one, because each checks something
+the others do not:
+
+| Host | What only this host checks | Job |
+|---|---|---|
+| Linux x86-64 | GCC and Clang with libstdc++, and every job not named below | most jobs |
+| macOS AArch64 | Apple clang; libc++, which no other job uses; the lock-free tests on a host CPU with a weak memory model | `host-test / macos-26` |
+| Windows x86-64 | MSVC with `/WX` in Debug and Release, with the examples; MSVC 19.29, the README's floor | `host-test / windows-2025`, `compiler-floors / msvc-19.29` |
+
+The maintainer tools under `tools/` are a different matter: CI runs them on
+Linux, and `tools/pre_push.py` on macOS. Nothing runs them on Windows.
+
 ---
 
 ## 4. PR checklist
