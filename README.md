@@ -38,8 +38,9 @@ fully usable on host platforms for development and testing.
 
 - Header-only; drop the `include/` directory into any project.
 - **C++17 baseline**, with no compiler extensions required. C++20, C++23 and
-  C++26 are built and tested in CI as well, and on a C++20 toolchain `optional` becomes genuinely
-  constant-evaluable — the library detects that through
+  C++26 are built and tested in CI as well, and on a C++20 toolchain `optional`,
+  `expected` and the `parse` functions become genuinely constant-evaluable, so a
+  table of text can be parsed at build time — the library detects that through
   `__cpp_lib_constexpr_dynamic_alloc` rather than the language version, so it
   degrades correctly on a C++20 compiler with an older standard library.
 - No exceptions, no heap, and no RTTI by default.
@@ -504,9 +505,14 @@ Building as C++20 is also verified in CI, under Clang and GCC
 (`config-matrix / cxx20`, `cxx20-gcc`), and is supported, but not required —
 deliberately. Requiring it would raise the GCC
 floor and drop IAR EWARM (listed below) and older vendor SDKs, and there is
-currently no METL feature that needs it: the one place C++20 buys something,
-`optional`'s constant evaluation, already works through a dual-mode path keyed on
-the standard library's feature-test macro rather than on the language version.
+currently no METL feature that needs it. What C++20 adds is detected at compile
+time and leaves the C++17 build as it is:
+- constant evaluation of `optional`, `expected` and the `parse` functions,
+  keyed on the standard library's feature-test macro rather than on the
+  language version;
+- `operator<=>` on `fixed_vector`, `fixed_string` and `optional`;
+- `std::ranges` interop: `span` is a borrowed range and a view, and
+  `fixed_vector` builds from a C++20 view's iterators.
 
 Tested targets:
 
