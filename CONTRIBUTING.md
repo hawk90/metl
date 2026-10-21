@@ -73,8 +73,12 @@ that is not `std::forward`ed, an rvalue-reference parameter that is not
 which runs every CI check that can run on a workstation before the push leaves
 it. What it runs, and what stays on CI and why, is listed at the top of that
 script. A few minutes cold, less once its `build-prepush/` directories are
-warm; `--quick` stops after the source gates. `git push --no-verify` skips the
-hook; CI still runs everything.
+warm; `--quick` stops after the source gates. A branch that changes `include/`
+also builds and runs the last release's tests and examples against its headers
+(`tools/check_source_compat.py`), about two minutes more. That step finds the
+release by its `vX.Y.Z` tag and fails without one, so keep tags fetched
+(`git fetch --tags`). `git push --no-verify` skips the hook; CI still runs
+everything.
 
 ## Gates
 
