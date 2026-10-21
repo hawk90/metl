@@ -23,6 +23,10 @@ an untracked file would be tested here and be missing on CI.
   5. the mutation gate (tools/check_mutants.py) for the mutants of the headers
      this branch changes, which also catches a mutant whose anchor text a
      change has moved. CI runs every mutant, split across the `mutants` shards.
+  5b. the last release's tests and examples built and run against this
+     include/ (tools/check_source_compat.py), as the `source-compat` job does
+     -- only when this branch changes include/ or the checker, the two inputs
+     that can change its result. About two minutes.
   6. every test built and run through the amalgamation
      (tools/check_amalgamation.py), as the `amalgamation` job does.
   7. clang-tidy, as a DELTA: the same local binary over the merge-base with
@@ -178,6 +182,40 @@ def build_and_test(name, cxx, cmake_args):
             and step(f"{name}: build", ["cmake", "--build", str(build_dir), "-j", jobs])
             and step(f"{name}: ctest", ["ctest", "--test-dir", str(build_dir), "-j", jobs,
                                         "--output-on-failure"]))
+
+
+def branch_changes():
+    """(merge-base with origin/main, files this branch changes), or ("", []).
+
+    Without a merge-base, `git diff HEAD` would list only uncommitted files --
+    none, on a clean tree -- and read as "this branch changes nothing"."""
+    base = subprocess.run(["git", "merge-base", "HEAD", "origin/main"], cwd=REPO,
+                          capture_output=True, text=True).stdout.strip()
+    if not base:
+        return "", []
+    changed = subprocess.run(["git", "diff", "--name-only", base], cwd=REPO,
+                             capture_output=True, text=True).stdout.split()
+    return base, changed
+
+
+def source_compat(python, base, changed):
+    """tools/check_source_compat.py, when this branch changes what it reads.
+
+    The check builds the last release's tree with this include/ in its place,
+    so only include/ and the checker's own EXPECTED_BREAKS can change its
+    result. #461 changed a detail:: signature an old test called, and only CI
+    found it."""
+    if not base:
+        print("  (no merge-base with origin/main, so what this branch changes is unknown: "
+              "fetch origin; CI's source-compat job is the only check)")
+        return True
+    inputs = [name for name in changed
+              if name.startswith("include/") or name == "tools/check_source_compat.py"]
+    if not inputs:
+        print("  (neither include/ nor the checker changed -- CI's source-compat job still runs)")
+        return True
+    return step(f"check_source_compat.py ({len(inputs)} input(s) changed)",
+                [python, "tools/check_source_compat.py"])
 
 
 def find_clang_tidy():
@@ -401,15 +439,10 @@ def main():
     # only start surviving -- or stop applying, which is the anchor drift this
     # step exists to catch before CI -- if its header changed, so those are run.
     # A change to the gate itself runs everything.
-    base = subprocess.run(["git", "merge-base", "HEAD", "origin/main"], cwd=REPO,
-                          capture_output=True, text=True).stdout.strip()
+    base, changed = branch_changes()
     if not base:
-        # `git diff HEAD` would list only uncommitted files -- none, on a clean
-        # tree -- and read as "no mutated header changed".
         print("  (no merge-base with origin/main, so what this branch changes is unknown: "
               "fetch origin; CI runs every mutant)")
-    changed = subprocess.run(["git", "diff", "--name-only", base], cwd=REPO,
-                             capture_output=True, text=True).stdout.split() if base else []
     sys.path.insert(0, str(REPO / "tools"))
     import check_mutants  # noqa: E402 -- it loads the mutants from tools/mutants/
     everything = "tools/check_mutants.py" in changed
@@ -437,6 +470,10 @@ def main():
                 and step("mutants: build", ["cmake", "--build", str(build_dir), "-j", jobs])
                 and step(f"check_mutants.py ({len(selected)} mutants)", command)):
             return 1
+
+    print("5b. source compatibility with the last release")
+    if not source_compat(python, base, changed):
+        return 1
 
     print("6. amalgamation")
     if not step("check_amalgamation.py", [python, "tools/check_amalgamation.py"]):
