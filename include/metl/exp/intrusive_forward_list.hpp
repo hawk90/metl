@@ -199,7 +199,14 @@ class intrusive_forward_list {
   /// @brief The position before the first element, for `insert_after` and
   ///        `erase_after`. Not dereferenceable.
   iterator before_begin() noexcept { return iterator(&head_); }
-  const_iterator before_begin() const noexcept { return const_iterator(&head_); }
+  const_iterator before_begin() const noexcept {
+    // A position is a `link*` whatever its constness, as insert_after and
+    // erase_after take a const_iterator and write through it. Only those
+    // non-const members write through a position, after checking it is in
+    // this list, so nothing writes to a const list's head.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
+    return const_iterator(const_cast<link*>(&head_));
+  }
   const_iterator cbefore_begin() const noexcept { return before_begin(); }
   iterator begin() noexcept { return iterator(head_.next); }
   const_iterator begin() const noexcept { return const_iterator(head_.next); }
@@ -272,10 +279,7 @@ class intrusive_forward_list {
     --size_;
   }
 
-  // Mutable because a position is a `link*` whatever its constness, and a
-  // const list's before_begin() is one. No const member writes through it: only
-  // the non-const modifiers take a position, and they check it is in this list.
-  mutable link head_;
+  link head_;
   size_type size_ = 0;
 };
 
