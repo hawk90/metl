@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-21
+
+**Highlights.** This release moves `parse` to build time. Since C++20,
+`expected` is a literal type, so `try_parse_uint`, `try_parse_int`,
+`try_parse_hex` and the asserting `parse_*` run in a constant expression: a
+table of text is parsed when the program is built, and a bad entry fails the
+build. C++17 is unchanged. Five defensive branches that no caller can take
+were removed. Linux, macOS and Windows are now stated as supported development
+hosts.
+
+### Upgrading from 1.5.0
+
+No code change is needed. Code that calls `metl::detail` directly, which is not
+public API, may need one: `detail::fold_hex` no longer takes a `limit_tail`
+argument (#461).
+
+### Added
+
+- **`expected` and the parsers are constant-evaluable since C++20 (#430).** A
+  constant expression can create an `expected`, read it through its observers
+  (`has_value`, `operator*`, `operator->`, `value`, `error`, `value_or`,
+  `error_or`) and destroy it. So `try_parse_uint`, `try_parse_int`,
+  `try_parse_hex` and the asserting `parse_*` run at compile time, and a table
+  of text is parsed at build time; a bad entry fails the build. C++17 is
+  unchanged: no destructor can be `constexpr` there.
+
+### Changed
+
+- **Linux, macOS and Windows are supported development hosts (#462).** A change
+  that breaks the build or a test on any of them is a bug. `docs/SCOPE.md`
+  lists what only each host checks.
+
 ## [1.5.0] - 2026-10-20
 
 **Highlights.** This release is about test coverage. The library's code is
