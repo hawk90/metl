@@ -58,7 +58,12 @@ class forward_list_hook : private metl::detail::slist_link {
  public:
   constexpr forward_list_hook() noexcept = default;
   constexpr forward_list_hook(const forward_list_hook&) noexcept : metl::detail::slist_link() {}
+  constexpr forward_list_hook(forward_list_hook&&) noexcept : metl::detail::slist_link() {}
+  // Assignment keeps this hook's own link and copies nothing from `other`, so
+  // assigning a hook to itself is a no-op like any other assignment.
+  // NOLINTNEXTLINE(cert-oop54-cpp)
   constexpr forward_list_hook& operator=(const forward_list_hook&) noexcept { return *this; }
+  constexpr forward_list_hook& operator=(forward_list_hook&&) noexcept { return *this; }
 
   ~forward_list_hook() { METL_HARDEN(owner == nullptr); }  // destroyed while linked
 
@@ -130,8 +135,9 @@ class intrusive_forward_list {
     using reference = std::conditional_t<Const, const T&, T&>;
 
     constexpr basic_iterator() noexcept = default;
-    // iterator -> const_iterator
+    // iterator -> const_iterator, implicit as for every standard container.
     template <bool C = Const, typename = std::enable_if_t<C>>
+    // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
     constexpr basic_iterator(const basic_iterator<false>& other) noexcept : node_(other.node_) {}
 
     reference operator*() const noexcept { return value_of(*node_); }
@@ -162,7 +168,7 @@ class intrusive_forward_list {
   using const_iterator = basic_iterator<true>;
 
   constexpr intrusive_forward_list() noexcept : head_{nullptr, this} {
-    static_assert(std::is_base_of<hook_type, T>::value,
+    static_assert(std::is_base_of_v<hook_type, T>,
                   "intrusive_forward_list<T, Tag>: T must derive publicly from forward_list_hook<Tag>");
   }
   ~intrusive_forward_list() { clear(); }
@@ -193,7 +199,7 @@ class intrusive_forward_list {
   /// @brief The position before the first element, for `insert_after` and
   ///        `erase_after`. Not dereferenceable.
   iterator before_begin() noexcept { return iterator(&head_); }
-  const_iterator before_begin() const noexcept { return const_iterator(head()); }
+  const_iterator before_begin() const noexcept { return const_iterator(&head_); }
   const_iterator cbefore_begin() const noexcept { return before_begin(); }
   iterator begin() noexcept { return iterator(head_.next); }
   const_iterator begin() const noexcept { return const_iterator(head_.next); }
@@ -256,10 +262,6 @@ class intrusive_forward_list {
   static link& link_of(T& value) noexcept { return static_cast<link&>(static_cast<hook_type&>(value)); }
   static T& value_of(link& node) noexcept { return static_cast<T&>(static_cast<hook_type&>(node)); }
 
-  // The head is never written through a const_iterator: only before_begin()
-  // of a const list makes one, and no const member links through it.
-  link* head() const noexcept { return const_cast<link*>(&head_); }
-
   bool in_this_list(const_iterator pos) const noexcept {
     return pos.node_ != nullptr && pos.node_->owner == this;
   }
@@ -270,7 +272,10 @@ class intrusive_forward_list {
     --size_;
   }
 
-  link head_;
+  // Mutable because a position is a `link*` whatever its constness, and a
+  // const list's before_begin() is one. No const member writes through it: only
+  // the non-const modifiers take a position, and they check it is in this list.
+  mutable link head_;
   size_type size_ = 0;
 };
 

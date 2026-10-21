@@ -11,6 +11,7 @@
 #include <iterator>
 #include <new>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <metl/attributes.hpp>
@@ -210,6 +211,11 @@ void copy_is_unlinked() {
   a = timer(9);  // and keeps a's linked state
   CHECK(hook_linked<id_list>(a));
   CHECK(&list.front() == &a);
+  timer moved(std::move(a));  // moving is copying, for the hook
+  CHECK(moved.id == 9);
+  CHECK(!hook_linked<id_list>(moved) && hook_linked<id_list>(a));
+  other = std::move(moved);
+  CHECK(other.id == 9 && !hook_linked<id_list>(other));
   list.clear();
 }
 
