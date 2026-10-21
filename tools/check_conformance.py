@@ -92,6 +92,7 @@ EXEMPT = {
     "lock.hpp": "guarded<T> holds one T for its whole lifetime; nothing is added or removed",
     "exp/bitset.hpp": "holds bits, not objects",
     "exp/intrusive_forward_list.hpp": "links objects the caller owns; stores, constructs and destroys none",
+    "exp/intrusive_list.hpp": "links objects the caller owns; stores, constructs and destroys none",
 }
 
 # Own user objects, no adapter yet. MAY ONLY SHRINK: --base fails an entry the

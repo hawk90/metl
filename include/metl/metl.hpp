@@ -27,6 +27,7 @@
 #include "metl/detail/constant_init.hpp"
 #include "metl/detail/construct.hpp"
 #include "metl/detail/crc.hpp"
+#include "metl/detail/dlist_link.hpp"
 #include "metl/detail/index_distance.hpp"
 #include "metl/detail/invocable.hpp"
 #include "metl/detail/low_bits.hpp"
