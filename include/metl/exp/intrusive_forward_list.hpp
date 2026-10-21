@@ -108,6 +108,11 @@ class forward_list_hook : private metl::detail::slist_link {
 ///   | `erase(t)`                                    | wait-free, bounded, O(n) |
 ///   | `clear` / destructor                          | wait-free, bounded, O(n) |
 ///
+/// The n of `erase(t)` and `clear` is the number of elements linked. No
+/// capacity bounds it: the caller does, by the objects it links. Where an
+/// unlink must take constant time, as in an ISR, use `pop_front`, or
+/// `intrusive_list`, whose `erase(t)` is O(1).
+///
 /// @note Not thread-safe, like the other containers: an ISR that links or
 ///       unlinks while a thread does needs a lock around both.
 ///
