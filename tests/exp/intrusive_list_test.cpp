@@ -342,6 +342,9 @@ void erasing_end_traps() {
   if (metl_test::asserts_active) {
     CHECK(trips([&] { (void)list.front(); }));
     CHECK(trips([&] { (void)list.back(); }));
+    const all_list& view = list;
+    CHECK(trips([&] { (void)view.front(); }));
+    CHECK(trips([&] { (void)view.back(); }));
   }
 }
 
