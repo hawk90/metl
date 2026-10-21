@@ -55,6 +55,7 @@ BOOL_ALLOWLIST = {
     "is_error": "state query",
     "is_attached": "state query",
     "is_scheduled": "state query",
+    "is_linked": "state query: is this hook's element in a list",
     "aliases_own_storage": "precondition query: does an iterator range point into this fixed_vector",
     "points_into_storage": "private precondition query: does an argument point into this variant",
     "holds_alternative": "type query, mirrors std::holds_alternative",
@@ -88,6 +89,7 @@ BOOL_ALLOWLIST = {
     "is_decimal_digit": "private helper predicate: is this character a digit?",
     "holds": "private query: is this attachment still attached to the scheduler?",
     "in_use": "private query: may this attachment number not be issued now?",
+    "in_this_list": "private precondition query: is this position in this intrusive list",
 }
 
 # R3 beyond `try_`: asserting forms whose return value is their only output, so
