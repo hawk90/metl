@@ -24,10 +24,13 @@
 // model wait states, caches, pipelines or interrupt latency. These are
 // instruction counts and are reported as nothing else.
 
+#include "exp/intrusive_scheduler.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 
+#include <metl/coro/scheduler.hpp>
 #include <metl/fixed_queue.hpp>
 #include <metl/fixed_vector.hpp>
 #include <metl/flat_map.hpp>
@@ -129,6 +132,86 @@ __attribute__((noinline)) void mpmc_queue_push_pop() noexcept {
 }
 #endif
 
+// coro::scheduler against the intrusive variant it is measured beside (#337,
+// tests/exp/intrusive_scheduler.hpp): the same work on each, at 4 and 16
+// tasks. The array scheduler's Capacity is the task count, its smallest fit.
+//   attach_detach: kIterations times, attach N tasks, then detach them in
+//                  the order attached (the array's erase then shifts the most).
+//   run_once:      attach N tasks, kIterations rounds of N trivial polls,
+//                  detach them. Less attach_detach / kIterations, the rounds.
+struct array_task {
+  u32 polls;
+};
+struct linked_task : metl_test::task_node {
+  u32 polls = 0;
+};
+
+bool poll_array_task(void* p) noexcept {
+  ++static_cast<array_task*>(p)->polls;
+  return true;
+}
+bool poll_linked_task(void* p) noexcept {
+  ++static_cast<linked_task*>(p)->polls;
+  return true;
+}
+
+constexpr std::size_t kMaxTasks = 16;
+array_task g_array_tasks[kMaxTasks];
+linked_task g_linked_tasks[kMaxTasks];
+template <std::size_t N>
+metl::coro::scheduler<N> g_array_scheduler;
+metl_test::intrusive_scheduler g_linked_scheduler;
+
+template <std::size_t N>
+__attribute__((noinline)) void scheduler_attach_detach() noexcept {
+  for (u32 i = 0; i < kIterations; ++i) {
+    for (std::size_t t = 0; t < N; ++t) {
+      sink(g_array_scheduler<N>.try_attach(&g_array_tasks[t], &poll_array_task) ? 1u : 0u);
+    }
+    for (std::size_t t = 0; t < N; ++t) {
+      sink(g_array_scheduler<N>.detach(&g_array_tasks[t]) ? 1u : 0u);
+    }
+  }
+}
+
+template <std::size_t N>
+__attribute__((noinline)) void scheduler_run_once() noexcept {
+  for (std::size_t t = 0; t < N; ++t) {
+    sink(g_array_scheduler<N>.try_attach(&g_array_tasks[t], &poll_array_task) ? 1u : 0u);
+  }
+  for (u32 i = 0; i < kIterations; ++i) {
+    sink(static_cast<u32>(g_array_scheduler<N>.run_once()));
+  }
+  for (std::size_t t = 0; t < N; ++t) {
+    sink(g_array_scheduler<N>.detach(&g_array_tasks[t]) ? 1u : 0u);
+  }
+}
+
+template <std::size_t N>
+__attribute__((noinline)) void intrusive_scheduler_attach_detach() noexcept {
+  for (u32 i = 0; i < kIterations; ++i) {
+    for (std::size_t t = 0; t < N; ++t) {
+      g_linked_scheduler.attach(g_linked_tasks[t], &g_linked_tasks[t], &poll_linked_task);
+    }
+    for (std::size_t t = 0; t < N; ++t) {
+      sink(g_linked_scheduler.detach(g_linked_tasks[t]) ? 1u : 0u);
+    }
+  }
+}
+
+template <std::size_t N>
+__attribute__((noinline)) void intrusive_scheduler_run_once() noexcept {
+  for (std::size_t t = 0; t < N; ++t) {
+    g_linked_scheduler.attach(g_linked_tasks[t], &g_linked_tasks[t], &poll_linked_task);
+  }
+  for (u32 i = 0; i < kIterations; ++i) {
+    sink(static_cast<u32>(g_linked_scheduler.run_once()));
+  }
+  for (std::size_t t = 0; t < N; ++t) {
+    sink(g_linked_scheduler.detach(g_linked_tasks[t]) ? 1u : 0u);
+  }
+}
+
 struct region {
   const char* name;
   void (*body)() noexcept;
@@ -146,6 +229,14 @@ const region kRegions[] = {
 #if defined(METL_BENCH_HAS_MPMC)
     {"mpmc_queue_push_pop", mpmc_queue_push_pop},
 #endif
+    {"scheduler_attach_detach_4", scheduler_attach_detach<4>},
+    {"scheduler_attach_detach_16", scheduler_attach_detach<16>},
+    {"scheduler_run_once_4", scheduler_run_once<4>},
+    {"scheduler_run_once_16", scheduler_run_once<16>},
+    {"intrusive_scheduler_attach_detach_4", intrusive_scheduler_attach_detach<4>},
+    {"intrusive_scheduler_attach_detach_16", intrusive_scheduler_attach_detach<16>},
+    {"intrusive_scheduler_run_once_4", intrusive_scheduler_run_once<4>},
+    {"intrusive_scheduler_run_once_16", intrusive_scheduler_run_once<16>},
 };
 
 }  // namespace
