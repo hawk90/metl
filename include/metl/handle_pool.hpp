@@ -120,7 +120,6 @@ class handle_pool {
     for (size_type i = 0; i < Capacity; ++i) {
       next_[i] = static_cast<index_type>(i + 1);  // last one points at `Capacity` == end
       generation_[i] = generation_type{1};        // 0 is reserved for the null handle
-      active_[i] = false;
     }
   }
 
@@ -146,7 +145,7 @@ class handle_pool {
 
     const size_type index = free_head_;
     free_head_ = next_[index];
-    active_[index] = true;
+    next_[index] = static_cast<index_type>(index);  // live: see next_
     ++size_;
     return_on_unwind claim{this, index};
     ::new (storage_[index].addr()) T(std::forward<Args>(args)...);
@@ -198,7 +197,7 @@ class handle_pool {
   /// become stale.
   void clear() noexcept {
     for (size_type i = 0; i < Capacity; ++i) {
-      if (active_[i]) {
+      if (next_[i] == i) {
         release(i);
       }
     }
@@ -237,7 +236,7 @@ class handle_pool {
     }
 
     const size_type index = handle.index();
-    if (index >= Capacity || !active_[index] || generation_[index] != handle.generation()) {
+    if (index >= Capacity || next_[index] != index || generation_[index] != handle.generation()) {
       return Capacity;
     }
 
@@ -252,7 +251,7 @@ class handle_pool {
   /// instead of destroying twice; the slot joins the free list only after, so
   /// a re-entrant try_emplace() cannot build over the object being destroyed.
   void release(size_type index) noexcept {
-    active_[index] = false;
+    next_[index] = static_cast<index_type>(Capacity);  // not live, and not yet free
 
     // Skip 0 on wraparound: generation 0 is the null-handle marker, and a slot
     // sitting at generation 0 would make every stale handle to it compare equal
@@ -280,7 +279,6 @@ class handle_pool {
     return_on_unwind& operator=(return_on_unwind&&) = delete;
     ~return_on_unwind() {
       if (pool_ != nullptr) {
-        pool_->active_[index_] = false;
         --pool_->size_;
         pool_->next_[index_] = static_cast<index_type>(pool_->free_head_);
         pool_->free_head_ = index_;
@@ -299,9 +297,11 @@ class handle_pool {
   // try_emplace returns a null handle because free_head_ (0) is already >=
   // Capacity, and nothing ever indexes the padding element.
   storage_type storage_[Capacity == 0 ? 1 : Capacity];
+  // A free slot's next_ is the next free slot, or `Capacity` at the end of
+  // the list, so it never names the slot itself. A live slot's next_ names
+  // itself: that is the liveness flag, and it costs no storage of its own.
   index_type next_[Capacity == 0 ? 1 : Capacity];
   generation_type generation_[Capacity == 0 ? 1 : Capacity];
-  bool active_[Capacity == 0 ? 1 : Capacity];
   size_type free_head_;
   size_type size_;
 };

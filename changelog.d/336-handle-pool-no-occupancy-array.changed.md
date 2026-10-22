@@ -1,0 +1,1 @@
+- `metl::handle_pool` no longer stores a per-slot occupancy flag: a live slot is marked by its free-list link naming itself, so every pool is smaller, by `Capacity` bytes before padding (`handle_pool<std::uint32_t, 64>` by 64 bytes, `handle_pool<std::uint32_t, 4>` by 8) (#336).
