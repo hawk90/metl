@@ -3,10 +3,9 @@
 MUTANT = {
     "name": "handle_pool_range_and_inactive",
     "file": "include/metl/handle_pool.hpp",
-    "why": "the liveness check needs out-of-range AND inactive to reject, "
-           "so a forged handle to a never-used slot at its starting "
-           "generation resolves.",
+    "why": "the liveness check drops the parity test, so a handle forged "
+           "with a free slot's even generation resolves to that slot.",
     "kills": "ctest:handle_pool_test",
-    "old": "if (index >= Capacity || !active_[index] || generation_[index] != handle.generation()) {",
-    "new": "if ((index >= Capacity && !active_[index]) || generation_[index] != handle.generation()) {",
+    "old": "    if ((handle.generation() & generation_type{1}) == 0) {",
+    "new": "    if (handle.generation() == 0) {",
 }

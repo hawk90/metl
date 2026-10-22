@@ -68,10 +68,12 @@ namespace metl {
 /// @tparam GenT Unsigned generation counter type. Widening it to `std::uint32_t`
 ///         costs 2 bytes per slot and pushes the handle to 64 bits.
 ///
-/// @warning **Generation wraparound.** After `2^(8*sizeof(GenT)) - 1` destroy
-///          cycles on the *same slot*, generations repeat and a handle retained
-///          across all of them can alias a new object. With the default 16-bit
-///          counter that is 65535 cycles per slot. This is inherent to
+/// @warning **Generation wraparound.** Issued generations are the odd values
+///          of `GenT` (an even one marks the slot free), so after
+///          `2^(8*sizeof(GenT) - 1)` destroy cycles on the *same slot*,
+///          generations repeat and a handle retained across all of them can
+///          alias a new object. With the default 16-bit counter that is 32768
+///          cycles per slot. This is inherent to
 ///          generation tagging; use a wider `GenT` when handles are held for
 ///          unbounded periods.
 ///
@@ -119,8 +121,7 @@ class handle_pool {
   handle_pool() noexcept : free_head_(0), size_(0) {
     for (size_type i = 0; i < Capacity; ++i) {
       next_[i] = static_cast<index_type>(i + 1);  // last one points at `Capacity` == end
-      generation_[i] = generation_type{1};        // 0 is reserved for the null handle
-      active_[i] = false;
+      generation_[i] = generation_type{0};        // even: free (see generation_)
     }
   }
 
@@ -146,7 +147,7 @@ class handle_pool {
 
     const size_type index = free_head_;
     free_head_ = next_[index];
-    active_[index] = true;
+    generation_[index] = static_cast<generation_type>(generation_[index] + generation_type{1});  // odd: live
     ++size_;
     return_on_unwind claim{this, index};
     ::new (storage_[index].addr()) T(std::forward<Args>(args)...);
@@ -198,7 +199,7 @@ class handle_pool {
   /// become stale.
   void clear() noexcept {
     for (size_type i = 0; i < Capacity; ++i) {
-      if (active_[i]) {
+      if ((generation_[i] & generation_type{1}) != 0) {
         release(i);
       }
     }
@@ -232,12 +233,15 @@ class handle_pool {
   /// not resolve. One place where liveness is decided, so `get`, `contains` and
   /// `destroy` cannot drift apart.
   size_type live_index(handle_type handle) const noexcept {
-    if (!handle.valid()) {
+    // An issued handle's generation is odd. The test also rejects the null
+    // handle, whose generation is 0, and a handle forged with an even
+    // generation, which would otherwise match a free slot.
+    if ((handle.generation() & generation_type{1}) == 0) {
       return Capacity;
     }
 
     const size_type index = handle.index();
-    if (index >= Capacity || !active_[index] || generation_[index] != handle.generation()) {
+    if (index >= Capacity || generation_[index] != handle.generation()) {
       return Capacity;
     }
 
@@ -252,15 +256,9 @@ class handle_pool {
   /// instead of destroying twice; the slot joins the free list only after, so
   /// a re-entrant try_emplace() cannot build over the object being destroyed.
   void release(size_type index) noexcept {
-    active_[index] = false;
-
-    // Skip 0 on wraparound: generation 0 is the null-handle marker, and a slot
-    // sitting at generation 0 would make every stale handle to it compare equal
-    // to null rather than to the slot.
+    // Odd to even: the slot stops being live and every handle to it goes
+    // stale. An even generation is never issued, so wrapping to 0 is harmless.
     generation_[index] = static_cast<generation_type>(generation_[index] + generation_type{1});
-    if (generation_[index] == generation_type{0}) {
-      generation_[index] = generation_type{1};
-    }
     --size_;
 
     slot_ptr(index)->~T();
@@ -270,7 +268,7 @@ class handle_pool {
   }
 
   // Puts a claimed slot back on the free list if T's constructor exits by an
-  // exception. No handle to it was handed out, so the generation stays.
+  // exception. No handle to it was handed out, so the generation goes back.
   class return_on_unwind {
    public:
     return_on_unwind(handle_pool* pool, size_type index) noexcept : pool_(pool), index_(index) {}
@@ -280,7 +278,9 @@ class handle_pool {
     return_on_unwind& operator=(return_on_unwind&&) = delete;
     ~return_on_unwind() {
       if (pool_ != nullptr) {
-        pool_->active_[index_] = false;
+        // Back to the even generation it had: no handle was issued at the odd one.
+        pool_->generation_[index_] =
+            static_cast<generation_type>(pool_->generation_[index_] - generation_type{1});
         --pool_->size_;
         pool_->next_[index_] = static_cast<index_type>(pool_->free_head_);
         pool_->free_head_ = index_;
@@ -300,8 +300,9 @@ class handle_pool {
   // Capacity, and nothing ever indexes the padding element.
   storage_type storage_[Capacity == 0 ? 1 : Capacity];
   index_type next_[Capacity == 0 ? 1 : Capacity];
+  // Odd while the slot is live, even while it is free: the parity is the
+  // liveness flag, so a slot needs no flag of its own.
   generation_type generation_[Capacity == 0 ? 1 : Capacity];
-  bool active_[Capacity == 0 ? 1 : Capacity];
   size_type free_head_;
   size_type size_;
 };

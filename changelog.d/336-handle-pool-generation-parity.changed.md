@@ -1,0 +1,1 @@
+- `metl::handle_pool` no longer stores a per-slot occupancy flag: a slot's generation is odd while it is live and even while it is free, so every pool is smaller, by `Capacity` bytes before padding. **Behaviour change:** a slot now cycles through half as many generations before they repeat, 32768 instead of 65535 with the default 16-bit counter (#336).
