@@ -109,12 +109,22 @@ CANARY_BYTES = 1024
 # by the same run as STACK_BUDGETS. M3, M4 and M7 agree except in
 # spsc_byte_ring_write_read, where the M3 build executed 512 more (7052 against
 # 6540); the source is the same and only -mcpu differs. Not yet investigated.
+# The scheduler and intrusive_scheduler regions (#337) were measured by the
+# invariants run of PR #484, on the same toolchain and QEMU.
 _V7M_COUNTS = {
     "fixed_queue_push_pop": 2632,
     "fixed_vector_fill_clear": 1620,
     "flat_map_insert_find": 32240,
+    "intrusive_scheduler_attach_detach_16": 74119,
+    "intrusive_scheduler_attach_detach_4": 18823,
+    "intrusive_scheduler_run_once_16": 86026,
+    "intrusive_scheduler_run_once_4": 36010,
     "mpmc_queue_push_pop": 3914,
     "ring_buffer_push_overwrite": 1288,
+    "scheduler_attach_detach_16": 303495,
+    "scheduler_attach_detach_4": 39303,
+    "scheduler_run_once_16": 119562,
+    "scheduler_run_once_4": 18666,
     "spsc_byte_ring_write_read": 6540,
     "spsc_queue_push_pop": 2697,
 }
@@ -123,7 +133,15 @@ INSTRUCTION_BUDGETS = {
         "fixed_queue_push_pop": 3399,
         "fixed_vector_fill_clear": 1749,
         "flat_map_insert_find": 37788,
+        "intrusive_scheduler_attach_detach_16": 89415,
+        "intrusive_scheduler_attach_detach_4": 22599,
+        "intrusive_scheduler_run_once_16": 97897,
+        "intrusive_scheduler_run_once_4": 41569,
         "ring_buffer_push_overwrite": 1479,
+        "scheduler_attach_detach_16": 392487,
+        "scheduler_attach_detach_4": 44842,
+        "scheduler_run_once_16": 159671,
+        "scheduler_run_once_4": 24511,
         "spsc_byte_ring_write_read": 8566,
         "spsc_queue_push_pop": 2952,
     },
