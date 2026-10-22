@@ -8,7 +8,9 @@
 #include "metl_check.hpp"
 
 #include <cstddef>
+#include <cstdio>
 #include <iterator>
+#include <list>
 #include <new>
 #include <type_traits>
 #include <utility>
@@ -419,6 +421,128 @@ void splicing_through_the_wrong_list_traps() {
   second.clear();
 }
 
+// ---- agreement with std::list -------------------------------------------------
+
+// A fixed pseudo-random sequence of every operation the list shares with
+// std::list, applied to both: elements are linked here and copied there, so
+// the two must hold the same ids in the same order after each step, forwards
+// and backwards, and return the same element from insert and erase. This is
+// the std-parity property of the conformance suite (#391), which cannot run
+// over the intrusive lists through its adapters: they construct and destroy
+// the elements a type holds, and these lists hold none.
+void agrees_with_std_list() {
+  constexpr int kPool = 12;
+  std::vector<timer> pool;
+  pool.reserve(kPool);
+  for (int i = 0; i < kPool; ++i) {
+    pool.emplace_back(i);
+  }
+  all_list list;
+  std::list<int> ref;
+  unsigned state = 12345u;
+  auto next = [&state](unsigned bound) {
+    state = state * 1103515245u + 12345u;
+    return (state >> 16) % bound;
+  };
+  // The position in each sequence `k` steps from the front.
+  auto at = [&](std::size_t k) {
+    auto a = list.begin();
+    auto b = ref.begin();
+    std::advance(a, static_cast<std::ptrdiff_t>(k));
+    std::advance(b, static_cast<std::ptrdiff_t>(k));
+    return std::make_pair(a, b);
+  };
+  auto loose = [&]() -> timer* {
+    for (timer& t : pool) {
+      if (!hook_linked<all_list>(t)) {
+        return &t;
+      }
+    }
+    return nullptr;
+  };
+  bool agreed = true;
+  for (int step = 0; step < 400 && agreed; ++step) {
+    const std::size_t n = ref.size();
+    timer* const free_one = loose();
+    switch (next(9)) {
+      case 0:
+        if (free_one != nullptr) {
+          list.push_front(*free_one);
+          ref.push_front(free_one->id);
+        }
+        break;
+      case 1:
+        if (free_one != nullptr) {
+          list.push_back(*free_one);
+          ref.push_back(free_one->id);
+        }
+        break;
+      case 2:
+        if (n != 0) {
+          agreed = list.front().id == ref.front() && list.back().id == ref.back();
+          list.pop_front();
+          ref.pop_front();
+        }
+        break;
+      case 3:
+        if (n != 0) {
+          list.pop_back();
+          ref.pop_back();
+        }
+        break;
+      case 4:
+        if (free_one != nullptr) {
+          auto pos = at(next(static_cast<unsigned>(n + 1)));
+          const auto mine = list.insert(pos.first, *free_one);
+          const auto theirs = ref.insert(pos.second, free_one->id);
+          agreed = mine->id == *theirs;
+        }
+        break;
+      case 5:
+        if (n != 0) {
+          auto pos = at(next(static_cast<unsigned>(n)));
+          const auto mine = list.erase(pos.first);
+          const auto theirs = ref.erase(pos.second);
+          agreed =
+              (mine == list.end()) == (theirs == ref.end()) && (mine == list.end() || mine->id == *theirs);
+        }
+        break;
+      case 6:
+        if (n != 0) {
+          // erase(t) has no std::list member; std's equivalent is erasing
+          // the element's own position.
+          auto pos = at(next(static_cast<unsigned>(n)));
+          list.erase(*pos.first);
+          ref.erase(pos.second);
+        }
+        break;
+      case 7:
+        if (n != 0) {
+          auto from = at(next(static_cast<unsigned>(n)));
+          auto to = at(next(static_cast<unsigned>(n + 1)));
+          list.splice(to.first, list, from.first);
+          ref.splice(to.second, ref, from.second);
+        }
+        break;
+      default:
+        if (next(8) == 0) {
+          list.clear();
+          ref.clear();
+        }
+        break;
+    }
+    const std::vector<int> want(ref.begin(), ref.end());
+    const std::vector<int> want_reversed(ref.rbegin(), ref.rend());
+    agreed = agreed && list.size() == ref.size() && list.empty() == ref.empty() && ids(list) == want &&
+             ids_reversed(list) == want_reversed;
+    if (!agreed) {
+      std::fprintf(stderr, "intrusive_list and std::list disagree after step %d\n", step);
+    }
+  }
+  CHECK(agreed);
+  list.clear();
+}
+
 }  // namespace
 
 int main() {
@@ -437,5 +561,6 @@ int main() {
   erasing_end_traps();
   splice_moves_one_element();
   splicing_through_the_wrong_list_traps();
+  agrees_with_std_list();
   return metl_test::exit_code();
 }
