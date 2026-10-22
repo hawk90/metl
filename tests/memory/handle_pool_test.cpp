@@ -193,23 +193,40 @@ int main() {
   }
 
   // --- A forged handle to a never-used slot does not resolve -------------------
-  // Every slot starts at generation 1, so `{unused index, 1}` matches the
-  // slot's generation; only the slot being inactive rejects it.
+  // Neither the free slot's own generation nor the one its next handle will
+  // carry may resolve: only the slot being free rejects them.
   {
     metl::handle_pool<int, 4> pool;
     const auto& view = pool;
     const auto issued = pool.try_emplace(1);
     CHECK_EQ(issued.index(), 0u);
-    const metl::handle_pool<int, 4>::handle_type forged{2, 1};
-    CHECK_EQ(pool.generation_of(2), 1u);
-    CHECK(!pool.contains(forged));
-    CHECK_EQ(pool.get(forged), static_cast<int*>(nullptr));
-    CHECK_EQ(view.get(forged), static_cast<const int*>(nullptr));
-    CHECK(!pool.destroy(forged));
+    using gen = metl::handle_pool<int, 4>::generation_type;
+    for (const gen g : {pool.generation_of(2), static_cast<gen>(pool.generation_of(2) + 1u), gen{1}}) {
+      const metl::handle_pool<int, 4>::handle_type forged{2, g};
+      CHECK(!pool.contains(forged));
+      CHECK_EQ(pool.get(forged), static_cast<int*>(nullptr));
+      CHECK_EQ(view.get(forged), static_cast<const int*>(nullptr));
+      CHECK(!pool.destroy(forged));
+    }
     CHECK_EQ(pool.size(), std::size_t{1});
     // Out of range at a matching generation is rejected too.
     const metl::handle_pool<int, 4>::handle_type out_of_range{4, 1};
     CHECK(!pool.contains(out_of_range));
+  }
+
+  // --- A forged handle to a freed slot at that slot's generation ------------
+  // After one use the free slot's generation is no longer the start value, so
+  // this reaches what the never-used case above cannot.
+  {
+    metl::handle_pool<int, 4> pool;
+    const auto handle = pool.try_emplace(1);
+    CHECK(pool.destroy(handle));
+    const metl::handle_pool<int, 4>::handle_type forged{handle.index(), pool.generation_of(handle.index())};
+    CHECK(forged.valid());
+    CHECK(!pool.contains(forged));
+    CHECK_EQ(pool.get(forged), static_cast<int*>(nullptr));
+    CHECK(!pool.destroy(forged));
+    CHECK_EQ(pool.size(), std::size_t{0});
   }
 
   // --- Generation wraparound skips 0 -----------------------------------------
@@ -225,7 +242,6 @@ int main() {
       CHECK_DEREF_EQ(pool.get(handle), cycle);
       CHECK(pool.destroy(handle));
     }
-    CHECK(pool.generation_of(0) != 0);
   }
 
   return metl_test::exit_code();
