@@ -30,8 +30,8 @@ an untracked file would be tested here and be missing on CI.
   6. every test built and run through the amalgamation
      (tools/check_amalgamation.py), as the `amalgamation` job does.
   7. clang-tidy, as a DELTA: the same local binary over the merge-base with
-     origin/main and over this tree, failing if the distinct-finding count
-     grew. CI's absolute `--max` cannot be checked here -- the count depends on
+     origin/main and over this tree, failing if any check fires more often
+     in a file than it did. CI's absolute `--max` cannot be checked here -- the count depends on
      the clang-tidy version -- but a change that adds findings adds them under
      any version. Skipped, and said so, when no clang-tidy is installed.
   8. every TU under a consumer's warning flags, as the `consumer-warnings`
@@ -257,6 +257,22 @@ def tidy_findings(python, tidy, source_dir, build_dir, env):
                                for line in lines if "warning:" in line)
 
 
+def _by_check(findings):
+    """The findings counted per file and check, without their messages.
+
+    A message can name what it found: `constructor does not initialize these
+    fields: next_, active_`. Initialize one of the two and the message changes
+    while the finding count stays the same, so a comparison of messages read
+    the fix as one finding gone and one new, and blocked the push. Counted per
+    check, a finding is new only when its check fires more often in that file.
+    The cost: in one file, fixing one finding of a check while adding another
+    of the same check reads as no change."""
+    counts = collections.Counter()
+    for line, count in findings.items():
+        counts[re.sub(r" warning: .*(\[[^\]]+\])$", r" \1", line)] += count
+    return counts
+
+
 def clang_tidy_delta(python):
     tidy = find_clang_tidy()
     if tidy is None:
@@ -296,7 +312,7 @@ def clang_tidy_delta(python):
         print("\n".join("      | " + line for line in detail.strip().splitlines()[-30:]))
         return False
     elapsed = time.monotonic() - started
-    added = sorted((after - before).elements())
+    added = sorted((_by_check(after) - _by_check(before)).elements())
     if added:
         # A real regression is deterministic; run this tree once more so a
         # one-off difference is reported as such instead of blocking the push.
@@ -305,13 +321,16 @@ def clang_tidy_delta(python):
             print(f" (first run: {sum(after.values())} findings, second: {sum(again.values())};"
                   f" clang-tidy output differed between two runs)", end="")
         after = again
-        added = sorted((after - before).elements())
+        added = sorted((_by_check(after) - _by_check(before)).elements())
     total_before, total_after = sum(before.values()), sum(after.values())
     if added:
         print(f" FAILED ({elapsed:.0f}s): {total_before} -> {total_after} distinct findings, "
               f"{len(added)} new")
-        for line in added:
-            print(f"      | {line}")
+        # The messages of the checks that grew, for what to look at.
+        grown = set(added)
+        for line in sorted((after - before).elements()):
+            if next(iter(_by_check(collections.Counter([line]))), None) in grown:
+                print(f"      | {line}")
         return False
     print(f" ok ({elapsed:.0f}s): {total_before} -> {total_after} distinct findings")
     return True
