@@ -58,6 +58,11 @@ about the workflow file would look wrong. This script closes that hole.
       118 compiles on a 4-core runner, under the extractor's tracer, and the
       runner was shut down for it in 11 of 34 push runs. `-j "$(nproc)"` is
       the bound.
+  G10 every `pip install` in a workflow passes `--require-hashes`. A version
+      pin alone trusts PyPI to serve the same file under that version; a
+      hash does not. Scorecard's Pinned-Dependencies reports the unhashed
+      form, but only from main's push runs, after the merge: the two in the
+      zephyr job sat open for days that way.
 
 What this file deliberately does NOT do is read the live branch protection and
 compare. Reading it needs an admin token, which CI does not have and should not
@@ -232,6 +237,9 @@ def _pull_request_filters(text):
 # `-j` or `--parallel` followed by nothing, or by another option: no count.
 UNBOUNDED_JOBS = re.compile(r"(?:\s-j|\s--parallel)(?=\s*$|\s+-)")
 
+# `pip install` and `pip3 install`, however pip is reached; not `pipx install`.
+PIP_INSTALL = re.compile(r"\bpip3?\s+install\b")
+
 
 def _workflow_files(root):
     """Every workflow GitHub reads: *.yml and *.yaml."""
@@ -373,6 +381,22 @@ def check(root):
                                        f"asks for parallel jobs without a number, and make then "
                                        f"starts every ready compile at once; name the count, as "
                                        f"`-j \"$(nproc)\"`"))
+
+    # G10: a pip install pins every file by hash. A command continued with a
+    # trailing backslash is read whole, so the flag may sit on any of its lines.
+    for path in _workflow_files(root):
+        lines = path.read_text().split("\n")
+        start = 0
+        while start < len(lines):
+            end = start
+            while lines[end].rstrip().endswith("\\") and end + 1 < len(lines):
+                end += 1
+            command = " ".join(line.rstrip().rstrip("\\") for line in lines[start:end + 1])
+            if PIP_INSTALL.search(command) and "--require-hashes" not in command:
+                problems.append(("G10", f"{WORKFLOW_DIR}/{path.name}:{start + 1}: `{lines[start].strip()}` "
+                                        f"installs from PyPI without `--require-hashes`; install a "
+                                        f"hash-pinned requirements file with it"))
+            start = end + 1
 
     # G9 for the tools CI runs: a command list ending in a bare "-j".
     for path in sorted((root / "tools").glob("*.py")) if (root / "tools").is_dir() else ():
@@ -703,6 +727,22 @@ jobs:
         if "G9" in fired(root):
             failures.append("G9 fired on a tool that passes a job count")
 
+    # G10: pip installs without hashes, in each spelling; and the hashed and
+    # pipx forms, which must pass.
+    for unhashed in ("pip install west==1.5.0", "python -m pip install -r r.txt",
+                     "pip3 install x==1", "python -m pip install \\\n          -r a.txt \\\n          -r b.txt"):
+        with tempfile.TemporaryDirectory() as stack:
+            root = tree(stack, extra={"other.yml": cflite + f"    steps:\n      - run: {unhashed}\n"})
+            if "G10" not in fired(root):
+                failures.append(f"G10 did not fire on `{unhashed}`")
+    for hashed in ("python -m pip install --require-hashes -r r.txt", "pipx install conan==2.33.0",
+                   "python -m pip install \\\n          --require-hashes \\\n          -r r.txt",
+                   "pip uninstall -y x"):
+        with tempfile.TemporaryDirectory() as stack:
+            root = tree(stack, extra={"other.yml": cflite + f"    steps:\n      - run: {hashed}\n"})
+            if "G10" in fired(root):
+                failures.append(f"G10 fired on `{hashed}`")
+
     # And the gate job simply deleted -- the whole file is about that not
     # passing quietly.
     with tempfile.TemporaryDirectory() as stack:
@@ -741,7 +781,7 @@ jobs:
         for failure in failures:
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
-    print("self-test passed: G1-G9 each bite, a job id containing the gate's "
+    print("self-test passed: G1-G10 each bite, a job id containing the gate's "
           "name is not mistaken for it, a commented job header is still a job, "
           "and a clean tree is not flagged")
     return 0
