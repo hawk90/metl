@@ -23,15 +23,26 @@ set(_metl_examples
   wire_values       # parse.hpp text-to-int: boundary refusal, fixed point, round trip
   coroutine_task    # coro/protothread cooperative tasks
   deadline_tasks    # coro/deadline_scheduler + fixed_priority_queue
+  armed_timers      # exp/intrusive_list: a timer in two lists, O(1) cancel
+  driver_registry   # exp/intrusive_forward_list: drivers registering across TUs
   blinky_fsm        # fsm + mmio + delegate
   can_frame_parser  # bitfield + crc16 + span + expected
   sensor_pipeline   # realistic: spsc_queue -> ring_buffer -> fixed_vector
 )
 
+# An example spread over several translation units lists the others here, in
+# examples/<name>/. examples/<name>.cpp holds main() and is linked first; for
+# driver_registry that order is what makes a missing registrar destructor stop
+# the program at exit (with its list's translation unit last, it would not).
+set(_metl_example_driver_registry_srcs
+  driver_registry/uart.cpp
+  driver_registry/spi.cpp
+)
+
 foreach(_ex IN LISTS _metl_examples)
   metl_cc_binary(
     NAME metl_example_${_ex}
-    SRCS ${_ex}.cpp
+    SRCS ${_ex}.cpp ${_metl_example_${_ex}_srcs}
     DEPS metl::metl
   )
 
