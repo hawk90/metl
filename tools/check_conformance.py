@@ -91,8 +91,10 @@ EXEMPT = {
     "scope_exit.hpp": "holds one callable for its whole lifetime; nothing is added or removed",
     "lock.hpp": "guarded<T> holds one T for its whole lifetime; nothing is added or removed",
     "exp/bitset.hpp": "holds bits, not objects",
-    "exp/intrusive_forward_list.hpp": "links objects the caller owns; stores, constructs and destroys none",
-    "exp/intrusive_list.hpp": "links objects the caller owns; stores, constructs and destroys none",
+    "exp/intrusive_forward_list.hpp": ("links objects the caller owns; stores, constructs and destroys none. "
+                    "std parity: agrees_with_std_forward_list in its own test"),
+    "exp/intrusive_list.hpp": ("links objects the caller owns; stores, constructs and destroys none. "
+                    "std parity: agrees_with_std_list in its own test"),
 }
 
 # Own user objects, no adapter yet. MAY ONLY SHRINK: --base fails an entry the

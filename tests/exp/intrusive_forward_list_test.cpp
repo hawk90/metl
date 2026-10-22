@@ -8,6 +8,8 @@
 #include "metl_check.hpp"
 
 #include <cstddef>
+#include <cstdio>
+#include <forward_list>
 #include <iterator>
 #include <new>
 #include <type_traits>
@@ -315,6 +317,113 @@ void past_the_end_traps() {
   }
 }
 
+// ---- agreement with std::forward_list -----------------------------------------
+
+// As agrees_with_std_list in intrusive_list_test.cpp: a fixed pseudo-random
+// sequence of every operation the list shares with std::forward_list, applied
+// to both, compared after each step. This is the conformance suite's
+// std-parity property (#391), which cannot run through its adapters over a
+// list that constructs and destroys no element.
+void agrees_with_std_forward_list() {
+  constexpr int kPool = 12;
+  std::vector<timer> pool;
+  pool.reserve(kPool);
+  for (int i = 0; i < kPool; ++i) {
+    pool.emplace_back(i);
+  }
+  id_list list;
+  std::forward_list<int> ref;
+  std::size_t n = 0;  // std::forward_list keeps no size
+  unsigned state = 54321u;
+  auto next = [&state](unsigned bound) {
+    state = state * 1103515245u + 12345u;
+    return (state >> 16) % bound;
+  };
+  // The position `k` steps after before_begin() in each sequence.
+  auto after = [&](std::size_t k) {
+    auto a = list.before_begin();
+    auto b = ref.before_begin();
+    std::advance(a, static_cast<std::ptrdiff_t>(k));
+    std::advance(b, static_cast<std::ptrdiff_t>(k));
+    return std::make_pair(a, b);
+  };
+  auto loose = [&]() -> timer* {
+    for (timer& t : pool) {
+      if (!hook_linked<id_list>(t)) {
+        return &t;
+      }
+    }
+    return nullptr;
+  };
+  bool agreed = true;
+  for (int step = 0; step < 400 && agreed; ++step) {
+    timer* const free_one = loose();
+    switch (next(6)) {
+      case 0:
+        if (free_one != nullptr) {
+          list.push_front(*free_one);
+          ref.push_front(free_one->id);
+          ++n;
+        }
+        break;
+      case 1:
+        if (n != 0) {
+          agreed = list.front().id == ref.front();
+          list.pop_front();
+          ref.pop_front();
+          --n;
+        }
+        break;
+      case 2:
+        if (free_one != nullptr) {
+          auto pos = after(next(static_cast<unsigned>(n + 1)));
+          const auto mine = list.insert_after(pos.first, *free_one);
+          const auto theirs = ref.insert_after(pos.second, free_one->id);
+          agreed = mine->id == *theirs;
+          ++n;
+        }
+        break;
+      case 3:
+        if (n != 0) {
+          auto pos = after(next(static_cast<unsigned>(n)));
+          const auto mine = list.erase_after(pos.first);
+          const auto theirs = ref.erase_after(pos.second);
+          agreed =
+              (mine == list.end()) == (theirs == ref.end()) && (mine == list.end() || mine->id == *theirs);
+          --n;
+        }
+        break;
+      case 4:
+        if (n != 0) {
+          // erase(t) has no std::forward_list member; std's equivalent is
+          // erase_after the element before it.
+          const std::size_t k = next(static_cast<unsigned>(n));
+          auto pos = after(k);
+          auto target = pos.first;
+          ++target;
+          list.erase(*target);
+          ref.erase_after(pos.second);
+          --n;
+        }
+        break;
+      default:
+        if (next(8) == 0) {
+          list.clear();
+          ref.clear();
+          n = 0;
+        }
+        break;
+    }
+    const std::vector<int> want(ref.begin(), ref.end());
+    agreed = agreed && list.size() == n && list.empty() == ref.empty() && ids(list) == want;
+    if (!agreed) {
+      std::fprintf(stderr, "intrusive_forward_list and std::forward_list disagree after step %d\n", step);
+    }
+  }
+  CHECK(agreed);
+  list.clear();
+}
+
 }  // namespace
 
 int main() {
@@ -331,5 +440,6 @@ int main() {
   linking_a_linked_element_traps();
   erasing_through_another_list_traps();
   past_the_end_traps();
+  agrees_with_std_forward_list();
   return metl_test::exit_code();
 }
