@@ -26,6 +26,7 @@ Usage:
 """
 
 import argparse
+import os
 import pathlib
 import re
 import shutil
@@ -192,7 +193,7 @@ def build_and_test(tree, build, targets=None, compiler=None):
     result = subprocess.run(configure, capture_output=True, text=True)
     if result.returncode != 0:
         return result.stdout + result.stderr, []
-    command = ["cmake", "--build", str(build), "-j"]
+    command = ["cmake", "--build", str(build), "-j", str(os.cpu_count() or 2)]
     for target in targets or []:
         command += ["--target", target]
     # Keep going past the first failure, so one run names every old file that

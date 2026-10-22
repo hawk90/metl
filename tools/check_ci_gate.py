@@ -52,6 +52,12 @@ about the workflow file would look wrong. This script closes that hole.
       `tools/check_provenance.py --gate` fed `toJSON(needs)` (that tool's
       self-test proves the verdict fails where it must). A main.yml job left
       out of the fan-in would stop no release.
+  G9  every `cmake --build` that asks for parallel jobs (`-j`, `--parallel`)
+      names how many. Given no number, CMake passes a bare `-j` to make, which
+      starts every ready translation unit at once: CodeQL's build on main ran
+      118 compiles on a 4-core runner, under the extractor's tracer, and the
+      runner was shut down for it in 11 of 34 push runs. `-j "$(nproc)"` is
+      the bound.
 
 What this file deliberately does NOT do is read the live branch protection and
 compare. Reading it needs an admin token, which CI does not have and should not
@@ -223,6 +229,10 @@ def _pull_request_filters(text):
     return re.findall(r"^    (paths|paths-ignore):", block.group(1), re.M) if block else []
 
 
+# `-j` or `--parallel` followed by nothing, or by another option: no count.
+UNBOUNDED_JOBS = re.compile(r"(?:\s-j|\s--parallel)(?=\s*$|\s+-)")
+
+
 def _workflow_files(root):
     """Every workflow GitHub reads: *.yml and *.yaml."""
     directory = pathlib.Path(root) / WORKFLOW_DIR
@@ -354,6 +364,25 @@ def check(root):
                                    f"`defaults: run: shell: bash`, so its run "
                                    f"steps lack pipefail and a failing first "
                                    f"stage of a pipe goes unnoticed"))
+
+    # G9: a build that asks for parallel jobs bounds them.
+    for path in _workflow_files(root):
+        for number, line in enumerate(path.read_text().split("\n"), 1):
+            if "cmake --build" in line and UNBOUNDED_JOBS.search(line):
+                problems.append(("G9", f"{WORKFLOW_DIR}/{path.name}:{number}: `{line.strip()}` "
+                                       f"asks for parallel jobs without a number, and make then "
+                                       f"starts every ready compile at once; name the count, as "
+                                       f"`-j \"$(nproc)\"`"))
+
+    # G9 for the tools CI runs: a command list ending in a bare "-j".
+    for path in sorted((root / "tools").glob("*.py")) if (root / "tools").is_dir() else ():
+        if path.name == pathlib.Path(__file__).name:
+            continue  # this file names the bare form in its own messages and self-test
+        for number, line in enumerate(path.read_text().split("\n"), 1):
+            if '"--build"' in line and '"-j"]' in line:
+                problems.append(("G9", f"tools/{path.name}:{number}: a `cmake --build` with a bare "
+                                       f"`-j` starts every ready compile at once; pass a count, as "
+                                       f"`\"-j\", str(os.cpu_count() or 2)`"))
 
     return problems
 
@@ -649,6 +678,31 @@ jobs:
         if "G6" not in fired(root):
             failures.append("G6 did not fire on a workflow without `shell: bash`")
 
+    # G9: a build asking for unbounded parallel jobs, in each spelling; and
+    # the bounded spellings, which must pass.
+    for unbounded in ("cmake --build build -j", "cmake --build build -j --config Release",
+                      "cmake --build build --parallel -- -k", "cmake --build b -j --target t"):
+        with tempfile.TemporaryDirectory() as stack:
+            root = tree(stack, extra={"other.yml": cflite + f"    steps:\n      - run: {unbounded}\n"})
+            if "G9" not in fired(root):
+                failures.append(f"G9 did not fire on `{unbounded}`")
+    for bounded in ('cmake --build build -j "$(nproc)"', "cmake --build build -j 4 --config Release",
+                    "cmake --build build -j4", 'cmake --build build --parallel "$JOBS" -- -k'):
+        with tempfile.TemporaryDirectory() as stack:
+            root = tree(stack, extra={"other.yml": cflite + f"    steps:\n      - run: {bounded}\n"})
+            if "G9" in fired(root):
+                failures.append(f"G9 fired on the bounded `{bounded}`")
+
+    with tempfile.TemporaryDirectory() as stack:
+        root = tree(stack)
+        (root / "tools").mkdir()
+        (root / "tools" / "t.py").write_text('run(["cmake", "--build", d, "-j"])\n')
+        if "G9" not in fired(root):
+            failures.append('G9 did not fire on a tool running `cmake --build` with a bare "-j"')
+        (root / "tools" / "t.py").write_text('run(["cmake", "--build", d, "-j", str(os.cpu_count() or 2)])\n')
+        if "G9" in fired(root):
+            failures.append("G9 fired on a tool that passes a job count")
+
     # And the gate job simply deleted -- the whole file is about that not
     # passing quietly.
     with tempfile.TemporaryDirectory() as stack:
@@ -687,7 +741,7 @@ jobs:
         for failure in failures:
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
-    print("self-test passed: G1-G8 each bite, a job id containing the gate's "
+    print("self-test passed: G1-G9 each bite, a job id containing the gate's "
           "name is not mistaken for it, a commented job header is still a job, "
           "and a clean tree is not flagged")
     return 0

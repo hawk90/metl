@@ -222,13 +222,13 @@ def build_tsan_target(build_dir, target):
         configure = subprocess.run(command, capture_output=True, text=True, cwd=REPO)
         if configure.returncode != 0:
             return configure
-    return subprocess.run(["cmake", "--build", tsan_dir, "--target", target, "-j"],
+    return subprocess.run(["cmake", "--build", tsan_dir, "--target", target, "-j", str(os.cpu_count() or 2)],
                           capture_output=True, text=True, cwd=REPO)
 
 
 def cmake_build(build_dir, targets=None):
     """Builds `build_dir`, or only `targets` in it."""
-    command = ["cmake", "--build", build_dir, "-j"]
+    command = ["cmake", "--build", build_dir, "-j", str(os.cpu_count() or 2)]
     if targets:
         command += ["--target", *targets]
     return subprocess.run(command, capture_output=True, text=True, cwd=REPO)

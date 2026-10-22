@@ -1121,7 +1121,7 @@ def measure(build_dir, cxx_flags, profdata, cov, mcdc=False):
     if subprocess.run(configure, **quiet).returncode:
         print(f"error: configuring {build_dir.name} failed", file=sys.stderr)
         return None
-    built = subprocess.run(["cmake", "--build", str(build_dir), "-j"], stdout=subprocess.PIPE,
+    built = subprocess.run(["cmake", "--build", str(build_dir), "-j", str(os.cpu_count() or 2)], stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT, text=True)
     if built.returncode:
         print(built.stdout)
