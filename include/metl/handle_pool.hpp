@@ -145,8 +145,9 @@ class handle_pool {
     }
 
     const size_type index = free_head_;
-    free_head_ = link(index);
-    generation_[index] = saved_generation(index);
+    const free_slot claimed = read_free(index);
+    free_head_ = claimed.link;
+    generation_[index] = claimed.generation;
     ++size_;
     return_on_unwind claim{this, index};
     ::new (storage_[index].addr()) T(std::forward<Args>(args)...);
@@ -226,7 +227,11 @@ class handle_pool {
   // A slot holds a T while live, and while free its free-list link and the
   // generation its next handle gets, in the same bytes; it is sized for
   // whichever is larger.
-  static constexpr std::size_t free_bytes = sizeof(index_type) + sizeof(generation_type);
+  struct free_slot {
+    index_type link;
+    generation_type generation;
+  };
+  static constexpr std::size_t free_bytes = sizeof(free_slot);
 
   struct storage_type {
     alignas(T) unsigned char bytes[sizeof(T) < free_bytes ? free_bytes : sizeof(T)];
@@ -237,20 +242,14 @@ class handle_pool {
 
   // A free slot's link and saved generation, read and written as bytes: no
   // object lives there, and the bytes may not be aligned for either type.
-  size_type link(size_type index) const noexcept {
-    index_type next;
-    std::memcpy(&next, &storage_[index].bytes[0], sizeof next);
-    return next;
-  }
-  generation_type saved_generation(size_type index) const noexcept {
-    generation_type generation;
-    std::memcpy(&generation, &storage_[index].bytes[sizeof(index_type)], sizeof generation);
-    return generation;
+  free_slot read_free(size_type index) const noexcept {
+    free_slot slot;
+    std::memcpy(&slot, &storage_[index].bytes[0], sizeof slot);
+    return slot;
   }
   void set_free(size_type index, size_type next, generation_type generation) noexcept {
-    const auto link_value = static_cast<index_type>(next);
-    std::memcpy(&storage_[index].bytes[0], &link_value, sizeof link_value);
-    std::memcpy(&storage_[index].bytes[sizeof(index_type)], &generation, sizeof generation);
+    const free_slot slot{static_cast<index_type>(next), generation};
+    std::memcpy(&storage_[index].bytes[0], &slot, sizeof slot);
   }
 
   pointer slot_ptr(size_type index) noexcept { return storage_[index].ptr(); }
