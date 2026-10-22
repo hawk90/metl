@@ -112,16 +112,17 @@ class list_hook : private metl::detail::dlist_link {
 ///
 /// Progress guarantees:
 ///
-///   | Operation                                     | Guarantee                |
-///   |-----------------------------------------------|--------------------------|
-///   | `push_*` / `pop_*` / `front` / `back`         | wait-free, bounded, O(1) |
-///   | `insert` / `erase(pos)` / `erase(t)`          | wait-free, bounded, O(1) |
-///   | `splice`                                      | wait-free, bounded, O(1) |
-///   | `empty` / `size` / iteration step             | wait-free, bounded, O(1) |
-///   | `clear` / destructor                          | wait-free, bounded, O(n) |
+///   | Operation                                     | Guarantee                              |
+///   |-----------------------------------------------|----------------------------------------|
+///   | `push_*` / `pop_*` / `front` / `back`         | wait-free, bounded, O(1)               |
+///   | `insert` / `erase(pos)` / `erase(t)`          | wait-free, bounded, O(1)               |
+///   | `splice`                                      | wait-free, bounded, O(1)               |
+///   | `empty` / `size` / iteration step             | wait-free, bounded, O(1)               |
+///   | `clear` / destructor                          | wait-free, bounded by the caller, O(n) |
 ///
 /// The n of `clear` is the number of elements linked. No capacity bounds it:
-/// the caller does, by the objects it links.
+/// the caller does, by the objects it links (docs/SCOPE.md section 1, "bounded
+/// by the caller").
 ///
 /// @note Not thread-safe, like the other containers: an ISR that links or
 ///       unlinks while a thread does needs a lock around both.
