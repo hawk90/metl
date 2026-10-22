@@ -98,6 +98,8 @@ class list_hook : private metl::detail::dlist_link {
 ///     `front()`, `back()`;
 ///   * `insert(pos, t)`, linking `t` before `pos`; `erase(pos)`;
 ///   * `erase(t)`: unlinks `t` wherever it is;
+///   * `splice(pos, other, it)`: moves one element, from `other` or from this
+///     list, to before `pos`, without unlinking it;
 ///   * `clear()`, `empty()`, `size()`, bidirectional iterators.
 /// Unlinking an element leaves it alive; the list never destroys one. The
 /// list's own destructor unlinks every element, so they may outlive it.
@@ -114,6 +116,7 @@ class list_hook : private metl::detail::dlist_link {
 ///   |-----------------------------------------------|--------------------------|
 ///   | `push_*` / `pop_*` / `front` / `back`         | wait-free, bounded, O(1) |
 ///   | `insert` / `erase(pos)` / `erase(t)`          | wait-free, bounded, O(1) |
+///   | `splice`                                      | wait-free, bounded, O(1) |
 ///   | `empty` / `size` / iteration step             | wait-free, bounded, O(1) |
 ///   | `clear` / destructor                          | wait-free, bounded, O(n) |
 ///
@@ -292,6 +295,28 @@ class intrusive_list {
     link& node = link_of(value);
     METL_HARDEN(node.owner == this);  // in another list, or in none
     unlink(node);
+  }
+
+  /// @brief Moves the element at `it`, in `other`, to directly before `pos` in
+  ///        this list. `other` may be this list. The element is never unlinked
+  ///        and iterators to it stay valid; moved to another list, it belongs
+  ///        to that list.
+  /// @pre `pos` is an element of this list or its `end()`, and `it` is an
+  ///      element of `other`, not its `end()`.
+  void splice(const_iterator pos, intrusive_list& other, const_iterator it) noexcept {
+    METL_HARDEN(in_this_list(pos));         // a position in another list, or none
+    METL_HARDEN(other.in_this_list(it));    // an element of another list, or none
+    METL_HARDEN(it.node_ != &other.head_);  // end(): there is no element to move
+    if (pos.node_ == it.node_ || pos.node_ == it.node_->next) {
+      return;  // already directly before `pos`
+    }
+    metl::detail::dlist_unlink(*it.node_);
+    metl::detail::dlist_link_before(*pos.node_, *it.node_);
+    if (&other != this) {
+      it.node_->owner = this;
+      --other.size_;
+      ++size_;
+    }
   }
 
   /// @brief Unlinks every element.

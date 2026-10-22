@@ -1,0 +1,1 @@
+- `metl::exp::intrusive_list::splice(pos, other, it)`: moves one element, within a list or from another, to before `pos` in O(1) without unlinking it; iterators to it stay valid. As `std::list::splice` for one element, and checked like `insert` and `erase`: a position in another list, an element not in `other`, or `other.end()` stops the program at every hardening level (#337).
