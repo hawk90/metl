@@ -234,11 +234,14 @@ int main() {
     metl::handle_pool<int, 4> pool;
     const auto handle = pool.try_emplace(1);
     CHECK(pool.destroy(handle));
-    const metl::handle_pool<int, 4>::handle_type forged{handle.index(), pool.generation_of(handle.index())};
-    CHECK(forged.valid());
-    CHECK(!pool.contains(forged));
-    CHECK_EQ(pool.get(forged), static_cast<int*>(nullptr));
-    CHECK(!pool.destroy(forged));
+    using gen = metl::handle_pool<int, 4>::generation_type;
+    // The slot's own generation, and the one its next handle will carry.
+    for (const gen g : {pool.generation_of(handle.index()), static_cast<gen>(handle.generation() + 1u)}) {
+      const metl::handle_pool<int, 4>::handle_type forged{handle.index(), g};
+      CHECK(!pool.contains(forged));
+      CHECK_EQ(pool.get(forged), static_cast<int*>(nullptr));
+      CHECK(!pool.destroy(forged));
+    }
     CHECK_EQ(pool.size(), std::size_t{0});
   }
 
@@ -252,6 +255,22 @@ int main() {
     CHECK_EQ(last_words::heard, 0xA5A5A5A5u);
     CHECK(pool.destroy(second));
     CHECK_EQ(last_words::heard, 0x5A5A5A5Au);
+  }
+
+  // --- A slot issues every nonzero generation before one repeats -------------
+  // With an 8-bit counter that is 255 handles; a retained handle stays stale
+  // through the 254 that follow it.
+  {
+    metl::handle_pool<int, 1, std::uint8_t> pool;
+    const auto first = pool.try_emplace(0);
+    CHECK(pool.destroy(first));
+    for (int cycle = 1; cycle < 255; ++cycle) {
+      const auto handle = pool.try_emplace(cycle);
+      CHECK(handle.generation() != first.generation());
+      CHECK(!pool.contains(first));
+      CHECK(pool.destroy(handle));
+    }
+    CHECK_EQ(pool.try_emplace(255).generation(), first.generation());
   }
 
   // --- Generation wraparound skips 0 -----------------------------------------

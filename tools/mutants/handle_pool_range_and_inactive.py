@@ -3,9 +3,13 @@
 MUTANT = {
     "name": "handle_pool_range_and_inactive",
     "file": "include/metl/handle_pool.hpp",
-    "why": "the liveness check drops the parity test, so a handle forged "
-           "with a free slot's even generation resolves to that slot.",
+    "why": "the liveness check drops the null test, so the null handle, "
+           "whose generation is the free marker 0, resolves to a free slot 0.",
     "kills": "ctest:handle_pool_test",
-    "old": "    if ((handle.generation() & generation_type{1}) == 0) {",
-    "new": "    if (handle.generation() == 0) {",
+    "old": """    if (!handle.valid()) {
+      return Capacity;
+    }""",
+    "new": """    if (false) {
+      return Capacity;
+    }""",
 }
