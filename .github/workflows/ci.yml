@@ -2246,7 +2246,8 @@ jobs:
   # hidapi, an NXP flashing stack this job never runs. hidapi ships wheels for
   # a fixed set of CPython versions only; on any newer one pip builds it from
   # source and fails without libusb headers. The steps below are the parts of
-  # that action this job uses, with only these requirement files:
+  # that action this job uses, with only these requirement files, resolved
+  # into the hash-pinned .github/zephyr/requirements.txt:
   #   * requirements-base.txt       — "required to build" (west build: dts,
   #                                   Kconfig, zephyr_module, elftools)
   #   * requirements-build-test.txt — twister itself (ply, colorama,
@@ -2292,10 +2293,19 @@ jobs:
         with:
           python-version: '3.15.0'
 
-      - name: Install west and ccache
+      - name: Cache Python packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/pip
+          key: pip-zephyr-${{ runner.os }}-${{ hashFiles('metl/.github/zephyr/requirements.txt') }}
+
+      # Every package is pinned by sha256 (Scorecard's Pinned-Dependencies,
+      # and tools/check_ci_gate.py G10): west, and what `west build` and
+      # twister need from the pinned Zephyr.
+      - name: Install west, the Python packages west build and twister need, and ccache
         run: |
           set -euo pipefail
-          python -m pip install west==1.5.0
+          python -m pip install --require-hashes -r metl/.github/zephyr/requirements.txt
           # man-db rebuilds its index on every package install; skip it.
           sudo rm -f /var/lib/man-db/auto-update
           sudo apt-get update -y
@@ -2313,20 +2323,47 @@ jobs:
           west init -l manifest --mf west.yml
           west update -o=--depth=1 -n
 
-      - name: Cache Python packages
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: ~/.cache/pip
-          key: pip-zephyr-${{ runner.os }}-${{ hashFiles('zephyrproject/zephyr/scripts/requirements-base.txt', 'zephyrproject/zephyr/scripts/requirements-build-test.txt', 'zephyrproject/zephyr/scripts/requirements-run-test.txt') }}
-
-      - name: Install the Python packages west build and twister need
+      # The lock was resolved from these files at one Zephyr revision. A bump
+      # that needs a package it lacks, or a version it excludes, stops here
+      # with the requirement named, instead of failing later inside twister.
+      - name: Check the installed packages satisfy the fetched Zephyr's requirements
         working-directory: zephyrproject/zephyr/scripts
         run: |
           set -euo pipefail
-          python -m pip install \
-            -r requirements-base.txt \
-            -r requirements-build-test.txt \
-            -r requirements-run-test.txt
+          python - requirements-base.txt requirements-build-test.txt requirements-run-test.txt <<'PY'
+          import pathlib
+          import sys
+          from importlib import metadata
+
+          from packaging.requirements import Requirement
+          from packaging.utils import canonicalize_name
+
+          installed = {canonicalize_name(d.metadata["Name"]): d.version for d in metadata.distributions()}
+          problems = []
+          for name in sys.argv[1:]:
+              for line in pathlib.Path(name).read_text().splitlines():
+                  line = line.split("#", 1)[0].strip()
+                  if not line:
+                      continue
+                  if line.startswith("-"):
+                      problems.append(f"{name}: `{line}` is an option this check does not follow")
+                      continue
+                  req = Requirement(line)
+                  if req.marker is not None and not req.marker.evaluate():
+                      continue
+                  have = installed.get(canonicalize_name(req.name))
+                  if have is None:
+                      problems.append(f"{name}: `{req}` is not installed")
+                  elif req.extras:
+                      problems.append(f"{name}: `{req}` asks for extras, which this check does not follow")
+                  elif not req.specifier.contains(have, prereleases=True):
+                      problems.append(f"{name}: `{req}` excludes the installed {have}")
+          for problem in problems:
+              print(f"::error::{problem}. Regenerate metl/.github/zephyr/requirements.txt as its header says.")
+          if problems:
+              sys.exit(1)
+          print(f"every requirement in {', '.join(sys.argv[1:])} is satisfied")
+          PY
 
       - name: Resolve the Zephyr SDK version
         id: sdk
