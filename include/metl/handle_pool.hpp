@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <new>
 #include <utility>
 
@@ -120,8 +121,8 @@ class handle_pool {
   ///       Construct it before anything that runs earlier can reach it.
   handle_pool() noexcept : free_head_(0), size_(0) {
     for (size_type i = 0; i < Capacity; ++i) {
-      next_[i] = static_cast<index_type>(i + 1);  // last one points at `Capacity` == end
-      generation_[i] = generation_type{0};        // even: free (see generation_)
+      set_link(i, i + 1);                   // last one points at `Capacity` == end
+      generation_[i] = generation_type{0};  // even: free (see generation_)
     }
   }
 
@@ -146,7 +147,7 @@ class handle_pool {
     }
 
     const size_type index = free_head_;
-    free_head_ = next_[index];
+    free_head_ = link(index);
     generation_[index] = static_cast<generation_type>(generation_[index] + generation_type{1});  // odd: live
     ++size_;
     return_on_unwind claim{this, index};
@@ -224,7 +225,26 @@ class handle_pool {
   }
 
  private:
-  using storage_type = storage_for<T>;
+  // A slot holds a T while live and its free-list link while free, in the
+  // same bytes, so it is sized for whichever is larger.
+  struct storage_type {
+    alignas(T) unsigned char bytes[sizeof(T) < sizeof(index_type) ? sizeof(index_type) : sizeof(T)];
+    T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
+    const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
+    void* addr() noexcept { return &bytes[0]; }
+  };
+
+  // The free-list link of a free slot, read and written as bytes: no object
+  // lives there, and the bytes may not be aligned for index_type.
+  size_type link(size_type index) const noexcept {
+    index_type next = 0;
+    std::memcpy(&next, &storage_[index].bytes[0], sizeof next);
+    return next;
+  }
+  void set_link(size_type index, size_type next) noexcept {
+    const auto value = static_cast<index_type>(next);
+    std::memcpy(&storage_[index].bytes[0], &value, sizeof value);
+  }
 
   pointer slot_ptr(size_type index) noexcept { return storage_[index].ptr(); }
   const_pointer slot_ptr(size_type index) const noexcept { return storage_[index].ptr(); }
@@ -263,7 +283,7 @@ class handle_pool {
 
     slot_ptr(index)->~T();
 
-    next_[index] = static_cast<index_type>(free_head_);
+    set_link(index, free_head_);
     free_head_ = index;
   }
 
@@ -282,7 +302,7 @@ class handle_pool {
         pool_->generation_[index_] =
             static_cast<generation_type>(pool_->generation_[index_] - generation_type{1});
         --pool_->size_;
-        pool_->next_[index_] = static_cast<index_type>(pool_->free_head_);
+        pool_->set_link(index_, pool_->free_head_);
         pool_->free_head_ = index_;
       }
     }
@@ -299,7 +319,6 @@ class handle_pool {
   // try_emplace returns a null handle because free_head_ (0) is already >=
   // Capacity, and nothing ever indexes the padding element.
   storage_type storage_[Capacity == 0 ? 1 : Capacity];
-  index_type next_[Capacity == 0 ? 1 : Capacity];
   // Odd while the slot is live, even while it is free: the parity is the
   // liveness flag, so a slot needs no flag of its own.
   generation_type generation_[Capacity == 0 ? 1 : Capacity];

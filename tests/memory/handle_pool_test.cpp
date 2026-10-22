@@ -20,6 +20,19 @@ struct tracker {
 int tracker::constructions = 0;
 int tracker::destructions = 0;
 
+// Records the value it held when its destructor ran, so a test can tell
+// whether the pool touched the object's bytes before destroying it.
+struct last_words {
+  static std::uint32_t heard;
+
+  explicit last_words(std::uint32_t input) : value(input) {}
+  ~last_words() { heard = value; }
+
+  std::uint32_t value;
+};
+
+std::uint32_t last_words::heard = 0;
+
 void reset_tracker() {
   tracker::constructions = 0;
   tracker::destructions = 0;
@@ -227,6 +240,18 @@ int main() {
     CHECK_EQ(pool.get(forged), static_cast<int*>(nullptr));
     CHECK(!pool.destroy(forged));
     CHECK_EQ(pool.size(), std::size_t{0});
+  }
+
+  // --- An object is intact when its destructor runs ---------------------------
+  // The pool must not reuse a slot's bytes until ~T() has finished with them.
+  {
+    metl::handle_pool<last_words, 4> pool;
+    const auto first = pool.try_emplace(0xA5A5A5A5u);
+    const auto second = pool.try_emplace(0x5A5A5A5Au);
+    CHECK(pool.destroy(first));
+    CHECK_EQ(last_words::heard, 0xA5A5A5A5u);
+    CHECK(pool.destroy(second));
+    CHECK_EQ(last_words::heard, 0x5A5A5A5Au);
   }
 
   // --- Generation wraparound skips 0 -----------------------------------------
