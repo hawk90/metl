@@ -1,1 +1,0 @@
-- `coro::scheduler`'s progress table, which clang-format had folded into one paragraph, is a table again, and states that `run_once`'s own work is O(n^2) in the tasks attached, with the cost measured on Cortex-M (#485).

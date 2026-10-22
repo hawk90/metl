@@ -1,1 +1,0 @@
-- `exp::intrusive_forward_list`'s head is no longer `mutable`: the const `before_begin()` converts the position once, with the reason it is safe, so no const member can write the head unchecked. No behaviour, layout or code size changes (#337).
