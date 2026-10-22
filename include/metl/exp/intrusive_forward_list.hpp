@@ -49,6 +49,13 @@ class intrusive_forward_list;
 /// it). Its list then points at whatever the storage holds next. Run the
 /// destructor, or unlink the element first.
 ///
+/// An element with static storage duration linked into a list in another
+/// translation unit is destroyed at exit in an order the program does not
+/// choose, possibly before that list unlinks it, and the first check then
+/// stops the program. Whatever links such an element unlinks it in its own
+/// destructor, if `is_linked()`; the list's destructor has unlinked it
+/// otherwise. `examples/driver_registry.cpp` shows the pattern.
+///
 /// Copying an element does not copy its place in a list: a copy-constructed
 /// hook is unlinked, and assignment leaves the target's hook as it was.
 ///

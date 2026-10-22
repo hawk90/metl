@@ -55,7 +55,7 @@ class intrusive_list;
 /// choose, possibly before that list unlinks it, and the first check then
 /// stops the program. Whatever links such an element unlinks it in its own
 /// destructor, if `is_linked()`; the list's destructor has unlinked it
-/// otherwise.
+/// otherwise. `examples/driver_registry.cpp` shows the pattern.
 ///
 /// Copying an element does not copy its place in a list: a copy-constructed
 /// hook is unlinked, and assignment leaves the target's hook as it was.
@@ -89,7 +89,8 @@ class list_hook : private metl::detail::dlist_link {
 /// The list stores no element. It links the caller's objects, wherever they
 /// live, and never allocates, copies or constructs one. Over
 /// `intrusive_forward_list` it adds unlinking any element in O(1), as a
-/// cancelled timer needs, for one more pointer per hook.
+/// cancelled timer needs, for one more pointer per hook
+/// (`examples/armed_timers.cpp`).
 ///
 /// The interface follows `std::list` where the operation exists, but elements
 /// are passed by reference and are linked, not copied:

@@ -1,0 +1,1 @@
+- Examples for the experimental intrusive lists: `examples/armed_timers.cpp` (a timer in two `exp::intrusive_list`s, O(1) cancel) and `examples/driver_registry.cpp` (drivers registering themselves across translation units through `exp::intrusive_forward_list`) (#337).

@@ -343,7 +343,7 @@ def consumer_warnings():
               "tools/pre_push.py to the job's new layout")
         return False
     gcc = newest_gcc()
-    files = sorted(str(p.relative_to(REPO)) for pattern in ("tests/**/*.cpp", "fuzz/*.cpp", "examples/*.cpp")
+    files = sorted(str(p.relative_to(REPO)) for pattern in ("tests/**/*.cpp", "fuzz/*.cpp", "examples/**/*.cpp")
                    for p in REPO.glob(pattern)
                    if not str(p.relative_to(REPO)).startswith(("tests/embedded/", "tests/compile_fail/")))
     for cxx, std in cells:
