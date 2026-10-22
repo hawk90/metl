@@ -1,0 +1,1 @@
+- `metl::handle_pool` keeps its per-slot occupancy flags one bit per slot instead of one byte, so a pool of more than 8 slots is smaller: `handle_pool<std::uint32_t, 64>` by 56 bytes and `handle_pool<std::uint32_t, 1024>` by 896 (#336).
