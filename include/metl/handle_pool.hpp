@@ -68,10 +68,11 @@ namespace metl {
 /// @tparam GenT Unsigned generation counter type. Widening it to `std::uint32_t`
 ///         costs 2 bytes per slot and pushes the handle to 64 bits.
 ///
-/// @warning **Generation wraparound.** After `2^(8*sizeof(GenT)) - 1` destroy
-///          cycles on the *same slot*, generations repeat and a handle retained
-///          across all of them can alias a new object. With the default 16-bit
-///          counter that is 65535 cycles per slot. This is inherent to
+/// @warning **Generation wraparound.** Generations come from one counter
+///          shared by every slot, so after `2^(8*sizeof(GenT)) - 1` emplaces
+///          *anywhere in the pool*, generations repeat and a retained handle
+///          can alias a new object in its slot. With the default 16-bit
+///          counter that is 65535 emplaces per pool. This is inherent to
 ///          generation tagging; use a wider `GenT` when handles are held for
 ///          unbounded periods.
 ///
@@ -116,11 +117,10 @@ class handle_pool {
   /// @note Not constexpr: the free list is linked at run time, so a
   ///       namespace-scope pool is initialized at run time, in link order.
   ///       Construct it before anything that runs earlier can reach it.
-  handle_pool() noexcept : free_head_(0), size_(0) {
+  handle_pool() noexcept : free_head_(0), size_(0), next_generation_(1) {
     for (size_type i = 0; i < Capacity; ++i) {
       next_[i] = static_cast<index_type>(i + 1);  // last one points at `Capacity` == end
-      generation_[i] = generation_type{1};        // 0 is reserved for the null handle
-      active_[i] = false;
+      generation_[i] = generation_type{0};        // 0: free, and never issued
     }
   }
 
@@ -146,7 +146,13 @@ class handle_pool {
 
     const size_type index = free_head_;
     free_head_ = next_[index];
-    active_[index] = true;
+    generation_[index] = next_generation_;
+    // Skip 0 on wraparound: it is the null handle's generation and marks a
+    // free slot.
+    next_generation_ = static_cast<generation_type>(next_generation_ + generation_type{1});
+    if (next_generation_ == generation_type{0}) {
+      next_generation_ = generation_type{1};
+    }
     ++size_;
     return_on_unwind claim{this, index};
     ::new (storage_[index].addr()) T(std::forward<Args>(args)...);
@@ -198,7 +204,7 @@ class handle_pool {
   /// become stale.
   void clear() noexcept {
     for (size_type i = 0; i < Capacity; ++i) {
-      if (active_[i]) {
+      if (generation_[i] != generation_type{0}) {
         release(i);
       }
     }
@@ -237,7 +243,7 @@ class handle_pool {
     }
 
     const size_type index = handle.index();
-    if (index >= Capacity || !active_[index] || generation_[index] != handle.generation()) {
+    if (index >= Capacity || generation_[index] != handle.generation()) {
       return Capacity;
     }
 
@@ -252,15 +258,9 @@ class handle_pool {
   /// instead of destroying twice; the slot joins the free list only after, so
   /// a re-entrant try_emplace() cannot build over the object being destroyed.
   void release(size_type index) noexcept {
-    active_[index] = false;
-
-    // Skip 0 on wraparound: generation 0 is the null-handle marker, and a slot
-    // sitting at generation 0 would make every stale handle to it compare equal
-    // to null rather than to the slot.
-    generation_[index] = static_cast<generation_type>(generation_[index] + generation_type{1});
-    if (generation_[index] == generation_type{0}) {
-      generation_[index] = generation_type{1};
-    }
+    // 0 is never issued, so every handle to the slot goes stale and the slot
+    // stops being live in one store.
+    generation_[index] = generation_type{0};
     --size_;
 
     slot_ptr(index)->~T();
@@ -270,7 +270,7 @@ class handle_pool {
   }
 
   // Puts a claimed slot back on the free list if T's constructor exits by an
-  // exception. No handle to it was handed out, so the generation stays.
+  // exception. No handle to it was handed out; the slot is marked free again.
   class return_on_unwind {
    public:
     return_on_unwind(handle_pool* pool, size_type index) noexcept : pool_(pool), index_(index) {}
@@ -280,7 +280,7 @@ class handle_pool {
     return_on_unwind& operator=(return_on_unwind&&) = delete;
     ~return_on_unwind() {
       if (pool_ != nullptr) {
-        pool_->active_[index_] = false;
+        pool_->generation_[index_] = generation_type{0};
         --pool_->size_;
         pool_->next_[index_] = static_cast<index_type>(pool_->free_head_);
         pool_->free_head_ = index_;
@@ -300,10 +300,13 @@ class handle_pool {
   // Capacity, and nothing ever indexes the padding element.
   storage_type storage_[Capacity == 0 ? 1 : Capacity];
   index_type next_[Capacity == 0 ? 1 : Capacity];
+  // A live slot holds the generation its handle was issued with; a free slot
+  // holds 0, which is never issued. One compare checks both.
   generation_type generation_[Capacity == 0 ? 1 : Capacity];
-  bool active_[Capacity == 0 ? 1 : Capacity];
   size_type free_head_;
   size_type size_;
+  // The generation the next handle gets, shared by every slot.
+  generation_type next_generation_;
 };
 
 }  // namespace metl

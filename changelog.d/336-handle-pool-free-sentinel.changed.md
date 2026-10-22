@@ -1,0 +1,1 @@
+- `metl::handle_pool` no longer stores a per-slot occupancy flag: a free slot holds generation 0, which is never issued, and generations come from one counter per pool, so a pool of more than a few slots is smaller. **Behaviour change:** generations repeat after 65535 emplaces anywhere in the pool, instead of 65535 destroys of one slot, with the default 16-bit counter (#336).
