@@ -1,1 +1,0 @@
-- `metl::exp::intrusive_forward_list`'s documentation now says what bounds the n of its O(n) `erase(t)` and `clear`: the number of elements the caller links, not a capacity. Constant-time unlinking is `pop_front`, or `intrusive_list::erase(t)` (#480).

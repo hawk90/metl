@@ -1,1 +1,0 @@
-- `exp::forward_list_hook` now documents the static-at-exit hazard `exp::list_hook` already did, and its remedy: whatever links a static element unlinks it in its own destructor (#482).

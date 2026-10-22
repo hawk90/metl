@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-22
+
+**Highlights.** This release adds two experimental intrusive lists, for objects
+that live outside METL storage: static driver descriptors, timers embedded in
+the structures that use them. `metl::exp::intrusive_forward_list` and
+`metl::exp::intrusive_list` link the caller's objects without allocating or
+copying, through a hook that records the list it is in, so the misuses an
+unchecked intrusive list allows stop the program at every hardening level
+instead. Two new examples show the cases a handle cannot serve. Both lists are
+in Tier 2 (`metl/exp/`), outside the Semantic Versioning promise, and their
+promotion is reconsidered for 1.8.0 (#337).
+
+### Upgrading from 1.6.0
+
+No code change is needed. The only change to a stable header is the version
+constants in `<metl/config.hpp>`, and a comment in `<metl/coro/scheduler.hpp>`.
+
+### Added
+
+- **`metl::exp::intrusive_forward_list<T, Tag>` (#337).** A singly linked list
+  of objects the caller owns, such as static driver descriptors, linked through
+  a `forward_list_hook<Tag>` base without allocating or copying. The hook
+  records the list it is in, so three misuses stop the program at every
+  hardening level: destroying an element while it is linked, linking it while
+  it is already linked, and erasing it through a list it is not in. Storage
+  reused without the element's destructor running cannot be checked and is
+  stated as the contract.
+- **`metl::exp::intrusive_list<T, Tag>` (#337).** A doubly linked list on the
+  same hook design. Any element unlinks in O(1), as a cancelled timer needs, for
+  one pointer more per hook. The same misuses stop the program, and so does
+  erasing `end()`. `splice(pos, other, it)` moves one element, within a list or
+  from another, in O(1) without unlinking it, as `std::list::splice` does, and
+  checks its positions like `insert` and `erase`. Both lists are
+  constant-initialized, so a static initializer in another translation unit can
+  link into one.
+- **Two examples (#337).** `examples/driver_registry.cpp`: drivers in their own
+  translation units register themselves into a list, with a registrar that
+  unlinks its driver at exit. `examples/armed_timers.cpp`: a timer in an
+  all-timers list and an armed list at once, cancelled in O(1).
+
+### Changed
+
+- **"Bounded by the caller" is defined (#489).** `docs/SCOPE.md` section 1 now
+  states what a progress guarantee means when the bound is something the caller
+  supplies -- a NUL-terminated string, an input span, a round limit, the
+  elements it linked -- and that the caller owns that bound.
+
+### Fixed
+
+- **`coro::scheduler`'s progress table (#485).** clang-format had folded it
+  into one paragraph; it is a table again, and it states that `run_once`'s own
+  work is O(n^2) in the tasks attached, with the cost measured on Cortex-M.
+- **`exp::intrusive_forward_list`'s documentation (#480, #482).** It now says
+  that the n of `erase(t)` and `clear` is the number of elements the caller
+  links, not a capacity, and documents the static-at-exit hazard and its remedy,
+  as `exp::intrusive_list`'s already did.
+
 ## [1.6.0] - 2026-10-21
 
 **Highlights.** This release moves `parse` to build time. Since C++20,
