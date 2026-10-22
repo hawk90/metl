@@ -568,7 +568,7 @@ and nightly on `main`.
 | Fuzzing | libFuzzer + ASan/UBSan, every `fuzz/` harness | bounded run of each harness; fails on crash, leak or timeout | `fuzz-smoke` |
 | Mutation testing | host | deliberately broken library builds; every mutant must be caught by some gate (`tools/check_mutants.py`) | `mutants` |
 | Security scan | CodeQL `security-and-quality` | analyse a build that **instantiates the templates**, weekly + per PR | `analyze / c-cpp` ([`codeql.yml`](.github/workflows/codeql.yml)) |
-| Examples | every `examples/*.cpp`, `-Wall -Wextra -Werror` | build + **run** (self-checking) | `examples` |
+| Examples | every `examples/*.cpp`, with any further translation units of it in `examples/<name>/`, `-Wall -Wextra -Werror` | build + **run** (self-checking) | `examples` |
 
 Cross-cutting frontends covered by the above: **GCC**, **Clang**, and **MSVC** on
 host; **arm-none-eabi-gcc** and **clang** (bare-metal ARM); **RISC-V** (rv64 and

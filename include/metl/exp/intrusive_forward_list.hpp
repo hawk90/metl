@@ -107,18 +107,19 @@ class forward_list_hook : private metl::detail::slist_link {
 ///
 /// Progress guarantees:
 ///
-///   | Operation                                     | Guarantee                |
-///   |-----------------------------------------------|--------------------------|
-///   | `push_front` / `pop_front` / `front`          | wait-free, bounded, O(1) |
-///   | `insert_after` / `erase_after`                | wait-free, bounded, O(1) |
-///   | `empty` / `size` / iteration step             | wait-free, bounded, O(1) |
-///   | `erase(t)`                                    | wait-free, bounded, O(n) |
-///   | `clear` / destructor                          | wait-free, bounded, O(n) |
+///   | Operation                                     | Guarantee                              |
+///   |-----------------------------------------------|----------------------------------------|
+///   | `push_front` / `pop_front` / `front`          | wait-free, bounded, O(1)               |
+///   | `insert_after` / `erase_after`                | wait-free, bounded, O(1)               |
+///   | `empty` / `size` / iteration step             | wait-free, bounded, O(1)               |
+///   | `erase(t)`                                    | wait-free, bounded by the caller, O(n) |
+///   | `clear` / destructor                          | wait-free, bounded by the caller, O(n) |
 ///
 /// The n of `erase(t)` and `clear` is the number of elements linked. No
-/// capacity bounds it: the caller does, by the objects it links. Where an
-/// unlink must take constant time, as in an ISR, use `pop_front`, or
-/// `intrusive_list`, whose `erase(t)` is O(1).
+/// capacity bounds it: the caller does, by the objects it links (docs/SCOPE.md
+/// section 1, "bounded by the caller"). Where an unlink must take constant
+/// time, as in an ISR, use `pop_front`, or `intrusive_list`, whose `erase(t)`
+/// is O(1).
 ///
 /// @note Not thread-safe, like the other containers: an ISR that links or
 ///       unlinks while a thread does needs a lock around both.
