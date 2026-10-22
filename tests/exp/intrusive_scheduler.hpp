@@ -158,11 +158,11 @@ inline intrusive_scheduler::size_type intrusive_scheduler::run_once() noexcept {
       break;
     }
     // Move the cursor past the node before polling it. Nothing but this
-    // round unlinks the cursor, so `at` stays valid whatever the poll does.
-    (void)tasks_.erase(at);
+    // round moves or unlinks the cursor, so `at` stays valid whatever the
+    // poll does.
     auto after = next;
     ++after;
-    at = tasks_.insert(after, cursor);
+    tasks_.splice(after, tasks_, at);
     const metl::coro::task_slot slot = node.slot_;
     if (slot.poll == nullptr) {
       continue;  // an outer round's marker

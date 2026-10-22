@@ -348,6 +348,77 @@ void erasing_end_traps() {
   }
 }
 
+// splice moves one element without unlinking it: within a list, as a round's
+// cursor does, or into another list, which then owns it.
+void splice_moves_one_element() {
+  timer a(1);
+  timer b(2);
+  timer c(3);
+  timer d(4);
+  all_list first;
+  all_list second;
+  first.push_back(a);
+  first.push_back(b);
+  first.push_back(c);
+
+  auto it_a = first.begin();
+  first.splice(first.end(), first, it_a);  // a to the back
+  CHECK(ids(first) == (std::vector<int>{2, 3, 1}));
+  CHECK(ids_reversed(first) == (std::vector<int>{1, 3, 2}));
+  CHECK(&*it_a == &a);  // the iterator still names a
+  CHECK(first.size() == 3);
+
+  first.splice(first.begin(), first, it_a);  // and back to the front
+  CHECK(ids(first) == (std::vector<int>{1, 2, 3}));
+  CHECK(ids_reversed(first) == (std::vector<int>{3, 2, 1}));
+
+  // Before itself, or before its own successor: already there.
+  first.splice(it_a, first, it_a);
+  auto after_a = it_a;
+  ++after_a;
+  first.splice(after_a, first, it_a);
+  CHECK(ids(first) == (std::vector<int>{1, 2, 3}));
+  CHECK(ids_reversed(first) == (std::vector<int>{3, 2, 1}));
+
+  // Into another list: sizes move with it, and so does ownership.
+  second.push_back(d);
+  auto it_b = after_a;  // b
+  second.splice(second.begin(), first, it_b);
+  CHECK(ids(first) == (std::vector<int>{1, 3}));
+  CHECK(ids_reversed(first) == (std::vector<int>{3, 1}));
+  CHECK(ids(second) == (std::vector<int>{2, 4}));
+  CHECK(ids_reversed(second) == (std::vector<int>{4, 2}));
+  CHECK(first.size() == 2);
+  CHECK(second.size() == 2);
+  CHECK(trips([&] { first.erase(b); }));  // b is second's now
+  second.erase(b);
+  CHECK(!hook_linked<all_list>(b));
+  first.clear();
+  second.clear();
+}
+
+// Each position names the list it must be in.
+void splicing_through_the_wrong_list_traps() {
+  timer a(1);
+  timer b(2);
+  timer loose(9);
+  all_list first;
+  all_list second;
+  first.push_back(a);
+  second.push_back(b);
+  CHECK(trips([&] { first.splice(second.begin(), first, first.begin()); }));        // pos elsewhere
+  CHECK(trips([&] { first.splice(first.end(), second, first.begin()); }));          // it not in other
+  CHECK(trips([&] { first.splice(first.end(), first, first.end()); }));             // end(): no element
+  CHECK(trips([&] { first.splice(all_list::iterator(), first, first.begin()); }));  // no position
+  CHECK(trips([&] { first.splice(first.end(), second, all_list::iterator()); }));   // no element
+  CHECK(!hook_linked<all_list>(loose));
+  CHECK(ids(first) == (std::vector<int>{1}));
+  CHECK(ids(second) == (std::vector<int>{2}));
+  CHECK(first.size() == 1 && second.size() == 1);
+  first.clear();
+  second.clear();
+}
+
 }  // namespace
 
 int main() {
@@ -364,5 +435,7 @@ int main() {
   linking_a_linked_element_traps();
   erasing_through_another_list_traps();
   erasing_end_traps();
+  splice_moves_one_element();
+  splicing_through_the_wrong_list_traps();
   return metl_test::exit_code();
 }

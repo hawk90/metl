@@ -3,11 +3,13 @@
 /// @file
 /// @brief Progress guarantees for `metl::coro::scheduler` (docs/SCOPE.md section 1).
 ///
-///   | Operation | Guarantee |
-///   |-----------|-----------|
-///   | `try_attach`, `try_attach_protothread`, `try_attach_stepper` | wait-free, bounded by `Capacity`
-///   squared | | `detach`, `is_attached` | wait-free, bounded by `Capacity` | | `run_once` | bounded by the
-///   attached tasks and their own poll cost | | `run_until_idle` | bounded by its `max_rounds` argument |
+///   | Operation                    | Guarantee                                            |
+///   |------------------------------|------------------------------------------------------|
+///   | `try_attach`, `try_attach_*` | wait-free, bounded by `Capacity` squared             |
+///   | `detach`, `is_attached`      | wait-free, bounded by `Capacity`                     |
+///   | `run_once`                   | bounded: O(n^2) in the n tasks attached, plus each   |
+///   |                              | task's own poll cost                                 |
+///   | `run_until_idle`             | bounded by its `max_rounds` argument                 |
 ///
 /// The task table is a flat array searched linearly, so attaching, detaching and
 /// lookup are `Capacity`-bounded rather than constant -- attaching searches first,
@@ -16,8 +18,13 @@
 /// array is small and fixed, which is the trade this type makes for having no free
 /// list to corrupt.
 ///
-/// `run_once` visits each attached task once; its bound is therefore the sum of the
-/// tasks' own poll functions, which the scheduler cannot bound for you. A task that
+/// `run_once` visits each attached task once. Its own work is O(n^2) in the n
+/// tasks attached: before polling each entry of its snapshot it searches the live
+/// entries for it, since an earlier poll may have detached it, and a completed
+/// entry is searched for again to remove it. Measured on Cortex-M3 under QEMU
+/// (#484), a round of trivial polls costs about 70 instructions per task at 4
+/// tasks and 112 at 16. The rest of its bound is the sum of the tasks' own poll
+/// functions, which the scheduler cannot bound for you. A task that
 /// never returns is a task that never returns. `run_until_idle` takes `max_rounds`
 /// for exactly this reason: a set of tasks that keep re-arming each other would
 /// otherwise spin, and SCOPE.md section 2 rejects unbounded retry.
