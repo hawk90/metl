@@ -253,6 +253,14 @@ that issued generations step by 2, so a slot repeats after half as many cycles;
 `generation_of()` and every other 1.7.0 behaviour are unchanged. #336 has the
 table, and why the other five were not taken.
 
+The type still has callers elsewhere, found by listing every site that keeps
+per-slot state (#336). `object_pool` keeps a free slot's link in the slot and one
+live bit per slot, so taking a slot no longer scans (#503), and
+`static_unordered_set`/`map` keep a bucket's state in two bits instead of a byte
+(#504). Both are smaller in RAM, which ranks first. `metl::exp::bitset` stays in
+Tier 2 for 1.8.0 all the same: `find_next_set` landed in the same release, and
+promotion freezes the API for 1.x.
+
 ### Green — works on every current CI target, zero policy change
 
 | Item | Note |
