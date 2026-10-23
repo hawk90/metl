@@ -238,8 +238,20 @@ deferred on it too, and that premise was wrong: `handle_pool` keeps one `bool` p
 slot in `active_`, so it has a caller. One bit per slot instead of one byte is not
 a free win, as a packed bit is a read-modify-write, so #336 measures both forms in
 `handle_pool` and tries the type in Tier 2 first, as `metl::exp::bitset`
-(`metl/exp/bitset.hpp`). Whether `handle_pool` switches is decided from those
-measurements, in its own change.
+(`metl/exp/bitset.hpp`). The measurement settled it the other way: packing the
+flags made every `handle_pool` operation slower (alloc+free 18-33% more
+instructions) to save 7 bits per slot. Six designs were then built
+and measured side by side (#336), after slotmap, generational-arena, Godot's
+`RID_Owner` and SG14's `slot_map`. `handle_pool` now keeps no flag at all: a
+slot's generation is odd while it is live, and a free slot holds its free-list
+link in its own storage, as slotmap does. That is up to 3 bytes per slot less than a
+`bool` flag plus a link array, and fewer instructions per `destroy` and `get`
+(GCC 16, out of line: 23 and 15 against 32 and 18). One host timing is the
+exception and is not explained: clang on arm64 timed alloc+free churn about 25%
+slower, where GCC timed it level. The cost is
+that issued generations step by 2, so a slot repeats after half as many cycles;
+`generation_of()` and every other 1.7.0 behaviour are unchanged. #336 has the
+table, and why the other five were not taken.
 
 ### Green — works on every current CI target, zero policy change
 
