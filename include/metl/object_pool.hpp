@@ -9,9 +9,10 @@
 ///   | `destroy`, `contains`, `size`, `empty`, `full` | wait-free, bounded |
 ///   | `clear`, destructor | wait-free, bounded by `Capacity` |
 ///
-/// Acquiring a slot scans the occupancy flags for the first free one, so it is
-/// `Capacity`-bounded rather than constant -- worth knowing if `Capacity` is large
-/// and the pool is usually near full, because that is the case that scans furthest.
+/// Acquiring a slot scans the occupancy bits for the first free one, a 32-slot
+/// word at a time, so it is `Capacity`-bounded rather than constant -- worth
+/// knowing if `Capacity` is large and the pool is usually near full, because that
+/// is the case that scans furthest.
 /// Releasing is constant: the pointer gives the index directly.
 ///
 /// `metl::handle_pool` acquires in constant time from a free list, and hands back a
@@ -22,6 +23,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/bitset.hpp"
 #include "metl/detail/constant_init.hpp"
 #include "metl/type_traits.hpp"
 
@@ -80,18 +82,18 @@ class object_pool {
   /// the claim is released.
   template <typename... Args>
   METL_NODISCARD pointer try_emplace(Args&&... args) {
-    for (size_type i = 0; i < Capacity; ++i) {
-      if (state_[i] == slot_state::free) {
-        state_[i] = slot_state::live;
-        ++size_;
-        release_on_unwind claim{this, i};
-        ::new (storage_[i].addr()) T(std::forward<Args>(args)...);
-        claim.dismiss();
-        return slot_ptr(i);
-      }
+    const size_type i = busy_.find_first_clear();
+    if (i >= Capacity) {
+      return nullptr;
     }
 
-    return nullptr;
+    busy_.set(i);
+    live_.set(i);
+    ++size_;
+    release_on_unwind claim{this, i};
+    ::new (storage_[i].addr()) T(std::forward<Args>(args)...);
+    claim.dismiss();
+    return slot_ptr(i);
   }
 
   /// Constructs an object in the first free slot and returns a pointer to it.
@@ -109,7 +111,7 @@ class object_pool {
   /// @return true if destroyed; false if `object` is not a live slot of this pool.
   bool destroy(pointer object) noexcept {
     const size_type index = index_of(object);
-    const bool live = index < Capacity && state_[index] == slot_state::live;
+    const bool live = index < Capacity && live_.test(index);
     if (live) {
       end_life(index);
     }
@@ -123,7 +125,7 @@ class object_pool {
   /// survives, and is counted.
   void clear() noexcept {
     for (size_type i = 0; i < Capacity; ++i) {
-      if (state_[i] == slot_state::live) {
+      if (live_.test(i)) {
         end_life(i);
       }
     }
@@ -132,7 +134,7 @@ class object_pool {
   /// Returns true if `object` points to a live slot of this pool.
   METL_NODISCARD bool contains(const_pointer object) const noexcept {
     const size_type index = index_of(object);
-    return index < Capacity && state_[index] == slot_state::live;
+    return index < Capacity && live_.test(index);
   }
 
   /// Returns true if no slots are in use.
@@ -187,7 +189,8 @@ class object_pool {
     release_on_unwind& operator=(release_on_unwind&&) = delete;
     ~release_on_unwind() {
       if (pool_ != nullptr) {
-        pool_->state_[index_] = slot_state::free;
+        pool_->live_.reset(index_);
+        pool_->busy_.reset(index_);
         --pool_->size_;
       }
     }
@@ -198,20 +201,23 @@ class object_pool {
     size_type index_ = 0;
   };
 
-  // A slot is `dying` while its destructor runs: no longer live, so a
-  // re-entrant destroy() or contains() does not see it, and not yet free, so a
-  // re-entrant try_emplace() cannot build over the object being destroyed.
-  enum class slot_state : unsigned char { free, live, dying };
-
+  // A slot is busy from its claim until its destructor has finished, and live
+  // only between the two: while ~T() runs it is no longer live, so a re-entrant
+  // destroy() or contains() does not see it, and not yet free, so a re-entrant
+  // try_emplace() cannot build over the object being destroyed.
   void end_life(size_type index) noexcept {
-    state_[index] = slot_state::dying;
+    live_.reset(index);
     --size_;
     slot_ptr(index)->~T();
-    state_[index] = slot_state::free;
+    busy_.reset(index);
   }
 
   storage_type storage_[Capacity == 0 ? 1 : Capacity];
-  slot_state state_[Capacity == 0 ? 1 : Capacity]{};
+  // One bit per slot each. `Capacity == 0 ? 1 : Capacity` as for storage_: the
+  // padding bit of a zero-capacity pool stays clear, and find_first_clear()
+  // returning it is caught by the `>= Capacity` test.
+  detail::bitset<Capacity == 0 ? 1 : Capacity> busy_{};
+  detail::bitset<Capacity == 0 ? 1 : Capacity> live_{};
   size_type size_ = 0;
 };
 

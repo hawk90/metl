@@ -1,0 +1,1 @@
+- `metl::object_pool` keeps a slot's state in two bits instead of a byte, and finds a free slot a 32-slot word at a time (#336).
