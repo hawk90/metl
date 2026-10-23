@@ -206,15 +206,17 @@ int main() {
   }
 
   // --- A forged handle to a never-used slot does not resolve -------------------
-  // Neither the free slot's own generation nor the one its next handle will
-  // carry may resolve: only the slot being free rejects them.
+  // Every slot starts at generation 1, so `{unused index, 1}` names the handle
+  // the slot will issue next; only the slot being free rejects it. The even
+  // neighbours are what a free slot stores, and must not resolve either.
   {
     metl::handle_pool<int, 4> pool;
     const auto& view = pool;
     const auto issued = pool.try_emplace(1);
     CHECK_EQ(issued.index(), 0u);
+    CHECK_EQ(pool.generation_of(2), 1u);
     using gen = metl::handle_pool<int, 4>::generation_type;
-    for (const gen g : {pool.generation_of(2), static_cast<gen>(pool.generation_of(2) + 1u), gen{1}}) {
+    for (const gen g : {gen{1}, gen{2}, static_cast<gen>(0xFFFFu)}) {
       const metl::handle_pool<int, 4>::handle_type forged{2, g};
       CHECK(!pool.contains(forged));
       CHECK_EQ(pool.get(forged), static_cast<int*>(nullptr));
@@ -227,19 +229,27 @@ int main() {
     CHECK(!pool.contains(out_of_range));
   }
 
-  // --- A forged handle to a freed slot at that slot's generation ------------
-  // After one use the free slot's generation is no longer the start value, so
-  // this reaches what the never-used case above cannot.
+  // --- A forged handle to a freed slot does not resolve ----------------------
+  // After one use the slot is past its start generation, so this reaches what
+  // the never-used case above cannot: neither the generation its next handle
+  // will carry nor the one just before it may resolve.
   {
     metl::handle_pool<int, 4> pool;
     const auto handle = pool.try_emplace(1);
     CHECK(pool.destroy(handle));
-    const metl::handle_pool<int, 4>::handle_type forged{handle.index(), pool.generation_of(handle.index())};
-    CHECK(forged.valid());
-    CHECK(!pool.contains(forged));
-    CHECK_EQ(pool.get(forged), static_cast<int*>(nullptr));
-    CHECK(!pool.destroy(forged));
+    const auto next = pool.generation_of(handle.index());
+    CHECK(next != handle.generation());
+    using gen = metl::handle_pool<int, 4>::generation_type;
+    for (const gen g : {next, static_cast<gen>(next - 1u)}) {
+      const metl::handle_pool<int, 4>::handle_type forged{handle.index(), g};
+      CHECK(forged.valid());
+      CHECK(!pool.contains(forged));
+      CHECK_EQ(pool.get(forged), static_cast<int*>(nullptr));
+      CHECK(!pool.destroy(forged));
+    }
     CHECK_EQ(pool.size(), std::size_t{0});
+    // The generation reported for the free slot is the one it issues next.
+    CHECK_EQ(pool.try_emplace(2).generation(), next);
   }
 
   // --- An object is intact when its destructor runs ---------------------------
@@ -267,6 +277,7 @@ int main() {
       CHECK_DEREF_EQ(pool.get(handle), cycle);
       CHECK(pool.destroy(handle));
     }
+    CHECK(pool.generation_of(0) != 0);
   }
 
   return metl_test::exit_code();

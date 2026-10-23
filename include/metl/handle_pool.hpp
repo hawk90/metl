@@ -74,9 +74,9 @@ namespace metl {
 ///          `2^(8*sizeof(GenT) - 1)` destroy cycles on the *same slot*,
 ///          generations repeat and a handle retained across all of them can
 ///          alias a new object. With the default 16-bit counter that is 32768
-///          cycles per slot. This is inherent to
-///          generation tagging; use a wider `GenT` when handles are held for
-///          unbounded periods.
+///          cycles per slot. This is inherent to generation tagging; use a
+///          wider `GenT` when handles are held for unbounded periods. A 32-bit
+///          counter gives 2^31 cycles per slot.
 ///
 /// @warning **A handle names a slot, not a pool.** A handle from one
 ///          `handle_pool<T, N>` is also accepted by every other pool of the same
@@ -217,11 +217,13 @@ class handle_pool {
   /// Returns the number of free slots (`Capacity - size()`).
   METL_NODISCARD size_type available() const noexcept { return Capacity - size_; }
 
-  /// Returns the generation a slot is currently at. Exposed for diagnostics and
-  /// for tests that need to drive the counter to wraparound.
+  /// Returns the generation of a slot's handle: the one a live object's handle
+  /// carries, or, for a free slot, the one its next handle will carry. Never 0,
+  /// and 1 for a slot that was never used. Exposed for diagnostics and for
+  /// tests that need to drive the counter to wraparound.
   METL_NODISCARD generation_type generation_of(index_type index) const noexcept {
     METL_ASSERT(index < Capacity);
-    return generation_[index];
+    return static_cast<generation_type>(generation_[index] | generation_type{1});
   }
 
  private:
