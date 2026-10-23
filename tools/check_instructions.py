@@ -86,6 +86,11 @@ import tempfile
 # a little larger than a scan of four slots (155k -> 195k at N=4) and far
 # smaller than a scan of 64 or 1024 (597k -> 224k, 4.02M -> 268k). Taken
 # deliberately: the pool also gets smaller in RAM, which ranks first (#336).
+#
+# static_unordered_map find, raised by #504 (run on that PR): a bucket's state is
+# two bits in two bitsets instead of a byte, so reading it costs a shift and a
+# mask per bitset. Taken deliberately for 6 bits of RAM per bucket, since RAM
+# ranks above instructions (#336).
 BUDGETS = {
     "metl_bench_containers::crc32 over 1 KiB": 58_915_533,
     "metl_bench_containers::fixed_vector<64> fill + clear": 1_150_301,
@@ -93,8 +98,8 @@ BUDGETS = {
     "metl_bench_containers::flat_map<256> find (miss)": 649_597,
     "metl_bench_containers::ring_buffer<64> push + pop": 100_661,
     "metl_bench_containers::ring_buffer<64> push_overwrite": 50_304,
-    "metl_bench_containers::static_unordered_map<256> find (hit)": 190_945,
-    "metl_bench_containers::static_unordered_map<256> find (miss)": 208_495,
+    "metl_bench_containers::static_unordered_map<256> find (hit)": 241_142,
+    "metl_bench_containers::static_unordered_map<256> find (miss)": 282_659,
     "metl_bench_mpmc::mpmc_queue push + pop": 163_039,
     "metl_bench_mpmc::spsc_queue push + pop": 129_247,
     "metl_bench_pools::handle_pool<1024> alloc+free": 216_438,
