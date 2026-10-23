@@ -88,6 +88,7 @@
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
+#include "metl/detail/bitset.hpp"
 #include "metl/detail/constant_init.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
@@ -201,9 +202,7 @@ class static_unordered_set {
         return;
       }
 
-      while (index_ < bucket_count && set_->states_[index_] != slot_state::occupied) {
-        ++index_;
-      }
+      index_ = set_->occupied_.find_next_set(index_);
     }
 
     static_unordered_set* set_;
@@ -257,9 +256,7 @@ class static_unordered_set {
         return;
       }
 
-      while (index_ < bucket_count && set_->states_[index_] != slot_state::occupied) {
-        ++index_;
-      }
+      index_ = set_->occupied_.find_next_set(index_);
     }
 
     const static_unordered_set* set_;
@@ -493,7 +490,7 @@ class static_unordered_set {
         return false;
       }
 
-      if (states_[index] == slot_state::occupied) {
+      if (state(index) == slot_state::occupied) {
         return false;
       }
 
@@ -535,7 +532,7 @@ class static_unordered_set {
       size_type index = npos;
       const bool available = locate_insert_index(key, &index);
       METL_ASSERT(available);
-      METL_ASSERT(states_[index] != slot_state::occupied);
+      METL_ASSERT(state(index) != slot_state::occupied);
       index = construct_at(index, std::forward<K>(key));
       return *slot_value(index);
     }
@@ -560,7 +557,7 @@ class static_unordered_set {
   ///      aborts, at every hardening level.
   /// @note Lets a loop erase while it iterates: `it = s.erase(it)` (#313).
   iterator erase(const_iterator pos) noexcept {
-    METL_HARDEN(pos.set_ == this && pos.index_ < bucket_count && states_[pos.index_] == slot_state::occupied);
+    METL_HARDEN(pos.set_ == this && pos.index_ < bucket_count && state(pos.index_) == slot_state::occupied);
     const size_type index = pos.index_;
     destroy_at(index, slot_state::tombstone);
     return iterator(this, index + 1);
@@ -572,10 +569,10 @@ class static_unordered_set {
   /// @brief Remove all elements and reset every slot to empty (size becomes 0).
   void clear() noexcept {
     for (size_type i = 0; i < bucket_count; ++i) {
-      if (states_[i] == slot_state::occupied) {
+      if (state(i) == slot_state::occupied) {
         destroy_at(i, slot_state::empty);
       } else {
-        states_[i] = slot_state::empty;
+        set_state(i, slot_state::empty);
       }
     }
     tombstones_ = 0;
@@ -620,8 +617,8 @@ class static_unordered_set {
     swap(hasher_, other.hasher_);
     swap(key_equal_, other.key_equal_);
     for (size_type i = 0; i < bucket_count; ++i) {
-      const bool mine = states_[i] == slot_state::occupied;
-      const bool theirs = other.states_[i] == slot_state::occupied;
+      const bool mine = state(i) == slot_state::occupied;
+      const bool theirs = other.state(i) == slot_state::occupied;
       if (mine && theirs) {
         swap(*slot_value(i), *other.slot_value(i));
       } else if (mine || theirs) {
@@ -630,11 +627,13 @@ class static_unordered_set {
         // Built before either state changes, so a throwing move leaves this
         // slot as it was.
         ::new (to.storage_[i].addr()) value_type(static_cast<value_type&&>(*from.slot_value(i)));
-        from.states_[i] = to.states_[i];
-        to.states_[i] = slot_state::occupied;
+        from.set_state(i, to.state(i));
+        to.set_state(i, slot_state::occupied);
         from.slot_value(i)->~value_type();
       } else {
-        swap(states_[i], other.states_[i]);
+        const slot_state held = state(i);
+        set_state(i, other.state(i));
+        other.set_state(i, held);
       }
     }
     swap(size_, other.size_);
@@ -659,9 +658,9 @@ class static_unordered_set {
       } catch (...) {
         carry.ptr()->~value_type();
         for (size_type i = 0; i < bucket_count; ++i) {
-          if (states_[i] != slot_state::empty) {
+          if (state(i) != slot_state::empty) {
             slot_value(i)->~value_type();
-            states_[i] = slot_state::empty;
+            set_state(i, slot_state::empty);
           }
         }
         size_ = 0;
@@ -689,10 +688,28 @@ class static_unordered_set {
   }
 
   constexpr void initialize_states() noexcept {
-    for (size_type i = 0; i < bucket_count; ++i) {
-      states_[i] = slot_state::empty;
-    }
+    occupied_.reset();
+    tombstone_.reset();
     tombstones_ = 0;
+  }
+
+  slot_state state(size_type index) const noexcept {
+    if (occupied_.test(index)) {
+      return slot_state::occupied;
+    }
+    return tombstone_.test(index) ? slot_state::tombstone : slot_state::empty;
+  }
+  void set_state(size_type index, slot_state next) noexcept {
+    if (next == slot_state::occupied) {
+      occupied_.set(index);
+    } else {
+      occupied_.reset(index);
+    }
+    if (next == slot_state::tombstone) {
+      tombstone_.set(index);
+    } else {
+      tombstone_.reset(index);
+    }
   }
 
   value_type* slot_value(size_type index) noexcept { return storage_[index].ptr(); }
@@ -714,10 +731,10 @@ class static_unordered_set {
     const size_type start = bucket_index(key);
     for (size_type probe = 0; probe < bucket_count; ++probe) {
       const size_type index = (start + probe) & (bucket_count - 1);
-      if (states_[index] == slot_state::empty) {
+      if (state(index) == slot_state::empty) {
         return npos;
       }
-      if (states_[index] == slot_state::occupied && key_equal_(*slot_value(index), key)) {
+      if (state(index) == slot_state::occupied && key_equal_(*slot_value(index), key)) {
         return index;
       }
     }
@@ -734,12 +751,12 @@ class static_unordered_set {
     const size_type start = bucket_index(key);
     for (size_type probe = 0; probe < bucket_count; ++probe) {
       const size_type index = (start + probe) & (bucket_count - 1);
-      if (states_[index] == slot_state::empty) {
+      if (state(index) == slot_state::empty) {
         *index_out = first_tombstone != npos ? first_tombstone : index;
         return true;
       }
 
-      if (states_[index] == slot_state::tombstone) {
+      if (state(index) == slot_state::tombstone) {
         if (first_tombstone == npos) {
           first_tombstone = index;
         }
@@ -781,7 +798,7 @@ class static_unordered_set {
       (void)locate_insert_index(entry, &index);
       METL_HARDEN(index < bucket_count);
       ::new (storage_[index].addr()) value_type(static_cast<value_type&&>(entry));
-      states_[index] = slot_state::occupied;
+      set_state(index, slot_state::occupied);
       ++size_;
       return index;
     }
@@ -801,10 +818,10 @@ class static_unordered_set {
     // so the reclamation threshold reflects only live tombstones. Counted after
     // the construction succeeds -- before it, each throwing insert onto the same
     // tombstone decremented again, and the count wrapped.
-    if (states_[index] == slot_state::tombstone) {
+    if (state(index) == slot_state::tombstone) {
       --tombstones_;
     }
-    states_[index] = slot_state::occupied;
+    set_state(index, slot_state::occupied);
     ++size_;
   }
 
@@ -812,7 +829,7 @@ class static_unordered_set {
   // destructor that erases from this container sees it gone. It must not
   // insert: the slot being destroyed may be the next one handed out.
   void destroy_at(size_type index, slot_state next_state) noexcept {
-    states_[index] = next_state;
+    set_state(index, next_state);
     --size_;
     if (next_state == slot_state::tombstone) {
       ++tombstones_;
@@ -839,44 +856,39 @@ class static_unordered_set {
     // Phase 1: turn real tombstones into empty and mark every live element as
     // "unplaced" by reusing the tombstone state as a transient marker. During
     // the rebuild no genuine tombstones exist, so this reuse is unambiguous.
-    for (size_type i = 0; i < bucket_count; ++i) {
-      states_[i] = (states_[i] == slot_state::occupied) ? slot_state::tombstone : slot_state::empty;
-    }
+    tombstone_ = occupied_;
+    occupied_.reset();
     tombstones_ = 0;
 
     // Phase 2: place each unplaced element at the first slot in its probe run
     // that is not already occupied, cascading through any element it displaces.
     storage_for<value_type> carry;
-    for (size_type i = 0; i < bucket_count; ++i) {
-      if (states_[i] != slot_state::tombstone) {
-        continue;
-      }
-
+    for (size_type i = tombstone_.find_next_set(0); i < bucket_count; i = tombstone_.find_next_set(i + 1)) {
       ::new (carry.addr()) value_type(static_cast<value_type&&>(*slot_value(i)));
       slot_value(i)->~value_type();
-      states_[i] = slot_state::empty;
+      set_state(i, slot_state::empty);
 
       for (;;) {
         size_type target = bucket_during_rebuild(carry);
-        while (states_[target] == slot_state::occupied) {
+        while (state(target) == slot_state::occupied) {
           target = (target + 1) & (bucket_count - 1);
         }
 
-        if (states_[target] == slot_state::empty) {
+        if (state(target) == slot_state::empty) {
           ::new (storage_[target].addr()) value_type(static_cast<value_type&&>(carry.ref()));
           carry.ptr()->~value_type();
-          states_[target] = slot_state::occupied;
+          set_state(target, slot_state::occupied);
           break;
         }
 
-        // states_[target] is an unplaced element: settle carry here and continue
+        // state(target) is an unplaced element: settle carry here and continue
         // placing the element it displaced.
         storage_for<value_type> displaced;
         ::new (displaced.addr()) value_type(static_cast<value_type&&>(*slot_value(target)));
         slot_value(target)->~value_type();
         ::new (storage_[target].addr()) value_type(static_cast<value_type&&>(carry.ref()));
         carry.ptr()->~value_type();
-        states_[target] = slot_state::occupied;
+        set_state(target, slot_state::occupied);
         ::new (carry.addr()) value_type(static_cast<value_type&&>(displaced.ref()));
         displaced.ptr()->~value_type();
       }
@@ -884,7 +896,10 @@ class static_unordered_set {
   }
 
   storage_for<value_type> storage_[bucket_count];
-  slot_state states_[bucket_count];
+  // A slot's state in two bits, one per array: occupied, tombstone, or
+  // neither (empty). Both zero is empty, so the constant image stays zeros.
+  detail::bitset<bucket_count> occupied_{};
+  detail::bitset<bucket_count> tombstone_{};
   size_type size_;
   size_type tombstones_;
   Hash hasher_;

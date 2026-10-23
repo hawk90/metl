@@ -7,7 +7,7 @@ MUTANT = {
     "why": "An element in a slot only one table holds is moved across but the "
            "moved-from object is never destroyed.",
     "kills": "ctest:throwing_element",
-    "old": """        to.states_[i] = slot_state::occupied;
+    "old": """        to.set_state(i, slot_state::occupied);
         from.slot_value(i)->~value_type();""",
-    "new": """        to.states_[i] = slot_state::occupied;""",
+    "new": """        to.set_state(i, slot_state::occupied);""",
 }

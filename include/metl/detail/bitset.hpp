@@ -84,6 +84,24 @@ class bitset {
     return N;
   }
 
+  /// The lowest set bit at or above `from`, or N if there is none.
+  METL_NODISCARD constexpr size_type find_next_set(size_type from) const noexcept {
+    if (from >= N) {
+      return N;
+    }
+    size_type k = from / word_bits;
+    auto word = static_cast<word_type>(words_[k] & (~word_type{0} << (from % word_bits)));
+    for (;;) {
+      if (word != 0) {
+        return (k * word_bits) + static_cast<size_type>(metl::countr_zero(word));
+      }
+      if (++k == word_count) {
+        return N;
+      }
+      word = words_[k];
+    }
+  }
+
   METL_NODISCARD constexpr size_type find_first_clear() const noexcept {
     for (size_type k = 0; k < word_count; ++k) {
       // No mask for the tail: its bits are always zero, so when every bit
