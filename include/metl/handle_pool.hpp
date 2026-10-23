@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <new>
 #include <utility>
 
@@ -68,12 +69,14 @@ namespace metl {
 /// @tparam GenT Unsigned generation counter type. Widening it to `std::uint32_t`
 ///         costs 2 bytes per slot and pushes the handle to 64 bits.
 ///
-/// @warning **Generation wraparound.** After `2^(8*sizeof(GenT)) - 1` destroy
-///          cycles on the *same slot*, generations repeat and a handle retained
-///          across all of them can alias a new object. With the default 16-bit
-///          counter that is 65535 cycles per slot. This is inherent to
-///          generation tagging; use a wider `GenT` when handles are held for
-///          unbounded periods.
+/// @warning **Generation wraparound.** Issued generations are the odd values
+///          of `GenT` (an even one marks the slot free), so after
+///          `2^(8*sizeof(GenT) - 1)` destroy cycles on the *same slot*,
+///          generations repeat and a handle retained across all of them can
+///          alias a new object. With the default 16-bit counter that is 32768
+///          cycles per slot. This is inherent to generation tagging; use a
+///          wider `GenT` when handles are held for unbounded periods. A 32-bit
+///          counter gives 2^31 cycles per slot.
 ///
 /// @warning **A handle names a slot, not a pool.** A handle from one
 ///          `handle_pool<T, N>` is also accepted by every other pool of the same
@@ -118,9 +121,8 @@ class handle_pool {
   ///       Construct it before anything that runs earlier can reach it.
   handle_pool() noexcept : free_head_(0), size_(0) {
     for (size_type i = 0; i < Capacity; ++i) {
-      next_[i] = static_cast<index_type>(i + 1);  // last one points at `Capacity` == end
-      generation_[i] = generation_type{1};        // 0 is reserved for the null handle
-      active_[i] = false;
+      set_link(i, i + 1);                   // last one points at `Capacity` == end
+      generation_[i] = generation_type{0};  // even: free (see generation_)
     }
   }
 
@@ -145,8 +147,8 @@ class handle_pool {
     }
 
     const size_type index = free_head_;
-    free_head_ = next_[index];
-    active_[index] = true;
+    free_head_ = link(index);
+    generation_[index] = static_cast<generation_type>(generation_[index] + generation_type{1});  // odd: live
     ++size_;
     return_on_unwind claim{this, index};
     ::new (storage_[index].addr()) T(std::forward<Args>(args)...);
@@ -198,7 +200,7 @@ class handle_pool {
   /// become stale.
   void clear() noexcept {
     for (size_type i = 0; i < Capacity; ++i) {
-      if (active_[i]) {
+      if ((generation_[i] & generation_type{1}) != 0) {
         release(i);
       }
     }
@@ -215,15 +217,36 @@ class handle_pool {
   /// Returns the number of free slots (`Capacity - size()`).
   METL_NODISCARD size_type available() const noexcept { return Capacity - size_; }
 
-  /// Returns the generation a slot is currently at. Exposed for diagnostics and
-  /// for tests that need to drive the counter to wraparound.
+  /// Returns the generation of a slot's handle: the one a live object's handle
+  /// carries, or, for a free slot, the one its next handle will carry. Never 0,
+  /// and 1 for a slot that was never used. Exposed for diagnostics and for
+  /// tests that need to drive the counter to wraparound.
   METL_NODISCARD generation_type generation_of(index_type index) const noexcept {
     METL_ASSERT(index < Capacity);
-    return generation_[index];
+    return static_cast<generation_type>(generation_[index] | generation_type{1});
   }
 
  private:
-  using storage_type = storage_for<T>;
+  // A slot holds a T while live and its free-list link while free, in the
+  // same bytes, so it is sized for whichever is larger.
+  struct storage_type {
+    alignas(T) unsigned char bytes[sizeof(T) < sizeof(index_type) ? sizeof(index_type) : sizeof(T)];
+    T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
+    const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
+    void* addr() noexcept { return &bytes[0]; }
+  };
+
+  // The free-list link of a free slot, read and written as bytes: no object
+  // lives there, and the bytes may not be aligned for index_type.
+  size_type link(size_type index) const noexcept {
+    index_type next = 0;
+    std::memcpy(&next, &storage_[index].bytes[0], sizeof next);
+    return next;
+  }
+  void set_link(size_type index, size_type next) noexcept {
+    const auto value = static_cast<index_type>(next);
+    std::memcpy(&storage_[index].bytes[0], &value, sizeof value);
+  }
 
   pointer slot_ptr(size_type index) noexcept { return storage_[index].ptr(); }
   const_pointer slot_ptr(size_type index) const noexcept { return storage_[index].ptr(); }
@@ -232,12 +255,15 @@ class handle_pool {
   /// not resolve. One place where liveness is decided, so `get`, `contains` and
   /// `destroy` cannot drift apart.
   size_type live_index(handle_type handle) const noexcept {
-    if (!handle.valid()) {
+    // An issued handle's generation is odd. The test also rejects the null
+    // handle, whose generation is 0, and a handle forged with an even
+    // generation, which would otherwise match a free slot.
+    if ((handle.generation() & generation_type{1}) == 0) {
       return Capacity;
     }
 
     const size_type index = handle.index();
-    if (index >= Capacity || !active_[index] || generation_[index] != handle.generation()) {
+    if (index >= Capacity || generation_[index] != handle.generation()) {
       return Capacity;
     }
 
@@ -252,25 +278,19 @@ class handle_pool {
   /// instead of destroying twice; the slot joins the free list only after, so
   /// a re-entrant try_emplace() cannot build over the object being destroyed.
   void release(size_type index) noexcept {
-    active_[index] = false;
-
-    // Skip 0 on wraparound: generation 0 is the null-handle marker, and a slot
-    // sitting at generation 0 would make every stale handle to it compare equal
-    // to null rather than to the slot.
+    // Odd to even: the slot stops being live and every handle to it goes
+    // stale. An even generation is never issued, so wrapping to 0 is harmless.
     generation_[index] = static_cast<generation_type>(generation_[index] + generation_type{1});
-    if (generation_[index] == generation_type{0}) {
-      generation_[index] = generation_type{1};
-    }
     --size_;
 
     slot_ptr(index)->~T();
 
-    next_[index] = static_cast<index_type>(free_head_);
+    set_link(index, free_head_);
     free_head_ = index;
   }
 
   // Puts a claimed slot back on the free list if T's constructor exits by an
-  // exception. No handle to it was handed out, so the generation stays.
+  // exception. No handle to it was handed out, so the generation goes back.
   class return_on_unwind {
    public:
     return_on_unwind(handle_pool* pool, size_type index) noexcept : pool_(pool), index_(index) {}
@@ -280,9 +300,11 @@ class handle_pool {
     return_on_unwind& operator=(return_on_unwind&&) = delete;
     ~return_on_unwind() {
       if (pool_ != nullptr) {
-        pool_->active_[index_] = false;
+        // Back to the even generation it had: no handle was issued at the odd one.
+        pool_->generation_[index_] =
+            static_cast<generation_type>(pool_->generation_[index_] - generation_type{1});
         --pool_->size_;
-        pool_->next_[index_] = static_cast<index_type>(pool_->free_head_);
+        pool_->set_link(index_, pool_->free_head_);
         pool_->free_head_ = index_;
       }
     }
@@ -299,9 +321,9 @@ class handle_pool {
   // try_emplace returns a null handle because free_head_ (0) is already >=
   // Capacity, and nothing ever indexes the padding element.
   storage_type storage_[Capacity == 0 ? 1 : Capacity];
-  index_type next_[Capacity == 0 ? 1 : Capacity];
+  // Odd while the slot is live, even while it is free: the parity is the
+  // liveness flag, so a slot needs no flag of its own.
   generation_type generation_[Capacity == 0 ? 1 : Capacity];
-  bool active_[Capacity == 0 ? 1 : Capacity];
   size_type free_head_;
   size_type size_;
 };

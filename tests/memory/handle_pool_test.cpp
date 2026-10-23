@@ -20,6 +20,19 @@ struct tracker {
 int tracker::constructions = 0;
 int tracker::destructions = 0;
 
+// Records the value it held when its destructor ran, so a test can tell
+// whether the pool touched the object's bytes before destroying it.
+struct last_words {
+  static std::uint32_t heard;
+
+  explicit last_words(std::uint32_t input) : value(input) {}
+  ~last_words() { heard = value; }
+
+  std::uint32_t value;
+};
+
+std::uint32_t last_words::heard = 0;
+
 void reset_tracker() {
   tracker::constructions = 0;
   tracker::destructions = 0;
@@ -193,23 +206,62 @@ int main() {
   }
 
   // --- A forged handle to a never-used slot does not resolve -------------------
-  // Every slot starts at generation 1, so `{unused index, 1}` matches the
-  // slot's generation; only the slot being inactive rejects it.
+  // Every slot starts at generation 1, so `{unused index, 1}` names the handle
+  // the slot will issue next; only the slot being free rejects it. The even
+  // neighbours are what a free slot stores, and must not resolve either.
   {
     metl::handle_pool<int, 4> pool;
     const auto& view = pool;
     const auto issued = pool.try_emplace(1);
     CHECK_EQ(issued.index(), 0u);
-    const metl::handle_pool<int, 4>::handle_type forged{2, 1};
     CHECK_EQ(pool.generation_of(2), 1u);
-    CHECK(!pool.contains(forged));
-    CHECK_EQ(pool.get(forged), static_cast<int*>(nullptr));
-    CHECK_EQ(view.get(forged), static_cast<const int*>(nullptr));
-    CHECK(!pool.destroy(forged));
+    using gen = metl::handle_pool<int, 4>::generation_type;
+    for (const gen g : {gen{1}, gen{2}, static_cast<gen>(0xFFFFu)}) {
+      const metl::handle_pool<int, 4>::handle_type forged{2, g};
+      CHECK(!pool.contains(forged));
+      CHECK_EQ(pool.get(forged), static_cast<int*>(nullptr));
+      CHECK_EQ(view.get(forged), static_cast<const int*>(nullptr));
+      CHECK(!pool.destroy(forged));
+    }
     CHECK_EQ(pool.size(), std::size_t{1});
     // Out of range at a matching generation is rejected too.
     const metl::handle_pool<int, 4>::handle_type out_of_range{4, 1};
     CHECK(!pool.contains(out_of_range));
+  }
+
+  // --- A forged handle to a freed slot does not resolve ----------------------
+  // After one use the slot is past its start generation, so this reaches what
+  // the never-used case above cannot: neither the generation its next handle
+  // will carry nor the one just before it may resolve.
+  {
+    metl::handle_pool<int, 4> pool;
+    const auto handle = pool.try_emplace(1);
+    CHECK(pool.destroy(handle));
+    const auto next = pool.generation_of(handle.index());
+    CHECK(next != handle.generation());
+    using gen = metl::handle_pool<int, 4>::generation_type;
+    for (const gen g : {next, static_cast<gen>(next - 1u)}) {
+      const metl::handle_pool<int, 4>::handle_type forged{handle.index(), g};
+      CHECK(forged.valid());
+      CHECK(!pool.contains(forged));
+      CHECK_EQ(pool.get(forged), static_cast<int*>(nullptr));
+      CHECK(!pool.destroy(forged));
+    }
+    CHECK_EQ(pool.size(), std::size_t{0});
+    // The generation reported for the free slot is the one it issues next.
+    CHECK_EQ(pool.try_emplace(2).generation(), next);
+  }
+
+  // --- An object is intact when its destructor runs ---------------------------
+  // The pool must not reuse a slot's bytes until ~T() has finished with them.
+  {
+    metl::handle_pool<last_words, 4> pool;
+    const auto first = pool.try_emplace(0xA5A5A5A5u);
+    const auto second = pool.try_emplace(0x5A5A5A5Au);
+    CHECK(pool.destroy(first));
+    CHECK_EQ(last_words::heard, 0xA5A5A5A5u);
+    CHECK(pool.destroy(second));
+    CHECK_EQ(last_words::heard, 0x5A5A5A5Au);
   }
 
   // --- Generation wraparound skips 0 -----------------------------------------
