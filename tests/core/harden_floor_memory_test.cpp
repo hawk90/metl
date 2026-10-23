@@ -83,6 +83,24 @@ int widen(long x) {
 
 struct counted final : metl::intrusive_ref_counter<counted> {};
 
+// A key that counts the copies made of it: the guard must stop a full-table
+// insert before the key is copied into a slot, not after.
+struct copy_counted {
+  static int copies;
+  int value;
+  explicit copy_counted(int input) : value(input) {}
+  copy_counted(const copy_counted& other) : value(other.value) { ++copies; }
+  copy_counted& operator=(const copy_counted&) = default;
+  friend bool operator==(const copy_counted& lhs, const copy_counted& rhs) { return lhs.value == rhs.value; }
+};
+int copy_counted::copies = 0;
+
+struct copy_counted_hash {
+  std::size_t operator()(const copy_counted& key) const noexcept {
+    return static_cast<std::size_t>(key.value);
+  }
+};
+
 // Counts move assignments, so a test can see one that should never have run.
 struct counts_assignments {
   static int assignments;
@@ -363,6 +381,33 @@ int main() {
     }
     CHECK(guarded_against([&] { (void)set.emplace(-1); }));
     CHECK_EQ(set.size(), set_type::bucket_count);
+  }
+
+  // The same, checking that nothing was written: the guard must fire before
+  // the key is copied to slot npos, not leave a later check to catch it.
+  {
+    using set_type = metl::static_unordered_set<copy_counted, 2, copy_counted_hash>;
+    set_type set;
+    for (int key = 0; key < static_cast<int>(set_type::bucket_count); ++key) {
+      const copy_counted value(key);
+      CHECK(!guarded_against([&] { (void)set.emplace(value); }));
+    }
+    const copy_counted extra(-1);
+    const int copies = copy_counted::copies;
+    CHECK(guarded_against([&] { (void)set.emplace(extra); }));
+    CHECK_EQ(copy_counted::copies, copies);
+  }
+  {
+    using map_type = metl::static_unordered_map<copy_counted, int, 2, copy_counted_hash>;
+    map_type map;
+    for (int key = 0; key < static_cast<int>(map_type::bucket_count); ++key) {
+      const copy_counted value(key);
+      CHECK(!guarded_against([&] { (void)map.emplace(value, key); }));
+    }
+    const copy_counted extra(-1);
+    const int copies = copy_counted::copies;
+    CHECK(guarded_against([&] { (void)map.emplace(extra, 0); }));
+    CHECK_EQ(copy_counted::copies, copies);
   }
 
   // flat_map / flat_set: a duplicate key would be stored twice.
