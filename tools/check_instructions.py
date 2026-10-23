@@ -79,6 +79,13 @@ import tempfile
 # zero. That is where TOLERANCE_FRACTION's headroom comes from: it is ~80x the
 # observed run-to-run spread, and still 1/20th of the smallest regression this
 # gate exists to catch.
+#
+# object_pool, raised for N=4 and lowered for the rest by #503 (run on that PR):
+# a slot now comes off a free list kept in freed slots instead of a scan of the
+# occupancy flags, so alloc+free is constant at every capacity. The constant is
+# a little larger than a scan of four slots (155k -> 195k at N=4) and far
+# smaller than a scan of 64 or 1024 (597k -> 224k, 4.02M -> 268k). Taken
+# deliberately: the pool also gets smaller in RAM, which ranks first (#336).
 BUDGETS = {
     "metl_bench_containers::crc32 over 1 KiB": 58_915_533,
     "metl_bench_containers::fixed_vector<64> fill + clear": 1_150_301,
@@ -94,9 +101,9 @@ BUDGETS = {
     "metl_bench_pools::handle_pool<4>  alloc+free": 195_287,
     "metl_bench_pools::handle_pool<64> alloc+free": 182_195,
     "metl_bench_pools::handle_pool<64> get()": 50_636,
-    "metl_bench_pools::object_pool<1024> alloc+free": 4_777_935,
-    "metl_bench_pools::object_pool<4>  alloc+free": 170_318,
-    "metl_bench_pools::object_pool<64> alloc+free": 902_059,
+    "metl_bench_pools::object_pool<1024> alloc+free": 268_212,
+    "metl_bench_pools::object_pool<4>  alloc+free": 195_274,
+    "metl_bench_pools::object_pool<64> alloc+free": 223_548,
     "metl_bench_spsc::push + pop round trip": 129_156,
 }
 
