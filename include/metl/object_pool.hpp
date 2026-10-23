@@ -5,28 +5,28 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `try_emplace`, `emplace` | wait-free, bounded by `Capacity` |
+///   | `try_emplace`, `emplace` | wait-free, constant |
 ///   | `destroy`, `contains`, `size`, `empty`, `full` | wait-free, bounded |
 ///   | `clear`, destructor | wait-free, bounded by `Capacity` |
 ///
-/// Acquiring a slot scans the occupancy flags for the first free one, so it is
-/// `Capacity`-bounded rather than constant -- worth knowing if `Capacity` is large
-/// and the pool is usually near full, because that is the case that scans furthest.
-/// Releasing is constant: the pointer gives the index directly.
+/// Acquiring a slot is constant: a freed slot keeps the link to the next freed
+/// one in its own bytes, and slots never used yet are taken in index order.
+/// Releasing is constant too: the pointer gives the index directly.
 ///
-/// `metl::handle_pool` acquires in constant time from a free list, and hands back a
-/// handle that detects use-after-free instead of a pointer that does not. Prefer it
-/// unless you need a raw `T*`.
+/// `metl::handle_pool` hands back a handle that detects use-after-free instead
+/// of a pointer that does not. Prefer it unless you need a raw `T*`.
 ///
 /// Single-threaded: this type does not synchronise.
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/bitset.hpp"
 #include "metl/detail/constant_init.hpp"
 #include "metl/type_traits.hpp"
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <new>
 #include <type_traits>
 #include <utility>
@@ -72,7 +72,8 @@ class object_pool {
   object_pool(object_pool&&) = delete;
   object_pool& operator=(object_pool&&) = delete;
 
-  /// Constructs an object in the first free slot.
+  /// Constructs an object in a free slot: the one freed last, or, if none has
+  /// been freed, the lowest one never used.
   /// @return Pointer to the new object, or nullptr if the pool is full (no assert).
   ///
   /// The slot is claimed before T's constructor runs, so a constructor that
@@ -80,21 +81,24 @@ class object_pool {
   /// the claim is released.
   template <typename... Args>
   METL_NODISCARD pointer try_emplace(Args&&... args) {
-    for (size_type i = 0; i < Capacity; ++i) {
-      if (state_[i] == slot_state::free) {
-        state_[i] = slot_state::live;
-        ++size_;
-        release_on_unwind claim{this, i};
-        ::new (storage_[i].addr()) T(std::forward<Args>(args)...);
-        claim.dismiss();
-        return slot_ptr(i);
-      }
+    size_type i = 0;
+    if (free_head_ != 0) {
+      i = free_head_ - 1;
+      free_head_ = link(i);
+    } else if (unused_ < Capacity) {
+      i = unused_++;
+    } else {
+      return nullptr;
     }
-
-    return nullptr;
+    live_.set(i);
+    ++size_;
+    release_on_unwind claim{this, i};
+    ::new (storage_[i].addr()) T(std::forward<Args>(args)...);
+    claim.dismiss();
+    return slot_ptr(i);
   }
 
-  /// Constructs an object in the first free slot and returns a pointer to it.
+  /// Constructs an object in a free slot, chosen as by try_emplace, and returns a pointer to it.
   /// @pre Pool is not full; a full pool asserts and aborts. Use try_emplace for a
   /// non-asserting path.
   template <typename... Args>
@@ -109,7 +113,7 @@ class object_pool {
   /// @return true if destroyed; false if `object` is not a live slot of this pool.
   bool destroy(pointer object) noexcept {
     const size_type index = index_of(object);
-    const bool live = index < Capacity && state_[index] == slot_state::live;
+    const bool live = index < Capacity && live_.test(index);
     if (live) {
       end_life(index);
     }
@@ -123,7 +127,7 @@ class object_pool {
   /// survives, and is counted.
   void clear() noexcept {
     for (size_type i = 0; i < Capacity; ++i) {
-      if (state_[i] == slot_state::live) {
+      if (live_.test(i)) {
         end_life(i);
       }
     }
@@ -132,7 +136,7 @@ class object_pool {
   /// Returns true if `object` points to a live slot of this pool.
   METL_NODISCARD bool contains(const_pointer object) const noexcept {
     const size_type index = index_of(object);
-    return index < Capacity && state_[index] == slot_state::live;
+    return index < Capacity && live_.test(index);
   }
 
   /// Returns true if no slots are in use.
@@ -147,7 +151,34 @@ class object_pool {
   METL_NODISCARD constexpr size_type available() const noexcept { return Capacity - size_; }
 
  private:
-  using storage_type = storage_for<T>;
+  // Smallest unsigned type that holds 0..Capacity: a free-list link is a slot
+  // index plus one, so that 0, the zero-initialized value, ends the list.
+  using link_type = std::conditional_t<Capacity <= 0xFFU,
+                                       std::uint8_t,
+                                       std::conditional_t<Capacity <= 0xFFFFU, std::uint16_t, std::uint32_t>>;
+
+  // A slot holds a T while live and its free-list link while free, in the
+  // same bytes, so it is sized for whichever is larger.
+  struct storage_type {
+    alignas(T) unsigned char bytes[sizeof(T) < sizeof(link_type) ? sizeof(link_type) : sizeof(T)];
+    T* ptr() noexcept { return std::launder(reinterpret_cast<T*>(&bytes[0])); }
+    const T* ptr() const noexcept { return std::launder(reinterpret_cast<const T*>(&bytes[0])); }
+    void* addr() noexcept { return &bytes[0]; }
+    const void* addr() const noexcept { return &bytes[0]; }
+  };
+
+  // The free-list link of a freed slot, read and written as bytes: no object
+  // lives there, and the bytes may not be aligned for link_type.
+  link_type link(size_type index) const noexcept {
+    link_type next = 0;
+    std::memcpy(&next, &storage_[index].bytes[0], sizeof next);
+    return next;
+  }
+  void push_free(size_type index) noexcept {
+    const link_type head = free_head_;
+    std::memcpy(&storage_[index].bytes[0], &head, sizeof head);
+    free_head_ = static_cast<link_type>(index + 1);
+  }
 
   pointer slot_ptr(size_type index) noexcept { return storage_[index].ptr(); }
   const_pointer slot_ptr(size_type index) const noexcept { return storage_[index].ptr(); }
@@ -187,8 +218,9 @@ class object_pool {
     release_on_unwind& operator=(release_on_unwind&&) = delete;
     ~release_on_unwind() {
       if (pool_ != nullptr) {
-        pool_->state_[index_] = slot_state::free;
+        pool_->live_.reset(index_);
         --pool_->size_;
+        pool_->push_free(index_);
       }
     }
     void dismiss() noexcept { pool_ = nullptr; }
@@ -198,20 +230,21 @@ class object_pool {
     size_type index_ = 0;
   };
 
-  // A slot is `dying` while its destructor runs: no longer live, so a
-  // re-entrant destroy() or contains() does not see it, and not yet free, so a
+  // While its destructor runs a slot is neither live, so a re-entrant
+  // destroy() or contains() does not see it, nor on the free list, so a
   // re-entrant try_emplace() cannot build over the object being destroyed.
-  enum class slot_state : unsigned char { free, live, dying };
-
+  // The link goes in only after ~T() has finished with the bytes.
   void end_life(size_type index) noexcept {
-    state_[index] = slot_state::dying;
+    live_.reset(index);
     --size_;
     slot_ptr(index)->~T();
-    state_[index] = slot_state::free;
+    push_free(index);
   }
 
   storage_type storage_[Capacity == 0 ? 1 : Capacity];
-  slot_state state_[Capacity == 0 ? 1 : Capacity]{};
+  detail::bitset<Capacity == 0 ? 1 : Capacity> live_{};
+  link_type free_head_ = 0;  // freed slots, last freed first; 0 is none
+  link_type unused_ = 0;     // slots at and above this were never used
   size_type size_ = 0;
 };
 
