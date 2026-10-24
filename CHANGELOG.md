@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-24
+
+**Highlights.** This release settles the experimental tier. Three stable
+containers use less RAM: `handle_pool` keeps no occupancy flags, and
+`object_pool` and the unordered containers keep their per-slot state in bits, on
+the word-wide bit operations that `metl::exp::bitset` was added to measure.
+`object_pool` now takes a slot in constant time. `metl::exp::once_flag` and
+`metl::exp::try_call_once` are added to run an initializer once, safely against
+an interrupt that arrives while it runs. The intrusive lists stay in Tier 2 for
+this release. Their observers are now `[[nodiscard]]`, and a check keeps every
+observer that way. The promotion reviews of `exp::bitset` and the intrusive
+lists move to 1.9.0 (#506, #337).
+
+### Upgrading from 1.7.0
+
+No source change is needed, but two stable containers behave differently:
+
+- `metl::handle_pool` issues generations in steps of 2, so a slot's handles
+  repeat after 32768 cycles instead of 65535 with the default 16-bit counter.
+  Code that needs the old margin can use a 32-bit `GenT`.
+- `metl::object_pool` reuses the slot freed last, before any never-used slot,
+  where it used to take the lowest free index. Code that relied on the order
+  in which slots are handed out must stop doing so; the order was never
+  documented.
+
+### Added
+
+- **`metl::exp::once_flag` and `metl::exp::try_call_once` (#486).** Tier 2,
+  `<metl/exp/once_flag.hpp>`. They run an initializer once without waiting,
+  and without holding the lock around it. A caller that finds it running in
+  another context, an interrupt that preempted it or the initializer calling
+  itself, gets `false` instead of re-entering it. The state change takes a
+  `Lock` policy, `irq_lock` by default, so it works on ARMv6-M, which has no
+  compare-exchange. It answers the function-local static that an interrupt
+  enters mid-construction, which QEMU shows constructed twice under
+  `-fno-threadsafe-statics` and trapping in `__cxa_guard_acquire` otherwise.
+
+### Changed
+
+- **`metl::handle_pool` is smaller (#336).** It keeps neither a per-slot
+  occupancy flag nor a separate free list: a slot's generation is odd while it
+  is live and even while it is free, and a free slot keeps its free-list link
+  in the object's own storage. `sizeof(handle_pool<std::uint32_t, 64>)` drops
+  from 592 to 400 bytes on x86-64, and the ARM size gate's probe from 24,304 to
+  23,920 bytes of RAM. `generation_of()` keeps its meaning: the generation of
+  the slot's current or next handle, 1 for a slot never used, never 0.
+  **Behaviour change:** issued generations step by 2, so a slot cycles through
+  half as many before they repeat: 32768 instead of 65535 with the default
+  16-bit counter. Where that margin matters, a 32-bit `GenT` gives 2^31
+  cycles, and `handle_pool<std::uint32_t, 64, std::uint32_t>` is then 528
+  bytes, still below 1.7.0's 592 with the 16-bit counter.
+- **`metl::object_pool` takes a slot in constant time (#336).** It takes a slot
+  from a free list kept in the freed slots' own bytes, and marks live slots
+  with one bit each instead of a byte. **Behaviour change:** a freed slot is
+  now reused before a never-used one, last freed first; the pool used to take
+  the lowest free index. A slot of a `T` smaller than the link (1 byte up to
+  255 slots, 2 up to 65535) grows to the link's size.
+- **The unordered containers keep a bucket's state in two bits (#336, #505).**
+  `metl::static_unordered_set` and `metl::static_unordered_map` keep a bucket's
+  state (empty, occupied, tombstone) in two bits instead of a byte, and iterate
+  a 32-bucket word at a time. A rebuild writes only the bits that change, which
+  brings insert/erase churn back near the one-byte layout.
+- **The intrusive lists' observers are `[[nodiscard]]` (#337).**
+  `metl::exp::intrusive_list`, `metl::exp::intrusive_forward_list` and their
+  hooks mark `empty()`, `size()`, `front()`, `back()`, the iterator accessors
+  and `is_linked()` `METL_NODISCARD`, as the Tier 0 containers do. Calling one
+  as a statement now warns. This is done before the lists are considered for
+  promotion, which would freeze their API.
+
 ## [1.7.0] - 2026-10-22
 
 **Highlights.** This release adds two experimental intrusive lists, for objects
