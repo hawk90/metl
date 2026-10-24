@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Enforce METL's recoverable-API contract (docs/SCOPE.md section 9).
 
-Three rules, two of which are mechanical:
+Five rules, four of which are mechanical:
 
   R2  the `try_` prefix is reserved for the recoverable form of an operation
       that can fail on capacity. No other public function returns a bare
@@ -13,6 +13,10 @@ Three rules, two of which are mechanical:
   R4  a bool that answers "was it there" or "did it fire" for an operation
       the caller runs for its effect -- DISCARDABLE below -- is NOT
       METL_NODISCARD. `m.erase(k);` is a legitimate statement and must not warn.
+  R6  every container observer in OBSERVERS (`empty()`, `size()`, `front()`,
+      `begin()`, ...) is METL_NODISCARD: calling one as a statement does
+      nothing. The intrusive lists shipped without it in 1.7.0 and no rule
+      noticed; adding it after a type is frozen warns at existing call sites.
 
 R1 (every capacity-failing operation has both forms) needs a human and stays on
 the PR checklist.
@@ -103,6 +107,22 @@ RESULT_ONLY = {
     "format_int": "the span written: the text is not NUL-terminated, so it is the only record of its length",
     "format_hex": "the span written: the text is not NUL-terminated, so it is the only record of its length",
 }
+
+# R6: observers whose only effect is their result.
+OBSERVERS = ("empty", "size", "capacity", "max_size", "front", "back", "data",
+             "begin", "end", "cbegin", "cend", "before_begin", "cbefore_begin", "is_linked")
+
+# R6 exemptions, by header file name, each with its reason.
+OBSERVER_EXEMPT = {
+    "span.hpp": ("begin/end/cbegin/cend shipped without METL_NODISCARD in 1.0; "
+                 "adding it in 1.x warns at existing call sites, so it waits for 2.0.0"),
+}
+
+DECL_OBSERVER = re.compile(
+    r"^\s*(?P<head>(?:(?:METL_NODISCARD|constexpr|static|inline|virtual)\s+)*)"
+    r"(?P<type>[A-Za-z_][A-Za-z_0-9:<>,&*]*(?:\s+[A-Za-z_][A-Za-z_0-9:<>,&*]*)*)\s+"
+    r"(?P<name>" + "|".join(OBSERVERS) + r")\(\)\s*(?:const\s*)?(?:noexcept|\{|;)"
+)
 
 # A `try_` name preceded by something that is not a return type -- i.e. a call,
 # not a declaration.
@@ -204,6 +224,16 @@ def check_text(text, path="<memory>", declared=None):
                     f"{RESULT_ONLY[name]}",
                 ))
 
+        match = DECL_OBSERVER.match(line)
+        if (match and "METL_NODISCARD" not in match.group("head").split()
+                and match.group("type").split()[0] not in NOT_A_RETURN_TYPE
+                and pathlib.Path(path).name not in OBSERVER_EXEMPT):
+            violations.append((
+                path, number, "R6",
+                f"`{match.group('name')}()` is missing METL_NODISCARD -- an observer "
+                f"called as a statement does nothing",
+            ))
+
         match = DECL_BOOL.match(line)
         if match and match.group("name") in DISCARDABLE and "METL_NODISCARD" in match.group("head").split():
             violations.append((
@@ -246,6 +276,13 @@ CANARY_R4 = """
 class widget {
  public:
   METL_NODISCARD bool erase(int key) { return key == 0; }
+};
+"""
+
+CANARY_R6 = """
+class widget {
+ public:
+  constexpr size_type size() const noexcept { return 0; }
 };
 """
 
@@ -306,6 +343,24 @@ def self_test():
     if "R4" not in caught:
         failures.append("R4 canary was NOT reported -- the discardable-answer check is dead")
 
+    caught = {rule for _, _, rule, _ in check_text(CANARY_R6, "<canary-R6>")}
+    if "R6" not in caught:
+        failures.append("R6 canary was NOT reported -- the observer METL_NODISCARD check is dead")
+    if check_text(CANARY_R6, "include/metl/span.hpp"):
+        failures.append("R6 flagged a header OBSERVER_EXEMPT excuses")
+    for text in ("constexpr size_type\nsize() const noexcept { return 0; }",
+                 "METL_CONSTEXPR20 T* data() noexcept { return p; }",
+                 "reference front() { return *p; }",
+                 "const_iterator cend() const;",
+                 "template <bool C = true>\nstatic constexpr bool empty() noexcept { return C; }"):
+        if "R6" not in {r for _, _, r, _ in check_text(text, "<canary-observer-shape>")}:
+            failures.append(f"R6 missed {text!r}")
+    for text in ("return size() == 0;", "return size();", "iterator it = begin();", "if (empty()) {",
+                 "METL_NODISCARD constexpr size_type\nsize() const noexcept;",
+                 "(void)v.front();", "for (auto it = begin(); it != end(); ++it) {"):
+        if check_text(text, "<canary-observer-call>"):
+            failures.append(f"R6 flagged a call: {text!r}")
+
     caught = {rule for _, _, rule, _ in check_text(CANARY_R2, "<canary-R2>")}
     if "R2" not in caught:
         failures.append("R2 canary was NOT reported -- the naming check is dead")
@@ -345,7 +400,7 @@ def self_test():
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
         return 1
-    print("self-test passed: R2, R3 and R4 bite on every declaration shape, a stale allowlist entry is reported, and clean code and wrapped calls are not flagged")
+    print("self-test passed: R2, R3, R4 and R6 bite on every declaration shape, a stale allowlist entry is reported, and clean code and wrapped calls are not flagged")
     return 0
 
 
@@ -379,7 +434,7 @@ def main():
         )
         return 1
 
-    print(f"API contract OK: {len(headers)} headers, rules R2, R3 and R4 hold")
+    print(f"API contract OK: {len(headers)} headers, rules R2, R3, R4 and R6 hold")
     return 0
 
 
