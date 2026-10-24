@@ -177,6 +177,7 @@ if(METL_BUILD_TESTS)
     bits/crc_table_equivalence bits/format bits/parse
     # exp/  (Tier 2: not in the umbrella header; docs/SCOPE.md section 3)
     exp/bitset exp/intrusive_forward_list exp/intrusive_list exp/intrusive_scheduler
+    exp/once_flag exp/once_flag_irq
     # control/
     control/fsm control/fsm_reentrancy control/event_dispatcher control/event_dispatcher_reentrancy
     control/coro_protothread control/coro_protothread_nested_switch control/coro_scheduler control/coro_scheduler_reentrancy
@@ -220,8 +221,8 @@ if(METL_BUILD_TESTS)
 
   # -------------------------------------------------------------------------
   # Multi-threaded concurrency tests (need a threading runtime): spsc_queue,
-  # atomic_handle, spsc_byte_ring, mpmc_queue (two), the queues' linearizability
-  # and size_hint_observer. Built and
+  # atomic_handle, spsc_byte_ring, mpmc_queue (two), the queues' linearizability,
+  # size_hint_observer and exp::once_flag. Built and
   # run in every configuration, including the TSAN sanitizer job where they
   # actually validate those types' memory ordering.
   # -------------------------------------------------------------------------
@@ -287,6 +288,14 @@ if(METL_BUILD_TESTS)
   metl_cc_test(
     NAME metl_size_hint_observer_threaded_test
     SRCS tests/sync/size_hint_observer_threaded_test.cpp
+    DEPS metl::metl_test_options Threads::Threads
+    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/tests
+    LABELS "metl"
+  )
+
+  metl_cc_test(
+    NAME metl_once_flag_threaded_test
+    SRCS tests/exp/once_flag_threaded_test.cpp
     DEPS metl::metl_test_options Threads::Threads
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/tests
     LABELS "metl"

@@ -91,6 +91,7 @@ EXEMPT = {
     "scope_exit.hpp": "holds one callable for its whole lifetime; nothing is added or removed",
     "lock.hpp": "guarded<T> holds one T for its whole lifetime; nothing is added or removed",
     "exp/bitset.hpp": "holds bits, not objects",
+    "exp/once_flag.hpp": "holds a state word; the initializer's object is the caller's",
     "exp/intrusive_forward_list.hpp": ("links objects the caller owns; stores, constructs and destroys none. "
                     "std parity: agrees_with_std_forward_list in its own test"),
     "exp/intrusive_list.hpp": ("links objects the caller owns; stores, constructs and destroys none. "
