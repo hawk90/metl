@@ -1,0 +1,1 @@
+- `metl::static_unordered_set` and `metl::static_unordered_map` rebuild with fewer state writes, which brings insert/erase churn back near the one-byte layout after #336 (#505).

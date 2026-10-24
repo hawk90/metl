@@ -991,11 +991,17 @@ class static_unordered_map {
 
     // Phase 2: place each unplaced element at the first slot in its probe run
     // that is not already occupied, cascading through any element it displaces.
+    // Every live element is unplaced here, so the marker bits are dense and a
+    // test per slot beats find_next_set. Each step knows the slot's state, so it
+    // writes only the bit that changes instead of going through set_state.
     storage_for<value_type> carry;
-    for (size_type i = tombstone_.find_next_set(0); i < bucket_count; i = tombstone_.find_next_set(i + 1)) {
+    for (size_type i = 0; i < bucket_count; ++i) {
+      if (!tombstone_.test(i)) {
+        continue;
+      }
       ::new (carry.addr()) value_type(static_cast<value_type&&>(*slot_value(i)));
       slot_value(i)->~value_type();
-      set_state(i, slot_state::empty);
+      tombstone_.reset(i);
 
       for (;;) {
         size_type target = bucket_during_rebuild(carry);
@@ -1006,7 +1012,7 @@ class static_unordered_map {
         if (state(target) == slot_state::empty) {
           ::new (storage_[target].addr()) value_type(static_cast<value_type&&>(carry.ref()));
           carry.ptr()->~value_type();
-          set_state(target, slot_state::occupied);
+          occupied_.set(target);
           break;
         }
 
@@ -1017,7 +1023,8 @@ class static_unordered_map {
         slot_value(target)->~value_type();
         ::new (storage_[target].addr()) value_type(static_cast<value_type&&>(carry.ref()));
         carry.ptr()->~value_type();
-        set_state(target, slot_state::occupied);
+        tombstone_.reset(target);
+        occupied_.set(target);
         ::new (carry.addr()) value_type(static_cast<value_type&&>(displaced.ref()));
         displaced.ptr()->~value_type();
       }
