@@ -1,1 +1,0 @@
-- `metl::exp::intrusive_list`, `metl::exp::intrusive_forward_list` and their hooks mark `empty()`, `size()`, `front()`, `back()`, the iterator accessors and `is_linked()` `METL_NODISCARD`, as the Tier 0 containers do. Calling one as a statement now warns. This is done before the lists are considered for promotion, which would freeze their API (#337).

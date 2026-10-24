@@ -1,1 +1,0 @@
-- `metl::static_unordered_set` and `metl::static_unordered_map` keep a bucket's state (empty, occupied, tombstone) in two bits instead of a byte, and iterate a 32-bucket word at a time (#336).
