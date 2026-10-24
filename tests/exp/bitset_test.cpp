@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <initializer_list>
 
+#include <metl/detail/bitset.hpp>
 #include <metl/exp/bitset.hpp>
 
 namespace {
@@ -234,7 +235,35 @@ void all_cases() {
 
 }  // namespace
 
+// find_next_set agrees with a bit-by-bit search from every start, across word
+// boundaries and past the last bit.
+template <std::size_t N>
+void find_next_set_cases() {
+  metl::detail::bitset<N> bits;
+  for (std::size_t i = 0; i < N; i += 7) {
+    bits.set(i);
+  }
+  bits.set(N - 1);
+  for (std::size_t from = 0; from <= N + 1; ++from) {
+    std::size_t expected = N;
+    for (std::size_t i = from; i < N; ++i) {
+      if (bits.test(i)) {
+        expected = i;
+        break;
+      }
+    }
+    CHECK_EQ(bits.find_next_set(from), expected);
+  }
+  CHECK_EQ(metl::detail::bitset<N>{}.find_next_set(0), N);
+}
+
 int main() {
+  find_next_set_cases<1>();
+  find_next_set_cases<31>();
+  find_next_set_cases<32>();
+  find_next_set_cases<33>();
+  find_next_set_cases<100>();
+
   all_cases<1>();
   all_cases<31>();
   all_cases<32>();

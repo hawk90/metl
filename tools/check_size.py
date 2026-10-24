@@ -149,8 +149,14 @@ import tempfile
 # budget simply been raised to fit the first number, that bug would have shipped.
 #
 # Measured by the `invariants` job on run 32483066357 (PR #66, after the fix).
+#
+# Raised a second time, on Cortex-M0 only, by #504: the probe's
+# static_unordered_set/map keep a bucket's state in two bitsets instead of a
+# byte array. That cost +328 bytes on M0 against +320 on M4 -- no outlier, so no
+# hidden 64-bit or divide path -- and buys 6 bits of RAM per bucket (-768 bytes
+# of the probe's RAM), which ranks above code size (#336). M3/M4/M7 still fit.
 BUDGETS = {
-    "cortex-m0": 3440,
+    "cortex-m0": 3768,
     "cortex-m3": 4236,
     "cortex-m4": 4244,
     "cortex-m7": 4260,
