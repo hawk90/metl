@@ -4,8 +4,8 @@
 /// @brief `metl::exp::bitset<N>`: N bits packed into 32-bit words.
 ///
 /// experimental: may change or be removed in a minor release.
-/// Tracking issue: #336, which states when this is promoted and when it is
-/// removed. It is not included by <metl/metl.hpp>, and the 1.x Semantic
+/// Tracking issue: #506, which decides promotion in 1.9.0 on the criteria #336
+/// set, including when it is removed. It is not included by <metl/metl.hpp>, and the 1.x Semantic
 /// Versioning promise does not cover it (docs/SCOPE.md section 3, Tier 2).
 
 #include "metl/detail/bitset.hpp"
@@ -19,9 +19,10 @@ namespace exp {
 ///
 /// The experiment is whether packing pays for itself. A packed bit is a
 /// read-modify-write where a `bool` flag is a plain store, so a small set can
-/// cost more code than the RAM it saves. The first candidate caller is
-/// `handle_pool`'s one-`bool`-per-slot occupancy array, and #336 records both
-/// forms measured side by side.
+/// cost more code than the RAM it saves. #336 measured it as `handle_pool`'s
+/// occupancy flags and found it slower there, so `handle_pool` keeps no flag at
+/// all. Its callers, through `detail::bitset`, are `object_pool`'s live bits
+/// (#503) and the unordered containers' two-bit bucket states (#504).
 ///
 /// Storage is `ceil(N / 32)` words of `std::uint32_t` and nothing else. Bit `i`
 /// is bit `i % 32` of word `i / 32`. That order is stated so the operations
