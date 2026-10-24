@@ -5,8 +5,8 @@
 /// `metl::exp::bitset` (metl/exp/bitset.hpp), where its contract is stated.
 ///
 /// It lives in `detail` rather than in `exp/` so that a Tier 0 type can use it
-/// without depending on a Tier 2 header: `handle_pool`'s occupancy flags are
-/// the candidate (#336). There is no public `metl::detail::bitset` API contract.
+/// without depending on a Tier 2 header: `object_pool` (#503) and the unordered
+/// containers (#504) do. There is no public `metl::detail::bitset` API contract.
 
 #include "metl/attributes.hpp"
 #include "metl/bit.hpp"
