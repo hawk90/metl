@@ -617,8 +617,8 @@ class flat_map {
   flat_map(adopt_compare, Compare&& comp) noexcept(std::is_nothrow_move_constructible_v<Compare>)
       : comp_(static_cast<Compare&&>(comp)), size_(0) {}
 
-  value_type* data() noexcept { return storage_.data(); }
-  const value_type* data() const noexcept { return storage_.data(); }
+  METL_NODISCARD value_type* data() noexcept { return storage_.data(); }
+  METL_NODISCARD const value_type* data() const noexcept { return storage_.data(); }
 
   template <typename K>
   size_type lower_bound_index(const K& key) const noexcept(compare_cannot_throw<K>) {

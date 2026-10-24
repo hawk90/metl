@@ -9,6 +9,7 @@
 /// removed. It is not included by <metl/metl.hpp>, and the 1.x Semantic
 /// Versioning promise does not cover it (docs/SCOPE.md section 3, Tier 2).
 
+#include "metl/attributes.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/dlist_link.hpp"
 
@@ -76,7 +77,7 @@ class list_hook : private metl::detail::dlist_link {
   ~list_hook() { METL_HARDEN(owner == nullptr); }  // destroyed while linked
 
   /// @brief Whether the element is in a list through this hook.
-  constexpr bool is_linked() const noexcept { return owner != nullptr; }
+  METL_NODISCARD constexpr bool is_linked() const noexcept { return owner != nullptr; }
 
  private:
   template <typename, typename>
@@ -205,39 +206,39 @@ class intrusive_list {
 
   // ---- Observers -----------------------------------------------------------
 
-  bool empty() const noexcept { return head_.next == &head_; }
-  size_type size() const noexcept { return size_; }
+  METL_NODISCARD bool empty() const noexcept { return head_.next == &head_; }
+  METL_NODISCARD size_type size() const noexcept { return size_; }
 
   /// @pre `!empty()`.
-  T& front() noexcept {
+  METL_NODISCARD T& front() noexcept {
     METL_ASSERT(!empty());
     return value_of(*head_.next);
   }
   /// @pre `!empty()`.
-  const T& front() const noexcept {
+  METL_NODISCARD const T& front() const noexcept {
     METL_ASSERT(!empty());
     return value_of(*head_.next);
   }
   /// @pre `!empty()`.
-  T& back() noexcept {
+  METL_NODISCARD T& back() noexcept {
     METL_ASSERT(!empty());
     return value_of(*head_.prev);
   }
   /// @pre `!empty()`.
-  const T& back() const noexcept {
+  METL_NODISCARD const T& back() const noexcept {
     METL_ASSERT(!empty());
     return value_of(*head_.prev);
   }
 
   // ---- Iterators -----------------------------------------------------------
 
-  iterator begin() noexcept { return iterator(head_.next); }
-  const_iterator begin() const noexcept { return const_iterator(head_.next); }
-  const_iterator cbegin() const noexcept { return begin(); }
+  METL_NODISCARD iterator begin() noexcept { return iterator(head_.next); }
+  METL_NODISCARD const_iterator begin() const noexcept { return const_iterator(head_.next); }
+  METL_NODISCARD const_iterator cbegin() const noexcept { return begin(); }
   /// @brief The head: a position in this list, before which `insert` appends.
   ///        Not dereferenceable.
-  iterator end() noexcept { return iterator(&head_); }
-  const_iterator end() const noexcept {
+  METL_NODISCARD iterator end() noexcept { return iterator(&head_); }
+  METL_NODISCARD const_iterator end() const noexcept {
     // A position is a `link*` whatever its constness, as insert and erase
     // take a const_iterator and write through it. Only those non-const
     // members write through a position, after checking it is in this list,
@@ -245,7 +246,7 @@ class intrusive_list {
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
     return const_iterator(const_cast<link*>(&head_));
   }
-  const_iterator cend() const noexcept { return end(); }
+  METL_NODISCARD const_iterator cend() const noexcept { return end(); }
 
   // ---- Modifiers -----------------------------------------------------------
 

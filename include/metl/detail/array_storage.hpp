@@ -40,6 +40,8 @@
 /// cost nothing at run time but cannot be done for `end()`, so it is recorded
 /// rather than patched.
 
+#include "metl/attributes.hpp"
+
 #include <cstddef>
 #include <new>
 #include <type_traits>
@@ -62,9 +64,11 @@ struct array_storage {
   alignas(T) unsigned char bytes[sizeof(T) * N];
 
   /// @brief Pointer to element 0 of the array; valid with any number of elements alive.
-  T* data() noexcept { return *std::launder(reinterpret_cast<T(*)[N]>(&bytes)); }
+  METL_NODISCARD T* data() noexcept { return *std::launder(reinterpret_cast<T(*)[N]>(&bytes)); }
   /// @brief Pointer to element 0 of the array; valid with any number of elements alive.
-  const T* data() const noexcept { return *std::launder(reinterpret_cast<const T(*)[N]>(&bytes)); }
+  METL_NODISCARD const T* data() const noexcept {
+    return *std::launder(reinterpret_cast<const T(*)[N]>(&bytes));
+  }
 
   /// @brief Address of slot `index`, for placement new. Computed from the bytes, never from
   ///        `data()`, so it does not depend on any element being alive.

@@ -506,8 +506,8 @@ class optional {
   // after a reset without std::launder, which is not constant-evaluable. C++20
   // removed that rule (P1971) and no compiler optimises on it, so the union
   // keeps optional constexpr; detail/array_storage.hpp makes the same trade.
-  METL_CONSTEXPR20 T* data() noexcept { return detail::addressof(storage_.value_); }
-  constexpr const T* data() const noexcept { return detail::addressof(storage_.value_); }
+  METL_NODISCARD METL_CONSTEXPR20 T* data() noexcept { return detail::addressof(storage_.value_); }
+  METL_NODISCARD constexpr const T* data() const noexcept { return detail::addressof(storage_.value_); }
 
   template <typename... Args>
   METL_CONSTEXPR20 void construct(Args&&... args) {

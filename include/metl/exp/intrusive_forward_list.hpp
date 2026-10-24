@@ -9,6 +9,7 @@
 /// removed. It is not included by <metl/metl.hpp>, and the 1.x Semantic
 /// Versioning promise does not cover it (docs/SCOPE.md section 3, Tier 2).
 
+#include "metl/attributes.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/slist_link.hpp"
 
@@ -75,7 +76,7 @@ class forward_list_hook : private metl::detail::slist_link {
   ~forward_list_hook() { METL_HARDEN(owner == nullptr); }  // destroyed while linked
 
   /// @brief Whether the element is in a list through this hook.
-  constexpr bool is_linked() const noexcept { return owner != nullptr; }
+  METL_NODISCARD constexpr bool is_linked() const noexcept { return owner != nullptr; }
 
  private:
   template <typename, typename>
@@ -193,16 +194,16 @@ class intrusive_forward_list {
 
   // ---- Observers -----------------------------------------------------------
 
-  bool empty() const noexcept { return head_.next == nullptr; }
-  size_type size() const noexcept { return size_; }
+  METL_NODISCARD bool empty() const noexcept { return head_.next == nullptr; }
+  METL_NODISCARD size_type size() const noexcept { return size_; }
 
   /// @pre `!empty()`.
-  T& front() noexcept {
+  METL_NODISCARD T& front() noexcept {
     METL_ASSERT(!empty());
     return value_of(*head_.next);
   }
   /// @pre `!empty()`.
-  const T& front() const noexcept {
+  METL_NODISCARD const T& front() const noexcept {
     METL_ASSERT(!empty());
     return value_of(*head_.next);
   }
@@ -211,8 +212,8 @@ class intrusive_forward_list {
 
   /// @brief The position before the first element, for `insert_after` and
   ///        `erase_after`. Not dereferenceable.
-  iterator before_begin() noexcept { return iterator(&head_); }
-  const_iterator before_begin() const noexcept {
+  METL_NODISCARD iterator before_begin() noexcept { return iterator(&head_); }
+  METL_NODISCARD const_iterator before_begin() const noexcept {
     // A position is a `link*` whatever its constness, as insert_after and
     // erase_after take a const_iterator and write through it. Only those
     // non-const members write through a position, after checking it is in
@@ -220,13 +221,13 @@ class intrusive_forward_list {
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
     return const_iterator(const_cast<link*>(&head_));
   }
-  const_iterator cbefore_begin() const noexcept { return before_begin(); }
-  iterator begin() noexcept { return iterator(head_.next); }
-  const_iterator begin() const noexcept { return const_iterator(head_.next); }
-  const_iterator cbegin() const noexcept { return begin(); }
-  iterator end() noexcept { return iterator(); }
-  const_iterator end() const noexcept { return const_iterator(); }
-  const_iterator cend() const noexcept { return end(); }
+  METL_NODISCARD const_iterator cbefore_begin() const noexcept { return before_begin(); }
+  METL_NODISCARD iterator begin() noexcept { return iterator(head_.next); }
+  METL_NODISCARD const_iterator begin() const noexcept { return const_iterator(head_.next); }
+  METL_NODISCARD const_iterator cbegin() const noexcept { return begin(); }
+  METL_NODISCARD iterator end() noexcept { return iterator(); }
+  METL_NODISCARD const_iterator end() const noexcept { return const_iterator(); }
+  METL_NODISCARD const_iterator cend() const noexcept { return end(); }
 
   // ---- Modifiers -----------------------------------------------------------
 
