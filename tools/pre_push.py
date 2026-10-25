@@ -393,6 +393,15 @@ sys.exit(1 if failed else 0)
 """
 
 
+def qemu_toolchain_usable() -> bool:
+    """Whether arm-none-eabi-g++ with picolibc, and qemu-system-arm, are here."""
+    if shutil.which("arm-none-eabi-g++") is None or shutil.which("qemu-system-arm") is None:
+        return False
+    probe = subprocess.run(["arm-none-eabi-g++", "--specs=picolibc.specs", "-E", "-x", "c++", "-"],
+                           input="", capture_output=True, text=True, check=False)
+    return probe.returncode == 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -477,11 +486,12 @@ def main():
         build_dir = BUILD_ROOT / "mutants"
         jobs = str(os.cpu_count() or 2)
         command = [python, "tools/check_mutants.py", "--build-dir", str(build_dir)]
-        # The qemu: mutants need the ARM toolchain and QEMU; CI's
-        # qemu-conformance job runs them when they are not here.
-        if shutil.which("arm-none-eabi-g++") is None or shutil.which("qemu-system-arm") is None:
+        # The qemu: mutants need the ARM toolchain with picolibc, and QEMU;
+        # CI's qemu-conformance job runs them when they are not here. A
+        # toolchain without picolibc.specs (Homebrew's) cannot build them.
+        if not qemu_toolchain_usable():
             command += ["--skip-kinds", "qemu"]
-            print("  (no ARM toolchain or QEMU here: the qemu: mutants are left to CI)")
+            print("  (no ARM toolchain with picolibc, or no QEMU, here: the qemu: mutants are left to CI)")
         if not everything:
             command += ["--files", ",".join(changed)]
         if not (step("mutants: configure", ["cmake", "-B", str(build_dir), "-S", str(REPO),
