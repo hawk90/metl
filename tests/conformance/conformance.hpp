@@ -900,8 +900,7 @@ struct handle_pool_adapter {
   static constexpr bool movable = false;
   static constexpr bool move_empties_source = false;
   static constexpr bool fixed_count = true;
-  static constexpr constant_init constant_init_level = constant_init::never;
-  static constexpr const char* constant_init_refused = "its constructor links the free list at run time";
+  static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static handed_out<typename C::handle_type, 4>& given() {
     static handed_out<typename C::handle_type, 4> list;

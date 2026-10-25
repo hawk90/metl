@@ -4,6 +4,7 @@
 #include "metl/attributes.hpp"
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/constant_init.hpp"
 #include "metl/type_traits.hpp"
 #include "metl/versioned_handle.hpp"
 
@@ -116,13 +117,12 @@ class handle_pool {
                 "metl::handle_pool Capacity must fit the handle's slot index field");
 
   /// Constructs an empty pool with every slot free and generation 1.
-  /// @note Not constexpr: the free list is linked at run time, so a
-  ///       namespace-scope pool is initialized at run time, in link order.
-  ///       Construct it before anything that runs earlier can reach it.
-  handle_pool() noexcept : free_head_(0), size_(0) {
-    for (size_type i = 0; i < Capacity; ++i) {
-      set_link(i, i + 1);                   // last one points at `Capacity` == end
-      generation_[i] = generation_type{0};  // even: free (see generation_)
+  /// Constant-initialized at namespace scope since C++20 (see
+  /// detail/constant_init.hpp): no free list is linked up front, because a
+  /// slot never used is taken from `unused_` instead.
+  constexpr handle_pool() noexcept {
+    for (storage_type& slot : storage_) {
+      detail::zero_for_constant_init(slot.bytes);
     }
   }
 
@@ -142,12 +142,15 @@ class handle_pool {
   /// constructor throws, the slot goes back.
   template <typename... Args>
   METL_NODISCARD handle_type try_emplace(Args&&... args) {
-    if (free_head_ >= Capacity) {
+    size_type index = 0;
+    if (free_head_ != 0) {
+      index = free_head_ - 1U;
+      free_head_ = static_cast<index_type>(link(index));
+    } else if (unused_ < Capacity) {
+      index = unused_++;
+    } else {
       return handle_type{};
     }
-
-    const size_type index = free_head_;
-    free_head_ = link(index);
     generation_[index] = static_cast<generation_type>(generation_[index] + generation_type{1});  // odd: live
     ++size_;
     return_on_unwind claim{this, index};
@@ -286,7 +289,7 @@ class handle_pool {
     slot_ptr(index)->~T();
 
     set_link(index, free_head_);
-    free_head_ = index;
+    free_head_ = static_cast<index_type>(index + 1);
   }
 
   // Puts a claimed slot back on the free list if T's constructor exits by an
@@ -305,7 +308,7 @@ class handle_pool {
             static_cast<generation_type>(pool_->generation_[index_] - generation_type{1});
         --pool_->size_;
         pool_->set_link(index_, pool_->free_head_);
-        pool_->free_head_ = index_;
+        pool_->free_head_ = static_cast<index_type>(index_ + 1);
       }
     }
     void dismiss() noexcept { pool_ = nullptr; }
@@ -318,14 +321,16 @@ class handle_pool {
   // `Capacity == 0 ? 1 : Capacity` throughout: a zero-capacity pool is a valid
   // degenerate case (every other fixed-capacity METL container accepts one), and
   // a zero-length array is not. Every operation still behaves correctly --
-  // try_emplace returns a null handle because free_head_ (0) is already >=
-  // Capacity, and nothing ever indexes the padding element.
+  // try_emplace returns a null handle because the free list is empty and
+  // unused_ (0) is already >= Capacity, and nothing ever indexes the padding
+  // element.
   storage_type storage_[Capacity == 0 ? 1 : Capacity];
   // Odd while the slot is live, even while it is free: the parity is the
   // liveness flag, so a slot needs no flag of its own.
-  generation_type generation_[Capacity == 0 ? 1 : Capacity];
-  size_type free_head_;
-  size_type size_;
+  generation_type generation_[Capacity == 0 ? 1 : Capacity]{};
+  index_type free_head_ = 0;  // freed slots, last freed first; 0 is none
+  index_type unused_ = 0;     // slots at and above this were never used
+  size_type size_ = 0;
 };
 
 }  // namespace metl

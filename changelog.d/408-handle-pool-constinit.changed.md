@@ -1,0 +1,1 @@
+- `metl::handle_pool` is constant-initialized at namespace scope since C++20, as `object_pool` is (#408). Its constructor no longer links every slot into the free list: a slot never used is taken from a counter, and only freed slots are linked. Slots are handed out in the same order as before.
