@@ -75,8 +75,9 @@ TRACE_TIMEOUT_SECONDS = 180
 
 # Runtime stack high-water mark in bytes, per CPU, without and with LTO.
 # Measured by the `invariants` job on PR #420 (QEMU 10.2.1, arm-none-eabi-g++
-# 14.2.1); a budget goes DOWN freely and UP only with the commit saying what grew
-# and why.
+# 14.2.1); a budget goes DOWN with the change that shrinks the figure (a figure
+# under it by more than the tolerance fails), and UP only with the commit saying
+# what grew and why.
 STACK_BUDGETS = {
     "cortex-m0": {"no-lto": 112, "lto": 120},
     "cortex-m3": {"no-lto": 104, "lto": 120},
@@ -292,6 +293,11 @@ def grade_stack(cpu, marks, canary, report):
             failures.append(f"::error::{cpu} {build}: the stack reached {used} bytes, over the "
                             f"{budget}-byte budget (+{STACK_TOLERANCE_BYTES} = {ceiling}). "
                             f"Find the operation that started using a local buffer; do not pad.")
+        elif used < budget - STACK_TOLERANCE_BYTES:
+            failures.append(f"::error::{cpu} {build}: the stack reached only {used} bytes, under "
+                            f"the {budget}-byte budget (-{STACK_TOLERANCE_BYTES} = "
+                            f"{budget - STACK_TOLERANCE_BYTES}). Lower "
+                            f"STACK_BUDGETS['{cpu}']['{build}'] to {used} in this change.")
         else:
             out.append(f"  {build}: within budget {budget} (+{STACK_TOLERANCE_BYTES}), "
                        f"{ceiling - used} bytes of room")
@@ -319,9 +325,12 @@ def grade_instructions(cpu, counts, report):
                             f"the number.")
             continue
         out.append(f"  {count:10,}  {name}   (budget {budget:,}, {ceiling - count:,} of room)")
-        if count < int(budget * (1.0 - INSTRUCTION_TOLERANCE_FRACTION)):
-            out.append(f"      NOTE: lower INSTRUCTION_BUDGETS['{cpu}']['{name}'] to {count} "
-                       f"so the ratchet keeps its grip.")
+        floor = int(budget * (1.0 - INSTRUCTION_TOLERANCE_FRACTION))
+        if count < floor:
+            failures.append(f"::error::{cpu} {name} executed {count:,} instructions, under the "
+                            f"{budget:,} budget (-{int(INSTRUCTION_TOLERANCE_FRACTION * 100)}% = "
+                            f"{floor:,}). Lower INSTRUCTION_BUDGETS['{cpu}']['{name}'] to {count} "
+                            f"in this change, or the gap is room for a regression.")
     stale = sorted(set(budgets) - set(counts))
     for name in stale:
         failures.append(f"::error::INSTRUCTION_BUDGETS['{cpu}'] names {name}, which the probe "
@@ -517,6 +526,17 @@ def self_test():
         STACK_BUDGETS["m"]["no-lto"] -= 1
         if grade_stack("m", marks, 1400, report=False)[0] == 0:
             failures.append("a stack one byte over budget + tolerance passed")
+        STACK_BUDGETS["m"] = {"no-lto": 300 + STACK_TOLERANCE_BYTES, "lto": 260}
+        if grade_stack("m", marks, 1400, report=False)[0] != 0:
+            failures.append("a stack exactly at budget - tolerance failed")
+        STACK_BUDGETS["m"]["no-lto"] += 1
+        code, lines = grade_stack("m", marks, 1400, report=False)
+        if code == 0:
+            failures.append("a stack one byte under budget - tolerance passed")
+        if not any("to 300 " in line for line in lines):
+            failures.append("an under-budget stack did not name the number to record")
+        if grade_stack("m", marks, 1400, report=True)[0] != 0:
+            failures.append("--report refused a stack under budget - tolerance")
         STACK_BUDGETS["m"] = {"no-lto": 1400 - STACK_TOLERANCE_BYTES, "lto": 1400}
         if grade_stack("m", marks, 1400, report=True)[0] == 0:
             failures.append("a canary within the no-LTO budget passed, even under --report")
@@ -529,6 +549,15 @@ def self_test():
             failures.append("a count at budget + 5% failed")
         if grade_instructions("m", {"r": 1051}, report=False)[0] == 0:
             failures.append("a count over budget + 5% passed")
+        if grade_instructions("m", {"r": 950}, report=False)[0] != 0:
+            failures.append("a count at budget - 5% failed")
+        code, lines = grade_instructions("m", {"r": 949}, report=False)
+        if code == 0:
+            failures.append("a count under budget - 5% passed")
+        if not any("to 949 " in line for line in lines):
+            failures.append("an under-budget count did not name the number to record")
+        if grade_instructions("m", {"r": 949}, report=True)[0] != 0:
+            failures.append("--report refused a count under budget - 5%")
         INSTRUCTION_BUDGETS["m"]["gone"] = 10
         if grade_instructions("m", counts, report=False)[0] == 0:
             failures.append("a budget for a region nothing measures passed")
@@ -560,7 +589,7 @@ def self_test():
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
     print("self-test passed: missing, saturated and unparseable stack reports, cut or empty "
-          "traces, mismatched region lists, missing and exceeded budgets, a blind canary "
+          "traces, mismatched region lists, missing, exceeded and undercut budgets, a blind canary "
           "and a canary the gate would not reject are all rejected; at-budget figures pass and the record is filled")
     return 0
 

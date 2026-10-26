@@ -31,9 +31,11 @@ Usage:
     tools/clang_tidy_report.py [-p BUILD_DIR] [--max N] [--clang-tidy PATH]
 
     -p BUILD_DIR     directory holding compile_commands.json (default: build)
-    --max N          exit 1 if the distinct-finding count exceeds N. This is the
-                     ratchet for promoting clang-tidy from advisory to blocking:
-                     set it to today's count, and it can only go down.
+    --max N          exit 1 if the distinct-finding count is not exactly N. This is
+                     the ratchet for promoting clang-tidy from advisory to
+                     blocking: set it to today's count, and it can only go down.
+                     A count under N fails too, so the change that removes a
+                     finding lowers N, and the slack is never room for a new one.
     --clang-tidy P   clang-tidy binary (default: clang-tidy on PATH)
     --self-test      check the failure classification against fixed outputs
 
@@ -89,7 +91,26 @@ def unanalysed(header, returncode, stdout, stderr):
     return None
 
 
+def grade(count, budget):
+    """(exit code, lines) for `count` distinct findings against --max `budget`."""
+    if count > budget:
+        return 1, [f"FAIL: {count} distinct findings exceeds the budget of {budget}."]
+    if count < budget:
+        return 1, [f"FAIL: {count} distinct findings, under the budget of {budget}. "
+                   f"Lower --max to {count} in this change, or the slack is room "
+                   f"for a new finding to arrive unseen."]
+    return 0, [f"OK: {count} distinct findings, at the budget of {budget}."]
+
+
 def self_test():
+    for count, budget, want in ((5, 5, 0), (6, 5, 1), (4, 5, 1)):
+        code, lines = grade(count, budget)
+        if code != want:
+            print(f"self-test FAILED: {count} findings against --max {budget} gave exit {code}")
+            return 1
+    if not any("--max to 4 " in line for line in grade(4, 5)[1]):
+        print("self-test FAILED: a count under --max did not name the number to record")
+        return 1
     cases = [
         (("a.hpp", 0, "", ""), False),
         (("a.hpp", 1, "x.hpp:1:2: warning: w [readability-x]", "1 warning generated."), False),
@@ -120,7 +141,7 @@ def self_test():
     if unparsed != ["/dir with space/c.hpp:5:6: warning: u [misc-q]"]:
         print(f"self-test FAILED: an unparsable warning line was not reported: {unparsed}")
         return 1
-    print(f"self-test passed: {len(cases)} clang-tidy outcomes classified, "
+    print(f"self-test passed: a count over or under --max fails; {len(cases)} clang-tidy outcomes classified, "
           "including a compiler error, a missing include and a killed run; findings are "
           "deduplicated, and a warning line that cannot be parsed is reported")
     return 0
@@ -194,13 +215,10 @@ def main():
 
     if args.max is not None:
         print()
-        if len(distinct) > args.max:
-            print(f"FAIL: {len(distinct)} distinct findings exceeds the budget of {args.max}.")
-            return 1
-        print(f"OK: {len(distinct)} distinct findings, within the budget of {args.max}.")
-        if len(distinct) < args.max:
-            print(f"     The budget is now slack by {args.max - len(distinct)}. "
-                  f"Lower it to {len(distinct)}.")
+        code, lines = grade(len(distinct), args.max)
+        for line in lines:
+            print(line)
+        return code
     return 0
 
 

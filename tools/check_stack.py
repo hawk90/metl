@@ -52,7 +52,8 @@ import sys
 # prints the measured maxima with --report, and the numbers were set from THAT
 # output in a follow-up commit.
 #
-# A budget goes DOWN freely. It goes UP only when the probe was deliberately
+# A budget goes DOWN with the change that shrinks the frame: a frame under it by
+# more than the tolerance fails. It goes UP only when the probe was deliberately
 # given more to do, and the commit that raises it has to say what and why --
 # never to make a red job green.
 #
@@ -64,11 +65,17 @@ import sys
 # bytes, and its set counterpart at 40. The reclaim really does rebuild in
 # place; rewriting it to build into a local array takes the same measurement to
 # 8784.
+#
+# Lowered to the nightly on e5e2d972b (run 40227568570): 64 bytes on cortex-m0
+# and 72 on the others, both in the probe's churn functions. The deepest frame
+# fell from 136 with the GCC 13 -> 15 move in #131 and the budget stayed, which
+# left room for a frame to double unseen. A frame under the budget by more than
+# the tolerance now fails, so the change that shrinks it records the budget.
 BUDGETS = {
-    "cortex-m0": 136,
-    "cortex-m3": 136,
-    "cortex-m4": 136,
-    "cortex-m7": 136,
+    "cortex-m0": 64,
+    "cortex-m3": 72,
+    "cortex-m4": 72,
+    "cortex-m7": 72,
 }
 
 # Room for a toolchain that spills a little differently. Small on purpose: the
@@ -162,6 +169,15 @@ def check(entries, cpu, report):
                    "function does before raising anything; do not pad.")
         return 1, out
 
+    floor = budget - TOLERANCE_BYTES
+    if deepest < floor:
+        out.append(f"::error::{cpu} deepest frame shrank to {deepest} bytes in "
+                   f"{deepest_name}, under the {budget}-byte budget "
+                   f"(-{TOLERANCE_BYTES} tolerance = {floor}). Lower "
+                   f"BUDGETS['{cpu}'] to {deepest} in this change, or the gap is "
+                   f"room for a frame to grow unseen.")
+        return 1, out
+
     out.append(f"  within budget {budget} (+{TOLERANCE_BYTES} tolerance), "
                f"{ceiling - deepest} bytes of room")
     return 0, out
@@ -215,6 +231,24 @@ def self_test():
             if code != 0:
                 failures.append("S1 rejected a frame at exactly budget+tolerance")
 
+            # Under budget-tolerance fails too, naming the number to record;
+            # exactly at it passes.
+            BUDGETS["self-test-cpu"] = 100 + TOLERANCE_BYTES
+            (root / "ok.su").write_text("probe.cpp:1:5:edge\t100\tstatic\n")
+            code, _ = check(collect(root), "self-test-cpu", report=False)
+            if code != 0:
+                failures.append("S1 rejected a frame at exactly budget-tolerance")
+            (root / "ok.su").write_text("probe.cpp:1:5:edge\t99\tstatic\n")
+            code, out = check(collect(root), "self-test-cpu", report=False)
+            if code == 0:
+                failures.append("S1 accepted a frame one byte under budget-tolerance")
+            if not any("to 99 " in line for line in out):
+                failures.append("S1's under-budget failure did not name the number to record")
+            code, _ = check(collect(root), "self-test-cpu", report=True)
+            if code != 0:
+                failures.append("S1 refused an under-budget frame under --report")
+            BUDGETS["self-test-cpu"] = 100
+
             # S2: a dynamic frame fails even when it is tiny and even when it is
             # far inside the budget. This is the check that has no escape hatch.
             (root / "ok.su").write_text("probe.cpp:1:5:vla\t16\tdynamic\n")
@@ -260,7 +294,7 @@ def self_test():
         for failure in failures:
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
-    print("self-test passed: over-budget and dynamic frames are rejected, "
+    print("self-test passed: over-budget, under-budget and dynamic frames are rejected, "
           "at-budget and edge frames are accepted, and an empty measurement fails")
     return 0
 
