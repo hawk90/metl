@@ -201,20 +201,6 @@ jobs:
       # argues against it. It is not idle space either: #28 made CRC's nibble
       # table the default, which is a deliberate trade of .rodata for speed,
       # and a repository that gates one and not the other calls that trade free.
-      - name: TEMP diagnose the M0 code outlier (#337, removed before merge)
-        if: always()
-        run: |
-          set -uo pipefail
-          git fetch -q --depth=1 origin main
-          git show FETCH_HEAD:tests/embedded/invariant_probe.cpp > probe_main.cpp
-          # shellcheck disable=SC2086
-          arm-none-eabi-g++ $METL_LINK_FLAGS -Iinclude probe_main.cpp -o probe_main.elf
-          for e in probe_main.elf invariant_probe.elf; do
-            arm-none-eabi-nm -S -C "$e" | awk '$3 ~ /^[tTwW]$/' | sort -k4 > "$e.syms"
-            arm-none-eabi-size -A "$e" | awk '/^\.text/'
-          done
-          diff probe_main.elf.syms invariant_probe.elf.syms || true
-
       - name: Probe code size (.text and .rodata) against its budgets
         run: |
           tools/check_size.py \
