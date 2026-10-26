@@ -30,7 +30,7 @@ namespace detail {
 
 /// @brief True while the call is being constant-evaluated. False where the
 ///        compiler cannot tell, which only costs constant initialization.
-constexpr bool in_constant_evaluation() noexcept {
+METL_NODISCARD constexpr bool in_constant_evaluation() noexcept {
 #ifdef __cpp_lib_is_constant_evaluated
   return std::is_constant_evaluated();
 #elif METL_HAS_BUILTIN(__builtin_is_constant_evaluated) || METL_COMPILER_MSVC_VERSION >= 1925

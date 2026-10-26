@@ -842,7 +842,8 @@ class static_unordered_map {
   }
 
   template <typename K>
-  bool locate_insert_index(const K& key, size_type* index_out) const noexcept(lookup_cannot_throw<K>) {
+  METL_NODISCARD bool locate_insert_index(const K& key, size_type* index_out) const
+      noexcept(lookup_cannot_throw<K>) {
     if (Capacity == 0) {
       return false;
     }

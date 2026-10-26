@@ -857,12 +857,18 @@ class expected {
   E& error_unchecked() noexcept { return *error_ptr(); }
   const E& error_unchecked() const noexcept { return *error_ptr(); }
 
-  constexpr bool holds_value() const noexcept { return state_ == detail::expected_state::value; }
-  constexpr bool holds_error() const noexcept { return state_ == detail::expected_state::error; }
+  METL_NODISCARD constexpr bool holds_value() const noexcept {
+    return state_ == detail::expected_state::value;
+  }
+  METL_NODISCARD constexpr bool holds_error() const noexcept {
+    return state_ == detail::expected_state::error;
+  }
   // A change while the old member is being destroyed would destroy it again.
   // The condition is a call so that the expression text METL_HARDEN stores in
   // every binary stays short.
-  constexpr bool settled() const noexcept { return state_ != detail::expected_state::switching; }
+  METL_NODISCARD constexpr bool settled() const noexcept {
+    return state_ != detail::expected_state::switching;
+  }
   METL_CONSTEXPR20 void require_settled() const noexcept { METL_HARDEN(settled()); }
 
   template <typename... Args>
@@ -1622,10 +1628,16 @@ class expected<void, E> {
     return std::launder(detail::addressof(storage_.error));
   }
 
-  constexpr bool holds_value() const noexcept { return state_ == detail::expected_state::value; }
-  constexpr bool holds_error() const noexcept { return state_ == detail::expected_state::error; }
+  METL_NODISCARD constexpr bool holds_value() const noexcept {
+    return state_ == detail::expected_state::value;
+  }
+  METL_NODISCARD constexpr bool holds_error() const noexcept {
+    return state_ == detail::expected_state::error;
+  }
   // A change while the error is being destroyed would destroy it again.
-  constexpr bool settled() const noexcept { return state_ != detail::expected_state::switching; }
+  METL_NODISCARD constexpr bool settled() const noexcept {
+    return state_ != detail::expected_state::switching;
+  }
   METL_CONSTEXPR20 void require_settled() const noexcept { METL_HARDEN(settled()); }
 
   template <typename... Args>

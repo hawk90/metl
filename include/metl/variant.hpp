@@ -646,7 +646,7 @@ class variant {
     return reinterpret_cast<std::uintptr_t>(address);
   }
 
-  bool points_into_storage(const volatile void* address) const noexcept {
+  METL_NODISCARD bool points_into_storage(const volatile void* address) const noexcept {
     const std::uintptr_t at = address_value(address);
     const std::uintptr_t begin = address_value(detail::addressof(storage_));
     return at >= begin && at < begin + sizeof(storage_);
@@ -1051,7 +1051,7 @@ namespace detail {
 // duplicate alternative types, since get<T> requires a unique alternative.
 // Precondition: lhs.index() == rhs.index() and neither is valueless.
 template <typename Op, std::size_t I, typename... Ts>
-constexpr bool compare_alternative(const variant<Ts...>& lhs, const variant<Ts...>& rhs) {
+METL_NODISCARD constexpr bool compare_alternative(const variant<Ts...>& lhs, const variant<Ts...>& rhs) {
   if constexpr (I >= sizeof...(Ts)) {
     (void)lhs;
     (void)rhs;
@@ -1068,37 +1068,37 @@ constexpr bool compare_alternative(const variant<Ts...>& lhs, const variant<Ts..
 
 struct cmp_eq {
   template <typename A, typename B>
-  bool operator()(const A& a, const B& b) const {
+  METL_NODISCARD bool operator()(const A& a, const B& b) const {
     return a == b;
   }
 };
 struct cmp_ne {
   template <typename A, typename B>
-  bool operator()(const A& a, const B& b) const {
+  METL_NODISCARD bool operator()(const A& a, const B& b) const {
     return a != b;
   }
 };
 struct cmp_lt {
   template <typename A, typename B>
-  bool operator()(const A& a, const B& b) const {
+  METL_NODISCARD bool operator()(const A& a, const B& b) const {
     return a < b;
   }
 };
 struct cmp_le {
   template <typename A, typename B>
-  bool operator()(const A& a, const B& b) const {
+  METL_NODISCARD bool operator()(const A& a, const B& b) const {
     return a <= b;
   }
 };
 struct cmp_gt {
   template <typename A, typename B>
-  bool operator()(const A& a, const B& b) const {
+  METL_NODISCARD bool operator()(const A& a, const B& b) const {
     return a > b;
   }
 };
 struct cmp_ge {
   template <typename A, typename B>
-  bool operator()(const A& a, const B& b) const {
+  METL_NODISCARD bool operator()(const A& a, const B& b) const {
     return a >= b;
   }
 };
