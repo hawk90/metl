@@ -23,8 +23,8 @@ set(_metl_examples
   wire_values       # parse.hpp text-to-int: boundary refusal, fixed point, round trip
   coroutine_task    # coro/protothread cooperative tasks
   deadline_tasks    # coro/deadline_scheduler + fixed_priority_queue
-  armed_timers      # exp/intrusive_list: a timer in two lists, O(1) cancel
-  driver_registry   # exp/intrusive_forward_list: drivers registering across TUs
+  armed_timers      # intrusive_list: a timer in two lists, O(1) cancel
+  driver_registry   # intrusive_forward_list: drivers registering across TUs
   blinky_fsm        # fsm + mmio + delegate
   can_frame_parser  # bitfield + crc16 + span + expected
   sensor_pipeline   # realistic: spsc_queue -> ring_buffer -> fixed_vector
