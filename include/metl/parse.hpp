@@ -99,7 +99,7 @@ struct parsed {
 
 namespace detail {
 
-constexpr bool is_decimal_digit(char character) noexcept {
+METL_NODISCARD constexpr bool is_decimal_digit(char character) noexcept {
   return character >= '0' && character <= '9';
 }
 

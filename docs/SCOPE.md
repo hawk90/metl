@@ -581,8 +581,12 @@ its plain name: `erase(key)` ("was it present") and
 The full list lives in `tools/check_api_contract.py` as `BOOL_ALLOWLIST`, one
 entry per name **with its reason**, so a future reader sees a decision rather
 than an omission. Its `DISCARDABLE` subset -- the answers about an operation the
-caller runs for its effect, such as `erase` and `fsm::dispatch` -- must not be
-`METL_NODISCARD`, and the checker enforces that too.
+caller runs for its effect, such as `erase`, `fsm::dispatch` and
+`coro::stepper::poll` -- must not be `METL_NODISCARD`. Every other entry is a
+query that does nothing else and must be `METL_NODISCARD`, including private
+helpers. The checker enforces both halves (#510). `atomic_ref`'s
+`compare_exchange_weak`/`_strong` are the one exemption: they shipped without
+it in 1.x, as `std::atomic_ref`'s do, so they wait for 2.0.0.
 
 ### R5 — where `try_pop` belongs
 
@@ -604,7 +608,7 @@ exemption, for that reason, until 2.0.0.
 
 ### How it is enforced
 
-R2, R3 and R6 are mechanical and are checked by the **`api-contract`** job
+R2, R3, R4 and R6 are mechanical and are checked by the **`api-contract`** job
 (`tools/check_api_contract.py`), which also has a `--self-test` canary — a gate
 that cannot fail is not a gate, the same argument as §8's `invariant_canary`. The
 forward-iterator constraint in R1 is proved by compiling

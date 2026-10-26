@@ -714,7 +714,7 @@ class fixed_vector {
   // like object_pool::index_of, because relational `<` on pointers that may not
   // share an array is unspecified.
   template <typename It>
-  bool aliases_own_storage(It first, It last) const noexcept {
+  METL_NODISCARD bool aliases_own_storage(It first, It last) const noexcept {
     if constexpr (std::is_pointer_v<It> && std::is_same_v<std::remove_cv_t<std::remove_pointer_t<It>>, T>) {
       if (first == last) {
         return false;

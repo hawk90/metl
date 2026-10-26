@@ -378,7 +378,9 @@ class fixed_string {
     return length;
   }
 
-  constexpr bool can_append(size_type count) const noexcept { return count <= (Capacity - size_); }
+  METL_NODISCARD constexpr bool can_append(size_type count) const noexcept {
+    return count <= (Capacity - size_);
+  }
 
   // Copies `count` characters to `storage_[offset]`. Every caller has already
   // checked `offset + count <= Capacity`. Written through a pointer rather than

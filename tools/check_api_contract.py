@@ -13,6 +13,8 @@ Five rules, four of which are mechanical:
   R4  a bool that answers "was it there" or "did it fire" for an operation
       the caller runs for its effect -- DISCARDABLE below -- is NOT
       METL_NODISCARD. `m.erase(k);` is a legitimate statement and must not warn.
+      Every other BOOL_ALLOWLIST name is a query that does nothing else, and IS
+      METL_NODISCARD, unless QUERY_EXEMPT names its header with a reason.
   R6  every container observer in OBSERVERS (`empty()`, `size()`, `front()`,
       `begin()`, ...) is METL_NODISCARD: calling one as a statement does
       nothing. The intrusive lists shipped without it in 1.7.0 and no rule
@@ -147,7 +149,19 @@ DECL_RESULT_ONLY = re.compile(
 # runs for its effect. Discarding it is the normal call, so these must not be
 # METL_NODISCARD. The queries in BOOL_ALLOWLIST (empty, contains, ...) do
 # nothing else and stay nodiscard.
-DISCARDABLE = {"erase", "destroy", "unsubscribe", "detach", "cancel", "dispatch"}
+DISCARDABLE = {"erase", "destroy", "unsubscribe", "detach", "cancel", "dispatch",
+               "poll", "stepper_poll", "protothread_poll"}
+
+# R4 exemptions from "a query is METL_NODISCARD", by (header file name, function
+# name), each with its reason. An entry no header still needs is reported.
+QUERY_EXEMPT = {
+    ("atomic_ref.hpp", "compare_exchange_strong"): (
+        "shipped without METL_NODISCARD in 1.x, as std::atomic_ref's is; adding it "
+        "warns at existing call sites, so it waits for 2.0.0"),
+    ("atomic_ref.hpp", "compare_exchange_weak"): (
+        "shipped without METL_NODISCARD in 1.x, as std::atomic_ref's is; adding it "
+        "warns at existing call sites, so it waits for 2.0.0"),
+}
 
 DECL_BOOL = re.compile(
     r"^\s*(?P<head>(?:template\s*<.*>\s*)?"
@@ -190,9 +204,10 @@ def strip_comments(text):
     return LINE_COMMENT.sub(blank, BLOCK_COMMENT.sub(blank, text))
 
 
-def check_text(text, path="<memory>", declared=None):
+def check_text(text, path="<memory>", declared=None, exempted=None):
     """Return a list of (path, line_number, rule, message). The names of the
-    bool functions declared are added to `declared` when it is given."""
+    bool functions declared are added to `declared`, and the QUERY_EXEMPT keys
+    that excused a declaration to `exempted`, when they are given."""
     violations = []
     lines = strip_comments(text).splitlines()
     for number, line in enumerate(lines, 1):
@@ -243,6 +258,20 @@ def check_text(text, path="<memory>", declared=None):
                 f"effect ({BOOL_ALLOWLIST[match.group('name')]}). Calling it as "
                 f"a statement is correct and must not warn",
             ))
+        if (match and match.group("name") in BOOL_ALLOWLIST
+                and match.group("name") not in DISCARDABLE
+                and "METL_NODISCARD" not in match.group("head").split()):
+            key = (pathlib.Path(path).name, match.group("name"))
+            if key in QUERY_EXEMPT:
+                if exempted is not None:
+                    exempted.add(key)
+            else:
+                violations.append((
+                    path, number, "R4",
+                    f"`{match.group('name')}` is missing METL_NODISCARD -- it is a "
+                    f"query ({BOOL_ALLOWLIST[match.group('name')]}), and calling it as "
+                    f"a statement does nothing",
+                ))
         if match:
             name = match.group("name")
             if declared is not None:
@@ -276,6 +305,13 @@ CANARY_R4 = """
 class widget {
  public:
   METL_NODISCARD bool erase(int key) { return key == 0; }
+};
+"""
+
+CANARY_R4_QUERY = """
+class widget {
+ public:
+  constexpr bool contains(int key) const noexcept { return key == 0; }
 };
 """
 
@@ -317,9 +353,13 @@ def check_tree(root):
     """Every header under `root`. Returns (violations, headers)."""
     headers = sorted(pathlib.Path(root).rglob("*.hpp"))
     violations = []
-    declared = set()
+    declared, exempted = set(), set()
     for header in headers:
-        violations += check_text(header.read_text(encoding="utf-8"), str(header), declared)
+        violations += check_text(header.read_text(encoding="utf-8"), str(header), declared, exempted)
+    for file_name, name in sorted(set(QUERY_EXEMPT) - exempted):
+        violations.append((f"{root}", 0, "R4",
+                           f"QUERY_EXEMPT excuses `{name}` in {file_name}, but no declaration "
+                           f"there lacks METL_NODISCARD. Remove the entry"))
     for name in sorted(set(BOOL_ALLOWLIST) - declared):
         violations.append((f"{root}", 0, "R2",
                            f"BOOL_ALLOWLIST excuses `{name}`, but no header declares a `bool {name}(`. "
@@ -342,6 +382,19 @@ def self_test():
     caught = {rule for _, _, rule, _ in check_text(CANARY_R4, "<canary-R4>")}
     if "R4" not in caught:
         failures.append("R4 canary was NOT reported -- the discardable-answer check is dead")
+
+    caught = {rule for _, _, rule, _ in check_text(CANARY_R4_QUERY, "<canary-R4-query>")}
+    if "R4" not in caught:
+        failures.append("R4 query canary was NOT reported -- the query METL_NODISCARD check is dead")
+    # An exemption covers its own header and name only.
+    cas = "bool compare_exchange_weak(T& expected, T desired) noexcept;"
+    if check_text(cas, "include/metl/atomic_ref.hpp"):
+        failures.append("R4 flagged a declaration QUERY_EXEMPT excuses")
+    if "R4" not in {r for _, _, r, _ in check_text(cas, "include/metl/atomic_handle.hpp")}:
+        failures.append("R4 let QUERY_EXEMPT excuse a header it does not name")
+    # A discardable answer may go without METL_NODISCARD: that is R4's other half.
+    if check_text("bool poll() noexcept;", "<canary-discardable>"):
+        failures.append("R4 required METL_NODISCARD on a DISCARDABLE answer")
 
     caught = {rule for _, _, rule, _ in check_text(CANARY_R6, "<canary-R6>")}
     if "R6" not in caught:
@@ -391,6 +444,10 @@ def self_test():
         if len(stale) != len(BOOL_ALLOWLIST) - 1 or any("`empty`" in m for m in stale):
             failures.append(f"stale BOOL_ALLOWLIST entries were not each reported: {len(stale)} of "
                             f"{len(BOOL_ALLOWLIST) - 1}")
+        stale = [message for _, _, _, message in check_tree(tmp)[0] if "QUERY_EXEMPT" in message]
+        if len(stale) != len(QUERY_EXEMPT):
+            failures.append(f"stale QUERY_EXEMPT entries were not each reported: {len(stale)} of "
+                            f"{len(QUERY_EXEMPT)}")
 
     noise = check_text(CANARY_CLEAN, "<canary-clean>")
     if noise:
@@ -400,7 +457,7 @@ def self_test():
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
         return 1
-    print("self-test passed: R2, R3, R4 and R6 bite on every declaration shape, a stale allowlist entry is reported, and clean code and wrapped calls are not flagged")
+    print("self-test passed: R2, R3, R4 (both halves) and R6 bite on every declaration shape, a stale allowlist or exemption entry is reported, and clean code and wrapped calls are not flagged")
     return 0
 
 

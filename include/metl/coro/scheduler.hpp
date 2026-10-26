@@ -217,7 +217,7 @@ class scheduler {
     return false;
   }
 
-  bool in_use(size_type attachment) const noexcept {
+  METL_NODISCARD bool in_use(size_type attachment) const noexcept {
     if (holds(attachment)) {
       return true;
     }
@@ -232,7 +232,7 @@ class scheduler {
   }
 
   // Whether the attachment is still attached.
-  bool holds(size_type attachment) const noexcept {
+  METL_NODISCARD bool holds(size_type attachment) const noexcept {
     for (size_type i = 0; i < tasks_.size(); ++i) {
       if (tasks_[i].attachment == attachment) {
         return true;

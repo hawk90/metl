@@ -84,7 +84,7 @@ constexpr int countr_zero_impl(T value) noexcept {
 // MSVC `_BitScan*` intrinsics cannot be used during constant evaluation. This
 // lets the public functions fall back to the software loops at compile time
 // while still emitting the hardware bit-scan at run time.
-inline constexpr bool bit_is_constant_evaluated() noexcept {
+METL_NODISCARD inline constexpr bool bit_is_constant_evaluated() noexcept {
 #if METL_HAS_BUILTIN(__builtin_is_constant_evaluated) || METL_COMPILER_MSVC_VERSION >= 1925
   return __builtin_is_constant_evaluated();
 #else

@@ -188,7 +188,7 @@ class deadline_scheduler {
   /// scheduling order: without that, a task re-arming at `now` could be picked
   /// again ahead of tasks that were already due, and starve them.
   struct later_deadline {
-    bool operator()(const entry& lhs, const entry& rhs) const noexcept {
+    METL_NODISCARD bool operator()(const entry& lhs, const entry& rhs) const noexcept {
       if (lhs.deadline != rhs.deadline) {
         return lhs.deadline > rhs.deadline;
       }

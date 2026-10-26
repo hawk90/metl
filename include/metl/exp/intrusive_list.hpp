@@ -332,7 +332,7 @@ class intrusive_list {
   static link& link_of(T& value) noexcept { return static_cast<link&>(static_cast<hook_type&>(value)); }
   static T& value_of(link& node) noexcept { return static_cast<T&>(static_cast<hook_type&>(node)); }
 
-  bool in_this_list(const_iterator pos) const noexcept {
+  METL_NODISCARD bool in_this_list(const_iterator pos) const noexcept {
     return pos.node_ != nullptr && pos.node_->owner == this;
   }
 
