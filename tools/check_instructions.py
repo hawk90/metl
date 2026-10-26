@@ -70,8 +70,9 @@ import tempfile
 # follow-up commit. A local figure from a different libc and a different
 # compiler is not the same measurement.
 #
-# A budget goes DOWN freely -- a faster implementation should tighten it. It
-# goes UP only when the commit says what got more expensive and why.
+# A budget goes DOWN with the change that makes the benchmark cheaper: a count
+# under it by more than the tolerance fails. It goes UP only when the commit
+# says what got more expensive and why.
 # Re-measured by the `bench-smoke` job on PR #131 (the ubuntu-26.04 move, GCC
 # 13 -> 15), run 37311956880, at --iterations 5000: every entry moved with the
 # compiler, not with the library. First measured on PR #81, run 32612187131. Two CI runs of the same source agreed to within 28
@@ -91,21 +92,29 @@ import tempfile
 # two bits in two bitsets instead of a byte, so reading it costs a shift and a
 # mask per bitset. Taken deliberately for 6 bits of RAM per bucket, since RAM
 # ranks above instructions (#336).
+#
+# Lowered from the nightly on e5e2d972b (runs 40125887826 and 40227568570,
+# identical counts), which had stood above main since the change that made each
+# one cheaper: ring_buffer<64> push_overwrite since #215 (50,304 -> 30,298),
+# handle_pool since #499 (alloc+free 195,287 / 182,195 / 216,438 -> 115,292 /
+# 132,472 / 169,757 at N = 4 / 64 / 1024; get() 50,636 -> 40,950). Only a note
+# asked for it then. A count under the budget by more than the tolerance now
+# fails, so the change that makes a benchmark cheaper records the new budget.
 BUDGETS = {
     "metl_bench_containers::crc32 over 1 KiB": 58_915_533,
     "metl_bench_containers::fixed_vector<64> fill + clear": 1_150_301,
     "metl_bench_containers::flat_map<256> find (hit)": 503_612,
     "metl_bench_containers::flat_map<256> find (miss)": 649_597,
     "metl_bench_containers::ring_buffer<64> push + pop": 100_661,
-    "metl_bench_containers::ring_buffer<64> push_overwrite": 50_304,
+    "metl_bench_containers::ring_buffer<64> push_overwrite": 30_298,
     "metl_bench_containers::static_unordered_map<256> find (hit)": 241_142,
     "metl_bench_containers::static_unordered_map<256> find (miss)": 282_659,
     "metl_bench_mpmc::mpmc_queue push + pop": 163_039,
     "metl_bench_mpmc::spsc_queue push + pop": 129_247,
-    "metl_bench_pools::handle_pool<1024> alloc+free": 216_438,
-    "metl_bench_pools::handle_pool<4>  alloc+free": 195_287,
-    "metl_bench_pools::handle_pool<64> alloc+free": 182_195,
-    "metl_bench_pools::handle_pool<64> get()": 50_636,
+    "metl_bench_pools::handle_pool<1024> alloc+free": 169_757,
+    "metl_bench_pools::handle_pool<4>  alloc+free": 115_292,
+    "metl_bench_pools::handle_pool<64> alloc+free": 132_472,
+    "metl_bench_pools::handle_pool<64> get()": 40_950,
     "metl_bench_pools::object_pool<1024> alloc+free": 268_212,
     "metl_bench_pools::object_pool<4>  alloc+free": 195_274,
     "metl_bench_pools::object_pool<64> alloc+free": 223_548,
@@ -306,9 +315,14 @@ def compare(measured, report, iterations=BUDGET_ITERATIONS):
 
         slack = ceiling - count
         out.append(f"  {count:12,}  {key}   (budget {budget:,}, {slack:,} of room)")
-        if count < int(budget * (1.0 - TOLERANCE_FRACTION)):
-            out.append(f"      NOTE: {budget - count:,} fewer than the budget. "
-                       f"Lower BUDGETS['{key}'] to {count} so the ratchet keeps its grip.")
+        floor = int(budget * (1.0 - TOLERANCE_FRACTION))
+        if count < floor:
+            failures.append(
+                f"::error::{key} executed {count:,} instructions, under the "
+                f"{budget:,} budget (-{int(TOLERANCE_FRACTION * 100)}% = {floor:,}). "
+                f"Lower BUDGETS['{key}'] to {count} in this change, or the gap "
+                f"becomes room for a regression to pass through unseen."
+            )
 
     # A budget nothing measured: the benchmark was deleted or renamed, or its
     # binary was not built. Its entry would otherwise leave the gate silently.
@@ -366,6 +380,21 @@ def self_test():
         code, out = compare({"b::x": 1_050_001}, report=False)
         if code == 0:
             failures.append("accepted a count one instruction over the ceiling")
+
+        # Under the budget by more than the tolerance fails too, and names the
+        # number to record: a budget left above an improvement lets a regression
+        # of that size pass. At exactly budget-tolerance still passes.
+        code, _ = compare({"b::x": 950_000}, report=False)
+        if code != 0:
+            failures.append("rejected a count at exactly budget-tolerance")
+        code, out = compare({"b::x": 949_999}, report=False)
+        if code == 0:
+            failures.append("accepted a count one instruction under the floor")
+        if not any("to 949999" in line for line in out):
+            failures.append("an under-budget failure did not name the number to record")
+        code, _ = compare({"b::x": 949_999}, report=True)
+        if code != 0:
+            failures.append("--report refused a count under the floor")
 
         # The regression this exists to catch: binary search becomes linear.
         code, out = compare({"b::x": 20_000_000}, report=False)
@@ -486,7 +515,7 @@ def self_test():
         for failure in failures:
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
-    print("self-test passed: over-budget, unbudgeted, empty, optimised-away and "
+    print("self-test passed: over-budget, under-budget, unbudgeted, empty, optimised-away and "
           "wrong-iteration-count measurements are rejected -- the empty and "
           "optimised-away cases even under --report; at-budget, at-tolerance and "
           "at-floor counts are accepted")

@@ -61,8 +61,8 @@ pre-commit `rev` and the CI pin move together (a CI step fails if they differ).
 Run `clang-tidy` over changed translation units. The project ships a
 `.clang-tidy` configuration; please address new diagnostics introduced by
 your change rather than disabling them globally. CI enforces a **ratchet on the
-count of distinct findings** (`tools/clang_tidy_report.py --max`): a change may
-lower it, never raise it. Patterns that have tripped it: a forwarding reference
+count of distinct findings** (`tools/clang_tidy_report.py --max`): a change that
+removes findings lowers it in the same change, and none may raise it. Patterns that have tripped it: a forwarding reference
 that is not `std::forward`ed, an rvalue-reference parameter that is not
 `std::move`d, identical `if constexpr` branch bodies, `!(a && b)` inside
 `METL_HARDEN`/`METL_ASSERT`, and a function name ending in `_`.

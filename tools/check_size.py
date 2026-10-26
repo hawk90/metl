@@ -137,7 +137,8 @@ import tempfile
 # the numbers were set from that output in a follow-up commit -- the same
 # two-step the clang-tidy ratchet used, for the same reason.
 #
-# A budget goes DOWN freely. It goes UP only when the probe was deliberately
+# A budget goes DOWN with the change that shrinks the probe: a size under it by
+# more than the tolerance fails. It goes UP only when the probe was deliberately
 # given more to link, and the commit that raises it has to say what and why --
 # never to make a red job green. "Do not pad" is the whole point: a budget set
 # above what was measured is a ratchet that has stopped ratcheting.
@@ -195,11 +196,17 @@ RODATA_TOLERANCE_BYTES = 64
 # The figure is large -- more than a Cortex-M0+ with 8 KB of SRAM has -- because
 # the probe deliberately holds realistic-capacity containers. That is the point:
 # at capacity 4-8 the measurement would be noise. It is a probe, not a product.
+#
+# Lowered from 24,304 to the nightly on e5e2d972b (run 40227568570, all four
+# targets). Three changes had made the probe smaller without lowering it, while
+# only a note asked for that: #499 (handle_pool, -384), #503 (object_pool, -112)
+# and #504 (the unordered containers, -768). A size under the budget by more
+# than the tolerance now fails, so the change that shrinks it records the budget.
 RAM_BUDGETS = {
-    "cortex-m0": 24_304,
-    "cortex-m3": 24_304,
-    "cortex-m4": 24_304,
-    "cortex-m7": 24_304,
+    "cortex-m0": 23_040,
+    "cortex-m3": 23_040,
+    "cortex-m4": 23_040,
+    "cortex-m7": 23_040,
 }
 RAM_TOLERANCE_BYTES = 64
 
@@ -697,10 +704,14 @@ def compare(label, measured, budget, tolerance, cpu, report, key):
 
     out.append(f"  {label}={measured} bytes, within budget {budget} "
                f"(+{tolerance} tolerance), {ceiling - measured} bytes of room")
+    # Smaller by more than the tolerance fails as well: a budget left above an
+    # improvement is room for a regression of the same size to pass unseen.
     if measured < budget - tolerance:
-        out.append(f"      NOTE: {budget - measured} bytes SMALLER than the "
-                   f"budget. Lower {key}['{cpu}'] to {measured} so the ratchet "
-                   f"keeps its grip.")
+        out.append(f"::error::{cpu} {label} shrank to {measured} bytes, under the "
+                   f"{budget}-byte budget (-{tolerance} tolerance = "
+                   f"{budget - tolerance}). Lower {key}['{cpu}'] to {measured} in "
+                   f"this change.")
+        return (0 if report else 1), out
     return 0, out
 
 
@@ -953,6 +964,20 @@ def self_test():
                           "fixture", report=False, key=key)
         if code != 0:
             failures.append(f"{label}: a size exactly at the tolerance edge was rejected")
+        code, _ = compare(label, budget - tolerance, budget, tolerance,
+                          "fixture", report=False, key=key)
+        if code != 0:
+            failures.append(f"{label}: a size exactly at the lower tolerance edge was rejected")
+        code, out = compare(label, budget - tolerance - 1, budget, tolerance,
+                            "fixture", report=False, key=key)
+        if code == 0:
+            failures.append(f"{label}: a size under budget-tolerance was accepted")
+        if not any(f"to {budget - tolerance - 1} " in line for line in out):
+            failures.append(f"{label}: an under-budget failure did not name the size to record")
+        code, _ = compare(label, budget - tolerance - 1, budget, tolerance,
+                          "fixture", report=True, key=key)
+        if code != 0:
+            failures.append(f"{label}: --report refused an under-budget size")
 
         # No budget recorded fails when enforcing and is fine under --report,
         # which is the whole mechanism of the two-step.
@@ -1236,7 +1261,7 @@ def self_test():
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
         return 1
-    print("self-test passed: over-budget and missing-budget are rejected while "
+    print("self-test passed: over-budget, under-budget and missing-budget are rejected while "
           "at-budget and edge are accepted; every row of #405's table lands in its "
           "class in ELF32/64 LE/BE, an unknown ALLOC type fails, linked .data counts "
           "once in RAM and once in flash, a segment outside both regions fails, and "
