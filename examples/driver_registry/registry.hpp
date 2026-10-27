@@ -6,14 +6,14 @@
 
 #pragma once
 
-#include <metl/exp/intrusive_forward_list.hpp>
+#include <metl/intrusive_forward_list.hpp>
 
 namespace registry {
 
 // A driver's descriptor carries the hook, so the list needs no storage of its
 // own and no capacity to outgrow. The price: the hook is written when the
 // descriptor is linked, so a descriptor lives in RAM, not in flash.
-struct driver : metl::exp::forward_list_hook<> {
+struct driver : metl::forward_list_hook<> {
   constexpr driver(const char* driver_name, int (*driver_probe)() noexcept) noexcept
       : name(driver_name), probe(driver_probe) {}
 
@@ -21,7 +21,7 @@ struct driver : metl::exp::forward_list_hook<> {
   int (*probe)() noexcept;
 };
 
-using driver_list = metl::exp::intrusive_forward_list<driver>;
+using driver_list = metl::intrusive_forward_list<driver>;
 
 // Defined in driver_registry.cpp. Its constructor is constexpr, so the list is
 // constant-initialized: it is a valid empty list before any registrar in any

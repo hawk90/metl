@@ -56,6 +56,8 @@
 #include "metl/handle_pool.hpp"
 #include "metl/hash.hpp"
 #include "metl/in_place.hpp"
+#include "metl/intrusive_forward_list.hpp"
+#include "metl/intrusive_list.hpp"
 #include "metl/intrusive_ptr.hpp"
 #include "metl/lock.hpp"
 #include "metl/lookup_table.hpp"
