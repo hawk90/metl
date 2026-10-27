@@ -3,10 +3,7 @@
 // Drivers that register themselves: each driver lives in its own translation
 // unit (driver_registry/uart.cpp, driver_registry/spi.cpp), and linking the file
 // in is the whole of registering it. Nothing here names a driver, and no table
-// lists them all, with metl::exp::intrusive_forward_list.
-//
-// EXPERIMENTAL: metl::exp is outside the 1.x Semantic Versioning promise and
-// may change in a minor release (docs/SCOPE.md section 3, Tier 2; #337).
+// lists them all, with metl::intrusive_forward_list.
 //
 // Why an intrusive list rather than a fixed_vector<const driver*, N>:
 //   * No capacity. The number of drivers is decided by what is linked in, which

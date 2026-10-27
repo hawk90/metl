@@ -3,7 +3,7 @@
 // The scheduler contract, as templates over the scheduler under test, so one
 // body checks metl::coro::scheduler (tests/control/coro_scheduler*_test.cpp)
 // and the intrusive variant it is measured against (#337;
-// tests/exp/intrusive_scheduler_test.cpp).
+// tests/control/intrusive_scheduler_test.cpp).
 //
 // A policy names the scheduler type and how a task attaches, detaches and is
 // looked up; a task derives from `Policy::node`, which is empty for the array

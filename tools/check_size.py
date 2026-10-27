@@ -156,11 +156,21 @@ import tempfile
 # byte array. That cost +328 bytes on M0 against +320 on M4 -- no outlier, so no
 # hidden 64-bit or divide path -- and buys 6 bits of RAM per bucket (-768 bytes
 # of the probe's RAM), which ranks above code size (#336). M3/M4/M7 still fit.
+#
+# Raised a third time, on every core, by #337, which links intrusive_list and
+# intrusive_forward_list into the probe. The PR's CI built main's probe beside
+# its own in the same job: probe_main grew 336 bytes on M0 against 276 on
+# M3/M4/M7, and no libc or libgcc symbol arrived -- no outlier. The M0 budget
+# moves by more than that because it was 300 bytes under main's own size:
+# #504 added its +328 to a budget of 3440 while main already measured 3764, so
+# the nightlies have measured 4068 against 3768 since, inside the tolerance.
+# M3/M4/M7 had the opposite gap, 144-168 bytes of slack. Every budget below is
+# now the measurement of the PR that set it (run 40406983623).
 BUDGETS = {
-    "cortex-m0": 3768,
-    "cortex-m3": 4236,
-    "cortex-m4": 4244,
-    "cortex-m7": 4260,
+    "cortex-m0": 4404,
+    "cortex-m3": 4368,
+    "cortex-m4": 4364,
+    "cortex-m7": 4368,
 }
 
 # Room for a toolchain that shifts codegen slightly without anything regressing.
@@ -179,11 +189,16 @@ TOLERANCE_BYTES = 512
 # moves code generation; it does not move the number of constant bytes the
 # source declares. Slack here would only hide the thing this is for -- a table
 # quietly arriving in the image.
+#
+# Raised to 624 by #337 (run 40406983623, all four targets): the intrusive
+# lists' METL_HARDEN checks store their file names and expression text. Main
+# measured 512 before it, not 472: #504's bitsets had added 40 bytes inside
+# the tolerance without the budget recording them.
 RODATA_BUDGETS = {
-    "cortex-m0": 472,
-    "cortex-m3": 472,
-    "cortex-m4": 472,
-    "cortex-m7": 472,
+    "cortex-m0": 624,
+    "cortex-m3": 624,
+    "cortex-m4": 624,
+    "cortex-m7": 624,
 }
 RODATA_TOLERANCE_BYTES = 64
 

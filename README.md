@@ -127,6 +127,11 @@ Containers
   [`flat_set`](include/metl/flat_set.hpp).
 - [`static_unordered_map`](include/metl/static_unordered_map.hpp),
   [`static_unordered_set`](include/metl/static_unordered_set.hpp).
+- [`intrusive_list`](include/metl/intrusive_list.hpp),
+  [`intrusive_forward_list`](include/metl/intrusive_forward_list.hpp) — link
+  objects the caller owns, with no capacity and no storage. The hook records its
+  list, so destroying a linked element, linking it twice or erasing it through
+  another list stops the program at every hardening level.
 
 Worked example: [`examples/containers.cpp`](examples/containers.cpp)
 (`fixed_vector` + `flat_map` + `ring_buffer`).
@@ -290,8 +295,8 @@ Configuration
   | [`wire_values.cpp`](examples/wire_values.cpp) | `parse` (telemetry fields, boundary refusal, fixed point) |
   | [`coroutine_task.cpp`](examples/coroutine_task.cpp) | `coro/protothread` |
   | [`deadline_tasks.cpp`](examples/deadline_tasks.cpp) | `coro/deadline_scheduler`, `fixed_priority_queue` |
-  | [`armed_timers.cpp`](examples/armed_timers.cpp) | `exp/intrusive_list` (experimental: a timer in two lists, O(1) cancel) |
-  | [`driver_registry.cpp`](examples/driver_registry.cpp) | `exp/intrusive_forward_list` (experimental: drivers registering across translation units) |
+  | [`armed_timers.cpp`](examples/armed_timers.cpp) | `intrusive_list` (a timer in two lists, O(1) cancel) |
+  | [`driver_registry.cpp`](examples/driver_registry.cpp) | `intrusive_forward_list` (drivers registering across translation units) |
   | [`blinky_fsm.cpp`](examples/blinky_fsm.cpp) | `fsm`, `mmio`, `delegate` |
   | [`can_frame_parser.cpp`](examples/can_frame_parser.cpp) | `bitfield`, `crc16`, `span`, `expected` |
   | [`sensor_pipeline.cpp`](examples/sensor_pipeline.cpp) | `spsc_queue`→`ring_buffer`→`fixed_vector` (threaded) |

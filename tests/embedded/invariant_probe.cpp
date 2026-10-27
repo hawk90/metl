@@ -38,6 +38,8 @@
 #include <metl/fixed_vector.hpp>
 #include <metl/format.hpp>
 #include <metl/handle_pool.hpp>
+#include <metl/intrusive_forward_list.hpp>
+#include <metl/intrusive_list.hpp>
 #include <metl/object_pool.hpp>
 #include <metl/parse.hpp>
 #include <metl/span.hpp>
@@ -197,6 +199,31 @@ void exercise_crc() noexcept {
   sink(metl::crc32(static_cast<const void*>(bytes), sizeof bytes));
 }
 
+// Elements are declared before their lists: a hook destroyed while linked stops
+// the program, and a list destroyed first unlinks everything it holds.
+struct probe_node : metl::list_hook<>, metl::forward_list_hook<> {
+  std::uint32_t value = 0;
+};
+
+void exercise_intrusive_lists() noexcept {
+  probe_node nodes[4];
+  metl::intrusive_list<probe_node> list;
+  metl::intrusive_forward_list<probe_node> forward;
+  for (std::uint32_t i = 0; i < 4; ++i) {
+    nodes[i].value = i;
+    list.push_back(nodes[i]);
+    forward.push_front(nodes[i]);
+  }
+  list.erase(nodes[1]);
+  forward.erase(nodes[2]);
+  for (const probe_node& node : list) {
+    sink(node.value);
+  }
+  sink(static_cast<std::uint32_t>(list.size() + forward.size()));
+  list.clear();
+  forward.clear();
+}
+
 }  // namespace
 
 extern "C" int probe_main(void) {
@@ -211,6 +238,7 @@ extern "C" int probe_main(void) {
   exercise_format();
   exercise_parse();
   exercise_crc();
+  exercise_intrusive_lists();
   return static_cast<int>(g_sink);
 }
 
