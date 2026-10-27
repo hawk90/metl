@@ -1,11 +1,8 @@
 // armed_timers.cpp
 //
 // Software timers that live in the objects using them, kept in two lists at
-// once with metl::exp::intrusive_list: every timer, and the armed ones in
+// once with metl::intrusive_list: every timer, and the armed ones in
 // deadline order.
-//
-// EXPERIMENTAL: metl::exp is outside the 1.x Semantic Versioning promise and
-// may change in a minor release (docs/SCOPE.md section 3, Tier 2; #337).
 //
 // A timer derives from one hook per list it can be in:
 //   * list_hook<all_timers>: in the list for as long as it exists, so a
@@ -31,7 +28,7 @@
 #include <cstdint>
 #include <cstdio>
 
-#include <metl/exp/intrusive_list.hpp>
+#include <metl/intrusive_list.hpp>
 
 namespace {
 
@@ -40,8 +37,8 @@ using tick = std::uint32_t;
 struct all_timers {};
 struct armed {};
 
-using every_hook = metl::exp::list_hook<all_timers>;
-using armed_hook = metl::exp::list_hook<armed>;
+using every_hook = metl::list_hook<all_timers>;
+using armed_hook = metl::list_hook<armed>;
 
 // A dispatch log, so the example can check the ORDER and not merely the count.
 constexpr std::size_t kLogCapacity = 32;
@@ -130,8 +127,8 @@ class timer_service {
   }
 
  private:
-  metl::exp::intrusive_list<timer, all_timers> every_;
-  metl::exp::intrusive_list<timer, armed> armed_;
+  metl::intrusive_list<timer, all_timers> every_;
+  metl::intrusive_list<timer, armed> armed_;
 };
 
 }  // namespace

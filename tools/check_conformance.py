@@ -92,9 +92,11 @@ EXEMPT = {
     "lock.hpp": "guarded<T> holds one T for its whole lifetime; nothing is added or removed",
     "exp/bitset.hpp": "holds bits, not objects",
     "exp/once_flag.hpp": "holds a state word; the initializer's object is the caller's",
-    "exp/intrusive_forward_list.hpp": ("links objects the caller owns; stores, constructs and destroys none. "
+    "exp/intrusive_forward_list.hpp": "using-declarations of intrusive_forward_list.hpp's types, which are EXEMPT below",
+    "exp/intrusive_list.hpp": "using-declarations of intrusive_list.hpp's types, which are EXEMPT below",
+    "intrusive_forward_list.hpp": ("links objects the caller owns; stores, constructs and destroys none. "
                     "std parity: agrees_with_std_forward_list in its own test"),
-    "exp/intrusive_list.hpp": ("links objects the caller owns; stores, constructs and destroys none. "
+    "intrusive_list.hpp": ("links objects the caller owns; stores, constructs and destroys none. "
                     "std parity: agrees_with_std_list in its own test"),
 }
 

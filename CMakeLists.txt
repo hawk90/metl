@@ -146,6 +146,7 @@ if(METL_BUILD_TESTS)
     containers/recoverable_unchanged
     containers/contract_edges containers/associative_erase_iterator containers/container_edges
     containers/container_assert_trips containers/container_swap
+    containers/intrusive_forward_list containers/intrusive_list
     # conformance/  (one property, every registered type -- #320)
     conformance/conformance_removal conformance/conformance_capacity conformance/conformance_move
     conformance/conformance_self conformance/conformance_copy conformance/conformance_throwing
@@ -176,12 +177,12 @@ if(METL_BUILD_TESTS)
     bits/hash_unique_repr bits/hash_by_value bits/endian bits/mmio bits/mmio_regression bits/register_access
     bits/crc_table_equivalence bits/format bits/parse
     # exp/  (Tier 2: not in the umbrella header; docs/SCOPE.md section 3)
-    exp/bitset exp/intrusive_forward_list exp/intrusive_list exp/intrusive_scheduler
-    exp/once_flag exp/once_flag_irq
+    exp/bitset exp/intrusive_lists_alias exp/once_flag exp/once_flag_irq
     # control/
     control/fsm control/fsm_reentrancy control/event_dispatcher control/event_dispatcher_reentrancy
     control/coro_protothread control/coro_protothread_nested_switch control/coro_scheduler control/coro_scheduler_reentrancy
     control/coro_stepper control/coro_deadline_scheduler control/control_contracts
+    control/intrusive_scheduler
     # core/  (assert/compiler + the METL_HARDENING level checks + smoke)
     core/assert core/compiler core/smoke core/ram_footprint core/version
     core/hardening_none core/hardening_fast core/hardening_debug core/hostile_types

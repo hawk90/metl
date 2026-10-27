@@ -1,0 +1,1 @@
+- `metl::intrusive_list` and `metl::intrusive_forward_list` (`<metl/intrusive_list.hpp>`, `<metl/intrusive_forward_list.hpp>`) are now Tier 0, covered by the 1.x promise and included by `<metl/metl.hpp>` (#337). The `metl/exp/` headers and the `metl::exp::` names still work and are the same types; they are removed in 2.0.0 (#520).

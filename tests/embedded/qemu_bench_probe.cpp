@@ -24,7 +24,7 @@
 // model wait states, caches, pipelines or interrupt latency. These are
 // instruction counts and are reported as nothing else.
 
-#include "exp/intrusive_scheduler.hpp"
+#include "control/intrusive_scheduler.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -133,7 +133,7 @@ __attribute__((noinline)) void mpmc_queue_push_pop() noexcept {
 #endif
 
 // coro::scheduler against the intrusive variant it is measured beside (#337,
-// tests/exp/intrusive_scheduler.hpp): the same work on each, at 4 and 16
+// tests/control/intrusive_scheduler.hpp): the same work on each, at 4 and 16
 // tasks. The array scheduler's Capacity is the task count, its smallest fit.
 //   attach_detach: kIterations times, attach N tasks, then detach them in
 //                  the order attached (the array's erase then shifts the most).
