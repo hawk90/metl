@@ -1,4 +1,4 @@
-// metl::exp::once_flag / try_call_once (#486), in one context: the state
+// metl::once_flag / try_call_once (#486), in one context: the state
 // machine, what the lock covers and what it does not, re-entry from inside the
 // initializer, and a corrupted flag in a debug build. A recording lock policy shows when the
 // lock is held. Runs on the host and, unchanged, on every Cortex-M under QEMU,
@@ -15,7 +15,7 @@
 #include <utility>
 
 #include <metl/attributes.hpp>
-#include <metl/exp/once_flag.hpp>
+#include <metl/once_flag.hpp>
 
 namespace {
 
@@ -43,22 +43,21 @@ void reset_lock() {
   recording_lock::taken = 0;
 }
 
-using flag_type = metl::exp::once_flag<recording_lock>;
+using flag_type = metl::once_flag<recording_lock>;
 
 // ---- compile time -----------------------------------------------------------
 
-static_assert(sizeof(metl::exp::once_flag<>) == sizeof(std::uint32_t), "the state is one word");
-static_assert(std::is_same_v<metl::exp::once_flag<>, metl::exp::once_flag<metl::irq_lock>>,
-              "irq_lock is the default");
+static_assert(sizeof(metl::once_flag<>) == sizeof(std::uint32_t), "the state is one word");
+static_assert(std::is_same_v<metl::once_flag<>, metl::once_flag<metl::irq_lock>>, "irq_lock is the default");
 static_assert(!std::is_copy_constructible_v<flag_type> && !std::is_move_constructible_v<flag_type>,
               "a flag is its address: it is neither copied nor moved");
 static_assert(!std::is_copy_assignable_v<flag_type> && !std::is_move_assignable_v<flag_type>, "nor assigned");
-static_assert(std::is_trivially_destructible_v<metl::exp::once_flag<>>, "nothing runs at exit");
+static_assert(std::is_trivially_destructible_v<metl::once_flag<>>, "nothing runs at exit");
 
 // A namespace-scope flag needs no constructor at run time: an interrupt that
 // fires before main() finds it "not started". Enforced where METL_CONST_INIT
 // has a meaning (C++20, or Clang in C++17).
-METL_CONST_INIT metl::exp::once_flag<> g_constant_flag;
+METL_CONST_INIT metl::once_flag<> g_constant_flag;
 
 // ---- tests ------------------------------------------------------------------
 
@@ -72,14 +71,14 @@ void test_runs_once_and_reports_done() {
   reset_lock();
   flag_type flag;
   int runs = 0;
-  CHECK(metl::exp::try_call_once(flag, [&] { ++runs; }));
+  CHECK(metl::try_call_once(flag, [&] { ++runs; }));
   CHECK_EQ(runs, 1);
   CHECK(flag.is_done());
   CHECK_EQ(recording_lock::taken, 1);
 
   // Done: the fast path. Nothing runs and the lock is not taken.
-  CHECK(metl::exp::try_call_once(flag, [&] { ++runs; }));
-  CHECK(metl::exp::try_call_once(flag, [&] { ++runs; }));
+  CHECK(metl::try_call_once(flag, [&] { ++runs; }));
+  CHECK(metl::try_call_once(flag, [&] { ++runs; }));
   CHECK_EQ(runs, 1);
   CHECK_EQ(recording_lock::taken, 1);
   CHECK_EQ(recording_lock::depth, 0);
@@ -89,7 +88,7 @@ void test_lock_is_not_held_while_the_initializer_runs() {
   reset_lock();
   flag_type flag;
   int depth_inside = -1;
-  CHECK(metl::exp::try_call_once(flag, [&] { depth_inside = recording_lock::depth; }));
+  CHECK(metl::try_call_once(flag, [&] { depth_inside = recording_lock::depth; }));
   CHECK_EQ(depth_inside, 0);
 }
 
@@ -99,10 +98,10 @@ void test_reentry_from_the_initializer_returns_false() {
   int runs = 0;
   bool inner = true;
   bool done_inside = true;
-  CHECK(metl::exp::try_call_once(flag, [&] {
+  CHECK(metl::try_call_once(flag, [&] {
     ++runs;
     // What an interrupt that preempts the initializer sees: "running".
-    inner = metl::exp::try_call_once(flag, [&] { ++runs; });
+    inner = metl::try_call_once(flag, [&] { ++runs; });
     done_inside = flag.is_done();
   }));
   CHECK(!inner);
@@ -122,7 +121,7 @@ void test_arguments_are_forwarded_and_the_result_discarded() {
   };
   int seen = 0;
   int target = 0;
-  CHECK(metl::exp::try_call_once(
+  CHECK(metl::try_call_once(
       flag,
       [&](move_only m, int& out) {
         seen = m.value;
@@ -143,7 +142,7 @@ struct counter {
 void test_member_function_through_invoke() {
   flag_type flag;
   counter c;
-  CHECK(metl::exp::try_call_once(flag, &counter::bump, c, 3));
+  CHECK(metl::try_call_once(flag, &counter::bump, c, 3));
   CHECK_EQ(c.runs, 3);
 }
 
@@ -151,17 +150,17 @@ void test_separate_flags_are_independent() {
   flag_type a;
   flag_type b;
   int runs = 0;
-  CHECK(metl::exp::try_call_once(a, [&] { ++runs; }));
+  CHECK(metl::try_call_once(a, [&] { ++runs; }));
   CHECK(!b.is_done());
-  CHECK(metl::exp::try_call_once(b, [&] { ++runs; }));
+  CHECK(metl::try_call_once(b, [&] { ++runs; }));
   CHECK_EQ(runs, 2);
 }
 
 void test_default_irq_lock_flag() {
-  metl::exp::once_flag<> flag;
+  metl::once_flag<> flag;
   int runs = 0;
-  CHECK(metl::exp::try_call_once(flag, [&] { ++runs; }));
-  CHECK(metl::exp::try_call_once(flag, [&] { ++runs; }));
+  CHECK(metl::try_call_once(flag, [&] { ++runs; }));
+  CHECK(metl::try_call_once(flag, [&] { ++runs; }));
   CHECK_EQ(runs, 1);
   CHECK(flag.is_done());
 }
@@ -174,7 +173,7 @@ void test_corrupted_flag_traps_in_debug() {
     flag_type flag;
     const std::uint32_t corrupt = 3;
     std::memcpy(static_cast<void*>(&flag), &corrupt, sizeof corrupt);
-    (void)metl::exp::try_call_once(flag, [] {});
+    (void)metl::try_call_once(flag, [] {});
   });
   CHECK_EQ(tripped, METL_HARDENING >= METL_HARDENING_DEBUG);
 }

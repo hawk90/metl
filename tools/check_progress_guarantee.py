@@ -55,6 +55,7 @@ EXEMPT = {
     "type_traits.hpp": "compile-time traits; nothing executes at run time",
     "exp/intrusive_forward_list.hpp": "using-declarations only; the operations are intrusive_forward_list.hpp's",
     "exp/intrusive_list.hpp": "using-declarations only; the operations are intrusive_list.hpp's",
+    "exp/once_flag.hpp": "using-declarations only; the operations are once_flag.hpp's",
     "version.hpp": "version macros and constants, no operations",
 }
 

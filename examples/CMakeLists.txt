@@ -15,6 +15,7 @@ set(_metl_examples
   allocators        # arena_allocator + monotonic_buffer
   handles_and_pools # object_pool vs handle_pool: why a stale handle fails loudly
   spsc_isr          # spsc_queue ISR<->main-loop pattern
+  lazy_driver       # once_flag: a driver built on first use, reached from its ISR
   uart_byte_ring    # spsc_byte_ring zero-copy driver region + seam
   mmio_peripheral   # mmio + register_access + bitfield (fake peripheral)
   error_handling    # expected + optional + variant (no exceptions)
