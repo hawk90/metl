@@ -161,7 +161,7 @@ if(METL_BUILD_TESTS)
     sync/spsc_queue sync/static_message_queue sync/atomic_ref sync/atomic_handle sync/wait
     sync/spsc_queue_cached_index sync/lock sync/mpmc_queue sync/irq_masking
     sync/spsc_byte_ring sync/spsc_byte_ring_overcommit sync/audit_regressions sync/guarded_regressions
-    sync/tick_extender sync/tick_extender_irq sync/index_distance
+    sync/tick_extender sync/tick_extender_irq sync/index_distance sync/once_flag sync/once_flag_irq
     # vocab/
     vocab/optional vocab/optional_constexpr vocab/expected vocab/expected_regression
     vocab/variant vocab/variant_regression vocab/span vocab/function_ref
@@ -177,7 +177,7 @@ if(METL_BUILD_TESTS)
     bits/hash_unique_repr bits/hash_by_value bits/endian bits/mmio bits/mmio_regression bits/register_access
     bits/crc_table_equivalence bits/format bits/parse
     # exp/  (Tier 2: not in the umbrella header; docs/SCOPE.md section 3)
-    exp/bitset exp/intrusive_lists_alias exp/once_flag exp/once_flag_irq
+    exp/bitset exp/intrusive_lists_alias exp/once_flag_alias
     # control/
     control/fsm control/fsm_reentrancy control/event_dispatcher control/event_dispatcher_reentrancy
     control/coro_protothread control/coro_protothread_nested_switch control/coro_scheduler control/coro_scheduler_reentrancy
@@ -223,7 +223,7 @@ if(METL_BUILD_TESTS)
   # -------------------------------------------------------------------------
   # Multi-threaded concurrency tests (need a threading runtime): spsc_queue,
   # atomic_handle, spsc_byte_ring, mpmc_queue (two), the queues' linearizability,
-  # size_hint_observer and exp::once_flag. Built and
+  # size_hint_observer and once_flag. Built and
   # run in every configuration, including the TSAN sanitizer job where they
   # actually validate those types' memory ordering.
   # -------------------------------------------------------------------------
@@ -296,7 +296,7 @@ if(METL_BUILD_TESTS)
 
   metl_cc_test(
     NAME metl_once_flag_threaded_test
-    SRCS tests/exp/once_flag_threaded_test.cpp
+    SRCS tests/sync/once_flag_threaded_test.cpp
     DEPS metl::metl_test_options Threads::Threads
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/tests
     LABELS "metl"

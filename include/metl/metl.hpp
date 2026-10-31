@@ -65,6 +65,7 @@
 #include "metl/monotonic_buffer.hpp"
 #include "metl/mpmc_queue.hpp"
 #include "metl/object_pool.hpp"
+#include "metl/once_flag.hpp"
 #include "metl/optimization.hpp"
 #include "metl/optional.hpp"
 #include "metl/parse.hpp"
