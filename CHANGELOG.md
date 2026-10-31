@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-11-01
+
+**Highlights.** This release adds what the 2.0.0 issues marked as safe for any
+release, and breaks nothing. The R1 forms that were missing now exist, so new code
+can already call the asserting or `try_` name that 2.0.0 will keep.
+`METL_ASSERT_STRINGS=0` drops the text of failed checks from flash. The heap and
+exception audit now covers 57 of the 66 public headers, up from 14, and a new check
+holds type layouts steady across minor and patch releases.
+
+### Known issue
+
+The wider audit found that a class derived from `coro::stepper` links the global
+`operator delete`, and on newlib `malloc`, once its vtable is used. This is not new
+in 1.10.0. In an image that must have no heap, define
+`static void operator delete(void*) noexcept {}` in the derived class. The library
+fix changes what existing code does, so it waits for 2.0.0 (#548).
+
+### Added
+
+- `coro::scheduler` gains the asserting `attach`, `attach_stepper` and `attach_protothread`, `event_dispatcher` gains `try_subscribe`, and `ring_buffer` gains `push_back` (#534). Existing calls behave as before. `event_dispatcher::subscribe` becomes the asserting form in 2.0.0, so new code that handles "full" should call `try_subscribe` (#155).
+- `METL_ASSERT_STRINGS=0` drops the expression and file text of failed checks from flash. On the invariant probe it saves about 720 bytes on Cortex-M0 and 824 on Cortex-M4 under local clang. Handlers receive empty strings, never null, and the line number stays (#540).
+- The CRC headers state how to checksum a message in parts: `initial = previous ^ final_xor`, with a test at every split. SCOPE.md R2 records that `try_parse_*` uses the `try_` name for malformed input (#541).
+
+### Changed
+
+- `empty()`, `full()` and `size()` are `constexpr` on `fixed_deque`, `fixed_queue`, `fixed_stack` and `fixed_priority_queue`, as they are on `ring_buffer` and `fixed_vector`. `fixed_priority_queue.hpp` now has a progress-guarantee table. An unused internal helper is gone from `span.hpp`. (#537)
+
+### Fixed
+
+- `coro::stepper` documents that a derived class links the global `operator delete`, and on newlib `malloc`, unless it defines its own. The library fix waits for 2.0.0 (#548).
+
 ## [1.9.0] - 2026-10-31
 
 **Highlights.** This release empties the experimental tier. The intrusive lists,
