@@ -332,6 +332,11 @@ class ring_core {
   /// Appends `value` by move at the back if there is room; false when full.
   METL_NODISCARD bool try_push_back(T&& value) { return try_emplace_back(static_cast<T&&>(value)); }
 
+  /// Appends a copy of `value` at the back. @pre Not full; overflow asserts.
+  reference push_back(const T& value) { return emplace_back(value); }
+  /// Appends `value` by move at the back. @pre Not full; overflow asserts.
+  reference push_back(T&& value) { return emplace_back(std::move(value)); }
+
   /// Removes the front (oldest) element.
   /// @note The element leaves the container before its destructor runs, so a
   ///       destructor that calls back to remove elements sees it gone. It must

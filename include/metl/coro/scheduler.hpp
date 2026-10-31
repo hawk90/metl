@@ -5,7 +5,7 @@
 ///
 ///   | Operation                    | Guarantee                                            |
 ///   |------------------------------|------------------------------------------------------|
-///   | `try_attach`, `try_attach_*` | wait-free, bounded by `Capacity` squared             |
+///   | `attach*`, `try_attach*`     | wait-free, bounded by `Capacity` squared             |
 ///   | `detach`, `is_attached`      | wait-free, bounded by `Capacity`                     |
 ///   | `run_once`                   | bounded: O(n^2) in the n tasks attached, plus each   |
 ///   |                              | task's own poll cost                                 |
@@ -102,6 +102,24 @@ class scheduler {
   ///         `run_once`) hold all `2 * Capacity + 1` attachment numbers.
   METL_NODISCARD bool try_attach(void* task, poll_fn fn) noexcept { return try_attach_impl(task, fn); }
 
+  /// @brief `try_attach_protothread`, where "full" is a programming error.
+  /// @pre The scheduler has room, as `try_attach` describes; otherwise it asserts
+  ///      and aborts. Use `try_attach_protothread` where full is recoverable.
+  template <typename Protothread>
+  void attach_protothread(Protothread& t) noexcept {
+    attach_checked(static_cast<void*>(detail::addressof(t)), &protothread_poll<Protothread>);
+  }
+
+  /// @brief `try_attach_stepper`, where "full" is a programming error.
+  /// @pre The scheduler has room, as `try_attach` describes; otherwise it asserts
+  ///      and aborts. Use `try_attach_stepper` where full is recoverable.
+  void attach_stepper(stepper& s) noexcept { attach_checked(static_cast<void*>(&s), &stepper_poll); }
+
+  /// @brief `try_attach`, where "full" is a programming error.
+  /// @pre The scheduler has room, as `try_attach` describes; otherwise it asserts
+  ///      and aborts. Use `try_attach` where full is recoverable.
+  void attach(void* task, poll_fn fn) noexcept { attach_checked(task, fn); }
+
   /// @brief Detach a task by pointer (linear search, O(N)).
   /// @param task The task to remove. @return true if it was attached and removed.
   /// @note Safe to call from within a task's own poll (see `run_once`).
@@ -162,6 +180,12 @@ class scheduler {
   }
 
   static bool stepper_poll(void* p) noexcept { return static_cast<stepper*>(p)->poll(); }
+
+  void attach_checked(void* task, poll_fn fn) noexcept {
+    const bool attached = try_attach_impl(task, fn);
+    METL_ASSERT(attached);
+    (void)attached;
+  }
 
   METL_NODISCARD bool try_attach_impl(void* task, poll_fn fn) noexcept {
     // A second entry for the same task outlives detach() and completion, which

@@ -1,7 +1,7 @@
 // Trips every METL_ASSERT precondition of the allocators, pools and the
 // remaining utilities once (#364): arena_allocator, monotonic_buffer,
 // static_allocator, object_pool, handle_pool, lookup_table, format,
-// spsc_byte_ring, tick_extender and coro::deadline_scheduler.
+// spsc_byte_ring, tick_extender, coro::deadline_scheduler and coro::scheduler.
 //
 // Most are the asserting form of a try_ operation that does not fit: emplace
 // into a full pool, a write larger than the ring, a number into too small a
@@ -18,6 +18,8 @@
 
 #include <metl/arena_allocator.hpp>
 #include <metl/coro/deadline_scheduler.hpp>
+#include <metl/coro/scheduler.hpp>
+#include <metl/coro/stepper.hpp>
 #include <metl/format.hpp>
 #include <metl/handle_pool.hpp>
 #include <metl/lock.hpp>
@@ -108,6 +110,31 @@ void deadline_scheduler_trips() {
   CHECK(trips([] { scheduler.schedule(&task_b, &never_due, 20); }));
 }
 
+bool never_done(void*) noexcept {
+  return false;
+}
+
+struct waiting_stepper : metl::coro::stepper {
+  metl::coro::step_result step() noexcept override { return metl::coro::step_result::yield; }
+};
+
+struct waiting_protothread {
+  bool run() noexcept { return false; }
+};
+
+// Each asserting attach on a scheduler already full.
+void scheduler_trips() {
+  static metl::coro::scheduler<1> scheduler;
+  static int held = 0;
+  static int task = 0;
+  static waiting_stepper stepper;
+  static waiting_protothread protothread;
+  scheduler.attach(&held, &never_done);
+  CHECK(trips([] { scheduler.attach(&task, &never_done); }));
+  CHECK(trips([] { scheduler.attach_stepper(stepper); }));
+  CHECK(trips([] { scheduler.attach_protothread(protothread); }));
+}
+
 }  // namespace
 
 int main() {
@@ -121,5 +148,6 @@ int main() {
   byte_ring_trips();
   tick_extender_trips();
   deadline_scheduler_trips();
+  scheduler_trips();
   return metl_test::exit_code();
 }

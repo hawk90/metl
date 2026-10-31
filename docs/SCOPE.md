@@ -549,11 +549,11 @@ forms:
 | `X(...)` | Treats it as a precondition violation: asserts and aborts. |
 | `try_X(...)` | Reports it by return value and leaves the container **unchanged**. |
 
-**Two known exceptions**, both older than this rule: `coro::scheduler` offers only
-`try_attach*`, with no asserting form; and `event_dispatcher::subscribe` reports
-"full" through an empty `optional` under a plain name. Adding the missing
-asserting forms is additive; renaming `subscribe` is not, so both land together in
-2.0.0 ([#155](https://github.com/hawk90/metl/issues/155)).
+**One known exception**, older than this rule: `event_dispatcher::subscribe`
+reports "full" through an empty `optional` under a plain name. `try_subscribe` is
+the same operation under the right name, and `subscribe` becomes the asserting
+form in 2.0.0 ([#155](https://github.com/hawk90/metl/issues/155)), because that
+changes its return type.
 
 "Unchanged" is the load-bearing half. A `try_` form that half-applies and then
 returns `false` is *worse* than one that asserts, because the caller's recovery

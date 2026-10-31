@@ -117,10 +117,6 @@ class fixed_deque : public detail::ring_core<T, Capacity> {
   /// Prepends `value` by move at the front if there is room; false when full.
   METL_NODISCARD bool try_push_front(T&& value) { return try_emplace_front(static_cast<T&&>(value)); }
 
-  /// Appends a copy of `value` at the back. @pre Not full; overflow asserts.
-  reference push_back(const T& value) { return this->emplace_back(value); }
-  /// Appends `value` by move at the back. @pre Not full; overflow asserts.
-  reference push_back(T&& value) { return this->emplace_back(static_cast<T&&>(value)); }
   /// Prepends a copy of `value` at the front. @pre Not full; overflow asserts.
   reference push_front(const T& value) { return emplace_front(value); }
   /// Prepends `value` by move at the front. @pre Not full; overflow asserts.
