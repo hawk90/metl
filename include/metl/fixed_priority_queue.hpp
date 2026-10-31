@@ -1,5 +1,18 @@
 #pragma once
 
+/// @file
+/// @brief Progress guarantees for `metl::fixed_priority_queue` (docs/SCOPE.md section 1).
+///
+///   | Operation | Guarantee |
+///   |-----------|-----------|
+///   | `push`, `pop`, `emplace`, `try_*` | wait-free, bounded by `Capacity` and `Compare` |
+///   | `top`, `size`, `empty`, `full` | wait-free, bounded |
+///   | `erase_if` | wait-free, bounded by `Capacity`, the predicate and `Compare` |
+///   | `clear`, destructor | wait-free, bounded by `size()` |
+///   | `swap` | wait-free, bounded by the larger `size()` |
+///
+/// The class comment states the bound on `push` and `pop`.
+
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/nothrow_call.hpp"
@@ -82,17 +95,19 @@ class fixed_priority_queue {
 
  public:
   /// Constructs an empty queue with a default-constructed comparator.
+  // Plain `= default`: it is constexpr and noexcept exactly when Compare's
+  // constructor is. Spelling them out would promise both for every Compare.
   fixed_priority_queue() = default;
 
   /// Constructs an empty queue with an explicit comparator (for stateful ones).
   explicit fixed_priority_queue(const Compare& comp) : storage_(), comp_(comp) {}
 
   /// Returns true if the queue holds no elements.
-  METL_NODISCARD bool empty() const noexcept { return storage_.empty(); }
+  METL_NODISCARD constexpr bool empty() const noexcept { return storage_.empty(); }
   /// Returns true if the queue has reached its fixed capacity.
-  METL_NODISCARD bool full() const noexcept { return storage_.full(); }
+  METL_NODISCARD constexpr bool full() const noexcept { return storage_.full(); }
   /// Returns the number of elements currently queued.
-  METL_NODISCARD size_type size() const noexcept { return storage_.size(); }
+  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size(); }
   /// Returns the fixed capacity (`Capacity`).
   METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
 
