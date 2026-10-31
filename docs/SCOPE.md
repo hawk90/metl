@@ -148,7 +148,7 @@ What is checked, so the rules above do not rest on review:
   notice above and names its tracking issue, declares into `metl::exp`, and no
   header outside `exp/` opens that namespace or includes an `exp/` header. A
   core type that wants an experiment's implementation includes it from
-  `detail/`, as `metl::exp::bitset` keeps its own in `detail/bitset.hpp`.
+  `detail/`, as `metl::exp::bitset` kept its own in `detail/bitset.hpp`.
 - `cmake/CheckUmbrella.cmake`: the umbrella header includes every public header
   except those under `exp/`, and fails if it includes one of them.
 - `header-checks` builds each `exp/` header on its own, like any other.
@@ -257,9 +257,17 @@ The type still has callers elsewhere, found by listing every site that keeps
 per-slot state (#336). `object_pool` keeps a free slot's link in the slot and one
 live bit per slot, so taking a slot no longer scans (#503), and
 `static_unordered_set`/`map` keep a bucket's state in two bits instead of a byte
-(#504). Both are smaller in RAM, which ranks first. `metl::exp::bitset` stays in
+(#504). Both are smaller in RAM, which ranks first. `metl::exp::bitset` stayed in
 Tier 2 for 1.8.0 all the same: `find_next_set` landed in the same release, and
-promotion freezes the API for 1.x. #506 decides it in 1.9.0.
+promotion freezes the API for 1.x. **Promoted in 1.9.0** as `metl::bitset`
+(#506): the API has not changed since 1.8.0, the criterion the intrusive lists
+were promoted on. `object_pool` and the unordered containers call `test`, `set`,
+`reset` and `find_next_set`; the rest of the API has no caller in the library.
+The `find_next_set` contract, which the Tier 2 header never stated, is stated
+and the find operations have mutants (#525). `N == 0` and `std` parity (`flip`,
+`~`, `&=`, `operator[]`) can be added later without breaking code, so they wait
+for a caller.
+`metl/exp/bitset.hpp` stays until 2.0.0 as a `using` declaration (#527).
 
 ### Green — works on every current CI target, zero policy change
 

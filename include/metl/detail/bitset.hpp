@@ -2,11 +2,11 @@
 
 /// @file
 /// @brief Packed fixed-size bit storage: the implementation behind
-/// `metl::exp::bitset` (metl/exp/bitset.hpp), where its contract is stated.
+/// `metl::bitset` (metl/bitset.hpp), where its contract is stated.
 ///
-/// It lives in `detail` rather than in `exp/` so that a Tier 0 type can use it
-/// without depending on a Tier 2 header: `object_pool` (#503) and the unordered
-/// containers (#504) do. There is no public `metl::detail::bitset` API contract.
+/// `object_pool` (#503) and the unordered containers (#504) include it from
+/// here, without the public header. There is no public `metl::detail::bitset`
+/// API contract.
 
 #include "metl/attributes.hpp"
 #include "metl/bit.hpp"
@@ -20,7 +20,7 @@ namespace detail {
 
 template <std::size_t N>
 class bitset {
-  static_assert(N > 0, "metl::exp::bitset needs at least one bit");
+  static_assert(N > 0, "metl::bitset needs at least one bit");
 
  public:
   using size_type = std::size_t;

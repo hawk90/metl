@@ -1,0 +1,1 @@
+- `metl::bitset` (`<metl/bitset.hpp>`) is now Tier 0, covered by the 1.x promise and included by `<metl/metl.hpp>` (#506). Its contract now states `find_next_set`, including that any `from >= N` returns `N` (#525). The `metl/exp/bitset.hpp` header and the `metl::exp::bitset` name still work and are the same; they are removed in 2.0.0 (#527).
