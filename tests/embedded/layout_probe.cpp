@@ -4,6 +4,9 @@
 // change is listed there. The invariants job compiles this file for each Cortex-M,
 // so a row that stops matching the headers stops the build.
 //
+// The rows are what ARM GCC with libstdc++ measures. Other standard libraries can
+// differ: libc++ gives metl::fsm 40 bytes here, not 20.
+//
 // A row is the measurement, not a limit: both directions fail. The sizeof ratchet
 // in tests/core/ram_footprint_test.cpp misses a change that keeps the size.
 
@@ -105,7 +108,7 @@ LAYOUT(24, 4, metl::fixed_string<16>);
 LAYOUT(20, 4, metl::fixed_vector<std::uint32_t, 4>);
 LAYOUT(40, 4, metl::flat_map<std::uint32_t, std::uint32_t, 4>);
 LAYOUT(24, 4, metl::flat_set<std::uint32_t, 4>);
-LAYOUT(40, 4, metl::fsm<layout_state, layout_event, 1>);
+LAYOUT(20, 4, metl::fsm<layout_state, layout_event, 1>);
 LAYOUT(12, 4, metl::fsm_transition<layout_state, layout_event>);
 LAYOUT(8, 4, metl::function_ref<std::uint32_t(std::uint32_t)>);
 LAYOUT(4, 4, metl::guarded<std::uint32_t, metl::null_lock>);
