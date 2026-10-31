@@ -63,6 +63,8 @@ inline panic_handler_t& panic_handler_storage() noexcept {
 /// @brief Install a custom assert handler, returning the previous one.
 /// @param handler New handler; if null, the default (`std::abort`) is restored.
 /// @return The previously installed handler.
+/// @note With `METL_ASSERT_STRINGS=0` the handler receives empty strings for the
+///       expression and the file, never null. The line number stays.
 /// @warning The failed-assert path is `[[noreturn]]`: after your handler runs
 ///          (or if it tries to return) the library calls `std::abort()`. Control
 ///          can NEVER continue past a failed assert. This is a deliberate

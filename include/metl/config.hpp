@@ -68,6 +68,28 @@
 #define METL_CRC_TABLE 1
 #endif
 
+// METL_ASSERT_STRINGS — whether a failed check carries its text.
+//
+// 1 (default): METL_ASSERT and METL_HARDEN pass the handler the expression and
+// the file name, and METL_PANIC passes the file name. Each one is kept in flash.
+// 0: each of those is an empty string, never null, and the line number stays, so
+// a handler that prints them keeps working. To find the failed check, record the
+// return address in the handler and look it up in the image's symbols.
+//
+// ODR: like METL_HARDENING, this changes the bodies of inline functions and must
+// be uniform across every TU in a program.
+#ifndef METL_ASSERT_STRINGS
+#define METL_ASSERT_STRINGS 1
+#endif
+
+#if METL_ASSERT_STRINGS
+#define METL_DETAIL_CHECK_EXPRESSION(expr) #expr
+#define METL_DETAIL_CHECK_FILE __FILE__
+#else
+#define METL_DETAIL_CHECK_EXPRESSION(expr) ""
+#define METL_DETAIL_CHECK_FILE ""
+#endif
+
 #define METL_HARDENING_NONE 0
 #define METL_HARDENING_FAST 1
 #define METL_HARDENING_DEBUG 2
@@ -103,11 +125,12 @@
 // checks too expensive to keep in a shipping build.
 #ifndef METL_ASSERT
 #if METL_HARDENING >= METL_HARDENING_FAST
-#define METL_ASSERT(expr)                                          \
-  do {                                                             \
-    if (METL_PREDICT_FALSE(!(expr))) {                             \
-      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
-    }                                                              \
+#define METL_ASSERT(expr)                                                        \
+  do {                                                                           \
+    if (METL_PREDICT_FALSE(!(expr))) {                                           \
+      ::metl::detail::assertion_failed(                                          \
+          METL_DETAIL_CHECK_EXPRESSION(expr), METL_DETAIL_CHECK_FILE, __LINE__); \
+    }                                                                            \
   } while (false)
 #else
 // Type-checks `expr` without running it. Not `sizeof(expr)`: that is an
@@ -136,11 +159,12 @@
 // mirrors, and for asserting forms whose stripped result stays in bounds.
 // tools/check_source_rules.py (S2) holds the line between the two.
 #ifndef METL_HARDEN
-#define METL_HARDEN(expr)                                          \
-  do {                                                             \
-    if (METL_PREDICT_FALSE(!(expr))) {                             \
-      ::metl::detail::assertion_failed(#expr, __FILE__, __LINE__); \
-    }                                                              \
+#define METL_HARDEN(expr)                                                        \
+  do {                                                                           \
+    if (METL_PREDICT_FALSE(!(expr))) {                                           \
+      ::metl::detail::assertion_failed(                                          \
+          METL_DETAIL_CHECK_EXPRESSION(expr), METL_DETAIL_CHECK_FILE, __LINE__); \
+    }                                                                            \
   } while (false)
 #endif
 
@@ -164,9 +188,9 @@
 #endif
 
 #ifndef METL_PANIC
-#define METL_PANIC(message)                       \
-  do {                                            \
-    ::metl::panic((message), __FILE__, __LINE__); \
+#define METL_PANIC(message)                                     \
+  do {                                                          \
+    ::metl::panic((message), METL_DETAIL_CHECK_FILE, __LINE__); \
   } while (false)
 #endif
 

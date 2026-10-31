@@ -187,7 +187,7 @@ if(METL_BUILD_TESTS)
     core/assert core/compiler core/smoke core/ram_footprint core/version
     core/hardening_none core/hardening_fast core/hardening_debug core/hostile_types
     core/harden_floor_none core/harden_floor_memory core/low_findings core/audit_g6
-    core/conditional_noexcept core/rare_paths core/utility_assert_trips
+    core/conditional_noexcept core/rare_paths core/utility_assert_trips core/assert_strings_off
   )
 
   foreach(_t IN LISTS _metl_tests)

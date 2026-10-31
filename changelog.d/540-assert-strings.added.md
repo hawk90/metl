@@ -1,0 +1,1 @@
+- `METL_ASSERT_STRINGS=0` drops the expression and file text of failed checks from flash. On the invariant probe it saves about 720 bytes on Cortex-M0 and 824 on Cortex-M4 under local clang. Handlers receive empty strings, never null, and the line number stays (#540).
