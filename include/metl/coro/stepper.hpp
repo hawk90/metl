@@ -41,6 +41,11 @@ enum class step_result : unsigned char {
 /// `poll()` tracks the terminal state so a scheduler can shed finished tasks.
 /// Intended for a single-threaded cooperative run loop; `step()` must be
 /// non-blocking. noexcept, no heap, no exceptions, no RTTI.
+///
+/// @warning The virtual destructor links the global `operator delete`, and on
+///          newlib `malloc`, once the vtable is used (#548). In an image that must
+///          have no heap, define `static void operator delete(void*) noexcept {}`
+///          in the derived class. Do not `delete` such an object.
 class stepper {
  public:
   stepper() noexcept = default;

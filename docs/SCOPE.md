@@ -500,6 +500,11 @@ public header is neither used by a probe nor listed with a reason. It checks tha
 header is included and one of its names is used, not that every member function
 is instantiated. A probe that does not call a function proves nothing about it.
 
+**One known exception.** A class derived from `coro::stepper` links the global
+`operator delete` unless it defines its own, as the probe does
+([#548](https://github.com/hawk90/metl/issues/548)). Fixing it in the library changes
+what existing code does, so it waits for 2.0.0.
+
 **A canary is mandatory.** `tests/embedded/invariant_canary.cpp` deliberately
 links `operator new`, and the `invariants` job's "Canary must FAIL the audit"
 step fails the build if the audit passes it; `check_invariants.py --self-test`

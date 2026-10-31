@@ -238,6 +238,10 @@ enum class probe_event : std::uint8_t { toggle };
 
 class count_to_two final : public metl::coro::stepper {
  public:
+  // Without this, stepper's virtual destructor links the global operator delete,
+  // and on newlib malloc (#548).
+  static void operator delete(void*) noexcept {}
+
   metl::coro::step_result step() noexcept override {
     return ++count_ >= 2u ? metl::coro::step_result::done : metl::coro::step_result::yield;
   }
