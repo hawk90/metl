@@ -545,7 +545,7 @@ Cortex-A is not exercised by any CI job.
 What CI actually exercises versus what is supported-but-not-automatically-verified.
 "CI-verified" means a job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 builds (and, where noted, runs) METL on that platform on every pull request,
-and nightly on `main`.
+and nightly on `main`. A failed nightly run opens an issue.
 
 ### CI-verified
 
