@@ -245,6 +245,9 @@ Utility
 - [`scope_exit`](include/metl/scope_exit.hpp),
   [`fsm`](include/metl/fsm.hpp),
   [`lookup_table`](include/metl/lookup_table.hpp).
+- [`bitset`](include/metl/bitset.hpp) — N bits packed into 32-bit words, every
+  operation `constexpr` and `noexcept`, with find-first and find-next in place of
+  a per-bit loop.
 - [`bit`](include/metl/bit.hpp),
   [`endian`](include/metl/endian.hpp).
 - [`crc8`](include/metl/crc8.hpp),
