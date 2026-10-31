@@ -193,9 +193,9 @@ void exercise_vocabulary() noexcept {
 
 // ---- Concurrency -----------------------------------------------------------
 
-// Tier 1 types need a compare-and-swap, which Cortex-M0 lacks. A template, so the
-// discarded branch is not instantiated there.
-template <typename Handle>
+// Tier 1 types need a compare-and-swap, which Cortex-M0 lacks. Both types depend on
+// a template parameter, so the discarded branch is not instantiated there.
+template <typename Handle, typename Value>
 void exercise_tier1() noexcept {
   if constexpr (metl::has_lock_free_handle_atomic_v<Handle>) {
     metl::atomic_handle<Handle> cell;
@@ -203,15 +203,15 @@ void exercise_tier1() noexcept {
     sink(cell.load().valid() ? 1u : 0u);
   }
   if constexpr (std::atomic<std::size_t>::is_always_lock_free) {
-    metl::mpmc_queue<std::uint32_t, 4> queue;
+    metl::mpmc_queue<Value, 4> queue;
     sink(queue.try_push(1u) ? 1u : 0u);
-    std::uint32_t out = 0;
+    Value out = 0;
     sink(queue.try_pop(out) ? out : 0u);
   }
 }
 
 void exercise_concurrency() noexcept {
-  exercise_tier1<metl::versioned_handle<struct probe_atomic_tag>>();
+  exercise_tier1<metl::versioned_handle<struct probe_atomic_tag>, std::uint32_t>();
 
   alignas(std::atomic<std::uint32_t>) std::uint32_t word = 0;
   const metl::atomic_ref<std::uint32_t> ref(word);
