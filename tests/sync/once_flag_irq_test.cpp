@@ -26,8 +26,8 @@
 #include <cstdint>
 #include <cstdio>
 
-#include <metl/exp/once_flag.hpp>
 #include <metl/lock.hpp>
+#include <metl/once_flag.hpp>
 
 #if defined(__ARM_ARCH_6M__)
 #define METL_IRQ_TEST_HAS_VTOR 0
@@ -64,18 +64,18 @@ volatile phase g_phase = phase::control;
 volatile std::uint32_t g_isr_count = 0;
 volatile bool g_isr_result = false;
 
-metl::exp::once_flag<> g_flag;
-metl::exp::once_flag<> g_isr_flag;
+metl::once_flag<> g_flag;
+metl::once_flag<> g_isr_flag;
 volatile std::uint32_t g_runs = 0;
 volatile std::uint32_t g_isr_flag_runs = 0;
 
 void systick_handler() {
   switch (g_phase) {
     case phase::once:
-      g_isr_result = metl::exp::try_call_once(g_flag, [] { g_runs = g_runs + 1; });
+      g_isr_result = metl::try_call_once(g_flag, [] { g_runs = g_runs + 1; });
       break;
     case phase::isr_starts:
-      g_isr_result = metl::exp::try_call_once(g_isr_flag, [] { g_isr_flag_runs = g_isr_flag_runs + 1; });
+      g_isr_result = metl::try_call_once(g_isr_flag, [] { g_isr_flag_runs = g_isr_flag_runs + 1; });
       break;
     case phase::control:
     case phase::guarded:
@@ -140,7 +140,7 @@ int main() {
   std::uint32_t isr_inside_once = 0;
   bool isr_result_inside = true;
   before = g_isr_count;
-  CHECK(metl::exp::try_call_once(g_flag, [&] {
+  CHECK(metl::try_call_once(g_flag, [&] {
     g_runs = g_runs + 1;
     pend_interrupt();
     isr_inside_once = g_isr_count - before;
@@ -163,7 +163,7 @@ int main() {
   CHECK(g_isr_result);
   CHECK_EQ(g_isr_flag_runs, std::uint32_t{1});
   CHECK(g_isr_flag.is_done());
-  CHECK(metl::exp::try_call_once(g_isr_flag, [] { g_isr_flag_runs = g_isr_flag_runs + 1; }));
+  CHECK(metl::try_call_once(g_isr_flag, [] { g_isr_flag_runs = g_isr_flag_runs + 1; }));
   CHECK_EQ(g_isr_flag_runs, std::uint32_t{1});
 
   std::printf(

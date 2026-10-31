@@ -1,4 +1,4 @@
-// metl::exp::try_call_once from many threads at once (#486), with a lock
+// metl::try_call_once from many threads at once (#486), with a lock
 // policy that excludes them all, as a multi-core user supplies one. Run under
 // ThreadSanitizer by the TSAN job: the initializer writes plain data, and every
 // thread that is told "done" reads it, so a missing acquire or release on the
@@ -12,7 +12,7 @@
 #include <thread>
 #include <vector>
 
-#include <metl/exp/once_flag.hpp>
+#include <metl/once_flag.hpp>
 
 namespace {
 
@@ -32,7 +32,7 @@ constexpr int kRounds = 200;
 
 void test_one_runner_and_everyone_sees_its_writes() {
   for (int round = 0; round < kRounds; ++round) {
-    metl::exp::once_flag<mutex_lock> flag;
+    metl::once_flag<mutex_lock> flag;
     std::uint64_t payload = 0;  // plain: published only by the flag
     std::atomic<int> runs{0};
     std::atomic<int> false_returns{0};
@@ -47,7 +47,7 @@ void test_one_runner_and_everyone_sees_its_writes() {
         }
         // Retry until done: a thread that needs the value has to wait
         // somehow, and that wait is the caller's, not the library's.
-        while (!metl::exp::try_call_once(flag, [&] {
+        while (!metl::try_call_once(flag, [&] {
           runs.fetch_add(1, std::memory_order_relaxed);
           payload = 0x1234'5678'9abc'def0ULL;
         })) {

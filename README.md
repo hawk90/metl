@@ -218,6 +218,11 @@ Concurrency
 - [`tick_extender`](include/metl/tick_extender.hpp) — widens a wrapping hardware
   counter into a monotonic 64-bit tick, safely across an ISR and the main loop:
   the tick `coro::deadline_scheduler` needs.
+- [`once_flag` / `try_call_once`](include/metl/once_flag.hpp) — one-time
+  initialization that never waits and never masks interrupts around the
+  initializer: an ISR that reaches it mid-initialization gets `false` instead of
+  re-entering, where a function-local static is built twice or traps. Worked
+  example: [`examples/lazy_driver.cpp`](examples/lazy_driver.cpp).
 - [`static_message_queue`](include/metl/static_message_queue.hpp).
 - [`atomic_ref`](include/metl/atomic_ref.hpp).
 
@@ -288,6 +293,7 @@ Configuration
   | [`containers.cpp`](examples/containers.cpp) | `fixed_vector`, `flat_map`, `ring_buffer` |
   | [`allocators.cpp`](examples/allocators.cpp) | `arena_allocator`, `monotonic_buffer` |
   | [`spsc_isr.cpp`](examples/spsc_isr.cpp) | `spsc_queue` (ISR pattern) |
+  | [`lazy_driver.cpp`](examples/lazy_driver.cpp) | `once_flag`, `try_call_once` (a driver built on first use, reached from its ISR) |
   | [`uart_byte_ring.cpp`](examples/uart_byte_ring.cpp) | `spsc_byte_ring` (zero-copy driver region, wrap) |
   | [`mmio_peripheral.cpp`](examples/mmio_peripheral.cpp) | `mmio`, `register_access`, `bitfield` |
   | [`error_handling.cpp`](examples/error_handling.cpp) | `expected`, `optional`, `variant` |

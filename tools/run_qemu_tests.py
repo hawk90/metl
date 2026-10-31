@@ -82,7 +82,7 @@ DENIED = {
     "sync/spsc_byte_ring_threaded_test.cpp": "needs <thread>",
     "sync/size_hint_observer_threaded_test.cpp": "needs <thread>",
     "sync/queue_linearizability_test.cpp": "needs <thread>",
-    "exp/once_flag_threaded_test.cpp": "needs <thread>",
+    "sync/once_flag_threaded_test.cpp": "needs <thread>",
     "containers/fixed_vector_asan_test.cpp": "forked death test; also assumes ASan",
     "core/assert_test.cpp": "setjmp/longjmp around an abort path; host-runtime specific",
     "memory/arena_throwing_ctor_test.cpp": "throws; needs -fexceptions",
@@ -101,7 +101,7 @@ DENIED = {
 EXPECTED_SELF_SKIP = {
     "sync/irq_masking_test.cpp": {"cortex-m0"},        # ARMv6-M has no VTOR
     "sync/tick_extender_irq_test.cpp": {"cortex-m0"},  # same
-    "exp/once_flag_irq_test.cpp": {"cortex-m0"},       # same
+    "sync/once_flag_irq_test.cpp": {"cortex-m0"},       # same
     # Its static_asserts -- each constructor noexcept exactly when what it builds
     # is -- are the target check: they compile under this -fno-exceptions build.
     # Only the runtime half throws, and it skips itself without exceptions.
