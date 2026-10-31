@@ -49,5 +49,21 @@ int main() {
     return 5;
   }
 
+  // Chaining: the rule stated on crc16_params, at every split of the message
+  // (both empty parts included) and for a final_xor of zero and of non-zero.
+  const std::uint8_t message[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
+  const metl::crc16_params all_params[] = {
+      metl::crc16_params{}, metl::crc16_params{0x5Au, 0x00u}, metl::crc16_params{0x5Au, 0xA5u}};
+  for (const metl::crc16_params& params : all_params) {
+    const auto whole = metl::crc16(message, sizeof(message), params);
+    for (std::size_t split = 0; split <= sizeof(message); ++split) {
+      const auto first = metl::crc16(message, split, params);
+      const metl::crc16_params next{static_cast<std::uint16_t>(first ^ params.final_xor), params.final_xor};
+      if (metl::crc16(message + split, sizeof(message) - split, next) != whole) {
+        return 90;
+      }
+    }
+  }
+
   return 0;
 }
