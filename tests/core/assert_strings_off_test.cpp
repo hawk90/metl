@@ -36,9 +36,10 @@ int main() {
   (void)metl::set_assert_handler(&capture);
   (void)metl::set_panic_handler(&capture);
 
-  // Volatile, so the compiler cannot prove a check fails and warn about it.
+  // Volatile: `passes` so the compiler cannot prove a check fails and warn about
+  // it, and `line` because it changes after setjmp and is read after longjmp.
   volatile bool passes = false;
-  int line = 0;
+  volatile int line = 0;
 
   if (setjmp(g_jump) == 0) {
     line = __LINE__ + 1;
