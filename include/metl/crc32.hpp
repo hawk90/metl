@@ -32,6 +32,15 @@
 namespace metl {
 
 /// @brief Tunable parameters for the CRC-32 computation.
+///
+/// To checksum a message in parts, seed each later part from the previous result
+/// with `initial = previous ^ final_xor`, and keep `final_xor` the same:
+/// @code
+/// const auto first = metl::crc32(part_one, params);
+/// const std::uint32_t seed = first ^ params.final_xor;
+/// const auto whole = metl::crc32(part_two, {seed, params.final_xor});
+/// @endcode
+/// `whole` equals one call over both parts.
 struct crc32_params {
   std::uint32_t initial = 0xFFFFFFFFu;    ///< Initial CRC register value (default ISO-HDLC/zlib seed).
   std::uint32_t final_xor = 0xFFFFFFFFu;  ///< Value XORed into the CRC before it is returned.

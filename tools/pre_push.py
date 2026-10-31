@@ -88,6 +88,7 @@ GATES = [
     ["tools/check_docs.py"],
     ["tools/check_api_contract.py"],
     ["tools/check_layout.py"],
+    ["tools/check_probe_coverage.py"],
     ["tools/check_source_rules.py"],
     ["tools/check_tiers.py"],
     ["tools/check_progress_guarantee.py"],

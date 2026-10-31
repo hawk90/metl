@@ -19,6 +19,7 @@ permissions:
 # see its caller's `env:`, so they live here rather than in ci.yml.
 env:
   METL_INVARIANT_PROBE_SRC: tests/embedded/invariant_probe.cpp
+  METL_INVARIANT_API_PROBE_SRC: tests/embedded/invariant_api_probe.cpp
   METL_INVARIANT_CANARY_SRC: tests/embedded/invariant_canary.cpp
 
 defaults:
@@ -151,6 +152,17 @@ jobs:
           set -euo pipefail
           # shellcheck disable=SC2086
           arm-none-eabi-g++ $METL_LINK_FLAGS -fsyntax-only -Iinclude tests/embedded/layout_probe.cpp
+
+      # The rest of the public API. It has no size budget, so the ratchet's
+      # workload above stays what the budgets were measured on.
+      - name: Link the API probe and audit its symbol table
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2086
+          arm-none-eabi-g++ $METL_LINK_FLAGS \
+            -Iinclude "$METL_INVARIANT_API_PROBE_SRC" -o invariant_api_probe.elf
+          python3 tools/check_invariants.py \
+            --nm arm-none-eabi-nm invariant_api_probe.elf
 
       - name: Link the canary (deliberately violates the invariants)
         run: |

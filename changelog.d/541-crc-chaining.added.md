@@ -1,0 +1,1 @@
+- The CRC headers state how to checksum a message in parts: `initial = previous ^ final_xor`, with a test at every split. SCOPE.md R2 records that `try_parse_*` uses the `try_` name for malformed input (#541).
