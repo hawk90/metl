@@ -5,7 +5,8 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `subscribe`, `unsubscribe`, `clear`, `size`, `empty` | wait-free, bounded by `Capacity` |
+///   | `subscribe`, `try_subscribe`, `unsubscribe` | wait-free, bounded by `Capacity` |
+///   | `clear`, `size`, `empty` | wait-free, bounded by `Capacity` |
 ///   | `dispatch` | bounded by `Capacity` **plus every listener's own cost** |
 ///
 /// The listener table is a flat array of `Capacity` slots scanned linearly.
@@ -71,7 +72,18 @@ class event_dispatcher<R(Args...), Capacity> {
   ///        the subscription.
   /// @return The new listener's id, or nullopt if `listener` is empty or the
   ///         dispatcher is at capacity.
+  /// @note The same as `try_subscribe`, under the plain name that SCOPE.md
+  ///       section 9 keeps for the asserting form. New code uses `try_subscribe`.
   METL_NODISCARD optional<listener_id> subscribe(delegate_type listener) noexcept {
+    return try_subscribe(listener);
+  }
+
+  /// @brief Registers a listener, reporting failure by return value.
+  /// @param listener Delegate to invoke on dispatch; its target must outlive
+  ///        the subscription.
+  /// @return The new listener's id, or nullopt if `listener` is empty or the
+  ///         dispatcher is at capacity.
+  METL_NODISCARD optional<listener_id> try_subscribe(delegate_type listener) noexcept {
     if (!listener) {
       return nullopt;
     }
@@ -91,7 +103,7 @@ class event_dispatcher<R(Args...), Capacity> {
   }
 
   /// @brief Removes a previously registered listener.
-  /// @param id Handle returned by subscribe.
+  /// @param id Handle returned by `try_subscribe` or `subscribe`.
   /// @return true if a matching active listener was found and removed.
   /// @note Plain name and discardable, like `erase` and `cancel`: the boolean
   ///       answers "was it there", it does not report a failure (SCOPE.md

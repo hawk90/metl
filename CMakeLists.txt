@@ -179,7 +179,7 @@ if(METL_BUILD_TESTS)
     # exp/  (Tier 2: not in the umbrella header; docs/SCOPE.md section 3)
     exp/bitset_alias exp/intrusive_lists_alias exp/once_flag_alias
     # control/
-    control/fsm control/fsm_reentrancy control/event_dispatcher control/event_dispatcher_reentrancy
+    control/r1_forms control/fsm control/fsm_reentrancy control/event_dispatcher control/event_dispatcher_reentrancy
     control/coro_protothread control/coro_protothread_nested_switch control/coro_scheduler control/coro_scheduler_reentrancy
     control/coro_stepper control/coro_deadline_scheduler control/control_contracts
     control/intrusive_scheduler

@@ -5,7 +5,7 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `push_overwrite`, `emplace_back`, `pop_front`, `try_*` | wait-free, bounded |
+///   | `push_overwrite`, `push_back`, `emplace_back`, `pop_front`, `try_*` | wait-free, bounded |
 ///   | element access, `size`, `empty`, `full` | wait-free, bounded |
 ///   | `clear`, destructor | wait-free, bounded by `size()` |
 ///   | `swap` | wait-free, bounded by the larger `size()` |
@@ -32,12 +32,12 @@ namespace metl {
 ///
 /// Stores up to `Capacity` elements inline; performs NO heap allocation.
 /// try_emplace_back / try_push_back reject a full buffer by returning false,
-/// while emplace_back asserts and aborts on overflow. push_overwrite instead
+/// while emplace_back and push_back assert and abort on overflow. push_overwrite instead
 /// evicts the oldest element to make room. Not thread-safe.
 ///
 /// Shares its ring machinery with `metl::fixed_deque` via
 /// `detail::ring_core`; that base supplies front/back/at/operator[],
-/// try_emplace_back/emplace_back/try_push_back, pop_front, clear, capacity,
+/// try_emplace_back/emplace_back/try_push_back/push_back, pop_front, clear, capacity,
 /// and the value-semantic copy/move operations.
 ///
 /// @par Iterator invalidation

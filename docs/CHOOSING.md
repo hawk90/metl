@@ -12,9 +12,9 @@ CI-run example behind each one.
 **The one rule that applies almost everywhere:** an operation that can run out
 of capacity comes in two forms. `X(...)` treats "full" as a programming error and
 asserts; `try_X(...)` reports it by return value and leaves the container exactly
-as it was. Every `try_X` is `[[nodiscard]]`. Two have only the reporting form:
-`coro::scheduler` has only `try_attach*`, and `event_dispatcher::subscribe`
-returns an empty `optional` when full. Full statement:
+as it was. Every `try_X` is `[[nodiscard]]`. One plain name still reports:
+`event_dispatcher::subscribe` returns an empty `optional` when full, the same as
+`try_subscribe`. Full statement:
 [SCOPE.md §9](SCOPE.md#9-the-recoverable-api-contract).
 
 ---
