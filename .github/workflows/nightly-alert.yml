@@ -1,0 +1,63 @@
+name: Nightly alert
+
+# A scheduled run's failure is otherwise only emailed. This keeps one open issue
+# per failing workflow and adds a comment for each further failure, so a night's
+# failure is on the issue list until someone closes it (#439).
+#
+# workflow_run runs from main with write access whatever the run it reports on,
+# so this checks nothing out and runs no code from that run.
+on:
+  workflow_run:
+    workflows: [CI, ClusterFuzzLite Batch, ClusterFuzzLite Cron]
+    types: [completed]
+    branches: [main]
+  # Reports one past run by hand: the only way to try this before a real failure.
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: The run to report
+        required: true
+
+permissions:
+  contents: read
+
+# bash -eo pipefail for every run step (tools/check_ci_gate.py G6).
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  report:
+    name: report
+    # `cancelled` counts: a job that hits its timeout can leave the run cancelled.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'schedule' &&
+       github.event.workflow_run.conclusion != 'success' &&
+       github.event.workflow_run.conclusion != 'skipped')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+    steps:
+      - name: Open or update the issue
+        run: |
+          read -r conclusion created url < <(gh api "repos/${GH_REPO}/actions/runs/${RUN_ID}" \
+            --jq '[.conclusion, .created_at, .html_url] | @tsv')
+          workflow="$(gh api "repos/${GH_REPO}/actions/runs/${RUN_ID}" --jq .name)"
+          failed="$(gh api --paginate "repos/${GH_REPO}/actions/runs/${RUN_ID}/jobs?per_page=100" \
+            --jq '.jobs[] | select(.conclusion != "success" and .conclusion != "skipped") | "- `\(.name)`: \(.conclusion)"')"
+          title="Nightly failure: ${workflow}"
+          body="$(printf '%s: %s, %s\n\n%s\n' "${created}" "${url}" "${conclusion}" "${failed}")"
+          number="$(gh issue list --state open --limit 1 --search "in:title \"${title}\"" --json number --jq '.[0].number // empty')"
+          if [[ -n "${number}" ]]; then
+            gh issue comment "${number}" --body "${body}"
+          else
+            gh issue create --title "${title}" --body "${body}"
+          fi
