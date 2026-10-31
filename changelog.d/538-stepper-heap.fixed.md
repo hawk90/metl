@@ -1,0 +1,1 @@
+- `coro::stepper` documents that a derived class links the global `operator delete`, and on newlib `malloc`, unless it defines its own. The library fix waits for 2.0.0 (#548).
