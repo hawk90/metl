@@ -32,6 +32,15 @@
 namespace metl {
 
 /// @brief Tunable parameters for the CRC-8 computation.
+///
+/// To checksum a message in parts, seed each later part from the previous result
+/// with `initial = previous ^ final_xor`, and keep `final_xor` the same:
+/// @code
+/// const auto first = metl::crc8(part_one, params);
+/// const std::uint8_t seed = first ^ params.final_xor;
+/// const auto whole = metl::crc8(part_two, {seed, params.final_xor});
+/// @endcode
+/// `whole` equals one call over both parts.
 struct crc8_params {
   std::uint8_t initial = 0x00u;    ///< Initial CRC register value.
   std::uint8_t final_xor = 0x00u;  ///< Value XORed into the CRC before it is returned.

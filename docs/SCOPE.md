@@ -569,6 +569,11 @@ The `try_` prefix is **reserved for, and required by,** R1's recoverable form. N
 other public function returns a bare `bool`, pointer, `optional` or handle meaning
 "the operation did not happen."
 
+The name extends to one failure besides capacity: `try_parse_uint` and
+`try_parse_int` report malformed input, and `parse_uint` and `parse_int` assert on
+it. That is R1's pair with the same caller rule, because the caller decides whether
+the text can be wrong.
+
 Three known exceptions break user code to change, so they wait for 2.0.0:
 `arena_allocator::allocate` and `monotonic_buffer::allocate` return null when full
 ([#165](https://github.com/hawk90/metl/issues/165)), and
