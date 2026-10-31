@@ -36,9 +36,6 @@ template <typename T, std::size_t N>
 struct is_span_helper<span<T, N>> : std::true_type {};
 
 template <typename T>
-struct is_std_array_helper : std::false_type {};
-
-template <typename T>
 struct remove_cvref {
   using type = std::remove_cv_t<std::remove_reference_t<T>>;
 };

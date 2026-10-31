@@ -65,11 +65,11 @@ class fixed_deque : public detail::ring_core<T, Capacity> {
   constexpr fixed_deque() noexcept = default;
 
   /// Returns true if the deque holds no elements.
-  METL_NODISCARD bool empty() const noexcept { return this->size_ == 0; }
+  METL_NODISCARD constexpr bool empty() const noexcept { return this->size_ == 0; }
   /// Returns true if the deque has reached its fixed capacity.
-  METL_NODISCARD bool full() const noexcept { return this->size_ == Capacity; }
+  METL_NODISCARD constexpr bool full() const noexcept { return this->size_ == Capacity; }
   /// Returns the number of elements currently stored.
-  METL_NODISCARD size_type size() const noexcept { return this->size_; }
+  METL_NODISCARD constexpr size_type size() const noexcept { return this->size_; }
 
   /// Constructs an element in place at the front if there is room.
   /// @return true on success; false if the deque is full (no assert).
