@@ -197,8 +197,8 @@ Copy into the PR description:
           `api-contract` job checks that one is stated; you decide what it is
 - [ ] I4  header-only, C++17, self-contained
 - [ ] I5  new header added to the umbrella, or explicitly Tier 2 opt-in
-- [ ] new container/allocator exercised in tests/embedded/invariant_probe.cpp
-      (the gate only proves what the probe links)
+- [ ] new public type exercised in tests/embedded/invariant_api_probe.cpp
+      (the gate only proves what the probes link; `check_probe_coverage.py` fails otherwise)
 - [ ] tier declared (0/1/2); if 1 or 2, the CI job is in THIS PR
 - [ ] single-core ISR safety: lock policy documented or `irq_lock` default
 - [ ] R1 (§9): every capacity-failing operation has BOTH an asserting form and a
@@ -424,6 +424,7 @@ claim about a **gate** going stale, and nothing was checking those.
 | [`check_instructions.py`](../tools/check_instructions.py) | instructions executed per benchmark, via cachegrind | `--self-test` |
 | [`check_qemu_probes.py`](../tools/check_qemu_probes.py) | under QEMU: the runtime stack high-water mark without and with LTO, and guest instructions per benchmark region on each Cortex-M; a missing, saturated or unparseable measurement fails, and a canary must raise the mark | `--self-test` |
 | [`check_api_contract.py`](../tools/check_api_contract.py) | §9 R2/R3/R4/R6 across every public header | `--self-test` |
+| [`check_probe_coverage.py`](../tools/check_probe_coverage.py) | every public header is in the I1/I2 probes, or listed with a reason | `--self-test` |
 | [`check_progress_guarantee.py`](../tools/check_progress_guarantee.py) | I3: every public header states a progress guarantee | `--self-test` |
 | [`check_conformance.py`](../tools/check_conformance.py) | that every type holding user objects runs the property suite in `tests/conformance/`, so a bug class fixed in one type is checked in all | `--self-test` |
 | [`check_assert_trips.py`](../tools/check_assert_trips.py) | that a test trips every `METL_ASSERT` precondition, as a per-header ratchet that may only fall, so a check that no test trips cannot be deleted or inverted unnoticed (#364) | `--self-test` |
@@ -489,15 +490,15 @@ of METL, and supplying `abort()` is what a bare-metal user does anyway alongside
 `_exit` and the other stubs. Users on newlib who need a provably heap-free image
 must do the same.
 
-**The gate proves what the probe links, and nothing more.** The probe exercises
-a hand-picked set of allocation-prone containers rather than every public type
-(`embedded_smoke.cpp` instantiates everything, but is deliberately not linked
-here — its namespace-scope objects register destructors through `__cxa_atexit`,
+**The gate proves what the probes link, and nothing more.** `invariant_probe.cpp`
+is also the size ratchet's fixed workload, so the rest of the public API is in
+`invariant_api_probe.cpp`, which has no size budget. `embedded_smoke.cpp` is not
+linked: its namespace-scope objects register destructors through `__cxa_atexit`,
 which newlib can route to `_malloc_r`; see the comment at the top of
-`tests/embedded/invariant_probe.cpp`). So coverage does not grow by
-itself: adding a container to the probe is one function, and it is on the PR
-checklist in §4 for that reason. A gate whose coverage silently lags the library
-degrades into decoration.
+`tests/embedded/invariant_probe.cpp`. `tools/check_probe_coverage.py` fails when a
+public header is neither used by a probe nor listed with a reason. It checks that a
+header is included and one of its names is used, not that every member function
+is instantiated. A probe that does not call a function proves nothing about it.
 
 **A canary is mandatory.** `tests/embedded/invariant_canary.cpp` deliberately
 links `operator new`, and the `invariants` job's "Canary must FAIL the audit"
