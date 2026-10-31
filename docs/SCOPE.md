@@ -566,8 +566,14 @@ call to `try_assign`" tells a user nothing.
 ### R2 — the name
 
 The `try_` prefix is **reserved for, and required by,** R1's recoverable form. No
-other public function returns a bare `bool` or pointer meaning "the operation did
-not happen."
+other public function returns a bare `bool`, pointer, `optional` or handle meaning
+"the operation did not happen."
+
+Three known exceptions break user code to change, so they wait for 2.0.0:
+`arena_allocator::allocate` and `monotonic_buffer::allocate` return null when full
+([#165](https://github.com/hawk90/metl/issues/165)), and
+`event_dispatcher::subscribe` returns an empty `optional`
+([#155](https://github.com/hawk90/metl/issues/155)).
 
 This rule was added after `flat_map::insert_or_assign` was found returning a
 `bool` that meant *did it fit*, while `std::map::insert_or_assign`'s bool means
