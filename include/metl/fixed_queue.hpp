@@ -53,11 +53,11 @@ class fixed_queue {
   constexpr fixed_queue() noexcept = default;
 
   /// Returns true if the queue holds no elements.
-  METL_NODISCARD bool empty() const noexcept { return storage_.empty(); }
+  METL_NODISCARD constexpr bool empty() const noexcept { return storage_.empty(); }
   /// Returns true if the queue has reached its fixed capacity.
-  METL_NODISCARD bool full() const noexcept { return storage_.full(); }
+  METL_NODISCARD constexpr bool full() const noexcept { return storage_.full(); }
   /// Returns the number of elements currently queued.
-  METL_NODISCARD size_type size() const noexcept { return storage_.size(); }
+  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size(); }
   /// Returns the fixed capacity (`Capacity`).
   METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
 

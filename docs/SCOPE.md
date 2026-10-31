@@ -575,6 +575,11 @@ The `try_` prefix is **reserved for, and required by,** R1's recoverable form. N
 other public function returns a bare `bool`, pointer, `optional` or handle meaning
 "the operation did not happen."
 
+The name extends to one failure besides capacity: `try_parse_uint` and
+`try_parse_int` report malformed input, and `parse_uint` and `parse_int` assert on
+it. That is R1's pair with the same caller rule, because the caller decides whether
+the text can be wrong.
+
 Three known exceptions break user code to change, so they wait for 2.0.0:
 `arena_allocator::allocate` and `monotonic_buffer::allocate` return null when full
 ([#165](https://github.com/hawk90/metl/issues/165)), and
@@ -630,7 +635,8 @@ accessors and a hook's `is_linked()` do nothing but return, so each is
 `METL_NODISCARD`. The intrusive lists shipped in 1.7.0 without it and no rule
 noticed: adding it after a type is frozen warns at existing call sites, so it is
 checked before then. `span`'s `begin`/`end`/`cbegin`/`cend` are the one
-exemption, for that reason, until 2.0.0.
+exemption, for that reason, until 2.0.0. `span::operator[]` is not an observer
+under this rule but waits for the same release, for the same reason (#545).
 
 ### How it is enforced
 

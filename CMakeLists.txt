@@ -140,7 +140,7 @@ if(METL_BUILD_TESTS)
     containers/static_unordered_map containers/static_unordered_set containers/associative_conversion
     containers/unordered_reclaim
     containers/static_unordered_map_emplace containers/lookup_table
-    containers/recoverable_api containers/fixed_priority_queue
+    containers/recoverable_api containers/fixed_priority_queue containers/sequence_queries
     containers/operation_count containers/alias_insert containers/unordered_erase_iteration
     containers/throwing_element containers/array_storage containers/self_range containers/sequence_reentrancy
     containers/recoverable_unchanged
