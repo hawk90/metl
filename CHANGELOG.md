@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-31
+
+**Highlights.** This release empties the experimental tier. The intrusive lists,
+`once_flag` / `try_call_once` and `bitset` are now Tier 0, covered by the 1.x
+promise and included by `<metl/metl.hpp>`. Their `metl/exp/` headers keep the old
+names working until 2.0.0.
+
+### Upgrading from 1.8.0
+
+No change is needed for code that names `metl::` types explicitly, and the
+`metl::exp::` names still work and are the same types.
+
+`<metl/metl.hpp>` now declares `metl::bitset` and `metl::once_flag`. A file with
+both `using namespace std;` and `using namespace metl;` that names an unqualified
+`bitset` or `once_flag` becomes ambiguous and stops compiling. Qualify the name.
+
+### Added
+
+- `metl::intrusive_list` and `metl::intrusive_forward_list` (`<metl/intrusive_list.hpp>`, `<metl/intrusive_forward_list.hpp>`) are now Tier 0, covered by the 1.x promise and included by `<metl/metl.hpp>` (#337). The `metl/exp/` headers and the `metl::exp::` names still work and are the same types; they are removed in 2.0.0 (#520).
+- `metl::once_flag` and `metl::try_call_once` (`<metl/once_flag.hpp>`) are now Tier 0, covered by the 1.x promise and included by `<metl/metl.hpp>` (#486). `examples/lazy_driver.cpp` shows the case they are for: a driver built on first use that its own interrupt can reach before that use finishes. The `metl/exp/once_flag.hpp` header and the `metl::exp::` names still work and are the same; they are removed in 2.0.0 (#524).
+- `metl::bitset` (`<metl/bitset.hpp>`) is now Tier 0, covered by the 1.x promise and included by `<metl/metl.hpp>` (#506). Its contract now states `find_next_set`, including that any `from >= N` returns `N` (#525). The `metl/exp/bitset.hpp` header and the `metl::exp::bitset` name still work and are the same; they are removed in 2.0.0 (#527).
+
 ## [1.8.0] - 2026-10-24
 
 **Highlights.** This release settles the experimental tier. Three stable

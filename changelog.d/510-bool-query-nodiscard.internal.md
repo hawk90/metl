@@ -1,1 +1,0 @@
-- Private and `detail` bool queries are now `METL_NODISCARD`, and `tools/check_api_contract.py` checks that every bool query is (#510). No public signature changes.
