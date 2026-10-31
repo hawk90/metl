@@ -1,1 +1,0 @@
-- `coro::scheduler` gains the asserting `attach`, `attach_stepper` and `attach_protothread`, `event_dispatcher` gains `try_subscribe`, and `ring_buffer` gains `push_back` (#534). Existing calls behave as before. `event_dispatcher::subscribe` becomes the asserting form in 2.0.0, so new code that handles "full" should call `try_subscribe` (#155).

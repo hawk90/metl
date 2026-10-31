@@ -1,1 +1,0 @@
-- `empty()`, `full()` and `size()` are `constexpr` on `fixed_deque`, `fixed_queue`, `fixed_stack` and `fixed_priority_queue`, as they are on `ring_buffer` and `fixed_vector`. `fixed_priority_queue.hpp` now has a progress-guarantee table. An unused internal helper is gone from `span.hpp`. (#537)

@@ -1,1 +1,0 @@
-- The I1/I2 symbol audit now links 57 of the 66 public headers, up from 14, through a second image with no size budget. `tools/check_probe_coverage.py` fails on a header that is neither used by a probe nor listed with a reason (#538).

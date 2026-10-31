@@ -567,7 +567,8 @@ and nightly on `main`. A failed nightly run opens an issue.
 | Bare-metal libc (link) | Cortex-M3 + newlib-nano (nosys) | compile + **link** + size | `newlib-link` |
 | Bare-metal libc (run) | Cortex-M3 + picolibc, mps2-an385 | link + **run** under qemu-system-arm (semihosting) | `picolibc-qemu` |
 | Zephyr RTOS | qemu_cortex_m3 module build + run | `west build` + twister **run** (QEMU) | `zephyr` |
-| No heap / no exceptions / no RTTI | Cortex-M0/M3/M4/M7, newlib-nano | link + **audit the image's symbol table**; a deliberate canary must fail it | `invariants` |
+| No heap / no exceptions / no RTTI | Cortex-M0/M3/M4/M7, newlib-nano | link + **audit the image's symbol table**; a deliberate canary must fail it; a public header outside the probes must be listed with a reason | `invariants`, `api-contract` |
+| Type layout | Cortex-M0/M3/M4/M7 | `sizeof`, `alignof` and named member offsets match their recorded rows, and a row can't change in a minor or patch release unless listed | `invariants`, `api-contract` |
 | Lock-free capability | Cortex-M0/M3/M4/M7 | the trait must match the target **and** the opposite expectation must not compile | `handle-atomics` |
 | Non-default configs | `METL_CRC_TABLE=0`, **`-std=c++20`**, **`c++23`**, **`c++26`**, `-fno-exceptions` | build + `ctest` for each, the C++20/23/26 and `-fno-exceptions` legs under Clang and GCC (`#if` arms nothing else compiles) | `config-matrix` |
 | Coverage | host, Clang source-based | `include/metl` line + branch coverage against a floor, and MC/DC reported without one; the line and branch report is shown on [Codecov](https://codecov.io/gh/hawk90/metl), display only. Every missed or partial line is either tested or listed with its reason in `tools/coverage_records.txt` (such as code evaluated only at compile time, or an unreachable defensive branch); an unlisted one fails | `coverage` |
@@ -678,7 +679,7 @@ METL is licensed under the [Apache License, Version 2.0](LICENSE).
 
 ## Status
 
-**1.9.0** — stable. METL follows [Semantic Versioning](https://semver.org/): the
+**1.10.0** — stable. METL follows [Semantic Versioning](https://semver.org/): the
 public API changes incompatibly only in a new major version. "Public" means every
 header under `include/metl/` except `detail/` and `exp/`, everything in namespace
 `metl` except `metl::detail` and `metl::exp`, and the documented `METL_*`

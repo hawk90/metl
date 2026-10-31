@@ -212,7 +212,7 @@ header says so rather than implying otherwise.
 | You want | Use |
 |---|---|
 | A task that yields mid-function and resumes there | [`coro::protothread`](../include/metl/coro/protothread.hpp) |
-| A task written as an explicit step function | [`coro::stepper`](../include/metl/coro/stepper.hpp) |
+| A task written as an explicit step function | [`coro::stepper`](../include/metl/coro/stepper.hpp). In an image with no heap, see the warning in its header |
 | To poll every task each pass | [`coro::scheduler<N>`](../include/metl/coro/scheduler.hpp) |
 | To run tasks **by deadline**, and sleep in between | [`coro::deadline_scheduler<N, Tick>`](../include/metl/coro/deadline_scheduler.hpp) |
 | A tick for it from a 16/32-bit timer that wraps | [`tick_extender<Bits>`](../include/metl/tick_extender.hpp) — 64-bit and monotonic; read and update in one critical section |
