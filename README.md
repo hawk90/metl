@@ -269,7 +269,8 @@ Configuration
 
 - [`config.hpp`](include/metl/config.hpp) — the `METL_*` macros a build may
   set: `METL_HARDENING` (which precondition checks stay compiled in) and
-  `METL_CRC_TABLE` (nibble-table or bit-at-a-time CRC), plus the check macros
+  `METL_CRC_TABLE` (nibble-table or bit-at-a-time CRC), `METL_ASSERT_STRINGS`
+  (keep or drop the text of a failed check), plus the check macros
   it defines — `METL_ASSERT` / `METL_DASSERT`, which the hardening level
   controls, and `METL_HARDEN`, which is always on. Set them identically in
   every translation unit.
