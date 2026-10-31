@@ -15,6 +15,7 @@
 #include "metl/attributes.hpp"
 #include "metl/bit.hpp"
 #include "metl/bitfield.hpp"
+#include "metl/bitset.hpp"
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/crc16.hpp"
