@@ -67,7 +67,6 @@ int main() {
   if (setjmp(g_jump) == 0) {
     line = __LINE__ + 1;
     METL_PANIC("kept");
-    CHECK(false);
   } else {
     CHECK(g_first != nullptr);
     CHECK_EQ(g_first[0], 'k');
