@@ -5,7 +5,9 @@ Five rules, four of which are mechanical:
 
   R2  the `try_` prefix is reserved for the recoverable form of an operation
       that can fail on capacity. No other public function returns a bare
-      `bool` meaning "the operation did not happen".
+      `bool` meaning "the operation did not happen". The same holds for a
+      pointer, `optional` or handle: VALUE_ALLOWLIST names those whose empty
+      result is an answer, or that assert instead of returning one.
   R3  every `try_X` is METL_NODISCARD. Discarding the result is the exact bug
       the asserting/recoverable pair exists to prevent. So is every function in
       RESULT_ONLY: an asserting form whose return value is its only output.
@@ -163,6 +165,71 @@ QUERY_EXEMPT = {
         "warns at existing call sites, so it waits for 2.0.0"),
 }
 
+# R2 for the other ways to report "did not happen": a plain-named public function
+# returning a pointer, an optional or a handle. Each name has its reason.
+_OBSERVER_VALUE = "observes storage or an element; there is no operation to fail"
+_LOOKUP_VALUE = "a lookup: an empty result answers 'is it there'"
+_ASSERTING_VALUE = "the asserting form: running out of capacity aborts, it returns no empty value"
+_PRIVATE_VALUE = "a private helper, not part of the public API"
+VALUE_ALLOWLIST = {
+    "addr": _PRIVATE_VALUE,
+    "allocate_impl": _PRIVATE_VALUE,
+    "atomic_ref_cast": _PRIVATE_VALUE,
+    "c_str": _OBSERVER_VALUE,
+    "copies_in_place": _PRIVATE_VALUE,
+    "copy_assign_ops": _PRIVATE_VALUE,
+    "copy_ops": _PRIVATE_VALUE,
+    "create": _ASSERTING_VALUE,
+    "data": _OBSERVER_VALUE,
+    "destroy_ops": _PRIVATE_VALUE,
+    "detach": "intrusive_ptr gives up its pointer; nothing can fail",
+    "emplace": _ASSERTING_VALUE,
+    "error_ptr": _PRIVATE_VALUE,
+    "exchange": "atomic_handle returns the previous value; nothing can fail",
+    "find": _LOOKUP_VALUE,
+    "find_transition": _LOOKUP_VALUE,
+    "get": _LOOKUP_VALUE,
+    "get_if": _LOOKUP_VALUE,
+    "load": "atomic_handle returns the stored value; nothing can fail",
+    "make_optional": "builds an engaged optional; nothing can fail",
+    "move_assign_ops": _PRIVATE_VALUE,
+    "move_ops": _PRIVATE_VALUE,
+    "moves_in_place": _PRIVATE_VALUE,
+    "next_deadline": "an empty result answers 'is anything scheduled'",
+    "ptr": _PRIVATE_VALUE,
+    "raw_addr": _PRIVATE_VALUE,
+    "slot_": _PRIVATE_VALUE,
+    "slot_ptr": _PRIVATE_VALUE,
+    "slot_value": _PRIVATE_VALUE,
+    "storage_ptr": _PRIVATE_VALUE,
+    "storage_ptr_const": _PRIVATE_VALUE,
+    "value_ptr": _PRIVATE_VALUE,
+}
+
+# A name that means different things in different headers, by (header file name,
+# function name). `allocate` asserts here and returns null in the two below.
+VALUE_ALLOWLIST_BY_HEADER = {
+    ("static_allocator.hpp", "allocate"): _ASSERTING_VALUE,
+}
+
+# Known R2 violations, each named with the issue that fixes it. They break user
+# code to change, so they wait for 2.0.0. An entry no header still needs is
+# reported.
+R2_EXEMPT = {
+    ("arena_allocator.hpp", "allocate"): "returns null when full; #165 makes it try_allocate in 2.0.0",
+    ("monotonic_buffer.hpp", "allocate"): "returns null when full; #165 makes it try_allocate in 2.0.0",
+    ("event_dispatcher.hpp", "subscribe"): "returns an empty optional when full; #155 makes it assert in 2.0.0",
+}
+
+DECL_VALUE = re.compile(
+    r"^\s*(?:template\s*<.*>\s*)?"
+    r"(?:(?:METL_NODISCARD|METL_CONSTEXPR20|constexpr|static|inline|friend|explicit|virtual)\s+)*"
+    r"(?:const\s+)?"
+    r"(?:[A-Za-z_][\w:]*(?:<[^()]*>)?\s*(?:const\s*)?\*+(?:\s*const)?"
+    r"|(?:metl::)?optional<.*>|handle_type|Handle|handle|pointer|const_pointer)"
+    r"\s+(?P<name>[a-z_]\w*)\s*\("
+)
+
 DECL_BOOL = re.compile(
     r"^\s*(?P<head>(?:template\s*<.*>\s*)?"
     r"(?:(?:METL_NODISCARD|constexpr|static|inline|friend|explicit|virtual)\s+)*)"
@@ -204,14 +271,39 @@ def strip_comments(text):
     return LINE_COMMENT.sub(blank, BLOCK_COMMENT.sub(blank, text))
 
 
-def check_text(text, path="<memory>", declared=None, exempted=None):
+def check_value_return(line, path, number, used):
+    """R2 for a pointer, optional or handle return, as a list of 0 or 1
+    violations. What excused the declaration is added to `used`."""
+    match = DECL_VALUE.match(line)
+    if not match or "detail" in pathlib.Path(path).parts:
+        return []
+    name = match.group("name")
+    if name.startswith("try_"):
+        return []
+    key = (pathlib.Path(path).name, name)
+    for excused in (key if key in VALUE_ALLOWLIST_BY_HEADER or key in R2_EXEMPT else None,
+                    name if name in VALUE_ALLOWLIST else None):
+        if excused is not None:
+            if used is not None:
+                used.add(excused)
+            return []
+    return [(path, number, "R2",
+             f"`{name}` returns a pointer, optional or handle but is not named `try_*`. "
+             f"If an empty result reports that the operation did not happen, rename it "
+             f"`try_{name}`; if it answers a question or the function asserts, add it to "
+             f"VALUE_ALLOWLIST in {pathlib.Path(__file__).name} with its reason")]
+
+
+def check_text(text, path="<memory>", declared=None, exempted=None, values=None):
     """Return a list of (path, line_number, rule, message). The names of the
-    bool functions declared are added to `declared`, and the QUERY_EXEMPT keys
-    that excused a declaration to `exempted`, when they are given."""
+    bool functions declared are added to `declared`, the QUERY_EXEMPT keys that
+    excused a declaration to `exempted`, and what excused a pointer, optional or
+    handle return to `values`, when they are given."""
     violations = []
     lines = strip_comments(text).splitlines()
     for number, line in enumerate(lines, 1):
         line = with_return_type(lines, number - 1)
+        violations += check_value_return(line, path, number, values)
         match = DECL_TRY.match(line)
         if match:
             prefix = (match.group("prefix") or "").strip()
@@ -353,9 +445,14 @@ def check_tree(root):
     """Every header under `root`. Returns (violations, headers)."""
     headers = sorted(pathlib.Path(root).rglob("*.hpp"))
     violations = []
-    declared, exempted = set(), set()
+    declared, exempted, values = set(), set(), set()
     for header in headers:
-        violations += check_text(header.read_text(encoding="utf-8"), str(header), declared, exempted)
+        violations += check_text(header.read_text(encoding="utf-8"), str(header), declared, exempted, values)
+    for key in sorted(set(VALUE_ALLOWLIST) | set(VALUE_ALLOWLIST_BY_HEADER) | set(R2_EXEMPT), key=str):
+        if key not in values:
+            violations.append((f"{root}", 0, "R2",
+                               f"{key} excuses a pointer, optional or handle return that no header "
+                               f"declares. Remove the entry"))
     for file_name, name in sorted(set(QUERY_EXEMPT) - exempted):
         violations.append((f"{root}", 0, "R4",
                            f"QUERY_EXEMPT excuses `{name}` in {file_name}, but no declaration "
@@ -418,6 +515,31 @@ def self_test():
     if "R2" not in caught:
         failures.append("R2 canary was NOT reported -- the naming check is dead")
 
+    # R2 beyond bool: every shape of return, and each kind of excuse in its place.
+    for text in ("METL_NODISCARD void* stash(int size) noexcept;",
+                 "template <typename T>\nMETL_NODISCARD T* stash() noexcept;",
+                 "const value_type* stash() const noexcept;",
+                 "METL_NODISCARD optional<int> stash() noexcept;",
+                 "handle_type stash();",
+                 "pointer stash();"):
+        if "R2" not in {r for _, _, r, _ in check_text(text, "<canary-value>")}:
+            failures.append(f"R2 missed {text!r}")
+    for text in ("METL_NODISCARD T* try_stash() noexcept;",
+                 "METL_NODISCARD pointer find(int key) noexcept;",
+                 "pointer memory = try_allocate(count);",
+                 "return try_allocate(count);"):
+        if check_text(text, "<canary-value-clean>"):
+            failures.append(f"R2 flagged {text!r}")
+    allocate = "METL_NODISCARD void* allocate(size_type bytes) noexcept;"
+    if check_text(allocate, "include/metl/arena_allocator.hpp"):
+        failures.append("R2 flagged a declaration R2_EXEMPT excuses")
+    if check_text(allocate, "include/metl/static_allocator.hpp"):
+        failures.append("R2 flagged a declaration VALUE_ALLOWLIST_BY_HEADER excuses")
+    if "R2" not in {r for _, _, r, _ in check_text(allocate, "include/metl/other_allocator.hpp")}:
+        failures.append("R2 let a per-header excuse apply to a header it does not name")
+    if check_text("void* stash();", "include/metl/detail/stash.hpp"):
+        failures.append("R2 checked a value return under detail/")
+
     # Declarations written any way the headers may write them: a template head
     # on the same line, `virtual`, the specifiers in another order, and a
     # return type clang-format put on the line above the name.
@@ -444,6 +566,10 @@ def self_test():
         if len(stale) != len(BOOL_ALLOWLIST) - 1 or any("`empty`" in m for m in stale):
             failures.append(f"stale BOOL_ALLOWLIST entries were not each reported: {len(stale)} of "
                             f"{len(BOOL_ALLOWLIST) - 1}")
+        stale = [message for _, _, _, message in check_tree(tmp)[0] if "no header declares. Remove" in message]
+        wanted = len(VALUE_ALLOWLIST) + len(VALUE_ALLOWLIST_BY_HEADER) + len(R2_EXEMPT)
+        if len(stale) != wanted:
+            failures.append(f"stale value-return entries were not each reported: {len(stale)} of {wanted}")
         stale = [message for _, _, _, message in check_tree(tmp)[0] if "QUERY_EXEMPT" in message]
         if len(stale) != len(QUERY_EXEMPT):
             failures.append(f"stale QUERY_EXEMPT entries were not each reported: {len(stale)} of "
