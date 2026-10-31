@@ -1,0 +1,1 @@
+- `tests/embedded/layout_probe.cpp` records `sizeof`, `alignof` and named member offsets for the public types on Cortex-M, and `tools/check_layout.py` fails on a change in a minor or patch release unless it is listed (#539).

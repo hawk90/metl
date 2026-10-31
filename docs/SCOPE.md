@@ -424,6 +424,7 @@ claim about a **gate** going stale, and nothing was checking those.
 | [`check_instructions.py`](../tools/check_instructions.py) | instructions executed per benchmark, via cachegrind | `--self-test` |
 | [`check_qemu_probes.py`](../tools/check_qemu_probes.py) | under QEMU: the runtime stack high-water mark without and with LTO, and guest instructions per benchmark region on each Cortex-M; a missing, saturated or unparseable measurement fails, and a canary must raise the mark | `--self-test` |
 | [`check_api_contract.py`](../tools/check_api_contract.py) | §9 R2/R3/R4/R6 across every public header | `--self-test` |
+| [`check_layout.py`](../tools/check_layout.py) | no type's `sizeof`, `alignof` or named member offset changed since the last release, in a minor or patch release, unless listed | `--self-test` |
 | [`check_probe_coverage.py`](../tools/check_probe_coverage.py) | every public header is in the I1/I2 probes, or listed with a reason | `--self-test` |
 | [`check_progress_guarantee.py`](../tools/check_progress_guarantee.py) | I3: every public header states a progress guarantee | `--self-test` |
 | [`check_conformance.py`](../tools/check_conformance.py) | that every type holding user objects runs the property suite in `tests/conformance/`, so a bug class fixed in one type is checked in all | `--self-test` |
