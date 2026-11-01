@@ -43,6 +43,8 @@ namespace metl {
 /// thread-safe.
 ///
 /// @tparam Capacity Maximum number of characters, excluding the terminator.
+/// @note Moving is copying: the source keeps its contents, unlike the other
+///       fixed-capacity containers, which are left empty.
 template <std::size_t Capacity>
 class fixed_string {
  public:
