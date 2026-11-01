@@ -16,6 +16,7 @@
 #include <metl/flat_map.hpp>
 #include <metl/flat_set.hpp>
 #include <metl/ring_buffer.hpp>
+#include <metl/static_message_queue.hpp>
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
 
@@ -57,6 +58,7 @@ int main() {
   check<metl::fixed_queue<int, 4>>(push, 0);
   check<metl::fixed_stack<int, 4>>(push, 0);
   check<metl::fixed_priority_queue<int, 4>>(push, 0);
+  check<metl::static_message_queue<int, 4>>(push, 0);
   check<metl::flat_map<int, int, 4>>(emplace_pair, 0);
   check<metl::flat_set<int, 4>>(emplace_key, 0);
   check<metl::static_unordered_map<int, int, 4>>(emplace_pair, 0);
