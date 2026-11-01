@@ -139,7 +139,7 @@ def never_constant_functions(text, path):
                 break
             end += 1
         body = code[match.end() - 1:end + 1]
-        if "constant_evaluated" in body:
+        if "constant_evaluated" in body or "in_constant_evaluation" in body:
             continue
         # A cast inside an #if arm is exempt -- another arm can be constant --
         # but only that cast: an unrelated #if elsewhere in the body exempts
@@ -254,6 +254,17 @@ def self_test():
     # the same body -- a hardening check, say -- exempts nothing else.
     guarded = ("template <typename T> constexpr T* get(void* p) noexcept {\n#if METL_HARDENING\n"
                "  check(p);\n#endif\n  return reinterpret_cast<T*>(p);\n}\n")
+    behind_test = """
+template <typename T>
+constexpr bool aligned(T* p) noexcept {
+  if (!detail::in_constant_evaluation()) {
+    return reinterpret_cast<std::uintptr_t>(p) % alignof(T) == 0;
+  }
+  return true;
+}
+"""
+    if check_text(behind_test, "<canary-S3-exempt>"):
+        failures.append("S3 flagged a cast behind METL's own in_constant_evaluation() test")
     if [rule for _, _, rule, _ in check_text(guarded, "<canary-S3-if>")] != ["S3"]:
         failures.append("S3 let an unconditional reinterpret_cast through because the body has an #if")
     allowed = 'void f(int* p) { METL_ASSERT(pointer != nullptr); }'

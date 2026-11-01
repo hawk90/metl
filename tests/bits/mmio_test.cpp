@@ -21,6 +21,10 @@ void test_ptr_read_write() {
   r.write(0xdeadbeefu);
   CHECK_EQ(fake_reg, 0xdeadbeefu);
   CHECK_EQ(r.read(), 0xdeadbeefu);
+
+  // The pointer constructor stays usable in a constant expression (#558).
+  static constexpr metl::mmio_ptr<std::uint32_t> constant(&fake_reg);
+  CHECK_EQ(constant.read(), 0xdeadbeefu);
 }
 
 void test_ptr_modify_preserves_other_bits() {
