@@ -55,7 +55,7 @@ void check_answers(const queried<Container>& object) {
   CHECK(object.container.empty());
 }
 
-// `fixed_priority_queue() = default` takes both properties from Compare.
+// `fixed_priority_queue()`'s noexcept follows Compare, and a bare `noexcept` fails below.
 struct throwing_compare {
   throwing_compare() noexcept(false) {}
   bool operator()(int left, int right) const { return left < right; }

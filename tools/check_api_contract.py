@@ -122,6 +122,10 @@ OBSERVER_EXEMPT = {
                  "adding it in 1.x warns at existing call sites, so it waits for 2.0.0"),
 }
 
+# R6 also covers a const subscript: unlike `map[key]` it cannot insert, so its
+# result is its only effect. OBSERVER_EXEMPT does not excuse it.
+DECL_CONST_SUBSCRIPT = re.compile(r"\boperator\[\]\([^)]*\)\s*const\b")
+
 DECL_OBSERVER = re.compile(
     r"^\s*(?P<head>(?:(?:METL_NODISCARD|constexpr|static|inline|virtual)\s+)*)"
     r"(?P<type>[A-Za-z_][A-Za-z_0-9:<>,&*]*(?:\s+[A-Za-z_][A-Za-z_0-9:<>,&*]*)*)\s+"
@@ -341,6 +345,13 @@ def check_text(text, path="<memory>", declared=None, exempted=None, values=None)
                 f"called as a statement does nothing",
             ))
 
+        if DECL_CONST_SUBSCRIPT.search(line) and "METL_NODISCARD" not in line.split():
+            violations.append((
+                path, number, "R6",
+                "const `operator[]` is missing METL_NODISCARD -- a subscript "
+                "called as a statement does nothing",
+            ))
+
         match = DECL_BOOL.match(line)
         if match and match.group("name") in DISCARDABLE and "METL_NODISCARD" in match.group("head").split():
             violations.append((
@@ -496,6 +507,9 @@ def self_test():
     caught = {rule for _, _, rule, _ in check_text(CANARY_R6, "<canary-R6>")}
     if "R6" not in caught:
         failures.append("R6 canary was NOT reported -- the observer METL_NODISCARD check is dead")
+    subscript = "constexpr reference operator[](size_type i) const noexcept { return p[i]; }"
+    if "R6" not in {rule for _, _, rule, _ in check_text(subscript, "include/metl/span.hpp")}:
+        failures.append("R6 canary was NOT reported -- the const operator[] check is dead")
     if check_text(CANARY_R6, "include/metl/span.hpp"):
         failures.append("R6 flagged a header OBSERVER_EXEMPT excuses")
     for text in ("constexpr size_type\nsize() const noexcept { return 0; }",
