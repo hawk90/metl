@@ -1,0 +1,1 @@
+- `docs/CHOOSING.md` now says what copy, move and swap do to pointers and iterators, and each container header states what moving leaves behind (#559).

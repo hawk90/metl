@@ -183,6 +183,8 @@ class fixed_vector {
     return *this;
   }
 
+  /// Move-assigns by moving each element out of `other`, leaving it empty. A
+  /// pointer into `other` then names a destroyed object, unlike with `std::vector`.
   fixed_vector& operator=(fixed_vector&& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
                                                          std::is_nothrow_move_assignable_v<T>) {
     if (this == &other) {

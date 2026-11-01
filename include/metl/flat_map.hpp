@@ -132,6 +132,8 @@ class flat_map {
   }
 
   /// @brief Move-construct, moving elements out of @p other and leaving it empty.
+  /// @note The comparator is moved too, so a stateful one may leave @p other unable
+  ///       to take new elements (#317). A pointer into @p other names a destroyed object.
   flat_map(flat_map&& other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
                                       std::is_nothrow_move_constructible_v<Compare>)
       : flat_map(adopt_compare{}, static_cast<Compare&&>(other.comp_)) {
@@ -160,6 +162,8 @@ class flat_map {
   }
 
   /// @brief Move-assign from @p other, leaving it empty (self-assignment safe).
+  /// @note The comparator is moved too, so a stateful one may leave @p other unable
+  ///       to take new elements (#317). A pointer into @p other names a destroyed object.
   flat_map& operator=(flat_map&& other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
                                                  std::is_nothrow_move_assignable_v<value_type> &&
                                                  std::is_nothrow_move_assignable_v<Compare>) {

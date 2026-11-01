@@ -118,6 +118,8 @@ class flat_set {
   }
 
   /// @brief Move-construct, moving elements out of @p other and leaving it empty.
+  /// @note The comparator is moved too, so a stateful one may leave @p other unable
+  ///       to take new elements (#317). A pointer into @p other names a destroyed object.
   flat_set(flat_set&& other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
                                       std::is_nothrow_move_constructible_v<Compare>)
       : flat_set(adopt_compare{}, static_cast<Compare&&>(other.comp_)) {
@@ -146,6 +148,8 @@ class flat_set {
   }
 
   /// @brief Move-assign from @p other, leaving it empty (self-assignment safe).
+  /// @note The comparator is moved too, so a stateful one may leave @p other unable
+  ///       to take new elements (#317). A pointer into @p other names a destroyed object.
   flat_set& operator=(flat_set&& other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
                                                  std::is_nothrow_move_assignable_v<value_type> &&
                                                  std::is_nothrow_move_assignable_v<Compare>) {

@@ -293,6 +293,8 @@ class static_unordered_set {
   }
 
   /// @brief Move-construct, moving elements out of @p other and leaving it empty.
+  /// @note The hasher and key-equal are moved too, so a stateful one may leave @p other unable
+  ///       to take new elements (#317). A pointer into @p other names a destroyed object.
   //
   // The elements are re-inserted, which runs the hasher and key comparison, and
   // the Hash and KeyEqual are moved first, so the move is noexcept only when all
@@ -327,6 +329,8 @@ class static_unordered_set {
   }
 
   /// @brief Move-assign from @p other, leaving it empty (self-assignment safe).
+  /// @note The hasher and key-equal are moved too, so a stateful one may leave @p other unable
+  ///       to take new elements (#317). A pointer into @p other names a destroyed object.
   static_unordered_set& operator=(static_unordered_set&& other) noexcept(
       std::is_nothrow_move_constructible_v<value_type> && std::is_nothrow_move_assignable_v<Hash> &&
       std::is_nothrow_move_assignable_v<KeyEqual> && lookup_cannot_throw<key_type>) {
