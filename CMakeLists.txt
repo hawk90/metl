@@ -145,7 +145,7 @@ if(METL_BUILD_TESTS)
     containers/throwing_element containers/array_storage containers/self_range containers/sequence_reentrancy
     containers/recoverable_unchanged
     containers/contract_edges containers/associative_erase_iterator containers/container_edges
-    containers/container_assert_trips containers/container_swap
+    containers/container_assert_trips containers/container_swap containers/moved_from_contract
     containers/intrusive_forward_list containers/intrusive_list
     # conformance/  (one property, every registered type -- #320)
     conformance/conformance_removal conformance/conformance_capacity conformance/conformance_move
