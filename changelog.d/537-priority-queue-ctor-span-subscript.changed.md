@@ -1,1 +1,0 @@
-- `fixed_priority_queue`'s default constructor is `constexpr`, and `noexcept` when `Compare`'s is. `span::operator[]` is `METL_NODISCARD`, so a `-Werror` build fails on a call that drops the result (#537).
