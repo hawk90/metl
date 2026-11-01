@@ -581,6 +581,11 @@ int main() {
   // mmio: a misaligned register address hard-faults on Cortex-M0.
   {
     CHECK(guarded_against([&] { metl::mmio_ptr<std::uint32_t> reg(std::uintptr_t{0x1002}); }));
+    alignas(std::uint32_t) static unsigned char bytes[2 * sizeof(std::uint32_t)];
+    auto* const aligned_reg = reinterpret_cast<volatile std::uint32_t*>(bytes);
+    auto* const misaligned_reg = reinterpret_cast<volatile std::uint32_t*>(bytes + 2);
+    CHECK(guarded_against([&] { metl::mmio_ptr<std::uint32_t> reg(misaligned_reg); }));
+    CHECK(!guarded_against([&] { metl::mmio_ptr<std::uint32_t> reg(aligned_reg); }));
   }
 
   // coro::scheduler: a task attached twice keeps a second entry after detach()
