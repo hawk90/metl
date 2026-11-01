@@ -1,0 +1,1 @@
+- `scoped_lock` and `guarded` name the problem when a lock policy lacks a `state_type` or static `lock()` and `unlock(state_type)`. Such a policy never compiled (#557).
