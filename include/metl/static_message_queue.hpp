@@ -47,6 +47,9 @@ namespace metl {
 ///          instance across threads or an ISR/thread boundary. For
 ///          single-producer/single-consumer hand-off between an interrupt and the
 ///          main loop, use `metl::spsc_queue` instead.
+/// @note Moving from a container, by construction or assignment, leaves the source
+///       empty and usable, and destroys its elements. A pointer into the source then
+///       names a destroyed object, unlike with `std::vector`.
 template <typename T, std::size_t Capacity>
 class static_message_queue {
   // metl is a NO-EXCEPTION library. The only T operation that runs inside a noexcept context here is
