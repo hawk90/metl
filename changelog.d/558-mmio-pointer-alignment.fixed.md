@@ -1,0 +1,1 @@
+- `mmio_ptr(volatile T*)` checks alignment at every hardening level, as the integer-address constructor does (#558).

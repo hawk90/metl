@@ -17,6 +17,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/constant_init.hpp"
 #include "metl/register_access.hpp"
 
 #include <cstdint>
@@ -138,8 +139,14 @@ class mmio_ptr {
   }
 
   /// @brief Construct from an existing volatile pointer.
-  /// @param p Volatile pointer to the register; must be suitably aligned for `T`.
-  explicit constexpr mmio_ptr(volatile T* p) noexcept : addr_(p) {}
+  /// @param p Volatile pointer to the register.
+  /// @pre `p` is aligned for `T` (checked by `METL_HARDEN`, at every level, outside
+  ///      constant evaluation, where the compiler already rejects a misaligned one).
+  explicit constexpr mmio_ptr(volatile T* p) noexcept : addr_(p) {
+    if (!detail::in_constant_evaluation()) {
+      METL_HARDEN(reinterpret_cast<std::uintptr_t>(p) % alignof(T) == 0);
+    }
+  }
 
   /// @brief Volatile read of the register. @return The current register value.
   METL_NODISCARD T read() const noexcept { return read_once<T>(addr_); }
