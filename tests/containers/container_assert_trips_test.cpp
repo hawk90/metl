@@ -106,6 +106,9 @@ void ring_trips() {
   CHECK(trips([] { (void)full.at(2); }));
   CHECK(trips([] { (void)static_cast<const ring&>(full).at(2); }));
   CHECK(trips([] { (void)full.emplace_back(3); }));
+  static const int value = 3;
+  CHECK(trips([] { (void)full.push_back(value); }));
+  CHECK(trips([] { (void)full.push_back(3); }));
 
   static metl::fixed_deque<int, 1> deque;
   (void)deque.try_emplace_back(1);
