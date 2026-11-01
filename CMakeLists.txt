@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(
   metl
-  VERSION 1.10.0
+  VERSION 1.11.0
   DESCRIPTION "Modern Embedded Template Library"
   HOMEPAGE_URL "https://github.com/hawk90/metl"
   LANGUAGES CXX
@@ -159,7 +159,7 @@ if(METL_BUILD_TESTS)
     memory/handle_pool memory/pool_reentrancy
     # sync/
     sync/spsc_queue sync/static_message_queue sync/atomic_ref sync/atomic_handle sync/wait
-    sync/spsc_queue_cached_index sync/lock sync/mpmc_queue sync/irq_masking
+    sync/spsc_queue_cached_index sync/lock sync/mpmc_queue sync/irq_masking sync/irq_lock_unprivileged
     sync/spsc_byte_ring sync/spsc_byte_ring_overcommit sync/audit_regressions sync/guarded_regressions
     sync/tick_extender sync/tick_extender_irq sync/index_distance sync/once_flag sync/once_flag_irq
     # vocab/

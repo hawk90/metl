@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-11-02
+
+**Highlights.** A small release: no new API, and nothing here changes correct
+code. `mmio_ptr(volatile T*)` now checks alignment, as the integer-address
+constructor already did. A malformed lock policy gets a message that names the
+problem. The container headers and `docs/CHOOSING.md` now state what moving, copying
+and swapping leave behind. The other items in this milestone's issues had no caller,
+so they were closed without code.
+
+### Changed
+
+- `scoped_lock` and `guarded` name the problem when a lock policy lacks a `state_type` or static `lock()` and `unlock(state_type)`. Such a policy never compiled (#557).
+- `docs/CHOOSING.md` now says what copy, move and swap do to pointers and iterators, and each container header states what moving leaves behind (#559).
+
+### Fixed
+
+- `mmio_ptr(volatile T*)` checks alignment at every hardening level, as the integer-address constructor does. A pointer known only at run time costs about 44 to 46 bytes of `.text` per call site under local clang at `-Os`; an address known at compile time costs nothing (#558).
+
 ## [1.10.0] - 2026-11-01
 
 **Highlights.** This release adds what the 2.0.0 issues marked as safe for any

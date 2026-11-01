@@ -102,6 +102,7 @@ EXPECTED_SELF_SKIP = {
     "sync/irq_masking_test.cpp": {"cortex-m0"},        # ARMv6-M has no VTOR
     "sync/tick_extender_irq_test.cpp": {"cortex-m0"},  # same
     "sync/once_flag_irq_test.cpp": {"cortex-m0"},       # same
+    "sync/irq_lock_unprivileged_test.cpp": {"cortex-m0"},  # same
     # Its static_asserts -- each constructor noexcept exactly when what it builds
     # is -- are the target check: they compile under this -fno-exceptions build.
     # Only the runtime half throws, and it skips itself without exceptions.
