@@ -60,6 +60,11 @@ namespace metl {
 /// @tparam Capacity Maximum number of elements (fixed at compile time).
 /// @tparam Compare Strict weak ordering. `comp(a, b) == true` means "a comes out
 ///                 after b".
+/// @note Moving from a container, by construction or assignment, leaves the source
+///       empty and usable, and destroys its elements. A pointer into the source then
+///       names a destroyed object, unlike with `std::vector`.
+///       The comparator is moved too, so a stateful one may leave the source unable
+///       to compare (#317).
 template <typename T, std::size_t Capacity, typename Compare = std::less<T>>
 class fixed_priority_queue {
   static_assert(std::is_move_constructible_v<T>,

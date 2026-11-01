@@ -109,6 +109,15 @@ is narrower than `std`, but not empty, and the cases differ by container:
 | `ring_buffer`, `fixed_deque` | pointers and references to an element, until that element is popped (storage never moves) | **iterators are positions** (an index from the front): after `pop_front` / `push_front` the same iterator names a different element, so treat every iterator as invalidated. Appending at the back (`push_back` on `fixed_deque`, `emplace_back` / `try_push_back` on `ring_buffer`) invalidates only `end()`. `push_overwrite` on a full ring is a `pop_front` plus an append. |
 | `fixed_queue`, `fixed_stack`, `fixed_priority_queue` | -- | no iterators. A `front()` / `top()` reference survives pushes on `fixed_queue` and `fixed_stack` until its element is popped; on `fixed_priority_queue` any `push` or `pop` invalidates it (the heap reorders). |
 
+Copy, move and swap work element by element, because each container holds its
+elements inline:
+
+| Operation | Effect on pointers, references and iterators |
+|---|---|
+| `a = b` (copy) | Everything into `a` is invalidated: its elements are destroyed and new ones built. `b` is untouched. |
+| `a = std::move(b)`, `T a(std::move(b))` | Everything into `b` is invalidated: `b` is left empty, except `fixed_string`, where moving is copying and `b` keeps its contents. Nothing carries over into `a`, unlike `std::vector`. For `a = std::move(b)`, everything into `a` is invalidated too. |
+| `a.swap(b)` | Each stays with its slot, not its value: it now reads the other container's element, or a destroyed object if that slot is past the new size. `flat_*` and the unordered containers swap their functors too. |
+
 The erase-while-iterating loop that is safe on `std::unordered_map`
 (`auto k = it->key; ++it; m.erase(k);`) is safe here. The equivalent on
 `fixed_vector` and `flat_map` is index-based (or `metl::erase_if` for
