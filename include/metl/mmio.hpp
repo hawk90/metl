@@ -61,6 +61,13 @@ constexpr T mmio_merge(T current, T mask, T value) noexcept {
       cleared | static_cast<raw_type>(static_cast<raw_type>(value) & static_cast<raw_type>(mask))));
 }
 
+// Not constexpr: the cast can never be a constant expression, so mmio_ptr's
+// constexpr constructor calls this only outside constant evaluation.
+template <typename T>
+inline void check_mmio_alignment(volatile T* p) noexcept {
+  METL_HARDEN(reinterpret_cast<std::uintptr_t>(p) % alignof(T) == 0);
+}
+
 }  // namespace detail
 
 /// @brief Typed memory-mapped register at a fixed address known at compile time.
@@ -144,7 +151,7 @@ class mmio_ptr {
   ///      constant evaluation, where the compiler already rejects a misaligned one).
   explicit constexpr mmio_ptr(volatile T* p) noexcept : addr_(p) {
     if (!detail::in_constant_evaluation()) {
-      METL_HARDEN(reinterpret_cast<std::uintptr_t>(p) % alignof(T) == 0);
+      detail::check_mmio_alignment(p);
     }
   }
 
