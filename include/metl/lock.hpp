@@ -218,10 +218,28 @@ struct irq_lock {
 /// Holds the state returned by `Lock::lock()`, so nesting works and the policy
 /// itself stays stateless.
 ///
+namespace detail {
+
+template <typename Lock, typename = void>
+struct is_lock_policy : std::false_type {};
+
+template <typename Lock>
+struct is_lock_policy<
+    Lock,
+    std::void_t<typename Lock::state_type,
+                decltype(Lock::unlock(std::declval<typename Lock::state_type>())),
+                std::enable_if_t<std::is_convertible_v<decltype(Lock::lock()), typename Lock::state_type>>>>
+    : std::true_type {};
+
+}  // namespace detail
+
 /// @tparam Lock A lock policy: `null_lock`, `irq_lock`, or any type with
 ///         `state_type`, `lock()` and `unlock(state_type)`.
 template <typename Lock>
 class scoped_lock {
+  static_assert(detail::is_lock_policy<Lock>::value,
+                "metl lock policy needs a state_type and static lock() and unlock(state_type)");
+
  public:
   /// @note noexcept exactly when `Lock::lock()` is.
   scoped_lock() noexcept(noexcept(Lock::lock())) : state_(Lock::lock()) {}
@@ -259,6 +277,8 @@ class scoped_lock {
 template <typename T, typename Lock = irq_lock>
 class guarded {
   static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+  static_assert(detail::is_lock_policy<Lock>::value,
+                "metl lock policy needs a state_type and static lock() and unlock(state_type)");
 
  public:
   using value_type = T;
