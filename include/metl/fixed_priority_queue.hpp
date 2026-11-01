@@ -95,9 +95,9 @@ class fixed_priority_queue {
 
  public:
   /// Constructs an empty queue with a default-constructed comparator.
-  // Plain `= default`: it is constexpr and noexcept exactly when Compare's
-  // constructor is. Spelling them out would promise both for every Compare.
-  fixed_priority_queue() = default;
+  // noexcept follows Compare: a bare `noexcept` would report nothrow for a
+  // throwing comparator and terminate when its constructor throws.
+  constexpr fixed_priority_queue() noexcept(std::is_nothrow_default_constructible_v<Compare>) = default;
 
   /// Constructs an empty queue with an explicit comparator (for stateful ones).
   explicit fixed_priority_queue(const Compare& comp) : storage_(), comp_(comp) {}

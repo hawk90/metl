@@ -213,7 +213,7 @@ class span {
 
   /// Accesses the element at `index`.
   /// @pre `index < size()`; out-of-range asserts and aborts (does not throw).
-  constexpr reference operator[](size_type index) const noexcept {
+  METL_NODISCARD constexpr reference operator[](size_type index) const noexcept {
     METL_ASSERT(index < size());
     return storage_.data[index];
   }

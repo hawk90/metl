@@ -32,7 +32,7 @@ fix changes what existing code does, so it waits for 2.0.0 (#548).
 
 ### Changed
 
-- `empty()`, `full()` and `size()` are `constexpr` on `fixed_deque`, `fixed_queue`, `fixed_stack` and `fixed_priority_queue`, as they are on `ring_buffer` and `fixed_vector`. `fixed_priority_queue.hpp` now has a progress-guarantee table. An unused internal helper is gone from `span.hpp`. (#537)
+- `empty()`, `full()` and `size()` are `constexpr` on `fixed_deque`, `fixed_queue`, `fixed_stack` and `fixed_priority_queue`, as they are on `ring_buffer` and `fixed_vector`. `fixed_priority_queue.hpp` now has a progress-guarantee table, and its default constructor is `constexpr`, `noexcept` when `Compare`'s is. `span::operator[]` is `METL_NODISCARD`, so a `-Werror` build fails on a call that drops the result. An unused internal helper is gone from `span.hpp`. (#537)
 
 ### Fixed
 
