@@ -173,10 +173,11 @@ static_assert(sizeof(flat_map_type::value_type) > sizeof(u32) + sizeof(u64) || a
 // The hash containers, where the number is much larger than a caller expects.
 //
 // `bucket_count` is `bit_ceil(Capacity * 2)`, so the table always holds at
-// least twice the requested capacity, and each bucket carries a state byte
-// alongside its slot. For `static_unordered_map<u32, u64, 256>` that is
-// 512 * 16 bytes of slots + 512 state bytes + bookkeeping = 8728, against the
-// 3072 bytes of key-and-value the caller asked to store: **2.84x**.
+// least twice the requested capacity, and each bucket carries two state bits
+// alongside its slot (#504). For `static_unordered_map<u32, u64, 256>` on the
+// host that is 512 * 16 bytes of slots + 128 bytes of state bits + bookkeeping
+// = 8344, against the 3072 bytes of key-and-value the caller asked to store:
+// **2.72x**.
 //
 // This is a defensible design -- open addressing with linear probing needs the
 // load factor under one half, and a power-of-two count is what lets probing
@@ -190,24 +191,35 @@ using set_type = metl::static_unordered_set<u32, 256>;
 static_assert(map_type::bucket_count == 512, "the memory documented in docs/CHOOSING.md assumes 2x buckets");
 static_assert(set_type::bucket_count == 512, "the memory documented in docs/CHOOSING.md assumes 2x buckets");
 
-// One state byte per bucket on top of the slot itself, then `size_`, then
-// `tombstones_`, then the two empty functors (`Hash` and `KeyEqual`) that share
-// a single slot at the tail.
-static_assert(fits<map_type>(map_type::bucket_count * (sizeof(map_type::value_type) + 1), 2, 2),
-              "static_unordered_map should cost bucket_count slots, one state "
-              "byte each, two words and a functor slot");
-static_assert(fits<set_type>(set_type::bucket_count * (sizeof(set_type::value_type) + 1), 2, 2),
-              "static_unordered_set should cost bucket_count slots, one state "
-              "byte each, two words and a functor slot");
+// Two state bits per bucket on top of the slot itself (an `occupied` and a
+// `tombstone` bitset, #504), then `size_`, then `tombstones_`, then the two
+// empty functors (`Hash` and `KeyEqual`) that share a single slot at the tail.
+// The state is charged at two bits, not a byte: a byte per bucket left 384
+// bytes of slack at 512 buckets, and a 320-byte member passed (#582).
+constexpr std::size_t state_bytes(std::size_t buckets) {
+  return 2 * buckets / 8;
+}
+static_assert(fits<map_type>(map_type::bucket_count * sizeof(map_type::value_type) +
+                                 state_bytes(map_type::bucket_count),
+                             2,
+                             2),
+              "static_unordered_map should cost bucket_count slots, two state "
+              "bits each, two words and a functor slot");
+static_assert(fits<set_type>(set_type::bucket_count * sizeof(set_type::value_type) +
+                                 state_bytes(set_type::bucket_count),
+                             2,
+                             2),
+              "static_unordered_set should cost bucket_count slots, two state "
+              "bits each, two words and a functor slot");
 
 // ---------------------------------------------------------------------------
 // THE CLIFF. `bit_ceil(Capacity * 2)` means asking for one more element can
 // double the table. Capacity 128 gets 256 buckets; capacity 129 gets 512.
 //
-// Measured: static_unordered_map<u32, u64, 128> is 4376 bytes and <..., 129> is
-// 8728 -- 4352 more bytes for one more element. At 256 -> 257 it is 8728 ->
-// 17432, which on a 32 KB part is half the RAM in the gap between two capacities
-// a caller would consider interchangeable.
+// Measured on the host: static_unordered_map<u32, u64, 128> is 4184 bytes and
+// <..., 129> is 8344 -- 4160 more bytes for one more element. At 256 -> 257 it
+// is 8344 -> 16664, which on a 32 KB part is a quarter of the RAM in the gap
+// between two capacities a caller would consider interchangeable.
 //
 // Asserted here so that it is impossible to change this behaviour without also
 // being sent to the paragraph in docs/CHOOSING.md that promises it. If somebody
