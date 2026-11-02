@@ -342,7 +342,7 @@ cr.write(v | cr_enable::mask);
 // Raw primitives, if you don't want a wrapper:
 std::uint32_t x = metl::read_once(reg_ptr);
 metl::write_once(reg_ptr, x);
-metl::barrier_full();            // atomic_thread_fence: DMB on ARM, mfence on x86
+metl::barrier_full();            // orders device accesses too: DMB SY on ARM, fence iorw,iorw on RISC-V
 ```
 
 All accesses route through `read_once` / `write_once` so the optimizer cannot
