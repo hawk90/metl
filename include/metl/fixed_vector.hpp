@@ -667,7 +667,8 @@ class fixed_vector {
 
   /// Swaps contents with `other` element-wise (no pointer swap; capacity is fixed).
   void swap(fixed_vector& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
-                                          std::is_nothrow_move_assignable_v<T>) {
+                                          std::is_nothrow_move_assignable_v<T> &&
+                                          std::is_nothrow_swappable_v<T>) {
     if (this == &other) {
       return;
     }
@@ -862,7 +863,8 @@ inline bool operator>=(const fixed_vector<T, N1>& lhs, const fixed_vector<T, N2>
 }
 
 /// Swaps the contents of two vectors of the same type and capacity.
-template <typename T, std::size_t N>
+/// Declared only for a swappable `T`, as the other containers' free `swap`s are.
+template <typename T, std::size_t N, std::enable_if_t<std::is_swappable_v<T>, int> = 0>
 inline void swap(fixed_vector<T, N>& a, fixed_vector<T, N>& b) noexcept(noexcept(a.swap(b))) {
   a.swap(b);
 }

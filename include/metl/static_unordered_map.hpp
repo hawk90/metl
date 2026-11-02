@@ -552,7 +552,7 @@ class static_unordered_map {
         return *slot_value(existing);
       }
 
-      METL_ASSERT(size_ < Capacity);
+      METL_HARDEN(size_ < Capacity);
       size_type index = npos;
       const bool available = locate_insert_index(key, &index);
       METL_ASSERT(available);
@@ -615,7 +615,7 @@ class static_unordered_map {
       return slot_value(existing)->value;
     }
 
-    METL_ASSERT(size_ < Capacity);
+    METL_HARDEN(size_ < Capacity);
     size_type index = npos;
     const bool available = locate_insert_index(key, &index);
     METL_ASSERT(available);
@@ -632,7 +632,7 @@ class static_unordered_map {
       return slot_value(existing)->value;
     }
 
-    METL_ASSERT(size_ < Capacity);
+    METL_HARDEN(size_ < Capacity);
     size_type index = npos;
     const bool available = locate_insert_index(key, &index);
     METL_ASSERT(available);
@@ -940,12 +940,11 @@ class static_unordered_map {
 
   template <typename K, typename V>
   void place_at(size_type index, K&& key, V&& value) {
-    // Hard guard against the full-table path: locate_insert_index returns
-    // false (leaving index == npos) only when the table is full. The callers
-    // assert on that precondition, but guard this with the always-on METL_HARDEN
-    // (never stripped, even at METL_HARDENING_NONE) so neither a low hardening
-    // level nor a user-disabled METL_ASSERT can turn a full-table insert into a
-    // wild out-of-bounds construct_at(npos, ...).
+    // locate_insert_index leaves index == npos only when every bucket is
+    // taken. The callers refuse an insert past Capacity with METL_HARDEN
+    // (#579), and Capacity is below bucket_count, so no input reaches this
+    // guard any more. It stays as defence in depth, like the rebuild path's:
+    // a bookkeeping bug must not become a wild construct_at(npos, ...).
     METL_HARDEN(index < bucket_count);
     ::new (storage_[index].addr()) value_type{std::forward<K>(key), std::forward<V>(value)};
     // Reusing a tombstone slot reclaims it: keep the tombstone count accurate

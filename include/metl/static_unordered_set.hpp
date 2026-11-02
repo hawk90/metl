@@ -532,7 +532,7 @@ class static_unordered_set {
         return *slot_value(existing);
       }
 
-      METL_ASSERT(size_ < Capacity);
+      METL_HARDEN(size_ < Capacity);
       size_type index = npos;
       const bool available = locate_insert_index(key, &index);
       METL_ASSERT(available);
@@ -813,10 +813,11 @@ class static_unordered_set {
 
   template <typename K>
   void place_at(size_type index, K&& key) {
-    // Always-on hard guard mirroring static_unordered_map: locate_insert_index
-    // leaves index == npos only on a full table, and this must never escalate
-    // into a wild out-of-bounds construct_at even at METL_HARDENING_NONE or with
-    // a user-disabled METL_ASSERT.
+    // locate_insert_index leaves index == npos only when every bucket is
+    // taken. The callers refuse an insert past Capacity with METL_HARDEN
+    // (#579), and Capacity is below bucket_count, so no input reaches this
+    // guard any more. It stays as defence in depth, like the rebuild path's:
+    // a bookkeeping bug must not become a wild construct_at(npos, ...).
     METL_HARDEN(index < bucket_count);
     ::new (storage_[index].addr()) value_type(std::forward<K>(key));
     // Reusing a tombstone slot reclaims it: keep the tombstone count accurate

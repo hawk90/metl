@@ -1,0 +1,1 @@
+- `fixed_vector::swap` is `noexcept` only when the element swap is, and so are `fixed_stack::swap` and `fixed_priority_queue::swap`, which build on it. An element swap that threw terminated the program. The free `swap` is declared only for a swappable element, as in the other containers (#577).

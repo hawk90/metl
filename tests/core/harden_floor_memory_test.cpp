@@ -27,6 +27,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <new>
+#include <utility>
 
 #include <metl/arena_allocator.hpp>
 #include <metl/assert.hpp>
@@ -363,33 +364,40 @@ int main() {
     CHECK_EQ(map.size(), 2u);
   }
 
-  // static_unordered_map / static_unordered_set: at this level nothing stops
-  // an insert past Capacity, which is safe while an empty bucket remains. Once
-  // every bucket is taken, the next new key has nowhere to go: npos.
+  // static_unordered_map / static_unordered_set: a new key into a full table.
+  // At this level nothing used to stop it, so size() passed Capacity and full()
+  // answered false; the insert after the last empty bucket wrote to slot npos.
+  // The capacity check is METL_HARDEN now (#579).
   {
     using map_type = metl::static_unordered_map<int, int, 2>;
     map_type map;
-    for (int key = 0; key < static_cast<int>(map_type::bucket_count); ++key) {
+    for (int key = 0; key < 2; ++key) {
       CHECK(!guarded_against([&] { (void)map.emplace(key, key); }));
     }
     CHECK(guarded_against([&] { (void)map.emplace(-1, 0); }));
-    CHECK_EQ(map.size(), map_type::bucket_count);
+    const int absent = -1;
+    CHECK(guarded_against([&] { (void)map[absent]; }));
+    static int moved_key = -1;  // static: it must outlive the longjmp
+    CHECK(guarded_against([&] { (void)map[std::move(moved_key)]; }));
+    CHECK_EQ(map.size(), std::size_t{2});
+    CHECK(map.full());
 
     using set_type = metl::static_unordered_set<int, 2>;
     set_type set;
-    for (int key = 0; key < static_cast<int>(set_type::bucket_count); ++key) {
+    for (int key = 0; key < 2; ++key) {
       CHECK(!guarded_against([&] { (void)set.emplace(key); }));
     }
     CHECK(guarded_against([&] { (void)set.emplace(-1); }));
-    CHECK_EQ(set.size(), set_type::bucket_count);
+    CHECK_EQ(set.size(), std::size_t{2});
+    CHECK(set.full());
   }
 
   // The same, checking that nothing was written: the guard must fire before
-  // the key is copied to slot npos, not leave a later check to catch it.
+  // the key is copied into a slot, not leave a later check to catch it.
   {
     using set_type = metl::static_unordered_set<copy_counted, 2, copy_counted_hash>;
     set_type set;
-    for (int key = 0; key < static_cast<int>(set_type::bucket_count); ++key) {
+    for (int key = 0; key < 2; ++key) {
       const copy_counted value(key);
       CHECK(!guarded_against([&] { (void)set.emplace(value); }));
     }
@@ -401,7 +409,7 @@ int main() {
   {
     using map_type = metl::static_unordered_map<copy_counted, int, 2, copy_counted_hash>;
     map_type map;
-    for (int key = 0; key < static_cast<int>(map_type::bucket_count); ++key) {
+    for (int key = 0; key < 2; ++key) {
       const copy_counted value(key);
       CHECK(!guarded_against([&] { (void)map.emplace(value, key); }));
     }
@@ -425,15 +433,19 @@ int main() {
   }
 
   // flat_map / flat_set: emplace or insert_or_assign of a new key into a full
-  // container. The insert is refused, which leaves its position at size() ==
-  // Capacity, and the reference handed back would be one past the end.
+  // container. The insert is refused, and the reference handed back would be
+  // one past the end for a key above the others, or another key's element for
+  // one below them (#580).
   {
     metl::flat_map<int, int, 2> map;
     map.emplace(1, 10);
     map.emplace(2, 20);
     CHECK(guarded_against([&] { (void)map.emplace(3, 30); }));
     CHECK(guarded_against([&] { (void)map.insert_or_assign(3, 30); }));
+    CHECK(guarded_against([&] { (void)map.emplace(0, 30); }));
+    CHECK(guarded_against([&] { (void)map.insert_or_assign(0, 30); }));
     CHECK_EQ(map.size(), 2u);
+    CHECK_DEREF_EQ(map.find(1), 10);  // the refused inserts wrote nothing
     CHECK(!guarded_against([&] { (void)map.insert_or_assign(2, 21); }));
     CHECK_DEREF_EQ(map.find(2), 21);
 
@@ -441,6 +453,7 @@ int main() {
     set.emplace(1);
     set.emplace(2);
     CHECK(guarded_against([&] { (void)set.emplace(3); }));
+    CHECK(guarded_against([&] { (void)set.emplace(0); }));
     CHECK_EQ(set.size(), 2u);
   }
 
