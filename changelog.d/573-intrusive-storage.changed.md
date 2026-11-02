@@ -1,0 +1,1 @@
+- `intrusive_ref_counter` no longer suggests an object pool as storage: the last release runs `~T()` and nothing else, so an `object_pool`, `handle_pool` or `arena_allocator::try_emplace` object was destroyed a second time when its owner freed it. The header now names the storage that is safe (#573).

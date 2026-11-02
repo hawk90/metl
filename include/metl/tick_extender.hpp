@@ -71,8 +71,9 @@ namespace metl {
 ///         narrower one is a compile error, since its own wrap would read as a
 ///         jump of nearly a whole period.
 /// @tparam Lock Lock policy shared by every caller; defaults to `irq_lock`, the
-///         correct lock between an ISR and the main loop on a single core. On
-///         multi-core targets, `irq_lock` does not exclude the other core.
+///         correct lock between an ISR and the main loop on a single core, from
+///         privileged code only (see `irq_lock`). On multi-core targets,
+///         `irq_lock` does not exclude the other core.
 template <unsigned Bits, typename Lock = irq_lock>
 class tick_extender {
   static_assert(Bits >= 1 && Bits <= 63,

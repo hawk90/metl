@@ -1,0 +1,1 @@
+- `fixed_priority_queue` value-initializes its comparator when the queue is default-initialized, as `flat_map` and `flat_set` do. A stateful comparator was left indeterminate (#574).

@@ -72,7 +72,8 @@ struct once_flag_access;
 /// "running": every later `try_call_once` returns false and runs nothing.
 ///
 /// @tparam Lock Lock policy for the state change (`state_type`, `lock()`,
-///         `unlock(state_type)`); defaults to `irq_lock`.
+///         `unlock(state_type)`); defaults to `irq_lock`, which needs
+///         privileged code (see `irq_lock`).
 template <typename Lock = irq_lock>
 class once_flag {
  public:
