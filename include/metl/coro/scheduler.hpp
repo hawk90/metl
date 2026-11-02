@@ -97,6 +97,7 @@ class scheduler {
   /// @brief Generic attach for any `bool(*)(void*) noexcept` poll function.
   /// @param task Task pointer passed back to `fn`. @param fn The poll trampoline.
   /// @pre The task is not already attached; attaching it twice aborts.
+  /// @pre @p fn is not null; a null one aborts at every hardening level.
   /// @return true if attached, false if the scheduler is full. Every `try_attach*`
   ///         also returns false when rounds nested inside polls (a poll calling
   ///         `run_once`) hold all `2 * Capacity + 1` attachment numbers.
@@ -192,6 +193,9 @@ class scheduler {
     // each remove one, so the scheduler would poll an object the caller has
     // destroyed. A precondition, not "full": checked first, and never stripped.
     METL_HARDEN(!is_attached(task));
+    // A null poll is stored as a live entry and called by run_once: a jump to
+    // address 0, the vector table on Cortex-M (#570).
+    METL_HARDEN(fn != nullptr);
     size_type attachment = 0;
     if (tasks_.full() || !try_take_attachment(attachment)) {
       return false;
