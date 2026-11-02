@@ -26,6 +26,7 @@
 #include <metl/fixed_queue.hpp>
 #include <metl/fixed_stack.hpp>
 #include <metl/fixed_string.hpp>
+#include <metl/fixed_vector.hpp>
 #include <metl/flat_map.hpp>
 #include <metl/flat_set.hpp>
 #include <metl/ring_buffer.hpp>
@@ -80,6 +81,20 @@ struct throwing_move {
 
 struct throwing_move_hash {
   std::size_t operator()(const throwing_move& t) const noexcept { return static_cast<std::size_t>(t.value); }
+};
+
+// Moves that cannot throw, and an ADL swap that can: element-wise swap reaches
+// the throwing one, so no container's swap may claim noexcept (#577).
+struct throwing_swap {
+  int value = 0;
+  throwing_swap() = default;
+  explicit throwing_swap(int v) : value(v) {}
+  throwing_swap(throwing_swap&&) noexcept = default;
+  throwing_swap& operator=(throwing_swap&&) noexcept = default;
+  bool operator<(const throwing_swap& other) const noexcept { return value < other.value; }
+  friend void swap(throwing_swap& lhs, throwing_swap& rhs) noexcept(false) {
+    std::swap(lhs.value, rhs.value);
+  }
 };
 
 // Movable only by construction, and swappable only through its own ADL swap,
@@ -389,8 +404,12 @@ void adl_element_swap() {
 
 template <template <typename> class C>
 constexpr bool nothrow_exactly_when_element() {
-  return std::is_nothrow_swappable_v<C<counted>> && !std::is_nothrow_swappable_v<C<throwing_move>>;
+  return std::is_nothrow_swappable_v<C<counted>> && !std::is_nothrow_swappable_v<C<throwing_move>> &&
+         !std::is_nothrow_swappable_v<C<throwing_swap>>;
 }
+
+template <typename T>
+using vector_of = metl::fixed_vector<T, 4>;
 
 template <typename T>
 using ring_of = metl::ring_buffer<T, 4>;
@@ -409,6 +428,7 @@ using flat_set_of = metl::flat_set<T, 4>;
 template <typename T>
 using unordered_map_of = metl::static_unordered_map<int, T, 4>;
 
+static_assert(nothrow_exactly_when_element<vector_of>());
 static_assert(nothrow_exactly_when_element<ring_of>());
 static_assert(nothrow_exactly_when_element<deque_of>());
 static_assert(nothrow_exactly_when_element<queue_of>());
@@ -431,9 +451,21 @@ struct unswappable_less {
 };
 static_assert(std::is_move_constructible_v<metl::fixed_priority_queue<int, 4, unswappable_less>>);
 
+// The element swap is the one the vector reaches, and it is not noexcept.
+void vector_reaches_throwing_swap() {
+  metl::fixed_vector<throwing_swap, 4> a;
+  metl::fixed_vector<throwing_swap, 4> b;
+  a.emplace_back(1);
+  b.emplace_back(2);
+  a.swap(b);
+  CHECK_EQ(a.front().value, 2);
+  CHECK_EQ(b.front().value, 1);
+}
+
 }  // namespace
 
 int main() {
+  vector_reaches_throwing_swap();
   sequences();
   associative();
   strings();
