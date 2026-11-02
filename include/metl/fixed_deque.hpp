@@ -36,9 +36,9 @@ namespace metl {
 /// instead. Accessing/popping an empty deque asserts. Not thread-safe.
 ///
 /// Shares its ring machinery with `metl::ring_buffer` via
-/// `detail::ring_core`; that base supplies front/back/at/operator[],
-/// try_emplace_back/emplace_back/try_push_back, pop_front, clear, capacity,
-/// and the value-semantic copy/move operations. `fixed_deque` adds front
+/// `detail::ring_core`; that base supplies front/back/at/operator[], the
+/// iterators, try_emplace_back/emplace_back/try_push_back/push_back,
+/// pop_front, clear, capacity, and the value-semantic copy/move operations. `fixed_deque` adds front
 /// insertion and back removal.
 ///
 /// @par Iterator invalidation

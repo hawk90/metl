@@ -69,7 +69,8 @@ class static_allocator {
   /// @brief Like `try_allocate`, but asserts that the allocation succeeds.
   /// @param count Number of contiguous @c T objects to reserve.
   /// @return Pointer to the storage (never null on success).
-  /// @pre There must be enough space for @c count objects.
+  /// @pre There must be enough space for @c count objects, and @c count is not
+  ///      0: `try_allocate(0)` returns null, so `allocate(0)` asserts.
   METL_NODISCARD pointer allocate(size_type count = 1) noexcept {
     pointer memory = try_allocate(count);
     METL_ASSERT(memory != nullptr);

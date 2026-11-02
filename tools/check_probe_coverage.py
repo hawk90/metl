@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail when a public header is outside the I1/I2 symbol audit (docs/SCOPE.md section 7).
+"""Fail when a public header is outside the I1/I2 symbol audit (docs/SCOPE.md section 8).
 
 The audit proves only what its probe images link. Every public header must be
 either used by one of PROBES or named in NOT_LINKED with a reason. A header used

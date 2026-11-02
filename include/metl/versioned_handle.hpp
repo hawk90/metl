@@ -73,8 +73,8 @@ inline constexpr issued_handle_t issued_handle{};
 /// @tparam GenT Unsigned integer holding the generation counter (high bits).
 ///
 /// **Generation 0 is reserved** to mean "no handle". A default-constructed
-/// handle is null, and `handle_pool` never issues generation 0 (its counter
-/// skips 0 on wraparound).
+/// handle is null, and `handle_pool` never issues generation 0: it issues odd
+/// generations only, and 0 is even.
 ///
 /// Progress guarantee: every operation is wait-free and bounded — pure integer
 /// arithmetic, no loops, no branches on data. Safe in ISR context.

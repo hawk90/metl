@@ -70,18 +70,18 @@
 ///
 /// @par Memory footprint -- read this before picking a capacity
 /// `bucket_count` is `bit_ceil(Capacity * 2)`, so the table always holds at
-/// least **twice** the capacity you asked for, and every bucket carries a state
-/// byte alongside its slot. `static_unordered_map<uint32_t, uint64_t, 256>` is
-/// **8728 bytes** against the 3072 bytes of key-and-value it stores: 2.84x. The
-/// multiplier never drops below about 2.8x, and there is a cliff -- `bit_ceil`
-/// means capacity 128 gets 256 buckets and capacity **129 gets 512**, so one
-/// more element costs 4352 more bytes. **Pick a capacity at or just under a
+/// least **twice** the capacity you asked for, and every bucket carries two
+/// state bits alongside its slot. `static_unordered_map<uint32_t, uint64_t, 256>`
+/// is **8344 bytes** on a 64-bit host against the 3072 bytes of key-and-value it
+/// stores: 2.72x. The multiplier never drops below about 2.7x, and there is a
+/// cliff -- `bit_ceil` means capacity 128 gets 256 buckets and capacity **129
+/// gets 512**, so one more element costs 4160 more bytes. **Pick a capacity at or just under a
 /// power of two.** `docs/CHOOSING.md` has the table and the comparison with
 /// `flat_map` (a flat 1.34x, no cliff); `tests/core/ram_footprint_test.cpp`
 /// asserts these numbers so the prose cannot drift away from the layout.
 ///
-/// The elements live inline, so this is a real 8728-byte object: as a local it
-/// is an 8728-byte stack frame, and METL cannot tell you whether that fit. The
+/// The elements live inline, so this is a real 8344-byte object: as a local it
+/// is an 8344-byte stack frame, and METL cannot tell you whether that fit. The
 /// recoverable API answers "is the container full", never "did the frame fit".
 /// Prefer static storage, or a member of something already in static storage.
 ///
@@ -282,8 +282,8 @@ class static_unordered_map {
   /// @note noexcept exactly when default-constructing `Hash` and `KeyEqual` is.
   /// Constant-initialized at namespace scope since C++20 (see
   /// detail/constant_init.hpp): an empty slot's state is 0, so the constant
-  /// image is all zeros and lands in `.bss`. A local one writes its
-  /// `bucket_count` state bytes at run time, and nothing to the element slots.
+  /// image is all zeros and lands in `.bss`. A local one clears its two state
+  /// bitsets (`bucket_count` bits each) at run time, and nothing in the slots.
   constexpr static_unordered_map() noexcept(std::is_nothrow_default_constructible_v<Hash> &&
                                             std::is_nothrow_default_constructible_v<KeyEqual>)
       : size_(0), hasher_(), key_equal_() {
@@ -491,8 +491,9 @@ class static_unordered_map {
 
   /// @brief Insert @p key/@p value only if @p key is absent, without overflowing.
   /// @return @c true if inserted; @c false if the key already exists OR the map is at capacity.
-  /// @note Unlike @c emplace, a full map or duplicate key is reported by the return value
-  ///       rather than an assertion.
+  /// @note Unlike @c emplace, a full map is reported by the return value rather than an
+  ///       assertion, and so is a duplicate key, for which @c emplace returns the existing
+  ///       element.
   template <typename K,
             typename V,
             typename = std::enable_if_t<std::is_constructible_v<key_type, K&&> &&

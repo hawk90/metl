@@ -44,7 +44,7 @@ warnings-as-errors during development, add `-DMETL_WARNINGS_AS_ERRORS=ON`.
 
 All C++ source is formatted with `clang-format` using the project
 [`.clang-format`](.clang-format) configuration, at the **exact version** the CI
-`clang-format` job installs (23.1.2). Use the pinned pre-commit hook rather than
+`clang-format` job installs (23.1.3). Use the pinned pre-commit hook rather than
 whatever `clang-format` is on your `PATH` -- a different major version reformats
 lines the CI one leaves alone:
 

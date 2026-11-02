@@ -24,6 +24,7 @@ set(_metl_examples
   wire_values       # parse.hpp text-to-int: boundary refusal, fixed point, round trip
   coroutine_task    # coro/protothread cooperative tasks
   deadline_tasks    # coro/deadline_scheduler + fixed_priority_queue
+  tick_extender     # tick_extender: deadlines across a 16-bit timer wrap
   armed_timers      # intrusive_list: a timer in two lists, O(1) cancel
   driver_registry   # intrusive_forward_list: drivers registering across TUs
   blinky_fsm        # fsm + mmio + delegate

@@ -17,33 +17,26 @@ namespace metl {
 
 /// @brief Slot-based object pool addressed by generation-tagged handles.
 ///
-/// Same fixed-capacity, zero-heap model as `object_pool`, with two differences
-/// that follow from replacing the raw pointer with a `versioned_handle`:
+/// Same fixed-capacity, zero-heap model as `object_pool`, with one difference
+/// that follows from replacing the raw pointer with a `versioned_handle`:
+/// **use-after-free is detected, not undefined.** Every slot carries a
+/// generation counter that is bumped on destroy, so a handle to a destroyed
+/// object no longer matches its slot and `get()` returns `nullptr` instead of a
+/// dangling pointer into a recycled slot. This also gives a weak reference for
+/// free: hold the handle, check on each use.
 ///
-///   * **Use-after-free is detected, not undefined.** Every slot carries a
-///     generation counter that is bumped on destroy, so a handle to a destroyed
-///     object no longer matches its slot and `get()` returns `nullptr` instead
-///     of a dangling pointer into a recycled slot. This also gives a weak
-///     reference for free: hold the handle, check on each use.
-///   * **Allocation is O(1), not O(Capacity).** Free slots form an intrusive
-///     index free-list, where `object_pool::try_emplace` linearly scans for the
-///     first inactive slot.
-///
-/// The second point has a crossover worth knowing before switching: below a
-/// certain capacity the scan wins, because a short scan is cheaper than the
-/// free-list bookkeeping. Measured with `bench/bench_pools.cpp` on an arm64
-/// host, allocate-and-free churn at the tail (object_pool's worst case):
+/// Both pools allocate in O(1) from an intrusive free list, so capacity does
+/// not decide between them. Measured with `bench/bench_pools.cpp` on an arm64
+/// host (Apple clang, -O2), allocate-and-free churn at the tail:
 ///
 ///   | Capacity | `object_pool` | `handle_pool` |
 ///   |----------|---------------|---------------|
-///   | 4        | **2.8 ns**    | 4.4 ns        |
-///   | 64       | 24.9 ns       | **4.2 ns**    |
-///   | 1024     | 37.8 ns       | **5.6 ns**    |
+///   | 4        | 2.7 ns        | 1.8 ns        |
+///   | 64       | 4.0 ns        | 2.5 ns        |
+///   | 1024     | 4.0 ns        | 2.5 ns        |
 ///
-/// So `handle_pool` is the right default for its *safety* — a stale handle
-/// resolving to `nullptr` costs about 0.9 ns per `get()` — but at a capacity of
-/// a handful, `object_pool` is genuinely faster. Pick on the property you need,
-/// not on the asymptotics alone.
+/// A `get()` that checks the generation costs about 0.4 ns. Pick on the
+/// property you need: a raw pointer, or a handle that detects reuse.
 ///
 /// The handle is 32 bits by default (16-bit index + 16-bit generation) and
 /// makes no assumption whatsoever about pointer representation, which is what
@@ -54,9 +47,9 @@ namespace metl {
 ///
 ///   | Operation                   | Guarantee            |
 ///   |-----------------------------|----------------------|
-///   | `try_emplace` / `destroy`   | wait-free, bounded   |
+///   | `try_emplace` / `destroy`   | wait-free, bounded, **plus `T`'s constructor / `~T()`** |
 ///   | `get` / `contains`          | wait-free, bounded   |
-///   | constructor / `clear`       | bounded, O(Capacity) |
+///   | constructor / `clear`       | bounded, O(Capacity), **plus `~T()` for each live object in `clear`** |
 ///
 /// @par Reference invalidation
 /// Objects never move: `try_emplace`/`emplace` invalidate nothing, and

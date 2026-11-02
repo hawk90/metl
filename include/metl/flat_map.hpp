@@ -11,8 +11,9 @@
 ///   | `try_emplace`, `emplace`, `insert_or_assign`, `erase` | wait-free, bounded by `Capacity` moves |
 ///   | `erase(iterator)` | wait-free, bounded by `Capacity` moves |
 ///   | `erase_if` | wait-free, bounded by `Capacity` erases, each bounded by `Capacity` moves |
-///   | `clear`, iteration, copy, destructor | wait-free, bounded by `size()` |
-///   | `swap` | wait-free, bounded by the larger `size()` |
+///   | `clear`, iteration, destructor | wait-free, bounded by `size()` |
+///   | copy (construct and assign) | wait-free, `size()` inserts at the end, each `floor(log2(Capacity)) + 2`
+///   comparisons | | `swap` | wait-free, bounded by the larger `size()` |
 ///
 /// Storage is one sorted array, so lookup is a binary search and modification
 /// shifts the tail to keep it sorted. Both bounds are compile-time known.
@@ -833,8 +834,8 @@ class flat_map {
   // value_type[Capacity] array object, so data() + i is in-array arithmetic
   // (the reasoning is in detail/array_storage.hpp).
   // array_storage::data() goes through a reinterpret_cast, which is never
-  // constant-evaluable, so the constexpr labels here are effective only outside
-  // constant evaluation.
+  // constant-evaluable, so nothing that reaches it is constexpr. The constructor
+  // is, and it does not touch the storage.
   detail::array_storage<value_type, (Capacity == 0 ? 1 : Capacity)> storage_;
   size_type size_;
 };

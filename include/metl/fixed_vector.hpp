@@ -5,11 +5,14 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `push_back`, `pop_back`, `emplace_back`, `try_push_back`, `try_emplace_back`, `back`, indexing |
-///   wait-free, bounded | | `insert`/`emplace`/`try_insert`/`try_emplace` of one element, `erase` |
-///   wait-free, bounded by `size()` moves | | `insert(pos, n, v)`, range `insert`, and their `try_insert`
-///   forms | wait-free, bounded by `n * size()` moves | | `clear`, copy, destructor | wait-free, bounded by
-///   `size()` | | `resize`, `try_resize`, `assign`, `try_assign` | wait-free, bounded by `size()` + `n` |
+///   | `push_back`, `pop_back`, `emplace_back`, their `try_` forms, `back`, indexing | wait-free, bounded |
+///   | one-element `insert`/`emplace`/`try_insert`/`try_emplace`, `erase(pos)` | wait-free, `size()` moves |
+///   | `insert(pos, n, v)`, range `insert`, and their `try_insert` forms | wait-free, `n * size()` moves |
+///   | `erase(first, last)` | wait-free, bounded by `size()` moves |
+///   | `erase_if` | wait-free, `size()` calls of the predicate and at most `size()` moves |
+///   | `clear`, copy, destructor | wait-free, bounded by `size()` |
+///   | `resize`, `try_resize`, `assign`, `try_assign` | wait-free, bounded by `size()` + `n` |
+///   | `swap` | wait-free, bounded by the larger `size()` |
 ///
 /// Appending and removing at the end are one construction or destruction plus an
 /// index update; they do not depend on `size()`. Inserting or erasing in the middle

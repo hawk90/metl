@@ -12,15 +12,16 @@
 // Storage policy: non-owning, same as `coro::scheduler`. The scheduler holds raw
 // task pointers; the caller keeps tasks alive while they are scheduled.
 //
-// THE TICK MUST NOT WRAP. `Tick` is compared with plain `<`. Hardware timers are
-// usually 16- or 32-bit counters that roll over, and the tempting fix is to
-// compare signed differences (`(int32_t)(a - b) < 0`). That comparison is NOT a
-// strict weak ordering over the full range -- it loses transitivity once the
-// spread exceeds half a period -- and a heap requires one, so the queue would
-// silently order wrongly rather than fail. Widen the counter first with
-// `metl::tick_extender` (metl/tick_extender.hpp) and schedule on its 64-bit
-// tick. Deliberately not done inside this header: the extender has to be shared
-// with every context that reads the counter, the overflow ISR included.
+// THE TICK MUST NOT WRAP. `Tick` is compared directly, with `<`, `>` and `!=`.
+// Hardware timers are usually 16- or 32-bit counters that roll over, and the
+// tempting fix is to compare signed differences (`(int32_t)(a - b) < 0`). That
+// comparison is NOT a strict weak ordering over the full range -- it loses
+// transitivity once the spread exceeds half a period -- and a heap requires
+// one, so the queue would silently order wrongly rather than fail. Widen the
+// counter first with `metl::tick_extender` (metl/tick_extender.hpp) and
+// schedule on its 64-bit tick. Deliberately not done inside this header: the
+// extender has to be shared with every context that reads the counter, the
+// overflow ISR included.
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
