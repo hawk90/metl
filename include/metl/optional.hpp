@@ -350,7 +350,8 @@ class optional {
 
   /// @brief Swaps the contents (and engaged state) with another optional.
   void swap(optional& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
-                                      std::is_nothrow_move_assignable_v<T>) {
+                                      std::is_nothrow_move_assignable_v<T> &&
+                                      std::is_nothrow_swappable_v<T>) {
     if (has_value_ && other.has_value_) {
       using std::swap;
       swap(*data(), *other.data());
@@ -555,8 +556,8 @@ constexpr optional<T> make_optional(Args&&... args) {
 
 // ---- Free swap --------------------------------------------------------------
 
-/// @brief Swaps two optionals.
-template <typename T>
+/// @brief Swaps two optionals. Declared only for a swappable `T`.
+template <typename T, std::enable_if_t<std::is_swappable_v<T>, int> = 0>
 void swap(optional<T>& lhs, optional<T>& rhs) noexcept(noexcept(lhs.swap(rhs))) {
   lhs.swap(rhs);
 }

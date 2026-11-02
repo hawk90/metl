@@ -6,7 +6,9 @@
 #include <cstddef>
 #include <functional>
 #include <type_traits>
+#include <utility>
 
+#include <metl/expected.hpp>
 #include <metl/function_ref.hpp>
 #include <metl/optional.hpp>
 #include <metl/scope_exit.hpp>
@@ -99,9 +101,62 @@ void function_ref_converting_pointer() {
                 "a pointer that cannot be called with the arguments still does not bind");
 }
 
+// ---- swap is noexcept only when the swap it calls is (#600) ---------------
+
+// Moves that cannot throw, and a swap that can: optional and expected swap the
+// values themselves when both sides hold one, so the throwing swap is reached.
+struct throwing_swap {
+  int value = 0;
+  throwing_swap() = default;
+  explicit throwing_swap(int v) : value(v) {}
+  throwing_swap(throwing_swap&&) noexcept = default;
+  throwing_swap& operator=(throwing_swap&&) noexcept = default;
+  friend void swap(throwing_swap& lhs, throwing_swap& rhs) noexcept(false) {
+#if METL_NO_EXCEPTIONS
+    std::swap(lhs.value, rhs.value);
+#else
+    (void)lhs;
+    (void)rhs;
+    throw 1;
+#endif
+  }
+};
+
+template <typename T>
+constexpr bool nothrow_swap_v = noexcept(std::declval<T&>().swap(std::declval<T&>()));
+
+static_assert(!nothrow_swap_v<metl::optional<throwing_swap>>);
+static_assert(!nothrow_swap_v<metl::unexpected<throwing_swap>>);
+static_assert(!nothrow_swap_v<metl::expected<throwing_swap, int>>);
+static_assert(!nothrow_swap_v<metl::expected<int, throwing_swap>>);
+static_assert(!nothrow_swap_v<metl::expected<void, throwing_swap>>);
+static_assert(nothrow_swap_v<metl::optional<int>> && nothrow_swap_v<metl::expected<int, int>> &&
+                  nothrow_swap_v<metl::expected<void, int>> && nothrow_swap_v<metl::unexpected<int>>,
+              "and still noexcept when everything is");
+
+void swap_throw_propagates() {
+  metl::optional<throwing_swap> a(metl::in_place, 1);
+  metl::optional<throwing_swap> b(metl::in_place, 2);
+#if METL_NO_EXCEPTIONS
+  a.swap(b);  // the element's own swap, reached
+  CHECK_EQ(a->value, 2);
+  CHECK_EQ(b->value, 1);
+#else
+  // Before #600 the swap was noexcept, and the throw terminated the program.
+  bool caught = false;
+  try {
+    a.swap(b);
+  } catch (int) {
+    caught = true;
+  }
+  CHECK(caught);
+#endif
+}
+
 }  // namespace
 
 int main() {
+  swap_throw_propagates();
   optional_hash_values();
   scope_exit_const_mutable_lambda();
   function_ref_converting_pointer();
