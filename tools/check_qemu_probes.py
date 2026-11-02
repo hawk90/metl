@@ -74,15 +74,22 @@ RUN_TIMEOUT_SECONDS = 30
 TRACE_TIMEOUT_SECONDS = 180
 
 # Runtime stack high-water mark in bytes, per CPU, without and with LTO.
-# Measured by the `invariants` job on PR #420 (QEMU 10.2.1, arm-none-eabi-g++
-# 14.2.1); a budget goes DOWN with the change that shrinks the figure (a figure
-# under it by more than the tolerance fails), and UP only with the commit saying
-# what grew and why.
+# First measured by the `invariants` job on PR #420 (QEMU 10.2.1,
+# arm-none-eabi-g++ 14.2.1); a budget goes DOWN with the change that shrinks the
+# figure (a figure under it by more than the tolerance fails), and UP only with
+# the commit saying what grew and why.
+#
+# Raised in #583 to main's measurement at d57b075c4 (run 41336501223). Bisected
+# over main's CI runs, the growth came from two commits that both change the
+# unordered map the probe churns: #504 (a bucket's state in two bits) took
+# cortex-m3 from 104 to 120 without LTO and from 120 to 152 with it, and #507
+# (write only the changed bit during a rebuild) took it from 120 to 144. Both
+# stayed inside the tolerance, so neither failed.
 STACK_BUDGETS = {
-    "cortex-m0": {"no-lto": 112, "lto": 120},
-    "cortex-m3": {"no-lto": 104, "lto": 120},
-    "cortex-m4": {"no-lto": 104, "lto": 120},
-    "cortex-m7": {"no-lto": 104, "lto": 120},
+    "cortex-m0": {"no-lto": 128, "lto": 152},
+    "cortex-m3": {"no-lto": 144, "lto": 152},
+    "cortex-m4": {"no-lto": 144, "lto": 152},
+    "cortex-m7": {"no-lto": 144, "lto": 152},
 }
 
 # Same tolerance as check_stack.py, for the same reason: the regression this
@@ -298,6 +305,15 @@ def grade_stack(cpu, marks, canary, report):
                             f"the {budget}-byte budget (-{STACK_TOLERANCE_BYTES} = "
                             f"{budget - STACK_TOLERANCE_BYTES}). Lower "
                             f"STACK_BUDGETS['{cpu}']['{build}'] to {used} in this change.")
+        elif used > budget:
+            # Inside the tolerance, so not a failure: a toolchain update can
+            # move the figure by a few bytes. But it is growth, and #504 and
+            # #507 added 40 bytes this way without anyone seeing it (#583), so
+            # it is annotated on the run with the exact number.
+            out.append(f"::warning::{cpu} {build}: the stack reached {used} bytes, "
+                       f"{used - budget} over the {budget}-byte budget, inside the "
+                       f"{STACK_TOLERANCE_BYTES}-byte tolerance. Find what grew, or raise "
+                       f"STACK_BUDGETS['{cpu}']['{build}'] to {used} with the reason.")
         else:
             out.append(f"  {build}: within budget {budget} (+{STACK_TOLERANCE_BYTES}), "
                        f"{ceiling - used} bytes of room")
@@ -526,6 +542,15 @@ def self_test():
         STACK_BUDGETS["m"]["no-lto"] -= 1
         if grade_stack("m", marks, 1400, report=False)[0] == 0:
             failures.append("a stack one byte over budget + tolerance passed")
+        STACK_BUDGETS["m"] = {"no-lto": 300 - 8, "lto": 260}
+        code, lines = grade_stack("m", marks, 1400, report=False)
+        if code != 0:
+            failures.append("a stack 8 bytes over budget, inside the tolerance, failed")
+        if not any(line.startswith("::warning::") and "8 over" in line for line in lines):
+            failures.append("a stack over budget inside the tolerance was not annotated (#583)")
+        STACK_BUDGETS["m"] = {"no-lto": 300, "lto": 260}
+        if any(line.startswith("::warning::") for line in grade_stack("m", marks, 1400, report=False)[1]):
+            failures.append("a stack exactly at budget was annotated as growth")
         STACK_BUDGETS["m"] = {"no-lto": 300 + STACK_TOLERANCE_BYTES, "lto": 260}
         if grade_stack("m", marks, 1400, report=False)[0] != 0:
             failures.append("a stack exactly at budget - tolerance failed")
@@ -589,7 +614,7 @@ def self_test():
             print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
         return 1
     print("self-test passed: missing, saturated and unparseable stack reports, cut or empty "
-          "traces, mismatched region lists, missing, exceeded and undercut budgets, a blind canary "
+          "traces, mismatched region lists, missing, exceeded and undercut budgets, growth inside the tolerance left unannotated, a blind canary "
           "and a canary the gate would not reject are all rejected; at-budget figures pass and the record is filled")
     return 0
 
