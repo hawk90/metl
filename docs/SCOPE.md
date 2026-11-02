@@ -587,10 +587,14 @@ The `try_` prefix is **reserved for, and required by,** R1's recoverable form. N
 other public function returns a bare `bool`, pointer, `optional` or handle meaning
 "the operation did not happen."
 
-The name extends to one failure besides capacity: `try_parse_uint` and
+The name extends to two failures besides capacity. `try_parse_uint` and
 `try_parse_int` report malformed input, and `parse_uint` and `parse_int` assert on
 it. That is R1's pair with the same caller rule, because the caller decides whether
-the text can be wrong.
+the text can be wrong. `try_call_once` reports that the initializer is running in
+another context right now, so this call ran nothing. It has no asserting form,
+because that state is normal: an interrupt that preempts the initializer reaches
+it, and waiting there, as `std::call_once` does, would never return: the
+initializer cannot resume until the interrupt does (`once_flag.hpp`).
 
 Three known exceptions break user code to change, so they wait for 2.0.0:
 `arena_allocator::allocate` and `monotonic_buffer::allocate` return null when full
