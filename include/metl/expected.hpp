@@ -81,7 +81,8 @@ class unexpected {
 
   /// @brief Swaps the wrapped error with another unexpected.
   void swap(unexpected& other) noexcept(std::is_nothrow_move_constructible_v<E> &&
-                                        std::is_nothrow_move_assignable_v<E>) {
+                                        std::is_nothrow_move_assignable_v<E> &&
+                                        std::is_nothrow_swappable_v<E>) {
     using std::swap;
     swap(value_, other.value_);
   }
@@ -110,7 +111,7 @@ constexpr auto operator!=(const unexpected<E1>& lhs, const unexpected<E2>& rhs)
 
 /// @brief Swaps two unexpected wrappers.
 // Free swap for unexpected.
-template <typename E>
+template <typename E, std::enable_if_t<std::is_swappable_v<E>, int> = 0>
 void swap(unexpected<E>& lhs, unexpected<E>& rhs) noexcept(noexcept(lhs.swap(rhs))) {
   lhs.swap(rhs);
 }
@@ -621,7 +622,8 @@ class expected {
   void swap(expected& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
                                       std::is_nothrow_move_constructible_v<E> &&
                                       std::is_nothrow_move_assignable_v<T> &&
-                                      std::is_nothrow_move_assignable_v<E>) {
+                                      std::is_nothrow_move_assignable_v<E> &&
+                                      std::is_nothrow_swappable_v<T> && std::is_nothrow_swappable_v<E>) {
     require_settled();
     other.require_settled();
     if (holds_value() && other.holds_value()) {
@@ -1371,7 +1373,8 @@ class expected<void, E> {
 
   /// @brief Swaps contents and state with another expected<void, E>.
   void swap(expected& other) noexcept(std::is_nothrow_move_constructible_v<E> &&
-                                      std::is_nothrow_move_assignable_v<E>) {
+                                      std::is_nothrow_move_assignable_v<E> &&
+                                      std::is_nothrow_swappable_v<E>) {
     require_settled();
     other.require_settled();
     if (holds_value() && other.holds_value()) {
@@ -1655,8 +1658,11 @@ class expected<void, E> {
 // Free swap
 // =============================================================================
 
-/// @brief Swaps two expected objects.
-template <typename T, typename E>
+/// @brief Swaps two expected objects. Declared only when the value (unless
+/// `void`) and the error are swappable, as the containers' free swaps are.
+template <typename T,
+          typename E,
+          std::enable_if_t<(std::is_void_v<T> || std::is_swappable_v<T>) && std::is_swappable_v<E>, int> = 0>
 void swap(expected<T, E>& lhs, expected<T, E>& rhs) noexcept(noexcept(lhs.swap(rhs))) {
   lhs.swap(rhs);
 }
