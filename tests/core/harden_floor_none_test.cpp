@@ -1,9 +1,10 @@
 // Verifies metl's security floor: METL_HARDEN is NOT stripped even at
 // METL_HARDENING_NONE. This TU pins the lowest hardening level, so
-// METL_ASSERT / METL_DASSERT are compiled out. A full-table insert into a
-// static_unordered_map reaches construct_at with an out-of-range index; only the
-// always-on METL_HARDEN guard stands between that and a wild out-of-bounds
-// write.
+// METL_ASSERT / METL_DASSERT are compiled out. An insert into a full
+// static_unordered_map must still be refused: METL_HARDEN(size_ < Capacity)
+// stops it at Capacity (#579). Before that check was METL_HARDEN, the inserts
+// went on until every bucket was taken, and the next reached construct_at with
+// an out-of-range index, where a second METL_HARDEN stopped it.
 //
 // The handler longjmps out before the abort, as harden_floor_memory_test does,
 // so this runs everywhere -- it used to fork, and on a host without fork() it
@@ -35,19 +36,15 @@ int g_inserted = 0;
 
 int main() {
   metl::set_assert_handler(&capture);
-  // emplace() carries no size_>=Capacity refusal (that guard lives in
-  // try_emplace), and at NONE its precondition METL_ASSERT is stripped, so it
-  // keeps inserting distinct keys until every physical bucket is occupied. The
-  // next insert makes locate_insert_index yield index == npos; with METL_ASSERT
-  // gone, only METL_HARDEN(index < bucket_count) in construct_at stands between
-  // that and a wild out-of-bounds write. Looping one past bucket_count
-  // guarantees we cross the physical-full boundary and trip the guard.
+  // Insert distinct keys up to one past every bucket: the guard must stop the
+  // first insert past Capacity, long before the buckets run out.
   if (setjmp(g_jump) == 0) {
     for (; g_inserted < static_cast<int>(Map::bucket_count) + 1; ++g_inserted) {
       g_map.emplace(g_inserted, g_inserted);
     }
   }
   CHECK(g_fired);  // reached without it only if METL_HARDEN did NOT fire
-  CHECK_EQ(g_inserted, static_cast<int>(Map::bucket_count));
+  CHECK_EQ(g_inserted, static_cast<int>(g_map.capacity()));
+  CHECK_EQ(g_map.size(), g_map.capacity());
   return metl_test::exit_code();
 }
