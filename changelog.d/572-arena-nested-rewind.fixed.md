@@ -1,0 +1,1 @@
+- `arena_allocator`: a `rewind` or `reset` called from a destructor that the arena is running stops at that object. It used to release the object's storage, so the destructor's next allocation overlapped the object, and it destroyed the objects below it. They are now destroyed by the enclosing walk, after the destructor returns (#572).
