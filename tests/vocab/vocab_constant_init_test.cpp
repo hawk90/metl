@@ -31,6 +31,7 @@
 
 #include <metl/attributes.hpp>
 #include <metl/expected.hpp>
+#include <metl/fixed_function.hpp>
 #include <metl/variant.hpp>
 
 #if (defined(__cpp_constinit) && __cpp_constinit >= 201907L) || \
@@ -136,6 +137,11 @@ METL_CONST_INIT metl::variant<counted, int> variant_counted;
 METL_CONST_INIT metl::variant<int, counted> variant_converting{9};
 METL_CONST_INIT metl::variant<int, counted> variant_in_place_type{metl::in_place_type<counted>, 4};
 METL_CONST_INIT metl::variant<int, long> variant_in_place_index{metl::in_place_index<1>, 8L};
+
+// Empty callables built from nullptr, as the default constructor's are (#578).
+// Their bytes are all zero, so only the compile-time check applies.
+METL_CONST_INIT metl::fixed_function<void()> function_from_nullptr{nullptr};
+METL_CONST_INIT metl::fixed_any_invocable<void()> invocable_from_nullptr{nullptr};
 
 bool all_zero(const bytes_of& copy) {
   for (std::size_t i = 0; i < copy.size; ++i) {

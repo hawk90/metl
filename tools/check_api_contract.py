@@ -97,6 +97,7 @@ BOOL_ALLOWLIST = {
     "is_decimal_digit": "private helper predicate: is this character a digit?",
     "holds": "private query: is this attachment still attached to the scheduler?",
     "in_use": "private query: may this attachment number not be issued now?",
+    "primask_set": "irq_lock's private query: are interrupts masked right now?",
     "in_this_list": "private precondition query: is this position in this intrusive list",
 }
 

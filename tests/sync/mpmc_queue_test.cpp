@@ -1,6 +1,7 @@
 #include "metl_check.hpp"
 
 #include <cstdint>
+#include <utility>
 
 #include <metl/mpmc_queue.hpp>
 
@@ -24,9 +25,44 @@ struct tracker {
 int tracker::constructions = 0;
 int tracker::destructions = 0;
 
+// A source that marks itself moved-from, and an element whose constructor from
+// it is not noexcept: the case where the queue used to build the element before
+// it knew a slot was free (#575).
+struct source {
+  int value;
+  explicit source(int input) noexcept : value(input) {}
+  source(source&& other) noexcept : value(other.value) { other.value = -1; }
+};
+
+struct built_from_source {
+  int value;
+  built_from_source(source&& from) : value(from.value) {
+    from.value = -1;
+  }  // NOLINT(google-explicit-constructor)
+  built_from_source(built_from_source&&) noexcept = default;
+  built_from_source& operator=(built_from_source&&) noexcept = default;
+};
+
 }  // namespace
 
 int main() {
+  // --- #575: a failed try_emplace leaves its arguments alone ------------------
+  // Without exceptions the element is built in the claimed slot, so a full queue
+  // never reaches the constructor. With exceptions and a constructor that can
+  // throw, it is built first; SCOPE.md R1 records that exception.
+  {
+    metl::mpmc_queue<built_from_source, 2> queue;
+    CHECK(queue.try_emplace(source{1}));
+    CHECK(queue.try_emplace(source{2}));
+    source kept{3};
+    CHECK(!queue.try_emplace(std::move(kept)));
+#if METL_NO_EXCEPTIONS
+    CHECK_EQ(kept.value, 3);
+#else
+    static_assert(!noexcept(queue.try_emplace(std::move(kept))), "the documented exception's shape");
+#endif
+  }
+
   // --- FIFO order with a single thread -----------------------------------------
   {
     metl::mpmc_queue<std::uint32_t, 4> queue;
