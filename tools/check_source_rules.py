@@ -17,12 +17,15 @@
       no longer matches a METL_ASSERT is an error too, so the list cannot
       outlive the code it excuses.
   S3  a `constexpr` function can be constant-evaluated for some argument. One
-      whose body always reinterpret_casts, or static_casts from a `void*`
-      parameter, never can: in C++17 that is ill-formed, no diagnostic
+      whose body always reinterpret_casts, static_casts from a `void*`
+      parameter, or calls a function the same header defines only without
+      `constexpr`, never can: in C++17 that is ill-formed, no diagnostic
       required, and compilers do not diagnose it. Such a function drops
       `constexpr` -- and a non-template becomes `inline`, which `constexpr`
-      implied. A cast inside an `#if` arm or behind an is-constant-evaluated
-      test is exempt, since another arm can be constant.
+      implied. "Always" means no `return` statement comes first. A cast inside
+      an `#if` arm, or inside the `if` statement of an is-constant-evaluated
+      test, is exempt, since another arm can be constant; the rest of the body
+      is still checked. METL_CONSTEXPR20 counts as `constexpr`.
 
 The companion rule -- take a user object's address with `detail::addressof`,
 never `&obj` -- is not checked here. Which `&` applies to a user's type is a
@@ -46,7 +49,9 @@ UNQUALIFIED_PLACEMENT_NEW = re.compile(r"(?<![:\w])new\s*\(")
 
 # The shapes of a memory-safety guard (config.hpp, "The rule").
 GUARD_SHAPE = re.compile(r"!= *nullptr|\bpos\b|\bfirst\b|\blast\b|Extent|\b[Cc]ount\b|"
-                         r"\b[Oo]ffset\b|prev *!= *0|align|aliases_own_storage|\bn *<= *Capacity")
+                         r"\b[Oo]ffset\b|prev *!= *0|align|aliases_own_storage|\bn *<= *Capacity|"
+                         # The container's own size against its capacity: #579's guard.
+                         r"\bsize_ *< *Capacity\b|\.size\(\) *<= *Capacity\b")
 
 # (header, condition) -> why METL_ASSERT is enough there.
 ASSERT_ALLOWLIST = {
@@ -76,6 +81,10 @@ ASSERT_ALLOWLIST = {
         "operator* / operator->: the caller's access",
     ("variant.hpp", "pointer != nullptr"):
         "get<>: the caller's access, as std::get without exceptions",
+    ("fixed_vector.hpp", "size_ < Capacity"):
+        "assign(first, last): a full emplace_back returns the last element, in bounds",
+    ("fixed_vector.hpp", "il.size() <= Capacity"):
+        "initializer list: a full emplace_back returns the last element, in bounds",
 }
 
 
@@ -84,9 +93,23 @@ def strip_comment(line):
     return line if index < 0 else line[:index]
 
 
+# What may stand between a function's parameter list and its body: cv- and
+# ref-qualifiers, noexcept, a trailing return type and a constructor's member
+# initializers (#588). One level of nested parentheses or braces is enough for
+# the headers' noexcept(...) conditions and `storage_{}`-style initializers.
+_PARENS = r"\((?:[^()]|\([^()]*\))*\)"
+_QUALIFIERS = r"(?:\s*(?:const\b|volatile\b|&&|&|noexcept(?:\s*" + _PARENS + r")?|override\b|final\b))*"
+_INITIALIZER = r"[\w:]+(?:<[^<>;{}]*>)?\s*(?:" + _PARENS + r"|\{[^{}]*\})"
+_INITIALIZERS = r"(?:\s*:\s*" + _INITIALIZER + r"(?:\s*,\s*" + _INITIALIZER + r")*)?"
+_TAIL = _QUALIFIERS + r"\s*(?:->[^{;]*?)?" + _INITIALIZERS + r"\s*\{"
 CONSTEXPR_FUNCTION = re.compile(
-    r"\bconstexpr\b(?P<signature>[^;{}]*?\))\s*(?:const\s*)?(?:noexcept(?:\([^)]*\))?)?\s*(?:->[^{;]*)?\{",
-    re.S)
+    r"\b(?:constexpr|METL_CONSTEXPR20)\b(?P<signature>[^;{}]*?\))" + _TAIL, re.S)
+# Any function definition: its name, and the declaration text before the name.
+FUNCTION_DEFINITION = re.compile(
+    r"(?P<prefix>[^;{}]*?)(?<![\w.>:])(?P<name>~?[A-Za-z_]\w*)\s*\((?P<params>[^;{}]*?)\)" + _TAIL, re.S)
+NOT_A_FUNCTION = {"if", "for", "while", "switch", "catch", "return", "sizeof", "alignof",
+                  "decltype", "noexcept", "static_assert", "defined", "do", "else", "constexpr"}
+CONSTANT_EVALUATION_TEST = re.compile(r"constant_evaluated|in_constant_evaluation")
 NEVER_CONSTANT = re.compile(r"\breinterpret_cast\b")
 VOID_POINTER_PARAMETER = re.compile(r"\bvoid\s*\*\s*(?P<name>\w+)\s*[,)]")
 
@@ -122,35 +145,111 @@ def assert_calls(text):
         yield code.count("\n", 0, match.start()) + 1, " ".join(code[match.end():end - 1].split())
 
 
+def matching(code, start, open_char, close_char):
+    """Index just past the bracket that closes the one at `start`."""
+    depth, end = 0, start
+    while end < len(code):
+        depth += {open_char: 1, close_char: -1}.get(code[end], 0)
+        end += 1
+        if depth == 0:
+            break
+    return end
+
+
+def without_constant_evaluation_branches(body):
+    """`body` without each `if` whose condition tests for constant evaluation.
+
+    S3 exempts a cast behind such a test, and only that cast (#588): the whole
+    statement, condition and both branches, is cut, so the rest of the body is
+    still checked. A line that tests and casts in one expression (a ternary) is
+    cut too.
+    """
+    out, position = [], 0
+    for match in re.finditer(r"\bif\s*(?:constexpr\s*)?\(", body):
+        if match.start() < position:
+            continue
+        condition_end = matching(body, match.end() - 1, "(", ")")
+        if not CONSTANT_EVALUATION_TEST.search(body[match.end():condition_end]):
+            continue
+        end = condition_end
+        while True:
+            rest = body[end:]
+            stripped = len(rest) - len(rest.lstrip())
+            if rest.lstrip().startswith("{"):
+                end = matching(body, end + stripped, "{", "}")
+            else:
+                end = body.find(";", end) + 1 or len(body)
+            following = re.match(r"\s*else\b\s*(?:if\s*\()?", body[end:])
+            if not following:
+                break
+            end += following.end()
+            if following.group(0).rstrip().endswith("("):
+                end = matching(body, end - 1, "(", ")")
+        out.append(body[position:match.start()])
+        position = end
+    out.append(body[position:])
+    return "\n".join(line for line in "".join(out).splitlines()
+                     if not CONSTANT_EVALUATION_TEST.search(line))
+
+
+def checked_body(code, open_brace):
+    """The part of a function body S3 holds to its rule."""
+    body = code[open_brace:matching(code, open_brace, "{", "}")]
+    # A cast inside an #if arm is exempt -- another arm can be constant --
+    # but only that cast: an unrelated #if elsewhere in the body exempts
+    # nothing else.
+    return without_constant_evaluation_branches(unconditional_lines(body))
+
+
+def non_constexpr_functions(code):
+    """Names this header defines only without `constexpr`.
+
+    A constexpr function that calls one of them can never be constant-evaluated
+    either (#588: fixed_vector::begin called data()). Only names never defined
+    constexpr in the same header count, so an overload set that is constexpr
+    somewhere is left alone.
+    """
+    plain, constant = set(), set()
+    for match in FUNCTION_DEFINITION.finditer(code):
+        name = match.group("name")
+        prefix = match.group("prefix")
+        if name in NOT_A_FUNCTION or name.startswith("~") or re.search(r"=\s*$|\breturn\s*$", prefix):
+            continue
+        if re.search(r"\b(?:constexpr|METL_CONSTEXPR20)\b", prefix):
+            constant.add(name)
+        elif not re.search(r"\bconstexpr\s*$", prefix):
+            plain.add(name)
+    return plain - constant
+
+
 def never_constant_functions(text, path):
     """S3: constexpr functions whose body can never be a constant expression."""
     code = re.sub(r"//[^\n]*", "", text)
     # A defaulted argument written `= {}` is not a body; hide its braces.
     code = re.sub(r"=\s*\{\}", "= ()", code)
+    plain = non_constexpr_functions(code)
     violations = []
     for match in CONSTEXPR_FUNCTION.finditer(code):
         signature = match.group("signature")
         if re.search(r"\bif\s*$", code[:match.start()]):
             continue  # `if constexpr (...)` -- not a function
-        depth, end = 0, match.end() - 1
-        while end < len(code):
-            depth += {"{": 1, "}": -1}.get(code[end], 0)
-            if depth == 0:
-                break
-            end += 1
-        body = code[match.end() - 1:end + 1]
-        if "constant_evaluated" in body or "in_constant_evaluation" in body:
-            continue
-        # A cast inside an #if arm is exempt -- another arm can be constant --
-        # but only that cast: an unrelated #if elsewhere in the body exempts
-        # nothing else.
-        body = unconditional_lines(body)
+        body = checked_body(code, match.end() - 1)
+
+        def on_every_path(pattern):
+            # Reached on every path: no `return` comes before it. One that does
+            # leaves a path that can be constant, as get_if's null check is.
+            found = re.search(pattern, body)
+            return found is not None and not re.search(r"\breturn\b[^;]*;", body[:found.start()])
+
         reasons = []
-        if NEVER_CONSTANT.search(body):
+        if on_every_path(NEVER_CONSTANT.pattern):
             reasons.append("reinterpret_cast")
         for parameter in VOID_POINTER_PARAMETER.finditer(signature):
-            if re.search(r"static_cast<[^>]*>\(\s*" + parameter.group("name") + r"\s*\)", body):
+            if on_every_path(r"static_cast<[^>]*>\(\s*" + parameter.group("name") + r"\s*\)"):
                 reasons.append(f"static_cast from void* `{parameter.group('name')}`")
+        for name in sorted(plain):
+            if on_every_path(r"(?<![\w:])(?<!std::)" + re.escape(name) + r"\s*\("):
+                reasons.append(f"call to `{name}`, which this header defines without constexpr")
         if reasons:
             line = code[:match.start()].count("\n") + 1
             violations.append((path, line, "S3",
@@ -267,7 +366,39 @@ constexpr bool aligned(T* p) noexcept {
         failures.append("S3 flagged a cast behind METL's own in_constant_evaluation() test")
     if [rule for _, _, rule, _ in check_text(guarded, "<canary-S3-if>")] != ["S3"]:
         failures.append("S3 let an unconditional reinterpret_cast through because the body has an #if")
-    allowed = 'void f(int* p) { METL_ASSERT(pointer != nullptr); }'
+    # #588: shapes S3 used to miss, one canary each.
+    missed_shapes = {
+        "a ref-qualified member":
+            "struct s { void* p_; constexpr int& get() & noexcept { return *reinterpret_cast<int*>(p_); } };",
+        "a METL_CONSTEXPR20 function":
+            "METL_CONSTEXPR20 int* get(char* p) noexcept { return reinterpret_cast<int*>(p); }",
+        "a constructor with member initializers":
+            "struct s { constexpr s(char* p) noexcept : p_(p), q_{} { touch(reinterpret_cast<int*>(p)); } "
+            "char* p_; int q_; };",
+        "a call to a non-constexpr function of the same header":
+            "struct v { int* data() noexcept { return ptr(); } constexpr int* begin() noexcept { return data(); } };",
+        "a cast outside the constant-evaluation branch":
+            "template <typename T> constexpr T* get(char* p) noexcept {\n"
+            "  if (!detail::in_constant_evaluation()) {\n    check(p);\n  }\n"
+            "  return reinterpret_cast<T*>(p);\n}\n",
+    }
+    for shape, text in missed_shapes.items():
+        if [rule for _, _, rule, _ in check_text(text, "<canary-S3-shape>")] != ["S3"]:
+            failures.append(f"S3 missed {shape}: {check_text(text, '<canary-S3-shape>')}")
+    # A path that returns before the cast or call can be constant (get_if's
+    # null check), so S3 does not apply; nor does a call into an overload set
+    # the header also defines constexpr.
+    for text in ("template <typename T> constexpr T* get_if(void* p) noexcept {\n"
+                 "  if (p == nullptr) {\n    return nullptr;\n  }\n  return static_cast<T*>(p);\n}\n",
+                 "int* data(int) noexcept; constexpr int* data() noexcept { return nullptr; }\n"
+                 "inline int* data(long) noexcept { return nullptr; }\n"
+                 "constexpr int* first() noexcept { return data(); }\n"):
+        if check_text(text, "<canary-S3-clean>"):
+            failures.append(f"S3 flagged a function with a constant path: {check_text(text, '<canary-S3-clean>')}")
+    # #588: #579's guard, a container's size against its capacity.
+    if [rule for _, _, rule, _ in check_text("void f() { METL_ASSERT(size_ < Capacity); }", "x.hpp")] != ["S2"]:
+        failures.append("S2 missed METL_ASSERT(size_ < Capacity)")
+    allowed ='void f(int* p) { METL_ASSERT(pointer != nullptr); }'
     if check_text(allowed, "variant.hpp"):
         failures.append("an ASSERT_ALLOWLIST entry was flagged anyway")
     # An allowlist entry whose METL_ASSERT is gone is an error, so the list
