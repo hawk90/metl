@@ -253,13 +253,9 @@ class static_message_queue {
  private:
   using storage_type = storage_for<T>;
 
-  constexpr size_type advance(size_type index) const noexcept {
-    return Capacity == 0 ? 0 : (index + 1) % Capacity;
-  }
+  constexpr size_type advance(size_type index) const noexcept { return (index + 1) % Capacity; }
 
-  constexpr size_type physical_index(size_type offset) const noexcept {
-    return Capacity == 0 ? 0 : (head_ + offset) % Capacity;
-  }
+  constexpr size_type physical_index(size_type offset) const noexcept { return (head_ + offset) % Capacity; }
 
   T& storage_at(size_type index) noexcept { return storage_[index].ref(); }
   const T& storage_at(size_type index) const noexcept { return storage_[index].ref(); }
@@ -278,7 +274,7 @@ class static_message_queue {
     leaving.~T();
   }
 
-  storage_type storage_[Capacity == 0 ? 1 : Capacity];
+  storage_type storage_[Capacity == 0 ? 1 : Capacity];  // keeps the static_assert the only diagnostic
   size_type head_;
   size_type tail_;
   size_type size_;

@@ -92,8 +92,6 @@ class protothread {
 /// @brief Open a protothread body: dispatches to the last suspend point.
 ///        Must pair with `METL_PT_END()` and be used inside `bool run()`.
 #define METL_PT_BEGIN()                                                         \
-  bool METL_PT_yielded__ = false;                                               \
-  (void)METL_PT_yielded__;                                                      \
   switch (this->pt_line_) {                                                     \
     default:                                                                    \
       /* A finished task (-1) run again stays finished. Any other value is a */ \

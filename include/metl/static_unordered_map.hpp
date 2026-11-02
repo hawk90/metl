@@ -505,7 +505,7 @@ class static_unordered_map {
       // otherwise store a key that does not belong where the argument put it.
       // Direct-initialised, not cast, so a consumer still gets the conversion
       // warning a narrowing key deserves.
-      key_type converted{std::forward<K>(key)};
+      key_type converted(std::forward<K>(key));
       return try_emplace(static_cast<key_type&&>(converted), std::forward<V>(value));
     } else {
       size_type index = npos;
@@ -543,7 +543,7 @@ class static_unordered_map {
       // otherwise store a key that does not belong where the argument put it.
       // Direct-initialised, not cast, so a consumer still gets the conversion
       // warning a narrowing key deserves.
-      key_type converted{std::forward<K>(key)};
+      key_type converted(std::forward<K>(key));
       return emplace(static_cast<key_type&&>(converted), std::forward<V>(value));
     } else {
       // Find-existing first so a duplicate key never double-constructs over a
@@ -576,7 +576,7 @@ class static_unordered_map {
       // otherwise store a key that does not belong where the argument put it.
       // Direct-initialised, not cast, so a consumer still gets the conversion
       // warning a narrowing key deserves.
-      key_type converted{std::forward<K>(key)};
+      key_type converted(std::forward<K>(key));
       return try_insert_or_assign(static_cast<key_type&&>(converted), std::forward<V>(value));
     } else {
       return insert_or_assign_impl(std::forward<K>(key), std::forward<V>(value)) != npos;
@@ -594,7 +594,7 @@ class static_unordered_map {
       // otherwise store a key that does not belong where the argument put it.
       // Direct-initialised, not cast, so a consumer still gets the conversion
       // warning a narrowing key deserves.
-      key_type converted{std::forward<K>(key)};
+      key_type converted(std::forward<K>(key));
       return insert_or_assign(static_cast<key_type&&>(converted), std::forward<V>(value));
     } else {
       const size_type index = insert_or_assign_impl(std::forward<K>(key), std::forward<V>(value));

@@ -416,7 +416,7 @@ class flat_map {
       // otherwise store a key that does not belong where the argument put it.
       // Direct-initialised, not cast, so a consumer still gets the conversion
       // warning a narrowing key deserves.
-      key_type converted{std::forward<K>(key)};
+      key_type converted(std::forward<K>(key));
       return try_emplace(static_cast<key_type&&>(converted), std::forward<V>(value));
     } else {
       const size_type index = lower_bound_index(key);
@@ -443,7 +443,7 @@ class flat_map {
       // otherwise store a key that does not belong where the argument put it.
       // Direct-initialised, not cast, so a consumer still gets the conversion
       // warning a narrowing key deserves.
-      key_type converted{std::forward<K>(key)};
+      key_type converted(std::forward<K>(key));
       return emplace(static_cast<key_type&&>(converted), std::forward<V>(value));
     } else {
       const size_type index = lower_bound_index(key);
@@ -470,7 +470,7 @@ class flat_map {
       // otherwise store a key that does not belong where the argument put it.
       // Direct-initialised, not cast, so a consumer still gets the conversion
       // warning a narrowing key deserves.
-      key_type converted{std::forward<K>(key)};
+      key_type converted(std::forward<K>(key));
       return try_insert_or_assign(static_cast<key_type&&>(converted), std::forward<V>(value));
     } else {
       const size_type index = lower_bound_index(key);
@@ -494,7 +494,7 @@ class flat_map {
       // otherwise store a key that does not belong where the argument put it.
       // Direct-initialised, not cast, so a consumer still gets the conversion
       // warning a narrowing key deserves.
-      key_type converted{std::forward<K>(key)};
+      key_type converted(std::forward<K>(key));
       return insert_or_assign(static_cast<key_type&&>(converted), std::forward<V>(value));
     } else {
       const size_type index = lower_bound_index(key);
