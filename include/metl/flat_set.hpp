@@ -31,6 +31,7 @@
 #include "metl/detail/addressof.hpp"
 #include "metl/detail/array_storage.hpp"
 #include "metl/detail/constant_init.hpp"
+#include "metl/detail/copy_move_gate.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
 #include "metl/type_traits.hpp"
@@ -63,7 +64,10 @@ namespace metl {
 /// @tparam Compare Strict-weak-ordering comparator (transparent comparators enable
 ///         heterogeneous lookup).
 template <typename Key, std::size_t Capacity, typename Compare = std::less<Key>>
-class flat_set {
+// The copy and move operations are the gated ones below, which clang-tidy does not
+// recognize as such (detail/copy_move_gate.hpp).
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
+class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>> {
   static_assert(std::is_object_v<Key> && !std::is_array_v<Key>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
 
  public:
@@ -112,7 +116,13 @@ class flat_set {
   // Once it returns the object is fully constructed, so if copying or moving
   // an element throws part-way, the destructor runs and destroys exactly the
   // elements already inserted; nothing leaks.
-  flat_set(const flat_set& other) : flat_set(other.comp_) {
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  flat_set(
+      detail::gated_param<std::is_copy_constructible_v<value_type> && std::is_copy_constructible_v<Compare>,
+                          const flat_set&,
+                          0> other)
+      : flat_set(other.comp_) {
     for (const auto& item : other) {
       emplace(item);
     }
@@ -121,8 +131,13 @@ class flat_set {
   /// @brief Move-construct, moving elements out of @p other and leaving it empty.
   /// @note The comparator is moved too, so a stateful one may leave @p other unable
   ///       to take new elements (#317). A pointer into @p other names a destroyed object.
-  flat_set(flat_set&& other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
-                                      std::is_nothrow_move_constructible_v<Compare>)
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  flat_set(
+      detail::gated_param<std::is_move_constructible_v<value_type> && std::is_move_constructible_v<Compare>,
+                          flat_set&&,
+                          1> other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
+                                             std::is_nothrow_move_constructible_v<Compare>)
       : flat_set(adopt_compare{}, static_cast<Compare&&>(other.comp_)) {
     // `other` is already sorted and unique, so its elements are appended in
     // order: no comparison runs, which is what makes the noexcept above true
@@ -135,7 +150,10 @@ class flat_set {
   ~flat_set() { clear(); }
 
   /// @brief Copy-assign from @p other (self-assignment safe).
-  flat_set& operator=(const flat_set& other) {
+  flat_set& operator=(
+      detail::gated_param<std::is_copy_constructible_v<value_type> && std::is_copy_assignable_v<Compare>,
+                          const flat_set&,
+                          2> other) {
     if (this == &other) {
       return *this;
     }
@@ -151,9 +169,12 @@ class flat_set {
   /// @brief Move-assign from @p other, leaving it empty (self-assignment safe).
   /// @note The comparator is moved too, so a stateful one may leave @p other unable
   ///       to take new elements (#317). A pointer into @p other names a destroyed object.
-  flat_set& operator=(flat_set&& other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
-                                                 std::is_nothrow_move_assignable_v<value_type> &&
-                                                 std::is_nothrow_move_assignable_v<Compare>) {
+  flat_set& operator=(
+      detail::gated_param<std::is_move_constructible_v<value_type> && std::is_move_assignable_v<Compare>,
+                          flat_set&&,
+                          3> other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
+                                             std::is_nothrow_move_assignable_v<value_type> &&
+                                             std::is_nothrow_move_assignable_v<Compare>) {
     if (this == &other) {
       return *this;
     }

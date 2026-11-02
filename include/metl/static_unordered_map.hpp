@@ -96,6 +96,7 @@
 #include "metl/detail/addressof.hpp"
 #include "metl/detail/bitset.hpp"
 #include "metl/detail/constant_init.hpp"
+#include "metl/detail/copy_move_gate.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
 #include "metl/hash.hpp"
@@ -126,7 +127,11 @@ template <typename Key,
           std::size_t Capacity,
           typename Hash = std::hash<Key>,
           typename KeyEqual = std::equal_to<Key>>
-class static_unordered_map {
+// The copy and move operations are the gated ones below, which clang-tidy does not
+// recognize as such (detail/copy_move_gate.hpp).
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
+class static_unordered_map
+    : detail::no_implicit_copy_move<static_unordered_map<Key, T, Capacity, Hash, KeyEqual>> {
   static_assert(std::is_object_v<Key> && !std::is_array_v<Key>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
   static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
 
@@ -300,7 +305,13 @@ class static_unordered_map {
   // Once it returns the object is fully constructed, so if copying or moving
   // an element throws part-way, the destructor runs and destroys exactly the
   // elements already inserted; nothing leaks.
-  static_unordered_map(const static_unordered_map& other)
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  static_unordered_map(
+      detail::gated_param<std::is_copy_constructible_v<value_type> && std::is_copy_constructible_v<Hash> &&
+                              std::is_copy_constructible_v<KeyEqual>,
+                          const static_unordered_map&,
+                          0> other)
       : static_unordered_map(empty_with{}, other.hasher_, other.key_equal_) {
     for (const auto& item : other) {
       emplace(item.key, item.value);
@@ -314,9 +325,16 @@ class static_unordered_map {
   // The elements are re-inserted, which runs the hasher and key comparison, and
   // the Hash and KeyEqual are moved first, so the move is noexcept only when all
   // of those are (a throw from one used to end in std::terminate).
-  static_unordered_map(static_unordered_map&& other) noexcept(
-      std::is_nothrow_move_constructible_v<value_type> && lookup_cannot_throw<key_type> &&
-      std::is_nothrow_move_constructible_v<Hash> && std::is_nothrow_move_constructible_v<KeyEqual>)
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  static_unordered_map(
+      detail::gated_param<std::is_move_constructible_v<value_type> && std::is_move_constructible_v<Hash> &&
+                              std::is_move_constructible_v<KeyEqual>,
+                          static_unordered_map&&,
+                          1> other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
+                                             lookup_cannot_throw<key_type> &&
+                                             std::is_nothrow_move_constructible_v<Hash> &&
+                                             std::is_nothrow_move_constructible_v<KeyEqual>)
       : static_unordered_map(
             empty_with{}, static_cast<Hash&&>(other.hasher_), static_cast<KeyEqual&&>(other.key_equal_)) {
     for (auto& item : other) {
@@ -329,7 +347,11 @@ class static_unordered_map {
   ~static_unordered_map() { clear(); }
 
   /// @brief Copy-assign from @p other (self-assignment safe).
-  static_unordered_map& operator=(const static_unordered_map& other) {
+  static_unordered_map& operator=(
+      detail::gated_param<std::is_copy_constructible_v<value_type> && std::is_copy_assignable_v<Hash> &&
+                              std::is_copy_assignable_v<KeyEqual>,
+                          const static_unordered_map&,
+                          2> other) {
     if (this == &other) {
       return *this;
     }
@@ -346,9 +368,14 @@ class static_unordered_map {
   /// @brief Move-assign from @p other, leaving it empty (self-assignment safe).
   /// @note The hasher and key-equal are moved too, so a stateful one may leave @p other unable
   ///       to take new elements (#317). A pointer into @p other names a destroyed object.
-  static_unordered_map& operator=(static_unordered_map&& other) noexcept(
-      std::is_nothrow_move_constructible_v<value_type> && std::is_nothrow_move_assignable_v<Hash> &&
-      std::is_nothrow_move_assignable_v<KeyEqual> && lookup_cannot_throw<key_type>) {
+  static_unordered_map& operator=(
+      detail::gated_param<std::is_move_constructible_v<value_type> && std::is_move_assignable_v<Hash> &&
+                              std::is_move_assignable_v<KeyEqual>,
+                          static_unordered_map&&,
+                          3> other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
+                                             std::is_nothrow_move_assignable_v<Hash> &&
+                                             std::is_nothrow_move_assignable_v<KeyEqual> &&
+                                             lookup_cannot_throw<key_type>) {
     if (this == &other) {
       return *this;
     }

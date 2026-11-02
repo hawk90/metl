@@ -21,6 +21,7 @@
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
 #include "metl/detail/constant_init.hpp"
+#include "metl/detail/copy_move_gate.hpp"
 #include "metl/scope_exit.hpp"
 #include "metl/type_traits.hpp"
 
@@ -154,7 +155,10 @@ class ring_iterator {
 /// @tparam T Element type.
 /// @tparam Capacity Maximum number of elements (fixed at compile time).
 template <typename T, std::size_t Capacity>
-class ring_core {
+// The copy and move operations are the gated ones below, which clang-tidy does not
+// recognize as such (detail/copy_move_gate.hpp).
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
+class ring_core : no_implicit_copy_move<ring_core<T, Capacity>> {
   static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
 
  public:
@@ -181,21 +185,27 @@ class ring_core {
   // Once it returns the object is fully constructed, so if copying or moving
   // an element throws part-way, the destructor runs and destroys exactly the
   // elements already inserted; nothing leaks.
-  ring_core(const ring_core& other) : ring_core() {
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  ring_core(detail::gated_param<std::is_copy_constructible_v<T>, const ring_core&, 0> other) : ring_core() {
     for (size_type i = 0; i < other.size_; ++i) {
       (void)emplace_back(other.at(i));
     }
   }
 
   /// Move-constructs by moving each element out of `other`, leaving it empty.
-  ring_core(ring_core&& other) noexcept(std::is_nothrow_move_constructible_v<T>) : ring_core() {
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  ring_core(detail::gated_param<std::is_move_constructible_v<T>, ring_core&&, 1> other) noexcept(
+      std::is_nothrow_move_constructible_v<T>)
+      : ring_core() {
     for (size_type i = 0; i < other.size_; ++i) {
       (void)emplace_back(static_cast<T&&>(other.at(i)));
     }
     other.clear();
   }
 
-  ring_core& operator=(const ring_core& other) {
+  ring_core& operator=(detail::gated_param<std::is_copy_constructible_v<T>, const ring_core&, 2> other) {
     if (this == &other) {
       return *this;
     }
@@ -207,8 +217,8 @@ class ring_core {
     return *this;
   }
 
-  ring_core& operator=(ring_core&& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
-                                                   std::is_nothrow_move_assignable_v<T>) {
+  ring_core& operator=(detail::gated_param<std::is_move_constructible_v<T>, ring_core&&, 3> other) noexcept(
+      std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_assignable_v<T>) {
     if (this == &other) {
       return *this;
     }

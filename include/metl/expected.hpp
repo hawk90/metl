@@ -20,6 +20,7 @@
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
 #include "metl/detail/construct.hpp"
+#include "metl/detail/copy_move_gate.hpp"
 #include "metl/in_place.hpp"
 #include "metl/type_traits.hpp"
 
@@ -287,7 +288,10 @@ void replace_live(U* slot, expected_state& state, expected_state settled, Args&&
 ///      move of it fails METL_HARDEN, never stripped, instead of destroying the
 ///      old member twice (#374). std::expected leaves the same case undefined.
 template <typename T, typename E>
-class expected {
+// The copy and move operations are the gated ones below, which clang-tidy does not
+// recognize as such (detail/copy_move_gate.hpp).
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
+class expected : detail::no_implicit_copy_move<expected<T, E>> {
   static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
   static_assert(std::is_object_v<E> && !std::is_array_v<E>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
 
@@ -338,7 +342,12 @@ class expected {
       : storage_(unexpect, std::forward<Args>(args)...), state_(detail::expected_state::error) {}
 
   /// @brief Copy constructor; copies the active value or error.
-  expected(const expected& other) : state_(other.state_) {
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  expected(detail::gated_param<std::is_copy_constructible_v<T> && std::is_copy_constructible_v<E>,
+                               const expected&,
+                               0> other)
+      : state_(other.state_) {
     other.require_settled();
     if (holds_value()) {
       construct_value(other.value_unchecked());
@@ -348,8 +357,11 @@ class expected {
   }
 
   /// @brief Move constructor; moves the active value or error.
-  expected(expected&& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
-                                      std::is_nothrow_move_constructible_v<E>)
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  expected(
+      detail::gated_param<std::is_move_constructible_v<T> && std::is_move_constructible_v<E>, expected&&, 1>
+          other) noexcept(std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_constructible_v<E>)
       : state_(other.state_) {
     other.require_settled();
     if (holds_value()) {
@@ -368,7 +380,10 @@ class expected {
   // ---- Assignment ----------------------------------------------------------
 
   /// @brief Copy-assigns, switching state if needed (exception-safe).
-  expected& operator=(const expected& other) {
+  expected& operator=(detail::gated_param<std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T> &&
+                                              std::is_copy_constructible_v<E> && std::is_copy_assignable_v<E>,
+                                          const expected&,
+                                          2> other) {
     require_settled();
     other.require_settled();
     if (this == &other) {
@@ -385,10 +400,13 @@ class expected {
   }
 
   /// @brief Move-assigns, switching state if needed (exception-safe).
-  expected& operator=(expected&& other) noexcept(std::is_nothrow_move_assignable_v<T> &&
-                                                 std::is_nothrow_move_constructible_v<T> &&
-                                                 std::is_nothrow_move_assignable_v<E> &&
-                                                 std::is_nothrow_move_constructible_v<E>) {
+  expected& operator=(detail::gated_param<std::is_move_constructible_v<T> && std::is_move_assignable_v<T> &&
+                                              std::is_move_constructible_v<E> && std::is_move_assignable_v<E>,
+                                          expected&&,
+                                          3> other) noexcept(std::is_nothrow_move_assignable_v<T> &&
+                                                             std::is_nothrow_move_constructible_v<T> &&
+                                                             std::is_nothrow_move_assignable_v<E> &&
+                                                             std::is_nothrow_move_constructible_v<E>) {
     require_settled();
     other.require_settled();
     if (this == &other) {
@@ -1133,7 +1151,10 @@ class expected {
 /// @pre `E`'s destructor does not change the expected that holds it; see the
 ///      primary template (#374).
 template <typename E>
-class expected<void, E> {
+// The copy and move operations are the gated ones below, which clang-tidy does not
+// recognize as such (detail/copy_move_gate.hpp).
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
+class expected<void, E> : detail::no_implicit_copy_move<expected<void, E>> {
   static_assert(std::is_object_v<E> && !std::is_array_v<E>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
 
  public:
@@ -1170,7 +1191,10 @@ class expected<void, E> {
       : storage_(unexpect, static_cast<G&&>(u.error())), state_(detail::expected_state::error) {}
 
   /// @brief Copy constructor; copies the error if in the error state.
-  expected(const expected& other) : state_(other.state_) {
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  expected(detail::gated_param<std::is_copy_constructible_v<E>, const expected&, 0> other)
+      : state_(other.state_) {
     other.require_settled();
     if (!holds_value()) {
       construct_error(*other.error_ptr());
@@ -1178,7 +1202,11 @@ class expected<void, E> {
   }
 
   /// @brief Move constructor; moves the error if in the error state.
-  expected(expected&& other) noexcept(std::is_nothrow_move_constructible_v<E>) : state_(other.state_) {
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  expected(detail::gated_param<std::is_move_constructible_v<E>, expected&&, 1> other) noexcept(
+      std::is_nothrow_move_constructible_v<E>)
+      : state_(other.state_) {
     other.require_settled();
     if (!holds_value()) {
       construct_error(static_cast<E&&>(*other.error_ptr()));
@@ -1197,7 +1225,9 @@ class expected<void, E> {
   // ---- Assignment ----------------------------------------------------------
 
   /// @brief Copy-assigns, switching between success and error as needed.
-  expected& operator=(const expected& other) {
+  expected& operator=(
+      detail::gated_param<std::is_copy_constructible_v<E> && std::is_copy_assignable_v<E>, const expected&, 2>
+          other) {
     require_settled();
     other.require_settled();
     if (this == &other) {
@@ -1222,8 +1252,9 @@ class expected<void, E> {
   }
 
   /// @brief Move-assigns, switching between success and error as needed.
-  expected& operator=(expected&& other) noexcept(std::is_nothrow_move_constructible_v<E> &&
-                                                 std::is_nothrow_move_assignable_v<E>) {
+  expected& operator=(
+      detail::gated_param<std::is_move_constructible_v<E> && std::is_move_assignable_v<E>, expected&&, 3>
+          other) noexcept(std::is_nothrow_move_constructible_v<E> && std::is_nothrow_move_assignable_v<E>) {
     require_settled();
     other.require_settled();
     if (this == &other) {
