@@ -556,11 +556,19 @@ forms:
 | `X(...)` | Treats it as a precondition violation: asserts and aborts. |
 | `try_X(...)` | Reports it by return value and leaves the container **unchanged**. |
 
-**One known exception**, older than this rule: `event_dispatcher::subscribe`
-reports "full" through an empty `optional` under a plain name. `try_subscribe` is
-the same operation under the right name, and `subscribe` becomes the asserting
-form in 2.0.0 ([#155](https://github.com/hawk90/metl/issues/155)), because that
-changes its return type.
+**Two known exceptions.** The first is older than this rule:
+`event_dispatcher::subscribe` reports "full" through an empty `optional` under a
+plain name. `try_subscribe` is the same operation under the right name, and
+`subscribe` becomes the asserting form in 2.0.0
+([#155](https://github.com/hawk90/metl/issues/155)), because that changes its
+return type.
+
+The second is `mpmc_queue::try_emplace` with exceptions enabled and a `T`
+constructor that can throw: it builds the element before claiming a slot, so a
+full queue has already moved from the arguments. Building it after the claim
+would leave a claimed slot unpublished if the constructor threw, and stall every
+later consumer. Without exceptions, or with a `noexcept` constructor, the
+arguments stay untouched ([#575](https://github.com/hawk90/metl/issues/575)).
 
 "Unchanged" is the load-bearing half. A `try_` form that half-applies and then
 returns `false` is *worse* than one that asserts, because the caller's recovery

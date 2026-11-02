@@ -1,0 +1,1 @@
+- `coro::scheduler::try_attach` and `coro::deadline_scheduler::try_schedule` reject a null poll function at every hardening level. It was stored and later called, a jump to address 0 (#570).
