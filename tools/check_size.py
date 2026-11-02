@@ -173,10 +173,14 @@ BUDGETS = {
     "cortex-m7": 4368,
 }
 
-# Room for a toolchain that shifts codegen slightly without anything regressing.
-# Ubuntu's arm-none-eabi-gcc moves with the runner image, and a minor version can
-# change inlining decisions by a few hundred bytes on an image this small.
-TOLERANCE_BYTES = 512
+# No tolerance on any of the three sizes (#587). The toolchain does not move them
+# on its own: every release record from 1.4.0 to 1.11.0 names the same compiler,
+# GCC 14.2.1 20241119 (Ubuntu 26.04's 15:14.2.rel1-1), all four cores agree, and
+# each size changed only with the source. The room this used to allow, 512 bytes
+# of code and 64 of const and RAM, was where growth passed unseen: .rodata sat at
+# 512 against its 472 budget from #504 until #337. A toolchain bump now fails
+# here; re-measure with --report and say so in the commit, as the error says.
+TOLERANCE_BYTES = 0
 
 # Budgets for `.rodata` of the same linked probe. Measured by the `invariants`
 # job, run 38493698132 (#374): all four targets reported 472, which is what a
@@ -185,10 +189,9 @@ TOLERANCE_BYTES = 512
 # drifted to 456 on main within the tolerance; #374's destructor check then
 # stores its file name and expression text, which took it to 472.
 #
-# The tolerance is deliberately much tighter than .text's 512. A toolchain bump
-# moves code generation; it does not move the number of constant bytes the
-# source declares. Slack here would only hide the thing this is for -- a table
-# quietly arriving in the image.
+# A toolchain bump moves code generation; it does not move the number of
+# constant bytes the source declares. Slack here would only hide the thing this
+# is for -- a table quietly arriving in the image.
 #
 # Raised to 624 by #337 (run 40406983623, all four targets): the intrusive
 # lists' METL_HARDEN checks store their file names and expression text. Main
@@ -200,7 +203,7 @@ RODATA_BUDGETS = {
     "cortex-m4": 624,
     "cortex-m7": 624,
 }
-RODATA_TOLERANCE_BYTES = 64
+RODATA_TOLERANCE_BYTES = 0
 
 # Budgets for `.bss` + `.data` of the stack probe's object file. Measured by the
 # `invariants` job on PR #83, run 32613760217. All four targets report the same
@@ -223,7 +226,7 @@ RAM_BUDGETS = {
     "cortex-m4": 23_040,
     "cortex-m7": 23_040,
 }
-RAM_TOLERANCE_BYTES = 64
+RAM_TOLERANCE_BYTES = 0
 
 
 # ELF constants this file needs, from the System V gABI and the ARM ELF ABI.
