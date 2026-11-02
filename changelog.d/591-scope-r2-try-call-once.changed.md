@@ -1,0 +1,1 @@
+- `docs/SCOPE.md` R2 records `try_call_once` as a `try_` form for a failure other than capacity: the initializer running in another context (#591).
