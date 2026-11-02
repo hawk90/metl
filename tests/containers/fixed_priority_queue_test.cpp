@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <new>
 #include <type_traits>
 #include <utility>
 
@@ -54,9 +55,34 @@ bool heap_ordered(const Queue& queue, Compare comp) {
   return true;
 }
 
+/// A stateful comparator with no member initializer: default-initialized on
+/// its own, its member is indeterminate.
+struct sign_less {
+  int sign;
+  bool operator()(int lhs, int rhs) const noexcept { return sign != 0 ? lhs < rhs : lhs > rhs; }
+};
+
 }  // namespace
 
 int main() {
+  // ---------------------------------------------------------------------
+  // #574: a default-initialized queue value-initializes its comparator, as
+  // flat_map and flat_set do. Built over 0xff bytes, an uninitialized `sign`
+  // read as non-zero and turned the min-heap into a max-heap.
+  // ---------------------------------------------------------------------
+  {
+    using queue_type = metl::fixed_priority_queue<int, 4, sign_less>;
+    alignas(queue_type) static unsigned char bytes[sizeof(queue_type)];
+    for (unsigned char& byte : bytes) {
+      byte = 0xff;
+    }
+    auto* queue = ::new (static_cast<void*>(bytes)) queue_type;  // default-initialization
+    CHECK(queue->try_push(1));
+    CHECK(queue->try_push(2));
+    CHECK_EQ(queue->top(), 1);
+    queue->~queue_type();
+  }
+
   // ---------------------------------------------------------------------
   // Max-heap by default, and the heap property holds after every push.
   // ---------------------------------------------------------------------

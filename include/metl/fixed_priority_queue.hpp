@@ -328,7 +328,7 @@ class fixed_priority_queue {
   }
 
   fixed_vector<T, Capacity> storage_;
-  Compare comp_;
+  Compare comp_{};
 };
 
 /// Swaps the contents of two priority queues of the same type, capacity and
