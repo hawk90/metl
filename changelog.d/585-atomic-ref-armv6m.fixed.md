@@ -1,0 +1,1 @@
+- `atomic_ref<T>::load` and `store` for a `T` of 4 bytes or fewer on ARMv6-M (Cortex-M0, M0+) are a plain aligned access with DMB barriers on every compiler. Clang called `__atomic_load_4` and `__atomic_store_4` there, which bare metal does not provide or implements with a lock, although `docs/CHOOSING.md` offers them for a flag an ISR shares. GCC's code is unchanged (#585).

@@ -22,6 +22,38 @@ namespace detail {
 #define METL_DETAIL_WORD_ATOMIC_ARMV6M 0
 #endif
 
+#if METL_DETAIL_WORD_ATOMIC_ARMV6M
+/// @brief DMB on ARMv6-M: orders the memory accesses on either side of it.
+inline void word_atomic_barrier() noexcept {
+  __asm__ __volatile__("dmb" ::: "memory");
+}
+
+/// @brief An atomic load of an aligned word or smaller on ARMv6-M: the access
+///        is single-copy atomic, and DMB after it gives acquire and seq_cst.
+///        Shared by `word_atomic` and `atomic_ref` (#585).
+template <typename T>
+inline T word_atomic_load(const volatile T* object, std::memory_order order) noexcept {
+  const T value = *object;
+  if (order != std::memory_order_relaxed) {
+    word_atomic_barrier();  // acquire: later accesses stay after the load
+  }
+  return value;
+}
+
+/// @brief An atomic store of an aligned word or smaller on ARMv6-M: DMB before
+///        it gives release, and DMB after it as well gives seq_cst.
+template <typename T>
+inline void word_atomic_store(volatile T* object, T value, std::memory_order order) noexcept {
+  if (order != std::memory_order_relaxed) {
+    word_atomic_barrier();  // release: earlier accesses stay before the store
+  }
+  *object = value;
+  if (order == std::memory_order_seq_cst) {
+    word_atomic_barrier();
+  }
+}
+#endif
+
 /// @brief A word-sized index shared with an interrupt or another core, with
 ///        only atomic `load` and `store`: what the SPSC rings need, and nothing
 ///        that would need a compare-exchange.
@@ -46,27 +78,10 @@ class word_atomic {
   ~word_atomic() = default;
 
 #if METL_DETAIL_WORD_ATOMIC_ARMV6M
-  T load(std::memory_order order) const noexcept {
-    const T value = value_;
-    if (order != std::memory_order_relaxed) {
-      barrier();  // acquire: later accesses stay after the load
-    }
-    return value;
-  }
-
-  void store(T value, std::memory_order order) noexcept {
-    if (order != std::memory_order_relaxed) {
-      barrier();  // release: earlier accesses stay before the store
-    }
-    value_ = value;
-    if (order == std::memory_order_seq_cst) {
-      barrier();
-    }
-  }
+  T load(std::memory_order order) const noexcept { return word_atomic_load(&value_, order); }
+  void store(T value, std::memory_order order) noexcept { word_atomic_store(&value_, value, order); }
 
  private:
-  static void barrier() noexcept { __asm__ __volatile__("dmb" ::: "memory"); }
-
   volatile T value_;
 #else
   static_assert(std::atomic<T>::is_always_lock_free,
