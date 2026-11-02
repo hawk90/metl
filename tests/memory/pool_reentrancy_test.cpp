@@ -14,6 +14,7 @@
 
 #include "metl_check.hpp"
 
+#include <cstddef>
 #include <cstdint>
 
 #include <metl/arena_allocator.hpp>
@@ -93,6 +94,54 @@ void arena_destructor_reenters() {
   g_arena.reset();
   CHECK_EQ(g_log_destroyed, 1);  // allocated during the reset, then destroyed by it
   CHECK(g_arena.empty());
+}
+
+// #572: a destructor that reset the arena released the storage under its own
+// object, and its next allocation was handed that same storage while the
+// object was still being destroyed. A nested reset now stops at the object.
+struct older {
+  int tag = 11;
+  ~older() { tag = 0; }
+};
+bool g_overlapped = false;
+bool g_older_alive_inside = false;
+std::size_t g_used_inside = 0;
+
+struct resets_on_destroy {
+  older* below = nullptr;
+  int tag = 7;
+  ~resets_on_destroy() {
+    g_arena.reset();
+    g_used_inside = g_arena.used();
+    g_older_alive_inside = below == nullptr || below->tag == 11;
+    auto* fresh = static_cast<unsigned char*>(g_arena.allocate(sizeof(int), alignof(int)));
+    const auto overlaps = [fresh](const void* object, std::size_t size) {
+      const auto* start = static_cast<const unsigned char*>(object);
+      return fresh != nullptr && fresh < start + size && start < fresh + sizeof(int);
+    };
+    g_overlapped = overlaps(this, sizeof(*this)) || (below != nullptr && overlaps(below, sizeof(*below)));
+    tag = 0;
+  }
+};
+
+void arena_destructor_resets_then_allocates() {
+  // Alone in the arena: the old walk released this object's own storage.
+  g_arena.reset();
+  CHECK(g_arena.emplace<resets_on_destroy>() != nullptr);
+  g_arena.reset();
+  CHECK(!g_overlapped);
+  CHECK(g_used_inside > 0);
+  CHECK(g_arena.empty());
+
+  // Above an older object: the old walk also destroyed and released that.
+  older* o = g_arena.emplace<older>();
+  resets_on_destroy* r = g_arena.emplace<resets_on_destroy>();
+  r->below = o;
+  g_arena.reset();
+  CHECK(!g_overlapped);
+  CHECK(g_used_inside > 0);     // the nested reset stopped at the object
+  CHECK(g_older_alive_inside);  // and did not destroy what lies below it
+  CHECK(g_arena.empty());       // the outer reset still released everything
 }
 
 // --- object_pool ------------------------------------------------------------
@@ -313,6 +362,7 @@ void a_throwing_constructor_releases_the_claim() {
 int main() {
   arena_constructor_allocates();
   arena_destructor_reenters();
+  arena_destructor_resets_then_allocates();
   object_pool_constructor_emplaces();
   object_pool_destructor_reenters();
   object_pool_interior_pointer();
