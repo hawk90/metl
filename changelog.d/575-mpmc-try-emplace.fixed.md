@@ -1,1 +1,0 @@
-- `mpmc_queue::try_emplace` without exceptions builds the element in the claimed slot, so a full queue no longer moves from the arguments. With exceptions on and a constructor that can throw, it still builds first, to keep a claimed slot from staying unpublished; SCOPE.md R1 now records that exception (#575).

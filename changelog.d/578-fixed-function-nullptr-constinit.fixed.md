@@ -1,1 +1,0 @@
-- `fixed_function` and `fixed_any_invocable` built from `nullptr` are constant-initialized, as the default-constructed ones are. `constinit fixed_function<void()> f{nullptr};` did not compile (#578).

@@ -1,1 +1,0 @@
-- `fixed_vector::begin`, `end`, `cbegin` and `cend` are no longer `constexpr`. They reach storage through a `reinterpret_cast`, so no call could ever be constant-evaluated, and a `constexpr` function like that is ill-formed, no diagnostic required. Code that compiled before still compiles (#581).

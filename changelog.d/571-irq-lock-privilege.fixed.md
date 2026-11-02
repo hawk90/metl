@@ -1,1 +1,0 @@
-- `irq_lock` states that it needs privileged execution: unprivileged code executes `CPSID` as a no-op, so the lock masks nothing. At `METL_HARDENING_DEBUG`, `lock()` now asserts when that happens (#571).

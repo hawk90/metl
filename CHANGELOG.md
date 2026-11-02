@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-11-03
+
+**Highlights.** Fixes from a whole-repository audit, no new API. Most matter only at
+`METL_HARDENING_NONE`, where `static_unordered_map`, `static_unordered_set`,
+`flat_map` and `flat_set` could go past `Capacity` or hand back another key's
+element; those checks now run at every level. A nested `arena_allocator` rewind
+no longer frees the object being destroyed, and `swap` is `noexcept` only when
+the element's own swap is.
+
+**Upgrading from 1.11.0.** One change can stop code compiling, and it turns a
+silent bug into an error: `set_bits`, `clear_bits` and `modify` on an `mmio`
+register of a `bool`-backed enum, where `clear_bits` left the bit set (#576). `std::is_swappable_v` now reports false for a container or
+vocabulary type whose element is not swappable (#577, #600); calling that `swap`
+never compiled.
+
+### Changed
+
+- `intrusive_ref_counter` no longer suggests an object pool as storage: the last release runs `~T()` and nothing else, so an `object_pool`, `handle_pool` or `arena_allocator::try_emplace` object was destroyed a second time when its owner freed it. The header now names the storage that is safe (#573).
+- Documentation corrected against the code (#584): the `static_unordered_map` memory figures after #504, `variant::emplace`'s abort covers only an argument stored inside the variant, `expected`'s monadic operations are constant-evaluable since C++20, `handle_pool` against `object_pool` (both O(1); new measurements), the 16-bit generation repeats after 32768 recycles, and progress notes now name `T`'s own costs. New example: `examples/tick_extender.cpp`.
+
+### Fixed
+
+- `coro::scheduler::try_attach` and `coro::deadline_scheduler::try_schedule` reject a null poll function at every hardening level. It was stored and later called, a jump to address 0 (#570).
+- `irq_lock` states that it needs privileged execution: unprivileged code executes `CPSID` as a no-op, so the lock masks nothing. At `METL_HARDENING_DEBUG`, `lock()` now asserts when that happens (#571).
+- `arena_allocator`: a `rewind` or `reset` called from a destructor that the arena is running stops at that object. It used to release the object's storage, so the destructor's next allocation overlapped the object, and it destroyed the objects below it. They are now destroyed by the enclosing walk, after the destructor returns (#572).
+- `fixed_priority_queue` value-initializes its comparator when the queue is default-initialized, as `flat_map` and `flat_set` do. A stateful comparator was left indeterminate (#574).
+- `mpmc_queue::try_emplace` without exceptions builds the element in the claimed slot, so a full queue no longer moves from the arguments. With exceptions on and a constructor that can throw, it still builds first, to keep a claimed slot from staying unpublished; SCOPE.md R1 now records that exception (#575).
+- `mmio_register` and `mmio_ptr` reject `set_bits`, `clear_bits` and `modify` on an enum whose underlying type is `bool`, as they already did on `bool`. `clear_bits` compiled there and left the register at 1. Such code now fails to compile with the same message (#576).
+- `fixed_vector::swap` is `noexcept` only when the element swap is, and so are `fixed_stack::swap` and `fixed_priority_queue::swap`, which build on it. An element swap that threw terminated the program. The free `swap` is declared only for a swappable element, as in the other containers (#577).
+- `fixed_function` and `fixed_any_invocable` built from `nullptr` are constant-initialized, as the default-constructed ones are. `constinit fixed_function<void()> f{nullptr};` did not compile (#578).
+- `static_unordered_map` and `static_unordered_set` refuse a new key past `Capacity` at every hardening level: `emplace` and `operator[]` check with `METL_HARDEN`. At `METL_HARDENING_NONE` the check was stripped, so `size()` passed `Capacity` and `full()` answered false. Level 0 grows by about 32 bytes of code per call site; the default level is unchanged (#579).
+- `flat_map::emplace`, `flat_map::insert_or_assign` and `flat_set::emplace` refuse a new key into a full container at every hardening level. At `METL_HARDENING_NONE`, a key below the others got back a reference to another key's element. The guard only covered the one-past-the-end case (#580).
+- `fixed_vector::begin`, `end`, `cbegin` and `cend` are no longer `constexpr`. They reach storage through a `reinterpret_cast`, so no call could ever be constant-evaluated, and a `constexpr` function like that is ill-formed, no diagnostic required. Code that compiled before still compiles (#581).
+- `optional`, `unexpected` and `expected` (both forms) make `swap` `noexcept` only when the value's and error's own `swap` is. A `swap` that threw terminated the program. Their free `swap`s are declared only for swappable types, as the containers' are (#600).
+
 ## [1.11.0] - 2026-11-02
 
 **Highlights.** A small release: no new API, and nothing here changes correct
