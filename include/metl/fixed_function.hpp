@@ -208,7 +208,8 @@ class fixed_function_impl {
   using ops_type = copyable_ops<IsNoexcept, R, Args...>;
 
   constexpr fixed_function_impl() noexcept : ops_(nullptr) { zero_for_constant_init(storage_); }
-  constexpr fixed_function_impl(std::nullptr_t) noexcept : ops_(nullptr) {}
+  // Delegates, so the empty state built from nullptr is constant-initialized too (#578).
+  constexpr fixed_function_impl(std::nullptr_t) noexcept : fixed_function_impl() {}
 
   fixed_function_impl(const fixed_function_impl& other) : ops_(nullptr) {
     if (other.has_value()) {
@@ -374,7 +375,7 @@ class fixed_any_invocable_impl {
   using ops_type = moveonly_ops<IsNoexcept, R, Args...>;
 
   constexpr fixed_any_invocable_impl() noexcept : ops_(nullptr) { zero_for_constant_init(storage_); }
-  constexpr fixed_any_invocable_impl(std::nullptr_t) noexcept : ops_(nullptr) {}
+  constexpr fixed_any_invocable_impl(std::nullptr_t) noexcept : fixed_any_invocable_impl() {}
 
   fixed_any_invocable_impl(const fixed_any_invocable_impl&) = delete;
   fixed_any_invocable_impl& operator=(const fixed_any_invocable_impl&) = delete;
