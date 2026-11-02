@@ -201,14 +201,14 @@ class fixed_vector {
   }
 
   /// Returns an iterator to the first element.
-  METL_NODISCARD constexpr iterator begin() noexcept { return data(); }
-  METL_NODISCARD constexpr const_iterator begin() const noexcept { return data(); }
-  METL_NODISCARD constexpr const_iterator cbegin() const noexcept { return data(); }
+  METL_NODISCARD iterator begin() noexcept { return data(); }
+  METL_NODISCARD const_iterator begin() const noexcept { return data(); }
+  METL_NODISCARD const_iterator cbegin() const noexcept { return data(); }
 
   /// Returns an iterator one past the last element.
-  METL_NODISCARD constexpr iterator end() noexcept { return data() + size_; }
-  METL_NODISCARD constexpr const_iterator end() const noexcept { return data() + size_; }
-  METL_NODISCARD constexpr const_iterator cend() const noexcept { return data() + size_; }
+  METL_NODISCARD iterator end() noexcept { return data() + size_; }
+  METL_NODISCARD const_iterator end() const noexcept { return data() + size_; }
+  METL_NODISCARD const_iterator cend() const noexcept { return data() + size_; }
 
   /// Returns a reverse iterator to the last element.
   METL_NODISCARD reverse_iterator rbegin() noexcept { return reverse_iterator(end()); }
@@ -783,8 +783,10 @@ class fixed_vector {
   // Elements live in one aligned byte buffer reached as a single T[Capacity]
   // array object, so data() + i is in-array arithmetic (the
   // reasoning is in detail/array_storage.hpp). array_storage::data() goes
-  // through a reinterpret_cast, which is never constant-evaluable, so the
-  // constexpr labels here are effective only outside constant evaluation.
+  // through a reinterpret_cast, which is never constant-evaluable, so nothing
+  // that reaches it is constexpr: a constexpr function that can never be
+  // constant-evaluated is ill-formed, no diagnostic required (S3 in
+  // tools/check_source_rules.py, #581).
   detail::array_storage<T, (Capacity == 0 ? 1 : Capacity)> storage_;
   size_type size_;
 };
