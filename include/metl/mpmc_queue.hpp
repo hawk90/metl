@@ -158,16 +158,25 @@ class mpmc_queue {
 
   /// Constructs an element in place if a slot is available.
   /// @return true if enqueued; false if the queue appeared full.
+  /// @warning With exceptions enabled and a `T` constructor from @p args that
+  ///          is not `noexcept`, the element is built from @p args before a slot
+  ///          is claimed, so a `false` return has already moved from them. This
+  ///          is SCOPE.md R1's documented exception (#575). Without exceptions,
+  ///          or with a `noexcept` constructor, a `false` return leaves @p args
+  ///          untouched.
   template <typename... Args>
   METL_NODISCARD bool try_emplace(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>) {
-    if constexpr (std::is_nothrow_constructible_v<T, Args&&...>) {
+    if constexpr (std::is_nothrow_constructible_v<T, Args&&...> || METL_NO_EXCEPTIONS) {
+      // Nothing can throw between claiming the slot and publishing it, so the
+      // element is built in the slot, and a full queue never touches args.
       return try_claim_and_construct(std::forward<Args>(args)...);
     } else {
       // A constructor that can throw runs BEFORE a ticket is claimed: a claimed
       // slot that is never published would stall every later consumer. The
       // move into the slot cannot throw (static_assert above). This overload is
       // therefore not noexcept: the constructor's exception propagates with no
-      // ticket claimed and the queue unchanged.
+      // ticket claimed and the queue unchanged. The price is that a full queue
+      // has already moved from args (#575).
       T value(std::forward<Args>(args)...);
       return try_claim_and_construct(static_cast<T&&>(value));
     }
@@ -238,7 +247,7 @@ class mpmc_queue {
 
  private:
   // The lock-free enqueue proper: claim a ticket, construct, publish. Only ever
-  // called with arguments whose construction cannot throw.
+  // called with arguments whose construction cannot throw, or with exceptions off.
   template <typename... Args>
   METL_NODISCARD bool try_claim_and_construct(Args&&... args) noexcept {
     cell* target = nullptr;

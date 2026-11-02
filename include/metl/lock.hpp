@@ -158,6 +158,11 @@ struct null_lock {
 ///          sequence, using it does not compile. See `METL_HAS_IRQ_MASKING`.
 /// @warning Masks *all* maskable interrupts, including the highest-priority
 ///          ones, so it adds directly to worst-case interrupt latency.
+/// @pre Privileged execution: Handler mode, or Thread mode with
+///      `CONTROL.nPRIV` clear. Unprivileged code, such as an RTOS task under an
+///      MPU, executes `CPSID` as a no-op without a fault, so the lock masks
+///      nothing. At `METL_HARDENING_DEBUG`, `lock()` reads `PRIMASK` back and
+///      asserts; at the other levels the race is silent.
 struct irq_lock {
   /// Saved `PRIMASK` on Cortex-M; unused elsewhere.
   using state_type = std::uint32_t;
@@ -191,6 +196,8 @@ struct irq_lock {
     state_type previous = 0;
     __asm__ __volatile__("mrs %0, primask" : "=r"(previous)::"memory");
     __asm__ __volatile__("cpsid i" ::: "memory");
+    // Unprivileged Thread mode ignores CPSID without a fault (#571).
+    METL_DASSERT(primask_set());
     return previous;
 #else
     // No interrupts to mask: keep the compiler barrier so the critical section
@@ -210,6 +217,15 @@ struct irq_lock {
     std::atomic_signal_fence(std::memory_order_seq_cst);
 #endif
   }
+
+ private:
+#if METL_HAS_IRQ_MASKING
+  METL_NODISCARD static bool primask_set() noexcept {
+    state_type current = 0;
+    __asm__ __volatile__("mrs %0, primask" : "=r"(current)::"memory");
+    return (current & 1u) != 0;
+  }
+#endif
 #endif
 };
 
@@ -266,7 +282,8 @@ class scoped_lock {
 ///
 /// @tparam T Guarded value type.
 /// @tparam Lock Lock policy; defaults to `irq_lock`, the correct choice for
-///         ISR↔main-loop sharing on a single-core MCU.
+///         ISR↔main-loop sharing on a single-core MCU, from privileged code
+///         only (see `irq_lock`).
 ///
 /// Progress guarantee: whatever `Lock` and the caller's lambda provide. With
 /// `irq_lock` and a bounded body it is blocking-bounded, which is acceptable
