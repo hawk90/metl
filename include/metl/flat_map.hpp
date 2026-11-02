@@ -448,13 +448,10 @@ class flat_map {
       const size_type index = lower_bound_index(key);
       METL_HARDEN(!(index < size_ && !comp_(key, data()[index].key)));
       const bool inserted = try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
-      METL_ASSERT(inserted);
-      (void)inserted;
-      // Hard guard on the full-map path: on a full map
-      // try_insert_at returns false with `index == size_ == Capacity`, so the
-      // return below would hand out a one-past-the-end reference. METL_ASSERT is
-      // stripped at low hardening levels; METL_HARDEN never is.
-      METL_HARDEN(index < size_);
+      // Hard guard on the full-map path, never stripped: a refused insert
+      // leaves `index` where the key would have gone, so the reference below
+      // would be one past the end, or another key's element (#580).
+      METL_HARDEN(inserted);
       return data()[index];
     }
   }
@@ -501,11 +498,8 @@ class flat_map {
     } else {
       const size_type index = lower_bound_index(key);
       const bool stored = try_insert_or_assign(std::forward<K>(key), std::forward<V>(value));
-      METL_ASSERT(stored);
-      (void)stored;
-      // Same full-map hazard as emplace above: a refused insert leaves
-      // `index == size_`, which would make this a one-past-the-end reference.
-      METL_HARDEN(index < size_);
+      // Same full-map hazard as emplace above (#580).
+      METL_HARDEN(stored);
       return data()[index];
     }
   }

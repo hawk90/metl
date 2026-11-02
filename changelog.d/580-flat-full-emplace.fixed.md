@@ -1,0 +1,1 @@
+- `flat_map::emplace`, `flat_map::insert_or_assign` and `flat_set::emplace` refuse a new key into a full container at every hardening level. At `METL_HARDENING_NONE`, a key below the others got back a reference to another key's element. The guard only covered the one-past-the-end case (#580).

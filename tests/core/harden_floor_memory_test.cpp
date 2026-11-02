@@ -425,15 +425,19 @@ int main() {
   }
 
   // flat_map / flat_set: emplace or insert_or_assign of a new key into a full
-  // container. The insert is refused, which leaves its position at size() ==
-  // Capacity, and the reference handed back would be one past the end.
+  // container. The insert is refused, and the reference handed back would be
+  // one past the end for a key above the others, or another key's element for
+  // one below them (#580).
   {
     metl::flat_map<int, int, 2> map;
     map.emplace(1, 10);
     map.emplace(2, 20);
     CHECK(guarded_against([&] { (void)map.emplace(3, 30); }));
     CHECK(guarded_against([&] { (void)map.insert_or_assign(3, 30); }));
+    CHECK(guarded_against([&] { (void)map.emplace(0, 30); }));
+    CHECK(guarded_against([&] { (void)map.insert_or_assign(0, 30); }));
     CHECK_EQ(map.size(), 2u);
+    CHECK_DEREF_EQ(map.find(1), 10);  // the refused inserts wrote nothing
     CHECK(!guarded_against([&] { (void)map.insert_or_assign(2, 21); }));
     CHECK_DEREF_EQ(map.find(2), 21);
 
@@ -441,6 +445,7 @@ int main() {
     set.emplace(1);
     set.emplace(2);
     CHECK(guarded_against([&] { (void)set.emplace(3); }));
+    CHECK(guarded_against([&] { (void)set.emplace(0); }));
     CHECK_EQ(set.size(), 2u);
   }
 
