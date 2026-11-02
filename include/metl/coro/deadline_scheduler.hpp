@@ -90,9 +90,13 @@ class deadline_scheduler {
   /// @param task The task; must outlive its scheduling. @param fn Its trampoline.
   /// @param deadline Tick to run at.
   /// @return true if scheduled, false if the scheduler is full.
+  /// @pre @p fn is not null; a null one aborts at every hardening level.
   /// @note While a poll is running, one slot is held back for that task's own
   ///       re-arm, so this can report full one slot early. See `run_due`.
   METL_NODISCARD bool try_schedule(void* task, poll_type fn, Tick deadline) {
+    // A null poll is stored and called by run_due: a jump to address 0, the
+    // vector table on Cortex-M (#570).
+    METL_HARDEN(fn != nullptr);
     if (queue_.size() + reserved() >= Capacity) {
       return false;
     }

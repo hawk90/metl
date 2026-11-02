@@ -31,6 +31,7 @@
 #include <metl/arena_allocator.hpp>
 #include <metl/assert.hpp>
 #include <metl/atomic_ref.hpp>
+#include <metl/coro/deadline_scheduler.hpp>
 #include <metl/coro/scheduler.hpp>
 #include <metl/delegate.hpp>
 #include <metl/fixed_deque.hpp>
@@ -604,6 +605,22 @@ int main() {
     CHECK(scheduler.detach(&task));
     CHECK(!guarded_against([&] { CHECK(scheduler.try_attach(&task, poll)); }));
     CHECK_EQ(scheduler.task_count(), std::size_t{2});
+    // A null poll would be called by run_once: a jump to address 0 (#570).
+    int third = 0;
+    CHECK(guarded_against([&] { (void)scheduler.try_attach(&third, nullptr); }));
+    CHECK_EQ(scheduler.task_count(), std::size_t{2});
+  }
+
+  // coro::deadline_scheduler: the same null poll, called by run_due (#570).
+  {
+    metl::coro::deadline_scheduler<2> scheduler;
+    int task = 0;
+    const metl::coro::deadline_poll_fn<std::uint32_t> poll = [](void*, std::uint32_t) noexcept {
+      return metl::optional<std::uint32_t>{};
+    };
+    CHECK(guarded_against([&] { (void)scheduler.try_schedule(&task, nullptr, 0u); }));
+    CHECK(scheduler.empty());
+    CHECK(!guarded_against([&] { CHECK(scheduler.try_schedule(&task, poll, 0u)); }));
   }
 
   return metl_test::exit_code();
