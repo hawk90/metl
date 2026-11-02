@@ -90,6 +90,27 @@ void converting_keys() {
     CHECK(!map.try_emplace(wrapped{5}, 2));
     CHECK_EQ(map.size(), std::size_t{1});
   }
+  // A narrowing key the enable_if accepts compiles on the maps as on the sets
+  // (#592). The maps used to brace-initialize the converted key, which clang
+  // rejects for a run-time long; every insert path is instantiated here.
+  {
+    const long key = 7;
+    metl::flat_map<int, int, 8> flat;
+    CHECK(flat.try_emplace(key, 1));
+    flat.emplace(key + 1, 2);
+    CHECK(flat.try_insert_or_assign(key, 3));
+    flat.insert_or_assign(key + 2, 4);
+    CHECK_EQ(flat.size(), std::size_t{3});
+    CHECK(flat.contains(7));
+
+    metl::static_unordered_map<int, int, 8> unordered;
+    CHECK(unordered.try_emplace(key, 1));
+    unordered.emplace(key + 1, 2);
+    CHECK(unordered.try_insert_or_assign(key, 3));
+    unordered.insert_or_assign(key + 2, 4);
+    CHECK_EQ(unordered.size(), std::size_t{3});
+    CHECK(unordered.contains(7));
+  }
 }
 
 #if !METL_NO_EXCEPTIONS

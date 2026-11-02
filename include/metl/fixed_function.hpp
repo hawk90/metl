@@ -364,7 +364,8 @@ class fixed_function_impl {
     return const_cast<void*>(static_cast<const void*>(&storage_[0]));
   }
 
-  alignas(std::max_align_t) mutable unsigned char storage_[Capacity];
+  alignas(std::max_align_t) mutable unsigned char storage_[Capacity == 0 ? 1 : Capacity];  // the public class
+                                                                                           // rejects 0
   const ops_type* ops_;
 };
 
@@ -506,7 +507,8 @@ class fixed_any_invocable_impl {
   // fixed_function_impl overload for the full rationale.
   void* storage_ptr() const noexcept { return const_cast<void*>(static_cast<const void*>(&storage_[0])); }
 
-  alignas(std::max_align_t) mutable unsigned char storage_[Capacity];
+  alignas(std::max_align_t) mutable unsigned char storage_[Capacity == 0 ? 1 : Capacity];  // the public class
+                                                                                           // rejects 0
   const ops_type* ops_;
 };
 
@@ -546,6 +548,8 @@ class fixed_function;  // primary template, undefined.
 /// @brief fixed_function specialization for a non-noexcept `R(Args...)` signature.
 template <typename R, typename... Args, std::size_t Capacity>
 class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<false, Capacity, R, Args...> {
+  static_assert(Capacity > 0, "fixed_function Capacity must be at least 1: a target needs storage");
+
   using base = detail::fixed_function_impl<false, Capacity, R, Args...>;
 
  public:
@@ -665,6 +669,8 @@ class fixed_function<R(Args...), Capacity> : public detail::fixed_function_impl<
 template <typename R, typename... Args, std::size_t Capacity>
 class fixed_function<R(Args...) noexcept, Capacity>
     : public detail::fixed_function_impl<true, Capacity, R, Args...> {
+  static_assert(Capacity > 0, "fixed_function Capacity must be at least 1: a target needs storage");
+
   using base = detail::fixed_function_impl<true, Capacity, R, Args...>;
 
  public:
@@ -839,6 +845,8 @@ class fixed_any_invocable;  // primary template, undefined.
 template <typename R, typename... Args, std::size_t Capacity>
 class fixed_any_invocable<R(Args...), Capacity>
     : public detail::fixed_any_invocable_impl<false, Capacity, R, Args...> {
+  static_assert(Capacity > 0, "fixed_any_invocable Capacity must be at least 1: a target needs storage");
+
   using base = detail::fixed_any_invocable_impl<false, Capacity, R, Args...>;
 
  public:
@@ -958,6 +966,8 @@ class fixed_any_invocable<R(Args...), Capacity>
 template <typename R, typename... Args, std::size_t Capacity>
 class fixed_any_invocable<R(Args...) noexcept, Capacity>
     : public detail::fixed_any_invocable_impl<true, Capacity, R, Args...> {
+  static_assert(Capacity > 0, "fixed_any_invocable Capacity must be at least 1: a target needs storage");
+
   using base = detail::fixed_any_invocable_impl<true, Capacity, R, Args...>;
 
  public:
