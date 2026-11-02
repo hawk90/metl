@@ -433,12 +433,8 @@ class flat_set {
       const size_type index = lower_bound_index(key);
       METL_HARDEN(!(index < size_ && !comp_(key, data()[index])));
       const bool inserted = try_insert_at(index, std::forward<K>(key));
-      METL_ASSERT(inserted);
-      (void)inserted;
-      // Hard guard on the full-set path — see the twin
-      // comment on flat_map::emplace. METL_ASSERT is stripped at low hardening
-      // levels; METL_HARDEN never is.
-      METL_HARDEN(index < size_);
+      // Hard guard on the full-set path; see the twin on flat_map::emplace.
+      METL_HARDEN(inserted);
       return data()[index];
     }
   }
