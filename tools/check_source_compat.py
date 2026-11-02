@@ -49,6 +49,15 @@ EXPECTED_BREAKS = {
                                      "Status: metl::detail is not covered), and #461 dropped its "
                                      "limit_tail parameter",
     },
+    "v1.11.0": {
+        "metl_harden_floor_none_test": "it asserted that, at METL_HARDENING_NONE, a full "
+                                       "static_unordered_map kept inserting until every bucket was "
+                                       "taken: the bug #579 fixes. The insert past Capacity is now "
+                                       "refused with METL_HARDEN",
+        "metl_harden_floor_memory_test": "it asserted the same pre-#579 behaviour at "
+                                         "METL_HARDENING_NONE for both unordered containers: inserts "
+                                         "past Capacity going through until the buckets ran out",
+    },
 }
 
 # Where a tree states its own version: (file, pattern whose group 2 is the version).

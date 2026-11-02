@@ -38,6 +38,9 @@ struct mmio_identity {
 template <typename T>
 using mmio_bits_t =
     typename std::conditional_t<std::is_enum_v<T>, std::underlying_type<T>, mmio_identity<T>>::type;
+// The bit helpers refuse a bool register, and an enum whose underlying type is
+// bool: there `~mask` promotes to int and converts back to true, so clear_bits
+// left the register at 1 (#576).
 
 template <typename T>
 constexpr T mmio_set(T current, T bits) noexcept {
@@ -95,22 +98,25 @@ struct mmio_register {
   ///        corresponding bits of `value`; all other bits are preserved.
   /// @param mask Bits to update. @param value Source of the new bit values.
   static void modify(T mask, T value) noexcept {
-    static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
-                  "mmio bit operations need an unsigned integer T: on a bool, ~mask is always true");
+    static_assert(!std::is_same_v<std::remove_cv_t<detail::mmio_bits_t<T>>, bool>,
+                  "mmio bit operations need an unsigned integer T: on a bool, or an enum with a "
+                  "bool underlying type, ~mask is always true");
     write(detail::mmio_merge(read(), mask, value));
   }
 
   /// @brief Set (OR-in) the given bits. @param bits Bits to set.
   static void set_bits(T bits) noexcept {
-    static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
-                  "mmio bit operations need an unsigned integer T: on a bool, ~mask is always true");
+    static_assert(!std::is_same_v<std::remove_cv_t<detail::mmio_bits_t<T>>, bool>,
+                  "mmio bit operations need an unsigned integer T: on a bool, or an enum with a "
+                  "bool underlying type, ~mask is always true");
     write(detail::mmio_set(read(), bits));
   }
 
   /// @brief Clear the given bits. @param bits Bits to clear.
   static void clear_bits(T bits) noexcept {
-    static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
-                  "mmio bit operations need an unsigned integer T: on a bool, ~mask is always true");
+    static_assert(!std::is_same_v<std::remove_cv_t<detail::mmio_bits_t<T>>, bool>,
+                  "mmio bit operations need an unsigned integer T: on a bool, or an enum with a "
+                  "bool underlying type, ~mask is always true");
     write(detail::mmio_clear(read(), bits));
   }
 };
@@ -158,22 +164,25 @@ class mmio_ptr {
   ///        bits of `value`; all other bits are preserved.
   /// @param mask Bits to update. @param value Source of the new bit values.
   void modify(T mask, T value) const noexcept {
-    static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
-                  "mmio bit operations need an unsigned integer T: on a bool, ~mask is always true");
+    static_assert(!std::is_same_v<std::remove_cv_t<detail::mmio_bits_t<T>>, bool>,
+                  "mmio bit operations need an unsigned integer T: on a bool, or an enum with a "
+                  "bool underlying type, ~mask is always true");
     write(detail::mmio_merge(read(), mask, value));
   }
 
   /// @brief Set (OR-in) the given bits. @param bits Bits to set.
   void set_bits(T bits) const noexcept {
-    static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
-                  "mmio bit operations need an unsigned integer T: on a bool, ~mask is always true");
+    static_assert(!std::is_same_v<std::remove_cv_t<detail::mmio_bits_t<T>>, bool>,
+                  "mmio bit operations need an unsigned integer T: on a bool, or an enum with a "
+                  "bool underlying type, ~mask is always true");
     write(detail::mmio_set(read(), bits));
   }
 
   /// @brief Clear the given bits. @param bits Bits to clear.
   void clear_bits(T bits) const noexcept {
-    static_assert(!std::is_same_v<std::remove_cv_t<T>, bool>,
-                  "mmio bit operations need an unsigned integer T: on a bool, ~mask is always true");
+    static_assert(!std::is_same_v<std::remove_cv_t<detail::mmio_bits_t<T>>, bool>,
+                  "mmio bit operations need an unsigned integer T: on a bool, or an enum with a "
+                  "bool underlying type, ~mask is always true");
     write(detail::mmio_clear(read(), bits));
   }
 

@@ -1,0 +1,1 @@
+- `mmio_register` and `mmio_ptr` reject `set_bits`, `clear_bits` and `modify` on an enum whose underlying type is `bool`, as they already did on `bool`. `clear_bits` compiled there and left the register at 1. Such code now fails to compile with the same message (#576).

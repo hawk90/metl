@@ -58,9 +58,17 @@ enum class refcount_kind { non_atomic, atomic };
 ///
 /// Derive as `class T : public intrusive_ref_counter<T>` to make T usable with
 /// intrusive_ptr. The friend hooks intrusive_ptr_add_ref / intrusive_ptr_release
-/// maintain the count; when it reaches zero only the derived destructor runs —
-/// memory deallocation is the user's responsibility (object pool, static
-/// storage, etc.). No heap allocation is performed.
+/// maintain the count. When it reaches zero, `~T()` runs in place and nothing
+/// else happens: the storage is not released, and nothing is told that the
+/// object is gone. No heap allocation is performed.
+///
+/// So the object must live in storage that will not destroy it again: a static
+/// or stack buffer the caller placement-news into, or a raw block from
+/// `arena_allocator::allocate` or `monotonic_buffer`. **Not** an object from
+/// `object_pool`, `handle_pool` or `arena_allocator::try_emplace`/`emplace`:
+/// those still count the object as live after the last release, and destroy it
+/// a second time when the slot is freed or the arena rewinds (#573). There is
+/// no hook to return the slot at zero; add one only with a caller that needs it.
 /// @tparam Derived The most-derived type (CRTP self-type).
 /// @tparam Kind Non-atomic (default) or atomic for thread-safe counting.
 /// @warning On release, the object is destroyed through `Derived`; a
@@ -135,8 +143,8 @@ class intrusive_ref_counter {
     }
     METL_HARDEN(prev != 0);
     if (prev == 1) {
-      // Destroy the object in place. Memory is owned by the caller (pool,
-      // static storage, etc.) and must be released by the user.
+      // Destroy the object in place. The storage stays the caller's; see the
+      // class comment for which storage is safe.
       //
       // Contract: destruction goes through Derived, so Derived must be the
       // most-derived type. A non-final Derived with a non-virtual destructor
