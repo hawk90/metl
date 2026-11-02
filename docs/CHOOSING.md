@@ -12,9 +12,12 @@ CI-run example behind each one.
 **The one rule that applies almost everywhere:** an operation that can run out
 of capacity comes in two forms. `X(...)` treats "full" as a programming error and
 asserts; `try_X(...)` reports it by return value and leaves the container exactly
-as it was. Every `try_X` is `[[nodiscard]]`. One plain name still reports:
-`event_dispatcher::subscribe` returns an empty `optional` when full, the same as
-`try_subscribe`. Full statement:
+as it was. Every `try_X` is `[[nodiscard]]`. Three plain names still report
+until 2.0.0: `event_dispatcher::subscribe` returns an empty `optional` when full,
+the same as `try_subscribe`, and `arena_allocator::allocate` and
+`monotonic_buffer::allocate` return null. With exceptions enabled and a throwing
+constructor, `mpmc_queue::try_emplace` consumes its arguments even when full.
+Full statement:
 [SCOPE.md §9](SCOPE.md#9-the-recoverable-api-contract).
 
 ---
@@ -56,25 +59,26 @@ host (32-bit targets differ by their smaller `size_type`), for
 
 | capacity | your data | `flat_map` | `static_unordered_map` |
 |---|---|---|---|
-| 128 | 1536 | 2064 (1.34×) | 4376 (2.85×) |
-| **129** | 1548 | 2080 (1.34×) | **8728 (5.64×)** |
-| 256 | 3072 | 4112 (1.34×) | 8728 (2.84×) |
-| **257** | 3084 | 4128 (1.34×) | **17432 (5.65×)** |
+| 128 | 1536 | 2064 (1.34×) | 4184 (2.72×) |
+| **129** | 1548 | 2080 (1.34×) | **8344 (5.39×)** |
+| 256 | 3072 | 4112 (1.34×) | 8344 (2.72×) |
+| **257** | 3084 | 4128 (1.34×) | **16664 (5.40×)** |
 
 Two things to take from it.
 
-**`static_unordered_map` costs 2.8× to 5.6× your data, never less.** Its
+**`static_unordered_map` costs about 2.7× to 5.4× your data, never less.** Its
 `bucket_count` is `bit_ceil(capacity × 2)`, so the table always holds at least
-twice the capacity you asked for, and every bucket carries a state byte next to
-its slot. This is not waste — open addressing with linear probing needs the load
+twice the capacity you asked for, and every bucket carries two state bits next
+to its slot. This is not waste — open addressing with linear probing needs the load
 factor below one half, and a power-of-two count is what lets probing mask
 instead of divide, which matters on a core with no divider. But it is a
 multiplier.
 
 **Asking for one more element can double the table.** `bit_ceil` means capacity
-128 gets 256 buckets and capacity **129 gets 512** — 4352 more bytes for one
-more element. From 256 to 257 the jump is 8728 → 17432, which on a 32 KB part is
-half your RAM inside a gap between two capacities that look interchangeable.
+128 gets 256 buckets and capacity **129 gets 512** — 4160 more bytes for one
+more element. From 256 to 257 the jump is 8344 → 16664, which on a 32 KB part is
+a quarter of your RAM inside a gap between two capacities that look
+interchangeable.
 **Pick a capacity at or just under a power of two.** 128, not 130; 256, not 300.
 
 `flat_map` has no cliff — it is a flat 1.34×, and that 0.34 is pair padding
@@ -89,7 +93,7 @@ payload-plus-bookkeeping bound.
 
 > **Nothing measures your stack.** Every container here holds its elements
 > inline, so a local `static_unordered_map<uint32_t, uint64_t, 256>` is an
-> 8728-byte stack frame. METL has no heap, which means it never answers "did it
+> 8344-byte stack frame. METL has no heap, which means it never answers "did it
 > fit" for the storage you declare — `try_emplace` tells you the container is
 > full, and nothing at all tells you the frame did not fit. On a part with no
 > MMU, that is a silent overwrite of `.bss`. Put the big ones in static storage,
@@ -106,7 +110,7 @@ is narrower than `std`, but not empty, and the cases differ by container:
 | `fixed_vector`, `fixed_string` | `push_back` / `emplace_back` / `append`: everything except `end()` | `insert` / `emplace` / `erase` at `pos`: iterators, pointers and references **at and after `pos`** (those elements shift). `pop_back`: the last element and `end()`. `clear` / `assign`: all. |
 | `flat_map`, `flat_set` | lookups; assigning to an existing key's value | inserting a new key or `erase`: **at and after** its position (the array shifts). `clear`: all. With exceptions on, a throw during the shift or `erase` clears the container: all. |
 | `static_unordered_map`, `static_unordered_set` | lookups; assigning to an existing key; **`erase`** (only the erased element) | inserting a **new** key: **all iterators, pointers and references** -- the tombstone rebuild runs there. This is the open-addressing rule (`absl::flat_hash_map`, `boost::unordered_flat_map`); node-based `std::unordered_map` keeps references across a rehash, these tables cannot. `clear`: all. With exceptions on, a hasher that throws during the rebuild empties the table: all. |
-| `ring_buffer`, `fixed_deque` | pointers and references to an element, until that element is popped (storage never moves) | **iterators are positions** (an index from the front): after `pop_front` / `push_front` the same iterator names a different element, so treat every iterator as invalidated. Appending at the back (`push_back` on `fixed_deque`, `emplace_back` / `try_push_back` on `ring_buffer`) invalidates only `end()`. `push_overwrite` on a full ring is a `pop_front` plus an append. |
+| `ring_buffer`, `fixed_deque` | pointers and references to an element, until that element is popped (storage never moves) | **iterators are positions** (an index from the front): after `pop_front` / `push_front` the same iterator names a different element, so treat every iterator as invalidated. Appending at the back (`push_back` on `fixed_deque`, `push_back` / `emplace_back` / `try_push_back` on `ring_buffer`) invalidates only `end()`. `push_overwrite` on a full ring is a `pop_front` plus an append. |
 | `fixed_queue`, `fixed_stack`, `fixed_priority_queue` | -- | no iterators. A `front()` / `top()` reference survives pushes on `fixed_queue` and `fixed_stack` until its element is popped; on `fixed_priority_queue` any `push` or `pop` invalidates it (the heap reorders). |
 
 Copy, move and swap work element by element, because each container holds its
@@ -116,12 +120,12 @@ elements inline:
 |---|---|
 | `a = b` (copy) | Everything into `a` is invalidated: its elements are destroyed and new ones built. `b` is untouched. |
 | `a = std::move(b)`, `T a(std::move(b))` | Everything into `b` is invalidated: `b` is left empty, except `fixed_string`, where moving is copying and `b` keeps its contents. Nothing carries over into `a`, unlike `std::vector`. For `a = std::move(b)`, everything into `a` is invalidated too. |
-| `a.swap(b)` | Each stays with its slot, not its value: it now reads the other container's element, or a destroyed object if that slot is past the new size. `flat_*` and the unordered containers swap their functors too. |
+| `a.swap(b)` | Each stays with its slot, not its value: it now reads the other container's element, or a destroyed object if that slot is past the new size. `flat_*`, `fixed_priority_queue` and the unordered containers swap their functors too. |
 
 The erase-while-iterating loop that is safe on `std::unordered_map`
-(`auto k = it->key; ++it; m.erase(k);`) is safe here. The equivalent on
-`fixed_vector` and `flat_map` is index-based (or `metl::erase_if` for
-`fixed_vector`).
+(`auto k = it->key; ++it; m.erase(k);`) is safe here. On `fixed_vector`,
+`flat_map` and `flat_set`, use `it = c.erase(it)`, or `metl::erase_if`, which
+all three have, as the unordered containers do.
 
 ## I need to move data between an ISR and the main loop
 
@@ -135,8 +139,10 @@ The erase-while-iterating loop that is safe on `std::unordered_map`
 
 **Lock-free is multi-core only.** [`mpmc_queue<T, N>`](../include/metl/mpmc_queue.hpp),
 [`atomic_handle`](../include/metl/atomic_handle.hpp) and the read-modify-write half
-of `atomic_ref` are retry loops: an ISR that preempts one on a single core can spin
-forever. Use them between cores (they need a hardware CAS, ARMv7-M and up); between
+of `atomic_ref` are retry loops. On a single core, an ISR that preempts one
+completes its own operation, but the code it interrupted retries every time an
+interrupt lands inside its loop, so its progress is bounded only by the
+interrupt rate. Use them between cores (they need a hardware CAS, ARMv7-M and up); between
 an ISR and the main loop, use the rows above. The rule is
 [SCOPE.md §1](SCOPE.md#1-the-five-invariants).
 

@@ -144,7 +144,9 @@ Worked example: [`examples/containers.cpp`](examples/containers.cpp)
 **Every operation that can run out of capacity comes in two forms.** `X(...)`
 treats "full" as a programming error and asserts; `try_X(...)` treats it as a
 normal outcome, reports it by return value, and leaves the container **exactly as
-it was** — never half-applied.
+it was** — never half-applied. The known exceptions, three plain names kept
+until 2.0.0 and one `try_` form under a throwing constructor, are listed in
+[SCOPE.md §9](docs/SCOPE.md#r1--the-pair).
 
 ```cpp
 v.push_back(x);                          // asserts on overflow
@@ -157,8 +159,7 @@ arithmetic is wrong and you want to find out immediately. A `bool` that answers 
 *question* rather than reporting a failure keeps its plain name and may be
 ignored — `erase(key)` ("was it there"), `contains`, `empty`, `full`.
 
-The full rule, including why `consume`/`commit_write` have no `try_` forms and
-why `try_assign` needs a forward iterator, is
+The full rule, including why `try_assign` needs a forward iterator, is
 [SCOPE.md §9](docs/SCOPE.md#9-the-recoverable-api-contract). It is machine-checked
 by the `api-contract` job, not just written down.
 
@@ -305,6 +306,7 @@ Configuration
   | [`wire_values.cpp`](examples/wire_values.cpp) | `parse` (telemetry fields, boundary refusal, fixed point) |
   | [`coroutine_task.cpp`](examples/coroutine_task.cpp) | `coro/protothread` |
   | [`deadline_tasks.cpp`](examples/deadline_tasks.cpp) | `coro/deadline_scheduler`, `fixed_priority_queue` |
+  | [`tick_extender.cpp`](examples/tick_extender.cpp) | `tick_extender`, `coro/deadline_scheduler` (deadlines across a timer wrap) |
   | [`armed_timers.cpp`](examples/armed_timers.cpp) | `intrusive_list` (a timer in two lists, O(1) cancel) |
   | [`driver_registry.cpp`](examples/driver_registry.cpp) | `intrusive_forward_list` (drivers registering across translation units) |
   | [`blinky_fsm.cpp`](examples/blinky_fsm.cpp) | `fsm`, `mmio`, `delegate` |

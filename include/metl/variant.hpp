@@ -9,7 +9,7 @@
 ///   | `visit` | wait-free, bounded by the number of alternatives |
 ///   | destructor | bounded by the active alternative's destructor |
 ///
-/// Every alternative lives in one inline aligned byte buffer, so changing which one is active is
+/// Every alternative lives inline in one recursive union, so changing which one is active is
 /// a destruction and a construction -- a fixed number of steps plus whatever those
 /// alternatives cost. Nothing is allocated and nothing is searched.
 ///
@@ -457,8 +457,12 @@ class variant {
   ///       built before the old one is destroyed, at the cost of one move, and a
   ///       throwing constructor leaves the variant unchanged. A target that
   ///       cannot be moved has to be built in place after the old value is
-  ///       gone, so there `args` must not refer into the variant; an argument
-  ///       that does aborts (METL_HARDEN) instead of reading a destroyed object.
+  ///       gone, so there `args` must not refer into the variant. An argument
+  ///       that lies inside it aborts (METL_HARDEN) instead of reading a
+  ///       destroyed object. One that only points into it, such as a
+  ///       `const char*` to a member, cannot be told apart, and its target is
+  ///       read after the destruction: undefined behaviour the caller must
+  ///       avoid (#584).
   /// @note The old alternative's destructor runs with the variant already
   ///       valueless, so it sees itself gone. It must not emplace into this
   ///       variant: the storage being destroyed is the storage it would use.
@@ -485,8 +489,12 @@ class variant {
   ///       built before the old one is destroyed, at the cost of one move, and a
   ///       throwing constructor leaves the variant unchanged. A target that
   ///       cannot be moved has to be built in place after the old value is
-  ///       gone, so there `args` must not refer into the variant; an argument
-  ///       that does aborts (METL_HARDEN) instead of reading a destroyed object.
+  ///       gone, so there `args` must not refer into the variant. An argument
+  ///       that lies inside it aborts (METL_HARDEN) instead of reading a
+  ///       destroyed object. One that only points into it, such as a
+  ///       `const char*` to a member, cannot be told apart, and its target is
+  ///       read after the destruction: undefined behaviour the caller must
+  ///       avoid (#584).
   /// @note The old alternative's destructor runs with the variant already
   ///       valueless, so it sees itself gone. It must not emplace into this
   ///       variant: the storage being destroyed is the storage it would use.

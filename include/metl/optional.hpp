@@ -482,11 +482,11 @@ class optional {
   }
 
  private:
-  // Union storage (rather than an aligned byte buffer accessed through
-  // std::launder) so the active member can be named directly — a prerequisite
-  // for genuine constexpr use: launder/reinterpret_cast are never
-  // constant-evaluable, whereas a union's active member is. Same size/alignment
-  // as the previous storage_for<T>.
+  // Union storage (rather than an aligned byte buffer) so the active member can
+  // be named directly -- a prerequisite for genuine constexpr use: reaching a
+  // byte buffer needs a reinterpret_cast, which is never constant-evaluable,
+  // whereas a union's active member is. Same size/alignment as the previous
+  // storage_for<T>.
   struct empty_byte {};
   union storage_union {
     empty_byte empty_;
@@ -504,9 +504,10 @@ class optional {
 
   // For a T with a const or reference member, C++17 [basic.life]/8 does not let
   // the name `storage_.value_` reach a T re-created by emplace or assignment
-  // after a reset without std::launder, which is not constant-evaluable. C++20
-  // removed that rule (P1971) and no compiler optimises on it, so the union
-  // keeps optional constexpr; detail/array_storage.hpp makes the same trade.
+  // after a reset without std::launder. C++20 removed that rule (P1971) and no
+  // compiler optimises on it, so optional does not launder here. std::launder
+  // is constexpr, so this is not a constant-evaluation constraint: `expected`
+  // launders in its accessors and stays constant-evaluable (#584).
   METL_NODISCARD METL_CONSTEXPR20 T* data() noexcept { return detail::addressof(storage_.value_); }
   METL_NODISCARD constexpr const T* data() const noexcept { return detail::addressof(storage_.value_); }
 

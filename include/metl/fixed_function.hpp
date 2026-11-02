@@ -5,12 +5,13 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | construct, assign, `reset`, `swap` | wait-free, bounded by `Capacity` bytes |
-///   | `operator()` | one indirect call **plus the target's own cost** |
+///   | construct, assign, `reset`, `swap` | wait-free, bounded by `Capacity` bytes **plus the target's copy,
+///   move and destructor** | | `operator()` | one indirect call **plus the target's own cost** |
 ///
 /// The callable lives in `Capacity` bytes of inline storage, so storing one moves
-/// at most that many bytes -- a compile-time constant, not a function of the
-/// target's behaviour. There is no heap, so there is no allocation cliff.
+/// at most that many bytes. What does the moving is the target's own copy or move
+/// constructor, and `reset` runs its destructor, so those costs are the target's,
+/// as `operator()`'s is. There is no heap, so there is no allocation cliff.
 ///
 /// Invoking costs one indirect call through the operation table; what the stored
 /// callable then does is not something this header can bound.

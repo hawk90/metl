@@ -16,16 +16,14 @@ namespace metl {
 /// lock-free free-list needs its head pointer to carry a counter so a
 /// compare-exchange cannot be fooled by a slot that was freed and re-allocated
 /// in the interim (the ABA problem) -- unless that slot is recycled so often
-/// that its generation wraps back to the same value in the meantime: 65535
-/// recycles with the default 16-bit generation, about 0.3 ms at a few
-/// nanoseconds each, which a thread preempted mid-operation on another core can
-/// sleep through. See handle_pool's wraparound warning; a wider generation
-/// makes the handle 64 bits, which is not lock-free on ARMv7-M. The usual
-/// answers are a double-width CAS
-/// (64-bit only, needs `cmpxchg16b`/`CASP`) or stuffing a counter into a
-/// pointer's spare bits (breaks under AArch64 PAC/MTE, x86-64 LA57/LAM). A
-/// handle needs neither: the counter is already in the word, and the word is 32
-/// bits, so a plain single-word CAS suffices on a 32-bit MCU.
+/// that its generation wraps back to the same value in the meantime: 32768
+/// recycles with the default 16-bit generation, since `handle_pool` issues odd
+/// generations only, about 0.15 ms at a few nanoseconds each, which a thread preempted mid-operation on
+/// another core can sleep through. See handle_pool's wraparound warning; a wider generation makes the handle
+/// 64 bits, which is not lock-free on ARMv7-M. The usual answers are a double-width CAS (64-bit only, needs
+/// `cmpxchg16b`/`CASP`) or stuffing a counter into a pointer's spare bits (breaks under AArch64 PAC/MTE,
+/// x86-64 LA57/LAM). A handle needs neither: the counter is already in the word, and the word is 32 bits, so
+/// a plain single-word CAS suffices on a 32-bit MCU.
 ///
 /// **Tier 1 — capability-gated.** Instantiating `atomic_handle` requires the
 /// packed type to be *always* lock-free, which means a hardware CAS. ARMv7-M and

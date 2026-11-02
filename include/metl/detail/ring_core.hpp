@@ -6,9 +6,10 @@
 /// Both containers are fixed-capacity circular buffers over an inline
 /// `storage_for<T>` array with `head_`/`size_` bookkeeping. `detail::ring_core`
 /// holds that storage and implements every operation the two share verbatim:
-/// element access (`front`/`back`/`at`/`operator[]`), back insertion
-/// (`try_emplace_back`/`emplace_back`/`try_push_back`), front removal
-/// (`pop_front`), `clear`, `capacity`, and value-semantic copy/move.
+/// element access (`front`/`back`/`at`/`operator[]`), iterators
+/// (`begin`/`end` and their const and reverse forms), back insertion
+/// (`try_emplace_back`/`emplace_back`/`try_push_back`/`push_back`), front
+/// removal (`pop_front`), `clear`, `capacity`, and value-semantic copy/move.
 ///
 /// `ring_buffer` uses the core as-is (adding `push_overwrite`), while
 /// `fixed_deque` additionally builds front insertion / back removal

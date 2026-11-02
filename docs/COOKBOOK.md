@@ -476,6 +476,8 @@ a caller change the key the heap is ordered by and silently break the invariant.
 
 ## A tick that does not wrap
 
+*Full example: [`examples/tick_extender.cpp`](../examples/tick_extender.cpp)*
+
 A 16-bit timer at 1 MHz wraps every 65 ms; a 32-bit cycle counter at 100 MHz
 every 43 s. `tick_extender` widens it into a 64-bit tick that does not wrap
 in any lifetime that matters:

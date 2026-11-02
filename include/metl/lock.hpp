@@ -229,11 +229,6 @@ struct irq_lock {
 #endif
 };
 
-/// @brief RAII critical section over a lock policy.
-///
-/// Holds the state returned by `Lock::lock()`, so nesting works and the policy
-/// itself stays stateless.
-///
 namespace detail {
 
 template <typename Lock, typename = void>
@@ -249,6 +244,11 @@ struct is_lock_policy<
 
 }  // namespace detail
 
+/// @brief RAII critical section over a lock policy.
+///
+/// Holds the state returned by `Lock::lock()`, so nesting works and the policy
+/// itself stays stateless.
+///
 /// @tparam Lock A lock policy: `null_lock`, `irq_lock`, or any type with
 ///         `state_type`, `lock()` and `unlock(state_type)`.
 template <typename Lock>

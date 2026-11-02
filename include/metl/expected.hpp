@@ -265,9 +265,10 @@ void replace_live(U* slot, expected_state& state, expected_state settled, Args&&
 /// create one, read it through the observers (`has_value`, `operator*`,
 /// `operator->`, `value`, `error`, `value_or`, `error_or`) and destroy it, so a
 /// function returning one, such as `try_parse_uint`, runs at compile time. In
-/// C++17 it is not: its destructor cannot be `constexpr` there. In every
-/// standard the copy and move constructors, assignment, `emplace`, `swap` and
-/// the monadic operations are not constant-evaluable.
+/// C++17 it is not: its destructor cannot be `constexpr` there. The monadic
+/// operations (`and_then`, `transform`, `or_else`, `transform_error`) are
+/// constant-evaluable from C++20 too, when their callable is. In every standard
+/// the copy and move constructors, assignment, `emplace` and `swap` are not.
 /// @par Reference invalidation
 /// A reference to the value or the error stays valid until that member ends:
 /// a switch between value and error (by assignment, `emplace`/`emplace_error`

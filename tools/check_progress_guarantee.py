@@ -45,14 +45,14 @@ import tempfile
 # No public runtime operation whose execution time could be unbounded: these are
 # preprocessor macros, empty tag types, or traits evaluated by the compiler.
 EXEMPT = {
-    "assert.hpp": "assertion macros; expands to the host's assert or a trap",
+    "assert.hpp": "assertion macros, and the handler setters, each one load and one store",
     "attributes.hpp": "attribute macros only, no operations",
     "compiler.hpp": "compiler/architecture detection macros, no operations",
     "config.hpp": "configuration macros, no operations",
     "in_place.hpp": "empty tag types, no operations",
     "metl.hpp": "umbrella header; every operation belongs to an included header",
     "optimization.hpp": "branch/inline hint macros, no operations",
-    "type_traits.hpp": "compile-time traits; nothing executes at run time",
+    "type_traits.hpp": "compile-time traits, and storage_for's addr(), which only returns an address",
     "exp/bitset.hpp": "a using-declaration only; the operations are bitset.hpp's",
     "exp/intrusive_forward_list.hpp": "using-declarations only; the operations are intrusive_forward_list.hpp's",
     "exp/intrusive_list.hpp": "using-declarations only; the operations are intrusive_list.hpp's",

@@ -5,9 +5,10 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `try_emplace`, `emplace` | wait-free, constant |
-///   | `destroy`, `contains`, `size`, `empty`, `full` | wait-free, bounded |
-///   | `clear`, destructor | wait-free, bounded by `Capacity` |
+///   | `try_emplace`, `emplace` | wait-free, constant, **plus `T`'s constructor** |
+///   | `destroy` | wait-free, constant, **plus `~T()`** |
+///   | `contains`, `size`, `empty`, `full` | wait-free, bounded |
+///   | `clear`, destructor | wait-free, bounded by `Capacity`, **plus `~T()` for each live object** |
 ///
 /// Acquiring a slot is constant: a freed slot keeps the link to the next freed
 /// one in its own bytes, and slots never used yet are taken in index order.

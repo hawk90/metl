@@ -556,14 +556,17 @@ forms:
 | `X(...)` | Treats it as a precondition violation: asserts and aborts. |
 | `try_X(...)` | Reports it by return value and leaves the container **unchanged**. |
 
-**Two known exceptions.** The first is older than this rule:
-`event_dispatcher::subscribe` reports "full" through an empty `optional` under a
-plain name. `try_subscribe` is the same operation under the right name, and
-`subscribe` becomes the asserting form in 2.0.0
-([#155](https://github.com/hawk90/metl/issues/155)), because that changes its
-return type.
+**Known exceptions.** Three plain names are older than this rule and report
+"full" instead of asserting; they are R2's exceptions below.
+`event_dispatcher::subscribe` returns an empty `optional`; `try_subscribe` is the
+same operation under the right name, and `subscribe` becomes the asserting form
+in 2.0.0 ([#155](https://github.com/hawk90/metl/issues/155)), because that
+changes its return type. `arena_allocator::allocate` and
+`monotonic_buffer::allocate` return null and have no asserting form yet
+([#165](https://github.com/hawk90/metl/issues/165)).
 
-The second is `mpmc_queue::try_emplace` with exceptions enabled and a `T`
+One `try_` form does not keep the "unchanged" half:
+`mpmc_queue::try_emplace` with exceptions enabled and a `T`
 constructor that can throw: it builds the element before claiming a slot, so a
 full queue has already moved from the arguments. Building it after the claim
 would leave a claimed slot unpublished if the constructor threw, and stall every

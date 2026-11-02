@@ -1,11 +1,7 @@
-// object_pool vs handle_pool — the benchmark that substantiates a claim already
-// made in the changelog for #20: handle_pool allocates in O(1) via an intrusive
-// free-list where object_pool linearly scans for the first inactive slot.
-//
-// The scan is what is being measured, so capacity is the interesting axis. At
-// capacity 4 the two should be indistinguishable; the gap should open as
-// capacity grows, and it should be worst in the pattern where the scan starts
-// from a long run of occupied slots.
+// object_pool vs handle_pool. Both now allocate in O(1) from an intrusive free
+// list; object_pool once scanned linearly for the first inactive slot, which is
+// what this benchmark was written to show (#20). Capacity stays the axis, so a
+// return of the scan would show as a gap that opens with capacity.
 
 #include "metl_bench.hpp"
 
@@ -17,8 +13,8 @@
 namespace {
 
 // Churn: fill the pool, then repeatedly free and re-allocate the LAST slot. That
-// is object_pool's worst case, because every try_emplace rescans the whole
-// occupied prefix before reaching the hole.
+// was object_pool's worst case while it scanned: every try_emplace rescanned the
+// whole occupied prefix before reaching the hole.
 template <std::size_t Capacity>
 void object_pool_tail_churn(std::uint64_t iterations) {
   metl::object_pool<std::uint32_t, Capacity> pool;
