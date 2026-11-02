@@ -15,7 +15,7 @@ one and it is out of scope, however embedded it sounds.
 | # | Invariant | Enforced by |
 |---|---|---|
 | I1 | **No heap.** No `malloc`/`free`/`operator new`/`sbrk` reachable from any public API. | `invariants` CI job (symbol audit) |
-| I2 | **No exceptions, no RTTI.** No `throw`, no `dynamic_cast`, no `typeid`. | `invariants` CI job + `-fno-exceptions -fno-rtti` builds |
+| I2 | **No exceptions, no RTTI.** The library originates no exception: no `throw` of its own, no `dynamic_cast`, no `typeid`. In a build with exceptions on, a user's `T` may still throw; the containers then roll back and rethrow it with `throw;`, so the user's exception propagates and the container stays valid. Those rethrow paths are compiled out under `-fno-exceptions`. | `invariants` CI job + `-fno-exceptions -fno-rtti` builds; the rethrow paths by `host-test` (exceptions on: `throwing_element`, `conformance_throwing`, `arena_throwing_ctor`) |
 | I3 | **Deterministic.** Every public operation has a bounded worst-case execution time — no unbounded loops on data, no unbounded retry, no allocation-shaped latency cliffs. | Review, plus `api-contract` CI job (`check_progress_guarantee.py`) for the *stated* guarantee |
 | — | *(not an invariant, but the same discipline)* **Claims about hardware behaviour are verified by executing on the hardware.** `qemu-conformance` runs the test suite on emulated Cortex-M3, M4 and M7 cores, plus an ARMv6-M build; `irq_lock` is checked against a real SysTick interrupt rather than by reading its own register back. | `qemu-conformance` CI job |
 | I4 | **Header-only, C++17.** No separately compiled TU required; no C++20+ features in public headers. | `host-test`, `cross-syntax` |
@@ -73,7 +73,7 @@ not a debate.
 | Rejected | Invariant broken |
 |---|---|
 | Any container with a heap fallback (`small_vector` that spills to `new`, etc.) | I1 |
-| Exceptions or RTTI in any form, including "opt-in" builds | I2 |
+| Exceptions the library throws itself, or RTTI, in any form, including "opt-in" builds (a user's exception is propagated, see I2) | I2 |
 | Unbounded retry loops, unbounded backoff, unbounded spinning | I3 |
 | Separately compiled library component (`.cpp` that must be built and linked) | I4 |
 | Anything requiring an OS (futex, pthreads, `std::thread`, filesystem) in the core | I4/I1 |
