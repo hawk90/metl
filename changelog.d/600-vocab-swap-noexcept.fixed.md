@@ -1,1 +1,0 @@
-- `optional`, `unexpected` and `expected` (both forms) make `swap` `noexcept` only when the value's and error's own `swap` is. A `swap` that threw terminated the program. Their free `swap`s are declared only for swappable types, as the containers' are (#600).

@@ -1,1 +1,0 @@
-- `static_unordered_map` and `static_unordered_set` refuse a new key past `Capacity` at every hardening level: `emplace` and `operator[]` check with `METL_HARDEN`. At `METL_HARDENING_NONE` the check was stripped, so `size()` passed `Capacity` and `full()` answered false. Level 0 grows by about 32 bytes of code per call site; the default level is unchanged (#579).
