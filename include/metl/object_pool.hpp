@@ -60,11 +60,7 @@ class object_pool {
   /// Constructs an empty pool with all slots free.
   /// Constant-initialized at namespace scope since C++20 (see
   /// detail/constant_init.hpp); a local one stores nothing to the slots.
-  constexpr object_pool() noexcept {
-    for (storage_type& slot : storage_) {
-      detail::zero_for_constant_init(slot.bytes);
-    }
-  }
+  constexpr object_pool() noexcept { detail::zero_for_constant_init(storage_); }
 
   ~object_pool() { clear(); }
 
@@ -242,7 +238,7 @@ class object_pool {
     push_free(index);
   }
 
-  storage_type storage_[Capacity == 0 ? 1 : Capacity];
+  detail::slot_array<storage_type, (Capacity == 0 ? 1 : Capacity)> storage_;
   detail::bitset<Capacity == 0 ? 1 : Capacity> live_{};
   link_type free_head_ = 0;  // freed slots, last freed first; 0 is none
   link_type unused_ = 0;     // slots at and above this were never used

@@ -136,7 +136,7 @@ class fixed_vector : detail::no_implicit_copy_move<fixed_vector<T, Capacity>> {
   /// detail/constant_init.hpp); a local one stores nothing to the buffer.
   constexpr fixed_vector() noexcept : size_(0) {
     if (detail::in_constant_evaluation()) {
-      detail::zero_for_constant_init(storage_.bytes);
+      detail::zero_for_constant_init(storage_);
     } else {
       asan_poison_tail_();
     }

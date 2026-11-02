@@ -85,9 +85,7 @@ class static_message_queue : detail::no_implicit_copy_move<static_message_queue<
   /// detail/constant_init.hpp); a local one stores nothing to the buffer.
   constexpr static_message_queue() noexcept : head_(0), tail_(0), size_(0) {
     if (detail::in_constant_evaluation()) {
-      for (auto& slot : storage_) {
-        detail::zero_for_constant_init(slot.bytes);
-      }
+      detail::zero_for_constant_init(storage_);
     }
   }
 
@@ -287,7 +285,8 @@ class static_message_queue : detail::no_implicit_copy_move<static_message_queue<
     leaving.~T();
   }
 
-  storage_type storage_[Capacity == 0 ? 1 : Capacity];  // keeps the static_assert the only diagnostic
+  // At least one slot, which keeps the static_assert the only diagnostic.
+  detail::slot_array<storage_type, (Capacity == 0 ? 1 : Capacity)> storage_;
   size_type head_;
   size_type tail_;
   size_type size_;

@@ -10,7 +10,7 @@ MUTANT = {
     # declarations stop compiling.
     "kills": "tool:clang++ -std=c++20 -fsyntax-only -Iinclude -Itests tests/sync/init_order_queues.cpp",
     "old": """  if (in_constant_evaluation()) {
-    for (std::size_t i = 0; i < N; ++i) {""",
+    storage = S{};""",
     "new": """  if (false) {
-    for (std::size_t i = 0; i < N; ++i) {""",
+    storage = S{};""",
 }

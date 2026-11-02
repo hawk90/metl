@@ -278,9 +278,7 @@ class static_unordered_set
                                             std::is_nothrow_default_constructible_v<KeyEqual>)
       : size_(0), hasher_(), key_equal_() {
     if (detail::in_constant_evaluation()) {
-      for (auto& slot : storage_) {
-        detail::zero_for_constant_init(slot.bytes);
-      }
+      detail::zero_for_constant_init(storage_);
     }
     initialize_states();
   }
@@ -936,7 +934,7 @@ class static_unordered_set
     }
   }
 
-  storage_for<value_type> storage_[bucket_count];
+  detail::slot_array<storage_for<value_type>, bucket_count> storage_;
   // A slot's state in two bits, one per array: occupied, tombstone, or
   // neither (empty). Both zero is empty, so the constant image stays zeros.
   detail::bitset<bucket_count> occupied_{};

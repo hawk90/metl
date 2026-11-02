@@ -118,7 +118,7 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
   /// Constant-initialized at namespace scope since C++20 (see
   /// detail/constant_init.hpp); a local one stores nothing to the buffer.
   constexpr flat_map() noexcept(std::is_nothrow_default_constructible_v<Compare>) : comp_(), size_(0) {
-    detail::zero_for_constant_init(storage_.bytes);
+    detail::zero_for_constant_init(storage_);
   }
 
   /// @brief Construct an empty map using the given comparator.

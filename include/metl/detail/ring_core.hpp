@@ -172,9 +172,7 @@ class ring_core : no_implicit_copy_move<ring_core<T, Capacity>> {
   // detail/constant_init.hpp); a local one stores nothing to the buffer.
   constexpr ring_core() noexcept : head_(0), size_(0) {
     if (in_constant_evaluation()) {
-      for (auto& slot : storage_) {
-        zero_for_constant_init(slot.bytes);
-      }
+      zero_for_constant_init(storage_);
     }
   }
 
@@ -439,7 +437,7 @@ class ring_core : no_implicit_copy_move<ring_core<T, Capacity>> {
   T& storage_at(size_type index) noexcept { return storage_[index].ref(); }
   const T& storage_at(size_type index) const noexcept { return storage_[index].ref(); }
 
-  storage_type storage_[Capacity == 0 ? 1 : Capacity];
+  slot_array<storage_type, (Capacity == 0 ? 1 : Capacity)> storage_;
   size_type head_;
   size_type size_;
 };
