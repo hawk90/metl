@@ -34,6 +34,7 @@
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
+#include "metl/detail/word_atomic.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -153,9 +154,24 @@ inline T atomic_ref_from_word(const Word& bits) noexcept {
   return *std::launder(reinterpret_cast<T*>(buffer));
 }
 
+// ARMv6-M (Cortex-M0, M0+): Clang has no lock-free atomics there and calls
+// __atomic_load_4 and __atomic_store_4 even for a relaxed word, which bare
+// metal does not provide or implements with a lock (#585). A word or smaller is
+// loaded and stored the way word_atomic does it on every compiler, so the GCC
+// builds CI runs on an M0 exercise the same code. Read-modify-write operations
+// still need the library there, as the class notes say.
+template <typename T>
+inline constexpr bool atomic_ref_plain_access_v = METL_DETAIL_WORD_ATOMIC_ARMV6M && sizeof(T) <= 4;
+
 template <typename T>
 METL_NODISCARD inline T atomic_ref_load(T* object, std::memory_order order) noexcept {
-  if constexpr (atomic_ref_uses_word_v<T>) {
+#if METL_DETAIL_WORD_ATOMIC_ARMV6M
+  if constexpr (atomic_ref_plain_access_v<T>) {
+    using word = typename atomic_ref_word<sizeof(T)>::type;
+    return atomic_ref_from_word<T>(word_atomic_load(reinterpret_cast<const volatile word*>(object), order));
+  } else
+#endif
+      if constexpr (atomic_ref_uses_word_v<T>) {
     using word = typename atomic_ref_word<sizeof(T)>::type;
     return atomic_ref_from_word<T>(
         __atomic_load_n(reinterpret_cast<word*>(object), atomic_ref_gnu_order(order)));
@@ -166,7 +182,15 @@ METL_NODISCARD inline T atomic_ref_load(T* object, std::memory_order order) noex
 
 template <typename T>
 inline void atomic_ref_store(T* object, const T& desired, std::memory_order order) noexcept {
-  if constexpr (atomic_ref_uses_word_v<T>) {
+#if METL_DETAIL_WORD_ATOMIC_ARMV6M
+  if constexpr (atomic_ref_plain_access_v<T>) {
+    using word = typename atomic_ref_word<sizeof(T)>::type;
+    word wanted;
+    std::memcpy(&wanted, metl::detail::addressof(desired), sizeof(T));
+    word_atomic_store(reinterpret_cast<volatile word*>(object), wanted, order);
+  } else
+#endif
+      if constexpr (atomic_ref_uses_word_v<T>) {
     using word = typename atomic_ref_word<sizeof(T)>::type;
     word wanted;
     std::memcpy(&wanted, metl::detail::addressof(desired), sizeof(T));
@@ -257,6 +281,12 @@ METL_NODISCARD inline bool try_atomic_ref_exchange_bytes(
 ///          reference at link time, not a compile error. Check
 ///          `is_always_lock_free` when the target may be an MCU, or keep `T`
 ///          to 4 bytes or fewer there.
+///
+/// @note On ARMv6-M (Cortex-M0, M0+) `load` and `store` of a `T` of 4 bytes or
+///       fewer are a plain aligned access with DMB barriers on every compiler,
+///       as GCC emits them, though `is_always_lock_free` is false there: Clang
+///       would otherwise call `__atomic_load_4` (#585). The read-modify-write
+///       operations still need the atomic library on that core.
 template <typename T>
 class atomic_ref {
   static_assert(std::is_trivially_copyable_v<T>, "atomic_ref requires a trivially copyable type");
