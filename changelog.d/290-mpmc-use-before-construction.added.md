@@ -1,0 +1,1 @@
+- `mpmc_queue` at `METL_HARDENING_DEBUG`: a push or pop on a queue whose constructor has not run yet (a namespace-scope queue reached from an interrupt enabled by an earlier constructor) now stops at `METL_DASSERT`, for capacities above 2. Other hardening levels compile the check out. The queue is still initialized at run time, as documented.

@@ -2,9 +2,11 @@
 // capability gate must reject it (tools/run_qemu_tests.py).
 // qemu: needs-cas
 
+#include "assert_trip.hpp"
 #include "metl_check.hpp"
 
 #include <cstdint>
+#include <cstring>
 #include <utility>
 
 #include <metl/mpmc_queue.hpp>
@@ -49,7 +51,42 @@ struct built_from_source {
 
 }  // namespace
 
+// A queue whose constructor has not run yet: zeroed storage, as a
+// namespace-scope queue is before dynamic initialization (#290).
+using unconstructed_queue = metl::mpmc_queue<std::uint32_t, 4>;
+unconstructed_queue& zeroed_queue() {
+  static unconstructed_queue queue;
+  std::memset(static_cast<void*>(&queue), 0, sizeof queue);
+  return queue;
+}
+
+void test_use_before_construction_traps_in_debug() {
+  // At METL_HARDENING_DEBUG, a push or pop on it stops; other levels compile
+  // the check out. A constructed queue in use never trips it.
+  const bool push_tripped = metl_test::trips([] { (void)zeroed_queue().try_push(1U); });
+  CHECK_EQ(push_tripped, METL_HARDENING >= METL_HARDENING_DEBUG);
+  const bool pop_tripped = metl_test::trips([] {
+    std::uint32_t out = 0;
+    (void)zeroed_queue().try_pop(out);
+  });
+  CHECK_EQ(pop_tripped, METL_HARDENING >= METL_HARDENING_DEBUG);
+
+  static unconstructed_queue constructed;
+  const bool used_tripped = metl_test::trips([] {
+    for (std::uint32_t i = 0; i < 64; ++i) {
+      std::uint32_t out = 0;
+      (void)constructed.try_push(i);
+      (void)constructed.try_push(i);
+      (void)constructed.try_pop(out);
+      (void)constructed.try_pop(out);
+    }
+  });
+  CHECK(!used_tripped);
+}
+
 int main() {
+  test_use_before_construction_traps_in_debug();
+
   // --- #575: a failed try_emplace leaves its arguments alone ------------------
   // Without exceptions the element is built in the claimed slot, so a full queue
   // never reaches the constructor. With exceptions and a constructor that can
