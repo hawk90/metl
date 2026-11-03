@@ -12,7 +12,9 @@
 #include <csetjmp>
 
 #include <metl/assert.hpp>
+#include <metl/delegate.hpp>
 #include <metl/fixed_function.hpp>
+#include <metl/function_ref.hpp>
 
 namespace {
 
@@ -105,6 +107,39 @@ int main() {
     metl::fixed_function<int(int), 64> from_large;
     CHECK(from_large.try_assign(empty_large));
     CHECK(!from_large);
+  }
+
+  // An empty delegate or function_ref converts to an empty owning wrapper
+  // (#639). The copy is taken by value, so the source can never gain a target.
+  {
+    const metl::delegate<int(int)> empty_delegate;
+    const metl::function_ref<int(int)> empty_ref;
+
+    const metl::fixed_function<int(int), 16> from_delegate(empty_delegate);
+    CHECK(!from_delegate);
+    const metl::fixed_function<int(int), 16> from_ref(empty_ref);
+    CHECK(!from_ref);
+    const metl::fixed_any_invocable<int(int), 16> any_from_delegate(empty_delegate);
+    CHECK(!any_from_delegate);
+    const metl::fixed_any_invocable<int(int), 16> any_from_ref(empty_ref);
+    CHECK(!any_from_ref);
+
+    metl::fixed_function<int(int), 16> assigned(&widen_int);
+    assigned = empty_delegate;
+    CHECK(!assigned);
+    metl::fixed_function<int(int), 16> try_assigned(&widen_int);
+    CHECK(try_assigned.try_assign(empty_ref));
+    CHECK(!try_assigned);
+
+    // Bound ones still wrap their target.
+    const auto bound_delegate = metl::delegate<int(int)>::from_function<&widen_int>();
+    const metl::fixed_function<int(int), 16> engaged(bound_delegate);
+    CHECK(engaged.has_value());
+    CHECK_EQ(engaged(1), 2);
+    const metl::function_ref<int(int)> bound_ref(&widen_int);
+    const metl::fixed_any_invocable<int(int), 16> engaged_any(bound_ref);
+    CHECK(engaged_any.has_value());
+    CHECK_EQ(engaged_any(2), 3);
   }
 
   // An engaged one still converts to a wrapper that calls the original target.

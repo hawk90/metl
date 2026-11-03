@@ -1,0 +1,1 @@
+- A `fixed_function` or `fixed_any_invocable` built or assigned from an empty `delegate` or `function_ref` is now empty, as it already was from an empty `fixed_function`. It used to report a target (`has_value()` true) and assert when called. Code that tested `if (f)` after such a conversion now takes the empty branch.

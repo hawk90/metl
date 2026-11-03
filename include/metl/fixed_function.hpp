@@ -45,6 +45,11 @@
 
 namespace metl {
 
+template <typename>
+class delegate;
+template <typename>
+class function_ref;
+
 namespace detail {
 
 // -------- common operations table & helpers ---------------------------------
@@ -193,10 +198,16 @@ template <bool IsNoexcept, std::size_t Capacity, typename R, typename... Args>
 std::true_type is_fixed_callable_test(const fixed_function_impl<IsNoexcept, Capacity, R, Args...>*);
 template <bool IsNoexcept, std::size_t Capacity, typename R, typename... Args>
 std::true_type is_fixed_callable_test(const fixed_any_invocable_impl<IsNoexcept, Capacity, R, Args...>*);
+template <typename Signature>
+std::true_type is_fixed_callable_test(const delegate<Signature>*);
+template <typename Signature>
+std::true_type is_fixed_callable_test(const function_ref<Signature>*);
 std::false_type is_fixed_callable_test(const void*);
 
-// True for every fixed_function and fixed_any_invocable, whatever the
-// signature and capacity: the sources whose emptiness a conversion must keep.
+// True for every METL callable wrapper that can be empty, whatever the
+// signature and capacity: fixed_function, fixed_any_invocable, delegate and
+// function_ref. A conversion must keep their emptiness (#639): the copy is
+// taken by value, so an empty source stays empty.
 template <typename F>
 inline constexpr bool is_fixed_callable_v =
     decltype(is_fixed_callable_test(static_cast<const F*>(nullptr)))::value;
@@ -330,9 +341,11 @@ class fixed_function_impl {
     }
 
     if constexpr (is_fixed_callable_v<decayed_type>) {
-      // An empty fixed_function or fixed_any_invocable of another signature or
-      // capacity gives an empty one, as std::function's converting constructor
-      // does. Wrapped, it would report a target and assert when called.
+      // An empty METL wrapper (fixed_function or fixed_any_invocable of any
+      // signature or capacity, delegate, function_ref) gives an empty one, as
+      // std::function's converting constructor does for an empty
+      // std::function. Wrapped, it would report a target and assert when
+      // called.
       if (!function) {
         reset();
         return true;
@@ -478,9 +491,11 @@ class fixed_any_invocable_impl {
     }
 
     if constexpr (is_fixed_callable_v<decayed_type>) {
-      // An empty fixed_function or fixed_any_invocable of another signature or
-      // capacity gives an empty one, as std::function's converting constructor
-      // does. Wrapped, it would report a target and assert when called.
+      // An empty METL wrapper (fixed_function or fixed_any_invocable of any
+      // signature or capacity, delegate, function_ref) gives an empty one, as
+      // std::function's converting constructor does for an empty
+      // std::function. Wrapped, it would report a target and assert when
+      // called.
       if (!function) {
         reset();
         return true;
