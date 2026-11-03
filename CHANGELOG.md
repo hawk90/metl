@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-11-03
+
+**Highlights.** The rest of the audit. Copy, move and swap traits now follow the
+element for every container and vocabulary type, so a `std::optional` of a
+container of non-movable elements reports "not copyable" instead of failing to
+compile. `atomic_ref` load and store stay inline on Cortex-M0 under Clang, the
+`register_access` barriers order device memory, and a namespace-scope container
+of any size is constant-initialized under C++20.
+
+**Upgrading from 1.11.1.** Two changes can stop code compiling, and each turns
+something that could not work into an error. `fixed_function<Sig, 0>` and
+`fixed_any_invocable<Sig, 0>` fail with a `static_assert`: no target fits in no
+storage (#592). And a trait that asked whether a container or `optional`,
+`expected` or `variant` of a non-copyable or non-movable element can be copied or
+moved now answers false (#601); the copy or move itself never compiled.
+
+### Changed
+
+- `docs/SCOPE.md` I2 states that the library originates no exception and rethrows a user's to keep a container valid, and names the job that covers those paths (#590).
+- `docs/SCOPE.md` R2 records `try_call_once` as a `try_` form for a failure other than capacity: the initializer running in another context (#591).
+- Cleanups from the audit (#592): `flat_map` and `static_unordered_map` accept a narrowing key the way `flat_set` and `static_unordered_set` do, converting it with `()` instead of `{}`, so a run-time `long` key no longer fails to compile on clang (a narrowing mapped value is still rejected: the entry is an aggregate). `fixed_function<Sig, 0>` and `fixed_any_invocable<Sig, 0>` fail with a named `static_assert`. `<metl/endian.hpp>` includes `<cstddef>` for `std::size_t`. The unused `METL_PT_yielded__` local is gone from `METL_PT_BEGIN`, and two unreachable `Capacity == 0` arms from `static_message_queue`.
+
+### Fixed
+
+- `atomic_ref<T>::load` and `store` for a `T` of 4 bytes or fewer on ARMv6-M (Cortex-M0, M0+) are a plain aligned access with DMB barriers on every compiler. Clang called `__atomic_load_4` and `__atomic_store_4` there, which bare metal does not provide or implements with a lock, although `docs/CHOOSING.md` offers them for a flag an ISR shares. GCC's code is unchanged (#585).
+- `barrier_full`, `barrier_acquire` and `barrier_release` order device accesses on RISC-V and ARM, as their MMIO and DMA documentation says. They were `std::atomic_thread_fence`, which orders only memory shared between threads: on RISC-V `fence rw,rw` leaves out the device I/O sets, and on ARM `dmb ish` covers only the inner-shareable domain. They are now `fence iorw,iorw` / `fence ir,iorw` / `fence iorw,ow` on RISC-V and `dmb sy` (`dmb ld` for acquire on AArch64) on ARM, the same size; other targets are unchanged (#586).
+- Every container, `optional`, `expected` and `variant` declares its copy and move operations only when its element (and comparator, hasher or key-equal) allows them, so `std::is_copy_constructible_v`, `std::is_move_constructible_v`, the assignment traits and `std::is_swappable_v` follow the element, as for `std::array` and `std::optional`. They were true for any element, and code that asks them, such as a `std::optional` of a container of non-movable elements, got a hard error instead of `false`. Layout is unchanged, and so is the code of every operation; the one change on a Cortex-M probe is 4 bytes in `fixed_vector::operator[]`, whose assertion line number grew past what a 16-bit immediate holds (#601).
+- A namespace-scope container is constant-initialized at any size under C++20. The containers zeroed their storage one byte or one slot per loop iteration during constant evaluation, and past the compiler's limit (GCC 262144 iterations, Clang about a million steps) a container larger than about 256 KiB fell back to dynamic initialization without a diagnostic. The storage is now cleared in one assignment; measured to 4 MiB on both compilers, with layout and run-time code unchanged (#613).
+
 ## [1.11.1] - 2026-11-03
 
 **Highlights.** Fixes from a whole-repository audit, no new API. Most matter only at
