@@ -173,11 +173,14 @@ import tempfile
 # to 261: past 255 it no longer fits a 16-bit `movs` immediate and becomes a
 # 32-bit `movw` (+4 bytes in that one function, measured with GCC 16 on M0
 # and M3; run 41559625344 measured +4 on all four cores with CI's GCC 14).
+#
+# Lowered by 52 bytes on every core by #474 (run 41733121080), which gives
+# expected no destructor of its own when T and E are trivially destructible.
 BUDGETS = {
-    "cortex-m0": 4408,
-    "cortex-m3": 4372,
-    "cortex-m4": 4368,
-    "cortex-m7": 4372,
+    "cortex-m0": 4356,
+    "cortex-m3": 4320,
+    "cortex-m4": 4316,
+    "cortex-m7": 4320,
 }
 
 # No tolerance on any of the three sizes (#587). The toolchain does not move them
@@ -204,11 +207,14 @@ TOLERANCE_BYTES = 0
 # lists' METL_HARDEN checks store their file names and expression text. Main
 # measured 512 before it, not 472: #504's bitsets had added 40 bytes inside
 # the tolerance without the budget recording them.
+#
+# Lowered to 616 by #474 (run 41733121080, all four targets), by the same
+# change: 8 bytes fewer constants on every core.
 RODATA_BUDGETS = {
-    "cortex-m0": 624,
-    "cortex-m3": 624,
-    "cortex-m4": 624,
-    "cortex-m7": 624,
+    "cortex-m0": 616,
+    "cortex-m3": 616,
+    "cortex-m4": 616,
+    "cortex-m7": 616,
 }
 RODATA_TOLERANCE_BYTES = 0
 

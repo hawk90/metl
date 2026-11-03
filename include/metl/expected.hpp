@@ -249,10 +249,14 @@ union expected_error_union<E, true> {
   ~expected_error_union() = default;  // trivial: T and E are
 };
 
-// The members of expected<T, E>, and its destructor. The destructor is here
-// rather than in expected so that, when T and E are trivially destructible,
-// expected has none of its own and is trivially destructible, a literal type
-// in C++17 too (#474). Its checks cannot fire then: no member destructor runs,
+// The members of expected<T, E>, and its destructor. Their deleted copy and
+// move operations do no_implicit_copy_move's job (detail/copy_move_gate.hpp):
+// a gated operation that is not allowed leaves expected's implicit one, and
+// this base deletes it. A second, empty base would cost MSVC a padded byte or
+// more, since it applies the empty-base optimization to a single base only.
+// The destructor is here rather than in expected so that, when T and E are
+// trivially destructible, expected has none of its own and is trivially
+// destructible, a literal type in C++17 too (#474). Its checks cannot fire then: no member destructor runs,
 // so nothing can observe or interrupt the switching state.
 template <typename T, typename E, bool Trivial = expected_trivially_destructible_v<T, E>>
 struct expected_members {
@@ -443,7 +447,7 @@ template <typename T, typename E>
 // The copy and move operations are the gated ones below, which clang-tidy does not
 // recognize as such (detail/copy_move_gate.hpp).
 // NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
-class expected : detail::expected_members<T, E>, detail::no_implicit_copy_move<expected<T, E>> {
+class expected : detail::expected_members<T, E> {
   using members = detail::expected_members<T, E>;
   using members::state_;
   using members::storage_;
@@ -1288,7 +1292,7 @@ template <typename E>
 // The copy and move operations are the gated ones below, which clang-tidy does not
 // recognize as such (detail/copy_move_gate.hpp).
 // NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
-class expected<void, E> : detail::expected_void_members<E>, detail::no_implicit_copy_move<expected<void, E>> {
+class expected<void, E> : detail::expected_void_members<E> {
   using members = detail::expected_void_members<E>;
   using members::state_;
   using members::storage_;
