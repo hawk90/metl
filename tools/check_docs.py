@@ -85,7 +85,12 @@ NOT_A_SYMBOL = {
 # bare `4236` elsewhere is not a finding and neither is `-mcpu=cortex-m3` on its
 # own. Run across the whole tracked tree when it was written, it matched eight
 # lines and all eight were the drift it exists to catch.
-SIZE_FIGURE = re.compile(r"(?:cortex-)?\bm[0347]\+?\b[^\S\n]{0,4}[=:]?[^\S\n]{0,4}\d{3,5}\b", re.I)
+#
+# Between the target and the number it allows what a table cell, a quoted key
+# or a line break puts there (#614): `| cortex-m3 | 9999 |`, `"cortex-m3": 9999`,
+# and a sentence wrapped after the target. Each line is searched together with
+# the next for the wrap. Widened, it matched nothing in the tracked tree.
+SIZE_FIGURE = re.compile(r"(?:cortex-)?\bm[0347]\+?\b[\s\"'|:=]{0,8}\d{3,5}\b", re.I)
 
 # Files allowed to state a figure, each with the reason it has to.
 SIZE_BUDGET_SOURCE = "tools/check_size.py"
@@ -131,12 +136,23 @@ HTML_LINK = re.compile(r'(?:href|src|srcset)="((?!https?:|#|mailto:)[^"\s#]+)')
 EXAMPLE_REF = re.compile(r"examples/([a-zA-Z_0-9]+)\.cpp")
 
 
+# A string or character literal, kept, or a comment, removed. A line comment
+# runs on through a backslash-newline, as the compiler reads it, and a `/*`
+# inside a string starts nothing (#614). Raw string literals are not
+# recognised; the headers have none.
+_TOKEN = re.compile(r'"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|//(?:\\\n|[^\n])*|/\*.*?\*/', re.S)
+
+
+def strip_comments(text):
+    """`text` with every comment replaced by a space; string literals kept."""
+    return _TOKEN.sub(lambda m: " " if m.group(0)[0] == "/" else m.group(0), text)
+
+
 def public_header_text(root):
     """Every public header, comments removed: a name a comment still mentions
     after its declaration was deleted is exactly the drift D1 exists for."""
-    text = "\n".join(p.read_text(encoding="utf-8")
-                     for p in sorted(pathlib.Path(root).rglob("*.hpp")))
-    return re.sub(r"//[^\n]*", "", re.sub(r"/\*.*?\*/", "", text, flags=re.S))
+    return strip_comments("\n".join(p.read_text(encoding="utf-8")
+                                    for p in sorted(pathlib.Path(root).rglob("*.hpp"))))
 
 
 # Words that end a statement's head rather than a return type: `return
@@ -353,9 +369,11 @@ def check(repo_root="."):
             problems.append(("D5", f"{relative.as_posix()}: cannot be read as UTF-8 text, so it "
                                    f"cannot be checked for a size figure ({error})"))
             continue
-        for number, line in enumerate(text.splitlines(), 1):
-            match = SIZE_FIGURE.search(line)
-            if match:
+        lines = text.splitlines()
+        for number, line in enumerate(lines, 1):
+            following = lines[number] if number < len(lines) else ""
+            match = SIZE_FIGURE.search(f"{line}\n{following}")
+            if match and match.start() < len(line):
                 problems.append(("D5", f"{relative.as_posix()}:{number}: states a size figure "
                                        f"`{match.group(0).strip()}` -- the budgets live in "
                                        f"{SIZE_BUDGET_SOURCE}. Point at it; do not restate it."))
@@ -439,7 +457,11 @@ def self_test():
             "using byte_view = fixed_vector;\n"
             "inline constexpr hex_case default_case{};\n"
             "template <typename T> constexpr T* parse_it(T* text) noexcept;\n"
-            "METL_NODISCARD inline bool\nformat_it(char* out) noexcept;\n")
+            "METL_NODISCARD inline bool\nformat_it(char* out) noexcept;\n"
+            # #614: the compiler reads the line after a comment ending in a
+            # backslash as comment too, and a "/*" in a string opens nothing.
+            "// see \\\nclass spliced_away {};\n"
+            "const char* opener = \"/*\";\nclass after_string {};\n// */\n")
         (root / "examples").mkdir()
         # The comment on the first entry closes a paren on purpose: that is the
         # bug this checker shipped with, and the fixture keeps it from coming back.
@@ -491,6 +513,7 @@ def self_test():
         # D7 fixture: the README below states a test count.
         readme_broken = ("`metl::fixed_vector` is fine and `metl::ghost_type` is not.\n"
                          "`metl::object_pool` is gone; only a comment still names it.\n"
+                         "`metl::spliced_away` is commented out by a backslash.\n"
                          "[missing](docs/nope.md)\n"
                          "<img src=\"docs/nope.svg\" alt=\"\">\n"
                          "[unbuilt](examples/never.cpp)\n"
@@ -510,6 +533,8 @@ def self_test():
         d1 = [message for rule, message in check(root) if rule == "D1"]
         if not any("metl::object_pool" in message for message in d1):
             failures.append(f"D1 took a name in a comment for a declaration: {d1}")
+        if not any("metl::spliced_away" in message for message in d1):
+            failures.append(f"D1 took the line after a backslash-continued comment for code: {d1}")
         d6 = [message for rule, message in check(root) if rule == "D6"]
         if not any("check_forgotten.py is not in the gate table" in message for message in d6):
             failures.append(f"D6 took a link outside section 8 for a table row: {d6}")
@@ -546,6 +571,16 @@ def self_test():
             failures.append("D5 skipped a file it could not decode")
         (root / "binary.yml").unlink()
 
+        # D5 sees a figure in a table cell, behind a quoted key, and wrapped
+        # onto the next line (#614).
+        for name, text in (("table.md", "| cortex-m4 | 9999 |\n"),
+                           ("quoted.py", 'SIZES = {"cortex-m7": 9999}\n'),
+                           ("wrapped.md", "the probe measures on cortex-m3\n9999 bytes\n")):
+            (root / name).write_text(text)
+            if not any(rule == "D5" and name in message for rule, message in check(root)):
+                failures.append(f"D5 missed the figure in {name}")
+            (root / name).unlink()
+
         # D5 must have fired on the restated budget and NOT on the -mcpu flag.
         d5 = [message for rule, message in check(root) if rule == "D5"]
         if len(d5) != 1:
@@ -557,6 +592,7 @@ def self_test():
                                         "`metl::coro`, `metl::hex_case`, `metl::byte_view`, "
                                         "`metl::default_case`, `metl::parse_it` and "
                                         "`metl::format_it` are declared.\n"
+                                        "`metl::after_string` follows a \"/*\" in a string.\n"
                                         "runs every test except the deny-list\n")
         (root / "examples" / "orphan.cpp").unlink()
         (root / "tests" / "a" / "orphan_test.cpp").unlink()

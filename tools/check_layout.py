@@ -57,17 +57,38 @@ NOT_RECORDED = {
     "wait.hpp": "functions only",
 }
 
-ROW = re.compile(r"^(LAYOUT|OFFSET)\((\d+), ([^,]+), (.+)\);$", re.M)
+# A row may wrap over several lines, as clang-format leaves a long one (#614).
+ROW = re.compile(r"^[^\S\n]*(LAYOUT|OFFSET)\(\s*(\d+)\s*,\s*([^,]+?)\s*,\s*(.+?)\s*\);", re.M | re.S)
+# Every use of the macros, parsed or not, so a row the pattern misses fails
+# instead of dropping out of the comparison.
+CALL = re.compile(r"^[^\S\n]*(?:LAYOUT|OFFSET)\(", re.M)
+
+# A string or character literal, kept, or a comment, removed. A line comment
+# runs on through a backslash-newline, as the compiler reads it. Raw string
+# literals are not recognised; the probe has none.
+_TOKEN = re.compile(r'"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|//(?:\\\n|[^\n])*|/\*.*?\*/', re.S)
+
+
+def strip_comments(text: str) -> str:
+    """`text` with every comment replaced by a space; string literals kept (#614)."""
+    return _TOKEN.sub(lambda m: " " if m.group(0)[0] == "/" else m.group(0), text)
 
 
 def rows(text: str) -> dict[str, str]:
-    """{key: value}. A LAYOUT's key is its type; an OFFSET's is its type and member."""
+    """{key: value}. A LAYOUT's key is its type; an OFFSET's is its type and member.
+    Raises ValueError for a row it cannot read: a dropped row is a gap."""
+    code = strip_comments(text)
     found = {}
-    for kind, first, second, third in ROW.findall(text):
+    matches = ROW.findall(code)
+    for kind, first, second, third in matches:
+        third = " ".join(third.split())
         if kind == "LAYOUT":
             found[third] = f"size {first}, alignment {second}"
         else:
-            found[f"{third}::{second}"] = f"offset {first}"
+            found[f"{third}::{second.strip()}"] = f"offset {first}"
+    calls = len(CALL.findall(code))
+    if calls != len(matches):
+        raise ValueError(f"{calls} LAYOUT/OFFSET rows, but {len(matches)} could be read")
     return found
 
 
@@ -104,10 +125,11 @@ def public_headers(root: pathlib.Path) -> list[str]:
 
 
 def coverage(headers: list[str], text: str, names: dict[str, str], not_recorded: dict[str, str]) -> list[str]:
+    code = strip_comments(text)
     errors = []
     for header in headers:
         name = names.get(header, pathlib.PurePosixPath(header).stem)
-        recorded = f"<metl/{header}>" in text and re.search(rf"\bmetl::(?:coro::)?{re.escape(name)}\b", text)
+        recorded = f"<metl/{header}>" in code and re.search(rf"\bmetl::(?:coro::)?{re.escape(name)}\b", code)
         if recorded and header in not_recorded:
             errors.append(f"{header}: recorded, so remove it from NOT_RECORDED")
         elif not recorded and header not in not_recorded:
@@ -154,6 +176,23 @@ def self_test() -> int:
     got = coverage(["a.hpp", "b.hpp", "c.hpp"], probe, {}, {"c.hpp": "why"})
     if len(got) != 1 or not got[0].startswith("b.hpp"):
         failures.append(f"an included header with no row must be the one error, got {got}")
+    # #614: a wrapped row is read; a commented one is not a row; a row the
+    # pattern cannot read fails rather than dropping out.
+    wrapped = rows("LAYOUT(8, 4,\n       metl::a<int,\n              2>);\n// LAYOUT(1, 1, metl::gone);\n/* OFFSET(0, x, metl::gone); */\n")
+    if wrapped != {"metl::a<int, 2>": "size 8, alignment 4"}:
+        failures.append(f"a wrapped row must be read and a commented one ignored, got {wrapped}")
+    try:
+        rows("LAYOUT(8, metl::a);\n")
+        failures.append("a row the pattern cannot read must raise")
+    except ValueError:
+        pass
+    for name, probe in (
+        ("a line comment", "// #include <metl/a.hpp>\n// LAYOUT(1, 1, metl::a);\n"),
+        ("a block comment", "#include <metl/a.hpp>\n/* LAYOUT(1, 1, metl::a); */\n"),
+    ):
+        got = coverage(["a.hpp"], probe, {}, {})
+        if len(got) != 1:
+            failures.append(f"{name} must not count as a row, got {got}")
     if major_of("inline constexpr int version_major = 2;") != 2:
         failures.append("version_major parsed wrongly")
     for failure in failures:
@@ -171,7 +210,11 @@ def main() -> int:
         return self_test()
 
     text = (REPO / PROBE).read_text()
-    new = rows(text)
+    try:
+        new = rows(text)
+    except ValueError as error:
+        print(f"error: {PROBE}: {error}", file=sys.stderr)
+        return 1
     if not new:
         print(f"error: no rows in {PROBE}", file=sys.stderr)
         return 2
@@ -189,7 +232,12 @@ def main() -> int:
         if major_of((REPO / CONFIG).read_text()) > major_of(old_config.stdout):
             print(f"a new major version since {tag}: layouts may change")
         else:
-            errors += compare(rows(old_file.stdout), new, ALLOWED_CHANGES.get(tag, {}))
+            try:
+                old = rows(old_file.stdout)
+            except ValueError as error:
+                print(f"error: {PROBE} at {tag}: {error}", file=sys.stderr)
+                return 2
+            errors += compare(old, new, ALLOWED_CHANGES.get(tag, {}))
     for error in errors:
         print(f"error: {error}", file=sys.stderr)
     if errors:

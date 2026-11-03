@@ -7,6 +7,9 @@ means both an #include and a name from it: an #include alone instantiates nothin
 
 An entry in NOT_LINKED that a probe now uses, or whose header is gone, is an error.
 
+Comments are removed first (#614): an #include or a name a comment still holds
+links nothing.
+
 Usage:
     tools/check_probe_coverage.py
     tools/check_probe_coverage.py --self-test
@@ -48,6 +51,17 @@ NOT_LINKED = {
 }
 
 
+# A string or character literal, kept, or a comment, removed. A line comment
+# runs on through a backslash-newline, as the compiler reads it. Raw string
+# literals are not recognised; the probes have none.
+_TOKEN = re.compile(r'"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|//(?:\\\n|[^\n])*|/\*.*?\*/', re.S)
+
+
+def strip_comments(text: str) -> str:
+    """`text` with every comment replaced by a space; string literals kept."""
+    return _TOKEN.sub(lambda m: " " if m.group(0)[0] == "/" else m.group(0), text)
+
+
 def public_headers(root: pathlib.Path) -> list[str]:
     include = root / "include" / "metl"
     return sorted(
@@ -58,6 +72,7 @@ def public_headers(root: pathlib.Path) -> list[str]:
 
 
 def used(header: str, probe_text: str, names: dict[str, str]) -> bool:
+    probe_text = strip_comments(probe_text)
     if f"<metl/{header}>" not in probe_text:
         return False
     name = names.get(header, pathlib.PurePosixPath(header).stem)
@@ -97,6 +112,17 @@ def self_test() -> int:
     errors = check(["bit.hpp"], "#include <metl/bit.hpp>\nmetl::popcount(1);\n", {"bit.hpp": "popcount"}, {})
     if errors:
         failures.append(f"a NAME_IN_HEADER name must count, got {errors}")
+    # #614: what a comment holds is not code.
+    for name, probe in (
+        ("a line comment", "// #include <metl/good.hpp>\n// metl::good g;\n"),
+        ("a block comment", "/* #include <metl/good.hpp>\nmetl::good g; */\n"),
+        ("a name in a comment", "#include <metl/good.hpp>\n// metl::good g;\n"),
+        ("a line comment continued by a backslash", "#include <metl/good.hpp>\n// see \\\nmetl::good g;\n"),
+    ):
+        if used("good.hpp", probe, {}):
+            failures.append(f"{name} must not count as use")
+    if not used("good.hpp", 'const char* s = "/*";\n#include <metl/good.hpp>\nmetl::good g; // */\n', {}):
+        failures.append("a \"/*\" inside a string literal must not start a comment")
     for failure in failures:
         print(f"self-test: {failure}", file=sys.stderr)
     if failures:
