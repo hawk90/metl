@@ -901,6 +901,7 @@ struct handle_pool_adapter {
   static constexpr bool move_empties_source = false;
   static constexpr bool fixed_count = true;
   static constexpr constant_init constant_init_level = constant_init::never;
+  // The default constructor; since C++20, handle_pool(constant_init) is constant (#408).
   static constexpr const char* constant_init_refused = "its constructor links the free list at run time";
   template <typename C>
   static handed_out<typename C::handle_type, 4>& given() {

@@ -12,6 +12,9 @@
 #include <cstring>
 #include <new>
 #include <utility>
+#if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+#include <bit>  // std::bit_cast, for the constant-initializing constructor
+#endif
 
 namespace metl {
 
@@ -111,13 +114,48 @@ class handle_pool {
   /// Constructs an empty pool with every slot free and generation 1.
   /// @note Not constexpr: the free list is linked at run time, so a
   ///       namespace-scope pool is initialized at run time, in link order.
-  ///       Construct it before anything that runs earlier can reach it.
+  ///       Construct it before anything that runs earlier can reach it, or,
+  ///       since C++20, use the `constant_init` constructor below.
   handle_pool() noexcept : free_head_(0), size_(0) {
     for (size_type i = 0; i < Capacity; ++i) {
       set_link(i, i + 1);                   // last one points at `Capacity` == end
       generation_[i] = generation_type{0};  // even: free (see generation_)
     }
   }
+
+#if defined(__cpp_lib_bit_cast) && defined(__cpp_constexpr) && __cpp_constexpr >= 201907L
+  /// @brief Tag selecting the constant-initializing constructor.
+  struct constant_init_t {
+    explicit constant_init_t() = default;
+  };
+  /// @brief The tag value: `handle_pool<T, N> pool{handle_pool<T, N>::constant_init};`.
+  static constexpr constant_init_t constant_init{};
+
+  /// @brief Constructs the same empty pool as the default constructor, during
+  ///        constant evaluation (C++20), so a namespace-scope pool declared
+  ///        `constinit` is ready before any code runs, including an interrupt
+  ///        enabled by another file's constructor (#408).
+  ///
+  /// The empty free list links every slot to the next, which is not all-zero,
+  /// so a pool built this way is stored in `.data`: it takes `sizeof` bytes of
+  /// flash, where a default-constructed one is in `.bss`. Use it for a pool that
+  /// something can reach before `main()`; elsewhere the default constructor
+  /// costs no flash. Construction and every operation behave as for a
+  /// default-constructed pool.
+  constexpr explicit handle_pool(constant_init_t) noexcept
+      : storage_{}, generation_{}, free_head_(0), size_(0) {
+    for (size_type i = 0; i < Capacity; ++i) {
+      // The bytes `set_link(i, i + 1)` would write, in this target's byte order.
+      struct link_bytes {
+        unsigned char bytes[sizeof(index_type)];
+      };
+      const auto link = std::bit_cast<link_bytes>(static_cast<index_type>(i + 1));
+      for (size_type b = 0; b < sizeof(index_type); ++b) {
+        storage_[i].bytes[b] = link.bytes[b];
+      }
+    }
+  }
+#endif
 
   ~handle_pool() { clear(); }
 
