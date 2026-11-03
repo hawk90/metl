@@ -45,9 +45,15 @@ struct counting_equal_128 {
 // The fold is constexpr and keeps the high word apart, at compile time. With
 // std::hash called instead (not constexpr in libstdc++ or libc++), this does
 // not compile, which is what the mutant hash_key_drops_high_word meets.
+// Integral and hashable: libstdc++ turns both off for __int128 in the strict
+// dialects; the checks below run only where the type is a real key.
+template <typename Wide>
+constexpr bool hashes_as_integer =
+    std::is_integral_v<Wide> && std::is_default_constructible_v<std::hash<Wide>>;
+
 template <typename Wide>
 constexpr bool folds_high_word() {
-  if constexpr (std::is_integral_v<Wide>) {
+  if constexpr (hashes_as_integer<Wide>) {
     constexpr std::hash<Wide> hasher{};
     return metl::detail::hash_key(hasher, static_cast<Wide>(1) << 64) !=
                metl::detail::hash_key(hasher, static_cast<Wide>(2) << 64) &&
@@ -59,20 +65,25 @@ constexpr bool folds_high_word() {
 }
 static_assert(folds_high_word<u128>(), "a 128-bit key must keep its high word");
 
+// A template, so the strict dialects (where libstdc++ disables
+// std::hash<__int128>) discard the branch instead of compiling it.
+template <typename Wide>
 void wide_on_a_64_bit_host() {
-  if constexpr (std::is_integral_v<u128>) {
-    metl::static_unordered_map<u128, int, keys, std::hash<u128>, counting_equal_128> map;
+  if constexpr (hashes_as_integer<Wide>) {
+    metl::static_unordered_map<Wide, int, keys, std::hash<Wide>, counting_equal_128> map;
     for (std::size_t i = 0; i < keys; ++i) {
-      CHECK(map.try_emplace(static_cast<u128>(i) << 64, static_cast<int>(i)));
+      CHECK(map.try_emplace(static_cast<Wide>(i) << 64, static_cast<int>(i)));
     }
     g_compares = 0;
     for (std::size_t i = 0; i < keys; ++i) {
-      CHECK(map.find(static_cast<u128>(i) << 64) != nullptr);
+      CHECK(map.find(static_cast<Wide>(i) << 64) != nullptr);
     }
     CHECK(g_compares <= keys * 4);
   }
 }
 #else
+using u128 = void;  // no 128-bit type: the check below compiles to nothing
+template <typename>
 void wide_on_a_64_bit_host() {}
 #endif
 
@@ -120,7 +131,7 @@ int main() {
     CHECK(g_compares <= keys * 4);
   }
 
-  wide_on_a_64_bit_host();
+  wide_on_a_64_bit_host<u128>();
 
   return metl_test::exit_code();
 }
