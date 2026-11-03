@@ -81,6 +81,10 @@ class function_ref<R(Args...)> {
   /// @brief Binds an lvalue callable (const or non-const), preserving cv-qualification.
   /// @param function Lvalue callable to reference; must outlive this function_ref.
   /// @warning Only lvalues bind here; rvalues select the deleted overload below.
+  /// @note Binding an empty `fixed_function` or `delegate` gives a non-empty
+  ///       `function_ref`, as with std::function_ref: it refers to the object,
+  ///       which may be given a target before the call. Calling it while the
+  ///       object is empty fails that object's own check.
   // METL_LIFETIME_BOUND: function_ref stores a pointer to `function`; the bound
   // callable must outlive this function_ref. clang diagnoses obvious dangling
   // (a callable that dies before the function_ref) at the call site. This
