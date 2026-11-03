@@ -20,6 +20,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/constant_init.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -44,7 +45,14 @@ class monotonic_buffer {
   using size_type = std::size_t;
 
   /// @brief Construct an empty buffer with all storage available.
+#if METL_DETAIL_LAZY_CONSTANT_INIT
+  // Zeroes the buffer only during constant evaluation: a local one costs no
+  // `Capacity` stores, and a namespace-scope one still lands in .bss (#628).
+  constexpr monotonic_buffer() noexcept : offset_(0) { detail::zero_for_constant_init(storage_); }
+#else
+  // C++17 must initialize every member of a constexpr constructor up front.
   constexpr monotonic_buffer() noexcept : offset_(0), storage_{} {}
+#endif
 
   /// @brief Allocate a raw, uninitialized, aligned block by bumping the offset.
   /// @param bytes Number of bytes to allocate; a request of 0 returns null.
@@ -125,7 +133,11 @@ class monotonic_buffer {
   }
 
   size_type offset_;
+#if METL_DETAIL_LAZY_CONSTANT_INIT
+  detail::max_aligned_bytes<(Capacity == 0 ? 1 : Capacity)> storage_;
+#else
   alignas(std::max_align_t) unsigned char storage_[Capacity == 0 ? 1 : Capacity];
+#endif
 };
 
 }  // namespace metl
