@@ -20,6 +20,7 @@
 /// in the handlers.
 
 #include "metl/compiler.hpp"
+#include "metl/config.hpp"
 #include "metl/delegate.hpp"
 
 #include <array>
@@ -119,8 +120,11 @@ class fsm {
   ///       the new state is already committed and has not been entered, so a
   ///       later dispatch out of it skips its exit hook.
   /// @pre Not called from an exit hook. The state being left is still current
-  ///      there, so a dispatch would exit it twice; an entry hook may dispatch.
+  ///      there, so a dispatch would find the same transition and recurse
+  ///      without end. Checked by `METL_ASSERT`; an entry hook or a transition
+  ///      action may dispatch.
   bool dispatch(Event event) {
+    METL_ASSERT(!exiting_);
     const transition_type* transition = find_transition(current_state_, event);
     if (transition == nullptr) {
       return false;
@@ -129,7 +133,9 @@ class fsm {
     const State previous = current_state_;
     const State next = transition->to;
     if (entered_) {
+      exiting_ = true;
       invoke_hook(exit_hooks_, previous);
+      exiting_ = false;
     }
 
     // Commit the state transition BEFORE running the action. If the action
@@ -176,6 +182,8 @@ class fsm {
   // transition action runs. A dispatch from there leaves a state that was
   // never entered, so it must not run that state's exit hook.
   bool entered_ = true;
+  // True while an exit hook runs; `dispatch` asserts it is false.
+  bool exiting_ = false;
   std::array<transition_type, TransitionCount> transitions_;
   std::array<state_hook_type, EntryHookCount> entry_hooks_;
   std::array<state_hook_type, ExitHookCount> exit_hooks_;
