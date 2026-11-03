@@ -1,0 +1,1 @@
+- `fsm::dispatch` called from an exit hook now stops at a `METL_ASSERT`. It was a documented precondition that nothing checked: the state being left is still current inside the hook, so the same transition fired again and the recursion never ended (a stack overflow). Entry hooks and transition actions may still dispatch.

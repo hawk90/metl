@@ -3,6 +3,7 @@
 // action that reentrantly called dispatch() still observed the old state and
 // could re-fire the very transition in progress.
 
+#include "assert_trip.hpp"
 #include "metl_check.hpp"
 
 #include <array>
@@ -66,6 +67,20 @@ struct hook_log {
       }
     }
     return i == length;
+  }
+};
+
+// An exit hook that dispatches again (#636). The state being left is still
+// current there, so without the check the same transition fires again and the
+// recursion never ends.
+struct exit_dispatcher {
+  metl::fsm<st, ev, 1, 0, 1>* machine = nullptr;
+  int exits = 0;
+  void on_exit(st /*state*/) {
+    ++exits;
+    if (exits < 4) {  // bounds the recursion if the check is missing
+      (void)machine->dispatch(ev::go);
+    }
   }
 };
 
@@ -227,6 +242,22 @@ int main() {
     CHECK(hooks.equals("xAeA"));
   }
 #endif
+
+  // dispatch from an exit hook is refused (#636). The machine is not used
+  // after the trip: the longjmp leaves it mid-dispatch.
+  if constexpr (metl_test::asserts_active) {
+    exit_dispatcher looping;
+    using looping_t = metl::fsm<st, ev, 1, 0, 1>;
+    using on_state = metl::delegate<void(st)>;
+    const std::array<metl::fsm_transition<st, ev>, 1> table{{{st::a, ev::go, st::b, {}}}};
+    const std::array<metl::fsm_state_hook<st>, 1> exit{{
+        {st::a, on_state::bind<exit_dispatcher, &exit_dispatcher::on_exit>(looping)},
+    }};
+    static looping_t looping_machine(st::a, table, {}, exit);
+    looping.machine = &looping_machine;
+    CHECK(metl_test::trips([] { (void)looping_machine.dispatch(ev::go); }));
+    CHECK_EQ(looping.exits, 1);
+  }
 
   return metl_test::exit_code();
 }
