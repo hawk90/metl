@@ -31,6 +31,14 @@ HOW. Each case is compiled TWICE:
     with    METL_COMPILE_FAIL   must FAIL, and the diagnostic must contain the
                                 EXPECT-ERROR text
 
+A case may instead carry `// EXPECT-WARNING: <text>`, for a contract that is a
+warning rather than an error, such as a class-level `[[nodiscard]]`. Both of its
+compiles add `-Werror`, so the control must build without a warning and the
+guarded one must warn with that text. `// WARNS-ON: clang` limits the guarded
+half to compilers whose `--version` names clang, for a warning GCC does not
+give; the control compile still runs everywhere. Warning cases are not part of
+the static_assert census below.
+
 The first compile is the half a `WILL_FAIL`-style test does not do, and it is
 the half that keeps this honest. A case that fails to compile because of a typo,
 a stale include or a renamed header satisfies "exited non-zero" perfectly, and
@@ -60,6 +68,8 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 
 EXPECT = re.compile(r"^//\s*EXPECT-ERROR:\s*(.+?)\s*$", re.M)
+EXPECT_WARNING = re.compile(r"^//\s*EXPECT-WARNING:\s*(.+?)\s*$", re.M)
+WARNS_ON = re.compile(r"^//\s*WARNS-ON:\s*(\w+)\s*$", re.M)
 
 GUARD = "METL_COMPILE_FAIL"
 
@@ -273,9 +283,32 @@ def expected_message(path):
     return match.group(1) if match else None
 
 
-def compile_once(cxx, std, include_dir, case, define_guard):
+def expected_warning(path):
+    """(EXPECT-WARNING text, WARNS-ON family or None), or None for an error case."""
+    text = pathlib.Path(path).read_text(encoding="utf-8")
+    match = EXPECT_WARNING.search(text)
+    if not match:
+        return None
+    family = WARNS_ON.search(text)
+    return match.group(1), (family.group(1) if family else None)
+
+
+def compiler_family(cxx, _cache={}):
+    """"clang" or "gcc" from `cxx --version`, for WARNS-ON."""
+    if cxx not in _cache:
+        try:
+            version = subprocess.run([cxx, "--version"], capture_output=True, text=True).stdout
+        except OSError:
+            version = ""
+        _cache[cxx] = "clang" if "clang" in version.lower() else "gcc"
+    return _cache[cxx]
+
+
+def compile_once(cxx, std, include_dir, case, define_guard, werror=False):
     """(returncode, combined output) for one -fsyntax-only compile."""
     command = [cxx, f"-std={std}", "-fsyntax-only", "-I", include_dir]
+    if werror:
+        command.append("-Werror")
     if define_guard:
         command.append(f"-D{GUARD}")
     command.append(str(case))
@@ -288,6 +321,10 @@ def check_case(cxx, std, include_dir, case, diagnostics=None):
     The guarded compile's output is stored in `diagnostics[case name]`."""
     failures = []
     name = pathlib.Path(case).name
+
+    warning = expected_warning(case)
+    if warning is not None:
+        return check_warning_case(cxx, std, include_dir, case, name, *warning)
 
     wanted = expected_message(case)
     if wanted is None:
@@ -321,6 +358,25 @@ def check_case(cxx, std, include_dir, case, diagnostics=None):
     return failures
 
 
+def check_warning_case(cxx, std, include_dir, case, name, wanted, family):
+    """Failures for an EXPECT-WARNING case: a clean control under -Werror, and a
+    guarded compile that fails with the wanted warning text."""
+    code, output = compile_once(cxx, std, include_dir, case, define_guard=False, werror=True)
+    if code != 0:
+        return [f"{name}: the CONTROL compile failed under -Werror. The case must "
+                f"build without a warning when -D{GUARD} is not set.\n{output.strip()[:1500]}"]
+    if family is not None and compiler_family(cxx) != family:
+        return []
+    code, output = compile_once(cxx, std, include_dir, case, define_guard=True, werror=True)
+    if code == 0:
+        return [f"{name}: compiled with -D{GUARD} -Werror and was expected to warn "
+                f"\"{wanted}\". The warning this case pins is not given."]
+    if wanted not in output:
+        return [f"{name}: failed under -Werror, but not with the expected warning. "
+                f"Wanted:\n    {wanted}\ngot:\n{output.strip()[:1500]}"]
+    return []
+
+
 def run(cxx, std, include_dir, case_dir, quiet=False, jobs=None):
     """`quiet` is for the self-test, whose fixtures are SUPPOSED to fail --
     printing ::error:: for them would put annotations on a green job."""
@@ -350,7 +406,9 @@ def run(cxx, std, include_dir, case_dir, quiet=False, jobs=None):
     failures = []
     for case, case_failures in zip(cases, results):
         status = "ok" if not case_failures else "FAILED"
-        say(f"  {status:6}  {case.name}  ({expected_message(case) or 'no EXPECT-ERROR'})")
+        warning = expected_warning(case)
+        label = f"warning: {warning[0]}" if warning else (expected_message(case) or "no EXPECT-ERROR")
+        say(f"  {status:6}  {case.name}  ({label})")
         failures.extend(case_failures)
 
     say(f"{len(cases)} compile-failure case(s) under {cxx} -std={std}")
@@ -431,6 +489,37 @@ def self_test(cxx, std, include_dir):
             failures.append("a case whose CONTROL does not compile was accepted")
         elif "CONTROL" not in result[0]:
             failures.append("a broken control was rejected for the wrong reason")
+
+        # EXPECT-WARNING: a warning that fires passes; one that does not, a
+        # control that warns, and a warning with the wrong text are rejected.
+        unused = ("[[nodiscard]] int value() { return 1; }\n"
+                  "int control = value();\n")
+        warns = root / "warns.cpp"
+        warns.write_text("// EXPECT-WARNING: unused\n" + unused +
+                         "#ifdef METL_COMPILE_FAIL\nvoid f() { value(); }\n#endif\n")
+        if check_case(cxx, std, include_dir, warns):
+            failures.append("a warning case whose warning fires was rejected")
+        silent = root / "silent.cpp"
+        silent.write_text("// EXPECT-WARNING: unused\n" + unused +
+                          "#ifdef METL_COMPILE_FAIL\nvoid f() { (void)value(); }\n#endif\n")
+        if not check_case(cxx, std, include_dir, silent):
+            failures.append("a warning case whose warning does NOT fire was accepted")
+        noisy = root / "noisy_control.cpp"
+        noisy.write_text("// EXPECT-WARNING: unused\n" + unused + "void g() { value(); }\n"
+                         "#ifdef METL_COMPILE_FAIL\nvoid f() { value(); }\n#endif\n")
+        if not check_case(cxx, std, include_dir, noisy):
+            failures.append("a warning case whose CONTROL warns was accepted")
+        other = root / "other_warning.cpp"
+        other.write_text("// EXPECT-WARNING: this text is in no warning\n" + unused +
+                         "#ifdef METL_COMPILE_FAIL\nvoid f() { value(); }\n#endif\n")
+        if not check_case(cxx, std, include_dir, other):
+            failures.append("a warning case that warned with the WRONG text was accepted")
+        elsewhere = root / "elsewhere.cpp"
+        other_family = "gcc" if compiler_family(cxx) == "clang" else "clang"
+        elsewhere.write_text(f"// EXPECT-WARNING: unused\n// WARNS-ON: {other_family}\n" + unused +
+                             "#ifdef METL_COMPILE_FAIL\nvoid f() { (void)value(); }\n#endif\n")
+        if check_case(cxx, std, include_dir, elsewhere):
+            failures.append("a WARNS-ON case for another compiler was checked on this one")
 
         # A compiler that cannot be run is a failure with a message, not a
         # traceback -- and never a pass.
@@ -530,7 +619,8 @@ def self_test(cxx, std, include_dir):
         return 1
     print("self-test passed: cases with no EXPECT-ERROR, cases that compile "
           "under the guard, cases that fail for the wrong reason, cases with a "
-          "broken control, and an empty directory are all rejected; the census "
+          "broken control, and an empty directory are all rejected; warning cases "
+          "must warn, with clean controls and the right text; the census "
           "excludes `namespace detail`, fires on an uncovered assertion, "
           "refuses a slack ratchet, names an expectation that pins nothing, and "
           "does not report success over zero headers")

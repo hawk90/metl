@@ -29,8 +29,10 @@ namespace metl {
 /// @tparam F Callable type stored by value; MUST be noexcept-invocable.
 /// @warning The stored callable must be noexcept because the destructor is
 ///          noexcept; a static_assert on the class enforces this.
+// METL_NODISCARD on the class: an unnamed `scope_exit(...);` is a temporary
+// that runs its callable at the semicolon, not at the end of the scope (#640).
 template <typename F>
-class scope_exit {
+class METL_NODISCARD scope_exit {
   static_assert(noexcept(std::declval<F&>()()),
                 "metl::scope_exit requires the stored callable to be noexcept");
 
