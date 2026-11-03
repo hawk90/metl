@@ -16,6 +16,10 @@
 // stored once, in ticket order, and the interrupted operation went round its
 // loop a second time.
 
+// Needs a lock-free compare-and-swap, which ARMv6-M lacks: on Cortex-M0 the
+// capability gate must reject it (tools/run_qemu_tests.py).
+// qemu: needs-cas
+
 namespace {
 void race_point(const char* side) noexcept;
 }  // namespace
@@ -33,7 +37,7 @@ namespace {
 
 using queue_type = metl::mpmc_queue<int, 4>;
 
-queue_type* g_queue = nullptr;
+queue_type g_queue;             // namespace scope: the race point reaches it without a pointer
 const char* g_armed = nullptr;  // the side whose next race point runs the intruder
 int g_points = 0;               // race points passed on the armed side, intruder included
 bool g_intruder_ok = false;
@@ -49,9 +53,9 @@ void race_point(const char* side) noexcept {
   }
   // The intruder: a whole operation between the interrupted one's two loads.
   if (std::strcmp(side, "push") == 0) {
-    g_intruder_ok = g_queue->try_push(100);
+    g_intruder_ok = g_queue.try_push(100);
   } else {
-    g_intruder_ok = g_queue->try_pop(g_intruder_value);
+    g_intruder_ok = g_queue.try_pop(g_intruder_value);
   }
 }
 
@@ -98,13 +102,11 @@ void consumer_retries(queue_type& queue) {
 }  // namespace
 
 int main() {
-  queue_type queue;
-  g_queue = &queue;
   // Several rounds, so the tickets wrap the four slots and the retries are
   // checked on a slot whose sequence has gone round more than once.
   for (int round = 0; round < 6; ++round) {
-    producer_retries(queue);
-    consumer_retries(queue);
+    producer_retries(g_queue);
+    consumer_retries(g_queue);
   }
   return metl_test::exit_code();
 }

@@ -1,3 +1,7 @@
+// Needs a lock-free compare-and-swap, which ARMv6-M lacks: on Cortex-M0 the
+// capability gate must reject it (tools/run_qemu_tests.py).
+// qemu: needs-cas
+
 #include "metl_check.hpp"
 
 #include <cstdint>

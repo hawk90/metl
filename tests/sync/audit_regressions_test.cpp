@@ -5,12 +5,16 @@
 // confirming it FAILS against the unfixed code -- a regression test that has
 // never been red proves only that it compiles.
 
+// Needs a lock-free compare-and-swap, which ARMv6-M lacks: on Cortex-M0 the
+// capability gate must reject it (tools/run_qemu_tests.py).
+// qemu: needs-cas
+
 #include "metl_check.hpp"
 
 // Includes mpmc_queue, which static_asserts on a lock-free single-word CAS. That
-// makes this file one of the ARMv6-M `expect_build_fail` entries in the
-// qemu-conformance matrix -- a Cortex-M0 has no CAS, so failing to build there
-// is the correct outcome and is declared rather than tolerated. The guarded
+// is why this file carries `// qemu: needs-cas` above -- a Cortex-M0 has no
+// CAS, so failing to build there is the correct outcome and is declared rather
+// than tolerated. The guarded
 // cases live in sync/guarded_regressions_test.cpp so that they run there.
 #include "metl/mpmc_queue.hpp"
 

@@ -3,6 +3,11 @@
 // build: refcount_kind::atomic needs a lock-free read-modify-write that
 // Cortex-M0 lacks, and the qemu-conformance M0 row lists it as an expected
 // build failure, which proves the capability static_assert fires.
+
+// Needs a lock-free compare-and-swap, which ARMv6-M lacks: on Cortex-M0 the
+// capability gate must reject it (tools/run_qemu_tests.py).
+// qemu: needs-cas
+
 #include <cstddef>
 #include <new>
 
