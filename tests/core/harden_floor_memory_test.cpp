@@ -472,6 +472,19 @@ int main() {
     CHECK(!guarded_against([&] { CHECK(arena.allocate(0, 4) == nullptr); }));
   }
 
+  // arena_allocator: rewind to a mark invalidated by reset, then straddled by
+  // a later allocation, would release the bytes below the mark (#637).
+  {
+    static metl::arena_allocator<128> stale;
+    (void)stale.allocate(4);
+    static const auto invalidated = stale.mark();
+    stale.reset();
+    (void)stale.allocate(16);
+    (void)stale.allocate(4);
+    CHECK(guarded_against([&] { stale.rewind(invalidated); }));
+    CHECK(stale.used() > invalidated.offset);
+  }
+
   // monotonic_buffer: the same zero-byte cases, which it already got right.
   {
     metl::monotonic_buffer<64> buffer;

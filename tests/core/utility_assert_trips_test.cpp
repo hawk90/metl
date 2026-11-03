@@ -46,6 +46,19 @@ void allocator_trips() {
   arena.reset();
   CHECK(trips([] { arena.rewind(later); }));  // a mark past the current offset
 
+  // A mark invalidated by reset, then straddled by a later allocation (#637):
+  // the walk releases the block above, then stops at the straddling record
+  // instead of releasing it and the bytes below the mark.
+  static metl::arena_allocator<128> stale;
+  (void)stale.allocate(4);
+  static metl::arena_allocator<128>::mark_type invalidated = stale.mark();
+  stale.reset();
+  (void)stale.allocate(16);  // straddles invalidated.offset
+  (void)stale.allocate(4);
+  CHECK(invalidated.offset > 0 && invalidated.offset < stale.used());
+  CHECK(trips([] { stale.rewind(invalidated); }));
+  CHECK(stale.used() > invalidated.offset);
+
   static metl::monotonic_buffer<16> buffer;
   CHECK(trips([] { (void)buffer.emplace<std::array<unsigned char, 32>>(); }));
 
