@@ -40,7 +40,35 @@ METL_NODISCARD constexpr bool in_constant_evaluation() noexcept {
 #endif
 }
 
+/// @brief Value-initializes `storage`, a buffer wrapped in a struct, during
+///        constant evaluation; does nothing at run time.
+///
+/// One assignment of a value-initialized `S`, not a loop over its bytes: the
+/// constant evaluator counts loop iterations, and GCC stops at 262144 and Clang
+/// near a million, so a byte loop left every container of more than 256 KiB
+/// dynamically initialized without a word (#613). Whole-buffer assignment was
+/// measured to 16 MiB on both.
+template <typename S, typename = std::enable_if_t<std::is_class_v<S>>>
+constexpr void zero_for_constant_init(S& storage) noexcept {
+  if (in_constant_evaluation()) {
+    storage = S{};
+  }
+}
+
+/// @brief An array of storage slots wrapped in a struct, so
+///        `zero_for_constant_init` clears it in one assignment rather than one
+///        iteration per slot (#613). Same layout as `S[N]`. Containers index
+///        `items` directly: a subscript operator here changed GCC's code for
+///        object_pool at -Os (+4 bytes on Cortex-M3), and a bare array
+///        expression keeps the code what it was.
+template <typename S, std::size_t N>
+struct slot_array {
+  S items[N];
+};
+
 /// @brief Zeroes `bytes` during constant evaluation; does nothing at run time.
+///        For a bare array, which cannot be assigned: it loops, so it is for
+///        small buffers only (`fixed_function`'s).
 template <std::size_t N>
 constexpr void zero_for_constant_init(unsigned char (&bytes)[N]) noexcept {
   if (in_constant_evaluation()) {

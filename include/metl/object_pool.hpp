@@ -60,11 +60,7 @@ class object_pool {
   /// Constructs an empty pool with all slots free.
   /// Constant-initialized at namespace scope since C++20 (see
   /// detail/constant_init.hpp); a local one stores nothing to the slots.
-  constexpr object_pool() noexcept {
-    for (storage_type& slot : storage_) {
-      detail::zero_for_constant_init(slot.bytes);
-    }
-  }
+  constexpr object_pool() noexcept { detail::zero_for_constant_init(storage_); }
 
   ~object_pool() { clear(); }
 
@@ -94,7 +90,7 @@ class object_pool {
     live_.set(i);
     ++size_;
     release_on_unwind claim{this, i};
-    ::new (storage_[i].addr()) T(std::forward<Args>(args)...);
+    ::new (storage_.items[i].addr()) T(std::forward<Args>(args)...);
     claim.dismiss();
     return slot_ptr(i);
   }
@@ -172,17 +168,17 @@ class object_pool {
   // lives there, and the bytes may not be aligned for link_type.
   link_type link(size_type index) const noexcept {
     link_type next = 0;
-    std::memcpy(&next, &storage_[index].bytes[0], sizeof next);
+    std::memcpy(&next, &storage_.items[index].bytes[0], sizeof next);
     return next;
   }
   void push_free(size_type index) noexcept {
     const link_type head = free_head_;
-    std::memcpy(&storage_[index].bytes[0], &head, sizeof head);
+    std::memcpy(&storage_.items[index].bytes[0], &head, sizeof head);
     free_head_ = static_cast<link_type>(index + 1);
   }
 
-  pointer slot_ptr(size_type index) noexcept { return storage_[index].ptr(); }
-  const_pointer slot_ptr(size_type index) const noexcept { return storage_[index].ptr(); }
+  pointer slot_ptr(size_type index) noexcept { return storage_.items[index].ptr(); }
+  const_pointer slot_ptr(size_type index) const noexcept { return storage_.items[index].ptr(); }
 
   size_type index_of(const_pointer object) const noexcept {
     // `object` may be an arbitrary caller-supplied pointer that does not point
@@ -196,7 +192,7 @@ class object_pool {
     // range test: an address below the storage, and nullptr, wrap to a value
     // past its end.
     const std::uintptr_t offset =
-        reinterpret_cast<std::uintptr_t>(object) - reinterpret_cast<std::uintptr_t>(storage_[0].addr());
+        reinterpret_cast<std::uintptr_t>(object) - reinterpret_cast<std::uintptr_t>(storage_.items[0].addr());
     if (offset >= sizeof(storage_type) * Capacity) {
       return Capacity;
     }
@@ -242,7 +238,7 @@ class object_pool {
     push_free(index);
   }
 
-  storage_type storage_[Capacity == 0 ? 1 : Capacity];
+  detail::slot_array<storage_type, (Capacity == 0 ? 1 : Capacity)> storage_;
   detail::bitset<Capacity == 0 ? 1 : Capacity> live_{};
   link_type free_head_ = 0;  // freed slots, last freed first; 0 is none
   link_type unused_ = 0;     // slots at and above this were never used

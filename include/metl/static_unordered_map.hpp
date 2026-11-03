@@ -293,9 +293,7 @@ class static_unordered_map
                                             std::is_nothrow_default_constructible_v<KeyEqual>)
       : size_(0), hasher_(), key_equal_() {
     if (detail::in_constant_evaluation()) {
-      for (auto& slot : storage_) {
-        detail::zero_for_constant_init(slot.bytes);
-      }
+      detail::zero_for_constant_init(storage_);
     }
     initialize_states();
   }
@@ -758,7 +756,7 @@ class static_unordered_map
         static_unordered_map& to = mine ? other : *this;
         // Built before either state changes, so a throwing move leaves this
         // slot as it was.
-        ::new (to.storage_[i].addr()) value_type(static_cast<value_type&&>(*from.slot_value(i)));
+        ::new (to.storage_.items[i].addr()) value_type(static_cast<value_type&&>(*from.slot_value(i)));
         from.set_state(i, to.state(i));
         to.set_state(i, slot_state::occupied);
         from.slot_value(i)->~value_type();
@@ -844,8 +842,8 @@ class static_unordered_map
     }
   }
 
-  value_type* slot_value(size_type index) noexcept { return storage_[index].ptr(); }
-  const value_type* slot_value(size_type index) const noexcept { return storage_[index].ptr(); }
+  value_type* slot_value(size_type index) noexcept { return storage_.items[index].ptr(); }
+  const value_type* slot_value(size_type index) const noexcept { return storage_.items[index].ptr(); }
 
   template <typename K>
   size_type bucket_index(const K& key) const noexcept(lookup_cannot_throw<K>) {
@@ -957,7 +955,7 @@ class static_unordered_map
       index = npos;
       (void)locate_insert_index(entry.key, &index);
       METL_HARDEN(index < bucket_count);
-      ::new (storage_[index].addr()) value_type(static_cast<value_type&&>(entry));
+      ::new (storage_.items[index].addr()) value_type(static_cast<value_type&&>(entry));
       set_state(index, slot_state::occupied);
       ++size_;
       return index;
@@ -974,7 +972,7 @@ class static_unordered_map
     // guard any more. It stays as defence in depth, like the rebuild path's:
     // a bookkeeping bug must not become a wild construct_at(npos, ...).
     METL_HARDEN(index < bucket_count);
-    ::new (storage_[index].addr()) value_type{std::forward<K>(key), std::forward<V>(value)};
+    ::new (storage_.items[index].addr()) value_type{std::forward<K>(key), std::forward<V>(value)};
     // Reusing a tombstone slot reclaims it: keep the tombstone count accurate
     // so the reclamation threshold reflects only live tombstones. Counted after
     // the construction succeeds -- before it, each throwing insert onto the same
@@ -1042,7 +1040,7 @@ class static_unordered_map
         }
 
         if (state(target) == slot_state::empty) {
-          ::new (storage_[target].addr()) value_type(static_cast<value_type&&>(carry.ref()));
+          ::new (storage_.items[target].addr()) value_type(static_cast<value_type&&>(carry.ref()));
           carry.ptr()->~value_type();
           occupied_.set(target);
           break;
@@ -1053,7 +1051,7 @@ class static_unordered_map
         storage_for<value_type> displaced;
         ::new (displaced.addr()) value_type(static_cast<value_type&&>(*slot_value(target)));
         slot_value(target)->~value_type();
-        ::new (storage_[target].addr()) value_type(static_cast<value_type&&>(carry.ref()));
+        ::new (storage_.items[target].addr()) value_type(static_cast<value_type&&>(carry.ref()));
         carry.ptr()->~value_type();
         tombstone_.reset(target);
         occupied_.set(target);
@@ -1063,7 +1061,7 @@ class static_unordered_map
     }
   }
 
-  storage_for<value_type> storage_[bucket_count];
+  detail::slot_array<storage_for<value_type>, bucket_count> storage_;
   // A slot's state in two bits, one per array: occupied, tombstone, or
   // neither (empty). Both zero is empty, so the constant image stays zeros.
   detail::bitset<bucket_count> occupied_{};

@@ -85,9 +85,7 @@ class static_message_queue : detail::no_implicit_copy_move<static_message_queue<
   /// detail/constant_init.hpp); a local one stores nothing to the buffer.
   constexpr static_message_queue() noexcept : head_(0), tail_(0), size_(0) {
     if (detail::in_constant_evaluation()) {
-      for (auto& slot : storage_) {
-        detail::zero_for_constant_init(slot.bytes);
-      }
+      detail::zero_for_constant_init(storage_);
     }
   }
 
@@ -192,7 +190,7 @@ class static_message_queue : detail::no_implicit_copy_move<static_message_queue<
       tail_ = slot;
       --size_;
     });
-    ::new (storage_[slot].addr()) T(std::forward<Args>(args)...);
+    ::new (storage_.items[slot].addr()) T(std::forward<Args>(args)...);
     undo.release();
     return true;
   }
@@ -270,8 +268,8 @@ class static_message_queue : detail::no_implicit_copy_move<static_message_queue<
 
   constexpr size_type physical_index(size_type offset) const noexcept { return (head_ + offset) % Capacity; }
 
-  T& storage_at(size_type index) noexcept { return storage_[index].ref(); }
-  const T& storage_at(size_type index) const noexcept { return storage_[index].ref(); }
+  T& storage_at(size_type index) noexcept { return storage_.items[index].ref(); }
+  const T& storage_at(size_type index) const noexcept { return storage_.items[index].ref(); }
 
   reference back_ref() noexcept {
     const size_type index = tail_ == 0 ? Capacity - 1 : tail_ - 1;
@@ -287,7 +285,8 @@ class static_message_queue : detail::no_implicit_copy_move<static_message_queue<
     leaving.~T();
   }
 
-  storage_type storage_[Capacity == 0 ? 1 : Capacity];  // keeps the static_assert the only diagnostic
+  // At least one slot, which keeps the static_assert the only diagnostic.
+  detail::slot_array<storage_type, (Capacity == 0 ? 1 : Capacity)> storage_;
   size_type head_;
   size_type tail_;
   size_type size_;

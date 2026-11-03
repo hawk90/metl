@@ -172,9 +172,7 @@ class ring_core : no_implicit_copy_move<ring_core<T, Capacity>> {
   // detail/constant_init.hpp); a local one stores nothing to the buffer.
   constexpr ring_core() noexcept : head_(0), size_(0) {
     if (in_constant_evaluation()) {
-      for (auto& slot : storage_) {
-        zero_for_constant_init(slot.bytes);
-      }
+      zero_for_constant_init(storage_);
     }
   }
 
@@ -315,7 +313,7 @@ class ring_core : no_implicit_copy_move<ring_core<T, Capacity>> {
     // into this ring gets the next one; undone if the constructor throws.
     const size_type slot = physical_index(size_++);
     auto undo = make_scope_exit([this]() noexcept { --size_; });
-    ::new (storage_[slot].addr()) T(std::forward<Args>(args)...);
+    ::new (storage_.items[slot].addr()) T(std::forward<Args>(args)...);
     undo.release();
     return true;
   }
@@ -436,10 +434,10 @@ class ring_core : no_implicit_copy_move<ring_core<T, Capacity>> {
     }
   }
 
-  T& storage_at(size_type index) noexcept { return storage_[index].ref(); }
-  const T& storage_at(size_type index) const noexcept { return storage_[index].ref(); }
+  T& storage_at(size_type index) noexcept { return storage_.items[index].ref(); }
+  const T& storage_at(size_type index) const noexcept { return storage_.items[index].ref(); }
 
-  storage_type storage_[Capacity == 0 ? 1 : Capacity];
+  slot_array<storage_type, (Capacity == 0 ? 1 : Capacity)> storage_;
   size_type head_;
   size_type size_;
 };
