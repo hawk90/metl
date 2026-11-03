@@ -275,11 +275,9 @@ struct expected_members {
     const bool had_value = state_ == expected_state::value;
     state_ = expected_state::switching;
     if (had_value) {
-      using value_type = std::remove_cv_t<T>;
-      std::launder(detail::addressof(storage_.value))->~value_type();
+      std::launder(detail::addressof(storage_.value))->~T();
     } else {
-      using error_type = std::remove_cv_t<E>;
-      std::launder(detail::addressof(storage_.error))->~error_type();
+      std::launder(detail::addressof(storage_.error))->~E();
     }
   }
 
@@ -327,8 +325,7 @@ struct expected_void_members {
     require_settled(state_);
     if (state_ != expected_state::value) {
       state_ = expected_state::switching;
-      using error_type = std::remove_cv_t<E>;
-      std::launder(detail::addressof(storage_.error))->~error_type();
+      std::launder(detail::addressof(storage_.error))->~E();
     }
   }
 
