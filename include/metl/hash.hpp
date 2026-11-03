@@ -118,6 +118,35 @@ METL_NODISCARD constexpr std::size_t hash_mix(std::size_t x) noexcept {
   return x;
 }
 
+/// @brief `hasher(key)`, except that a key wider than `std::size_t` hashed by
+///        `std::hash` keeps its high bits (#643).
+///
+/// libstdc++'s `std::hash<unsigned long long>` is `static_cast<size_t>(key)`.
+/// On a 32-bit `size_t` that drops the high word, so 64-bit keys that differ
+/// only there (IDs, timestamps) share a hash, and `hash_mix` cannot tell them
+/// apart: the table degrades to a linear scan. For exactly that case, the key
+/// is folded to `size_t` here instead. Any other hasher, and every key no
+/// wider than `size_t`, goes to `hasher` unchanged.
+template <typename Hash, typename K>
+METL_NODISCARD constexpr std::size_t hash_key(const Hash& hasher,
+                                              const K& key) noexcept(noexcept(hasher(key))) {
+  if constexpr (std::is_same_v<Hash, std::hash<K>> && std::is_integral_v<K> &&
+                (sizeof(K) > sizeof(std::size_t))) {
+    using wide = std::make_unsigned_t<K>;
+    wide value = static_cast<wide>(key);
+    std::size_t folded = 0;
+    for (std::size_t word = 0; word < sizeof(K) / sizeof(std::size_t); ++word) {
+      // Mixed per word, not XORed: a plain fold maps (x << 32) | x to 0 for
+      // every x.
+      folded = hash_mix(folded ^ static_cast<std::size_t>(value));
+      value = static_cast<wide>(value >> (8U * sizeof(std::size_t)));
+    }
+    return folded;
+  } else {
+    return hasher(key);
+  }
+}
+
 }  // namespace detail
 
 /// @brief FNV-1a hash over a contiguous unsigned char buffer.
@@ -210,6 +239,8 @@ constexpr std::uint64_t widen_integral(T value) noexcept {
 /// @tparam Ts Types of the values to hash; each must have a valid `std::hash` specialization.
 /// @param values The values to combine into a single hash.
 /// @return The combined hash, or 0 for an empty pack.
+/// @note Each value goes through `std::hash`, so on a 32-bit `size_t` with
+///       libstdc++ a 64-bit integer contributes only its low word.
 template <typename... Ts>
 METL_NODISCARD inline std::size_t hash_combine_all(const Ts&... values) {
   return detail::hash_combine_all_impl(static_cast<std::size_t>(0), values...);
@@ -217,7 +248,9 @@ METL_NODISCARD inline std::size_t hash_combine_all(const Ts&... values) {
 
 /// @brief Identity hash for integer-keyed open-addressed tables.
 /// @note Transparent (`is_transparent`). Returns the value cast to `std::size_t` unchanged; the caller
-///       is responsible for ensuring keys have good distribution.
+///       is responsible for ensuring keys have good distribution. A key wider than `std::size_t`
+///       keeps only its low bits: on a 32-bit target, 64-bit keys that differ only in the high
+///       word collide.
 struct identity_hash {
   using is_transparent = void;
 
