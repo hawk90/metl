@@ -65,6 +65,12 @@ CANARY = REPO / "tests" / "embedded" / "qemu_canary.cpp"
 # to build must fail with this text -- any other error (a typo, a missing
 # include) is a broken test, not the gate firing.
 CAPABILITY_GATE_TEXT = "ARMv6-M (Cortex-M0/M0+)"
+# A test that needs a lock-free compare-and-swap says so in its source with this
+# line, and on a core without one (ARMv6-M) it is expected to fail on the gate.
+# The test carries the fact, so adding one needs no edit to the CI matrix, which
+# is where the list used to live and where #622's new test was left out of it.
+NEEDS_CAS_MARKER = "// qemu: needs-cas"
+NO_CAS_CPUS = {"cortex-m0", "cortex-m0plus", "cortex-m1"}
 LINKER_SCRIPT = REPO / "tests" / "embedded" / "mps2-an385.ld"
 TIMEOUT_SECONDS = 20
 # The line terminator is part of the match: the log is read while QEMU writes
@@ -152,6 +158,16 @@ def discover():
                   if not p.relative_to(tests).as_posix().startswith("embedded/"))
 
 
+def expected_build_failures(texts, cpu):
+    """The tests that must fail on the capability gate on `cpu`: on a core
+    without compare-and-swap, every test whose source carries NEEDS_CAS_MARKER.
+    `texts` maps each discovered test to its source."""
+    if cpu not in NO_CAS_CPUS:
+        return set()
+    return {rel for rel, text in texts.items()
+            if any(line.strip() == NEEDS_CAS_MARKER for line in text.splitlines())}
+
+
 def indented(text, limit):
     return "\n".join("      | " + line for line in text.splitlines()[:limit])
 
@@ -229,12 +245,23 @@ def self_test():
             failures.append(f"{rel} on {cpu} reporting {code} graded "
                             f"{(passed, skipped, failure)}, want (passed, skipped, "
                             f"failed) = {want}")
+    # Only a core without CAS expects the marked tests to fail; the marker must be
+    # a line of its own, not a mention in a comment.
+    texts = {"a_test.cpp": f"#include <x>\n{NEEDS_CAS_MARKER}\n",
+             "b_test.cpp": "#include <x>\n",
+             "c_test.cpp": f"// see `{NEEDS_CAS_MARKER}` in the runner\n"}
+    for cpu, want in (("cortex-m0", {"a_test.cpp"}), ("cortex-m0plus", {"a_test.cpp"}),
+                      ("cortex-m3", set()), ("cortex-m7", set())):
+        got = expected_build_failures(texts, cpu)
+        if got != want:
+            failures.append(f"expected build failures on {cpu}: {sorted(got)}, want {sorted(want)}")
     for failure in failures:
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
         return 1
-    print("self-test passed: only a whole sentinel line is a status, and a self-skip "
-          "passes only where EXPECTED_SELF_SKIP allows it")
+    print("self-test passed: only a whole sentinel line is a status, a self-skip "
+          "passes only where EXPECTED_SELF_SKIP allows it, and only a core without "
+          "CAS expects the marked tests to fail to build")
     return 0
 
 
@@ -260,6 +287,8 @@ def main():
 
     sources = discover()
     expect_fail = {name for name in args.expect_build_fail.split(",") if name}
+    expect_fail |= expected_build_failures(
+        {rel: (REPO / "tests" / rel).read_text(errors="replace") for rel in sources}, args.cpu)
 
     # Every --expect-build-fail entry must name a test that discovery actually
     # found. A typo there is invisible otherwise: the misspelled entry matches
@@ -351,6 +380,9 @@ def main():
             if rel in expect_fail:
                 print(f"{rel:<52} BUILD-FAIL  (expected the capability gate, "
                       f"got another error)")
+            elif CAPABILITY_GATE_TEXT in build.stdout + build.stderr:
+                print(f"{rel:<52} BUILD-FAIL  (the capability gate fired, but the test does "
+                      f"not say it needs it: add the line `{NEEDS_CAS_MARKER}`)")
             else:
                 print(f"{rel:<52} BUILD-FAIL")
             # Print the diagnostic inline. Hiding it in an artifact means a red

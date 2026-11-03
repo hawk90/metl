@@ -1,0 +1,1 @@
+- `mpmc_queue` marks the point between a ticket's load and its slot's sequence load with an internal, empty `METL_DETAIL_MPMC_RACE_POINT`, so a test can run a second operation there and reach the producer and consumer retry branches on every run; it generates no code (#622).

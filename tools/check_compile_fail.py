@@ -92,8 +92,8 @@ GUARD = "METL_COMPILE_FAIL"
 #   cannot fail there. What covers them instead: the `handle-atomics` job
 #   checks the lock-free capability trait those three assertions rest on (and
 #   that the opposite expectation fails to compile) per Cortex-M target; the
-#   `qemu-conformance` Cortex-M0 row lists the tests that use them as
-#   `expect_build_fail`, so they must fail to build on ARMv6-M. atomic_ref's
+#   `qemu-conformance` Cortex-M0 row expects every test marked
+#   `// qemu: needs-cas` to fail to build on ARMv6-M. atomic_ref's
 #   size message has no case that fires it anywhere.
 #
 #   one is DERIVED -- static_unordered_map's bucket_count is bit_ceil(2 *
