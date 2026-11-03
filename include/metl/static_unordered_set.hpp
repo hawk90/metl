@@ -749,7 +749,7 @@ class static_unordered_set
   size_type bucket_index(const K& key) const noexcept(lookup_cannot_throw<K>) {
     // Finalize/avalanche the hash so high-entropy bits reach the low bits that the mask keeps.
     // insert and lookup both route through here, so they always agree on the bucket.
-    return static_cast<size_type>(detail::hash_mix(hasher_(key))) & (bucket_count - 1);
+    return static_cast<size_type>(detail::hash_mix(detail::hash_key(hasher_, key))) & (bucket_count - 1);
   }
 
   template <typename K>
