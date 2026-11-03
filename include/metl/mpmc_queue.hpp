@@ -13,6 +13,16 @@
 #include <type_traits>
 #include <utility>
 
+// Where a producer has read its ticket and not yet its slot's sequence (and the
+// same for a consumer): another producer or consumer can finish a whole
+// operation there, which is the only way to reach the retry branches. Empty, so
+// it adds no code. tests/sync/mpmc_queue_retry_test.cpp defines it before
+// including this header to run that operation at this point and reach both
+// branches on every run (#622). An internal test seam, not configuration.
+#ifndef METL_DETAIL_MPMC_RACE_POINT
+#define METL_DETAIL_MPMC_RACE_POINT(side) static_cast<void>(0)
+#endif
+
 namespace metl {
 
 /// @brief Bounded lock-free queue for multiple producers and multiple consumers.
@@ -200,6 +210,7 @@ class mpmc_queue {
 
     for (;;) {
       target = &cells_[pos & mask];
+      METL_DETAIL_MPMC_RACE_POINT(pop);
       const size_type sequence = target->sequence.load(std::memory_order_acquire);
       const int difference = detail::compare_tickets(sequence, pos + 1);
 
@@ -255,6 +266,7 @@ class mpmc_queue {
 
     for (;;) {
       target = &cells_[pos & mask];
+      METL_DETAIL_MPMC_RACE_POINT(push);
       const size_type sequence = target->sequence.load(std::memory_order_acquire);
       // sequence and pos both wrap and only their distance is meaningful; see
       // detail::compare_tickets for why that is not a signed subtraction.
