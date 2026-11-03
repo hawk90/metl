@@ -19,6 +19,7 @@
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
 #include "metl/detail/construct.hpp"
+#include "metl/detail/copy_move_gate.hpp"
 #include "metl/detail/three_way.hpp"
 #include "metl/in_place.hpp"
 #include "metl/type_traits.hpp"
@@ -67,7 +68,10 @@ struct is_metl_optional<optional<U>> : true_type {};
 /// by default) rather than throwing when the optional is empty. Use `value_or`
 /// for a safe alternative that never asserts.
 template <typename T>
-class optional {
+// The copy and move operations are the gated ones below, which clang-tidy does not
+// recognize as such (detail/copy_move_gate.hpp).
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
+class optional : detail::no_implicit_copy_move<optional<T>> {
   static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
 
  public:
@@ -115,7 +119,10 @@ class optional {
   }
 
   /// @brief Copy constructor; copies the contained value if engaged.
-  optional(const optional& other) : storage_{}, has_value_(false) {
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  optional(detail::gated_param<std::is_copy_constructible_v<T>, const optional&, 0> other)
+      : storage_{}, has_value_(false) {
     if (other.has_value_) {
       construct(*other);
     }
@@ -123,7 +130,10 @@ class optional {
 
   /// @brief Move constructor; moves the contained value if engaged.
   /// @note The source remains engaged (its value is moved-from), not reset.
-  optional(optional&& other) noexcept(std::is_nothrow_move_constructible_v<T>)
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  optional(detail::gated_param<std::is_move_constructible_v<T>, optional&&, 1> other) noexcept(
+      std::is_nothrow_move_constructible_v<T>)
       : storage_{}, has_value_(false) {
     if (other.has_value_) {
       construct(static_cast<T&&>(*other));
@@ -142,7 +152,7 @@ class optional {
   }
 
   /// @brief Copy-assigns from another optional, matching engaged state.
-  optional& operator=(const optional& other) {
+  optional& operator=(detail::gated_param<std::is_copy_constructible_v<T>, const optional&, 2> other) {
     if (this == &other) {
       return *this;
     }
@@ -157,8 +167,8 @@ class optional {
   }
 
   /// @brief Move-assigns from another optional, matching engaged state.
-  optional& operator=(optional&& other) noexcept(std::is_nothrow_move_assignable_v<T> &&
-                                                 std::is_nothrow_move_constructible_v<T>) {
+  optional& operator=(detail::gated_param<std::is_move_constructible_v<T>, optional&&, 3> other) noexcept(
+      std::is_nothrow_move_assignable_v<T> && std::is_nothrow_move_constructible_v<T>) {
     if (this == &other) {
       return *this;
     }

@@ -30,6 +30,7 @@
 #include "metl/config.hpp"
 #include "metl/detail/array_storage.hpp"
 #include "metl/detail/constant_init.hpp"
+#include "metl/detail/copy_move_gate.hpp"
 #include "metl/detail/three_way.hpp"
 #include "metl/scope_exit.hpp"
 #include "metl/span.hpp"
@@ -111,7 +112,10 @@ inline constexpr bool is_reverse_iterator_over_pointer_v = is_reverse_iterator_o
 /// @tparam T Element type.
 /// @tparam Capacity Maximum number of elements (fixed at compile time).
 template <typename T, std::size_t Capacity>
-class fixed_vector {
+// The copy and move operations are the gated ones below, which clang-tidy does not
+// recognize as such (detail/copy_move_gate.hpp).
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
+class fixed_vector : detail::no_implicit_copy_move<fixed_vector<T, Capacity>> {
   static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
 
  public:
@@ -143,14 +147,21 @@ class fixed_vector {
   // an element throws part-way, the destructor runs and destroys exactly the
   // elements already inserted; nothing leaks.
   /// Copy-constructs by copying each element of `other`.
-  fixed_vector(const fixed_vector& other) : fixed_vector() {
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  fixed_vector(detail::gated_param<std::is_copy_constructible_v<T>, const fixed_vector&, 0> other)
+      : fixed_vector() {
     for (const auto& value : other) {
       emplace_back(value);
     }
   }
 
   /// Move-constructs by moving each element out of `other`, leaving it empty.
-  fixed_vector(fixed_vector&& other) noexcept(std::is_nothrow_move_constructible_v<T>) : fixed_vector() {
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  fixed_vector(detail::gated_param<std::is_move_constructible_v<T>, fixed_vector&&, 1> other) noexcept(
+      std::is_nothrow_move_constructible_v<T>)
+      : fixed_vector() {
     for (auto& value : other) {
       emplace_back(static_cast<T&&>(value));
     }
@@ -173,7 +184,8 @@ class fixed_vector {
     asan_unpoison_all_();
   }
 
-  fixed_vector& operator=(const fixed_vector& other) {
+  fixed_vector& operator=(
+      detail::gated_param<std::is_copy_constructible_v<T>, const fixed_vector&, 2> other) {
     if (this == &other) {
       return *this;
     }
@@ -188,8 +200,9 @@ class fixed_vector {
 
   /// Move-assigns by moving each element out of `other`, leaving it empty. A
   /// pointer into `other` then names a destroyed object, unlike with `std::vector`.
-  fixed_vector& operator=(fixed_vector&& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
-                                                         std::is_nothrow_move_assignable_v<T>) {
+  fixed_vector& operator=(detail::gated_param<std::is_move_constructible_v<T>, fixed_vector&&, 3>
+                              other) noexcept(std::is_nothrow_move_constructible_v<T> &&
+                                              std::is_nothrow_move_assignable_v<T>) {
     if (this == &other) {
       return *this;
     }

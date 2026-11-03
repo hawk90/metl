@@ -27,6 +27,7 @@
 #include "metl/detail/bitset.hpp"
 #include "metl/detail/constant_init.hpp"
 #include "metl/detail/construct.hpp"
+#include "metl/detail/copy_move_gate.hpp"
 #include "metl/detail/crc.hpp"
 #include "metl/detail/dlist_link.hpp"
 #include "metl/detail/index_distance.hpp"

@@ -21,6 +21,7 @@
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
 #include "metl/detail/construct.hpp"
+#include "metl/detail/copy_move_gate.hpp"
 #include "metl/in_place.hpp"
 
 #include <cstddef>
@@ -301,7 +302,10 @@ using variant_alternative_t = typename variant_alternative<I, V>::type;
 /// requested alternative is not active; it does NOT throw std::bad_variant_access.
 /// `get_if<>()` returns nullptr instead of asserting.
 template <typename... Ts>
-class variant {
+// The copy and move operations are the gated ones below, which clang-tidy does not
+// recognize as such (detail/copy_move_gate.hpp).
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
+class variant : detail::no_implicit_copy_move<variant<Ts...>> {
   static_assert(((std::is_object_v<Ts> && !std::is_array_v<Ts>) && ...), METL_DETAIL_OBJECT_TYPE_MESSAGE);
 
  public:
@@ -358,7 +362,10 @@ class variant {
       : storage_(in_place_index<I>, std::forward<Args>(args)...), index_(I) {}
 
   /// @brief Copy constructor; copies the active alternative.
-  variant(const variant& other) noexcept(detail::all_nothrow_copy_constructible<Ts...>::value)
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  variant(detail::gated_param<std::conjunction_v<std::is_copy_constructible<Ts>...>, const variant&, 0>
+              other) noexcept(detail::all_nothrow_copy_constructible<Ts...>::value)
       : storage_{}, index_(variant_npos) {
     if (other.index_ != variant_npos) {
       copy_ops()[other.index_](raw_addr(), other.raw_addr());
@@ -367,7 +374,10 @@ class variant {
   }
 
   /// @brief Move constructor; moves the active alternative.
-  variant(variant&& other) noexcept(detail::all_nothrow_move_constructible<Ts...>::value)
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  variant(detail::gated_param<std::conjunction_v<std::is_move_constructible<Ts>...>, variant&&, 1>
+              other) noexcept(detail::all_nothrow_move_constructible<Ts...>::value)
       : storage_{}, index_(variant_npos) {
     if (other.index_ != variant_npos) {
       move_ops()[other.index_](raw_addr(), other.raw_addr());
@@ -383,7 +393,9 @@ class variant {
   }
 
   /// @brief Copy-assigns the active alternative from another variant.
-  variant& operator=(const variant& other) noexcept(detail::all_nothrow_copy_assignable<Ts...>::value) {
+  variant& operator=(
+      detail::gated_param<std::conjunction_v<std::is_copy_constructible<Ts>...>, const variant&, 2>
+          other) noexcept(detail::all_nothrow_copy_assignable<Ts...>::value) {
     if (this == &other) {
       return *this;
     }
@@ -396,7 +408,8 @@ class variant {
   }
 
   /// @brief Move-assigns the active alternative from another variant.
-  variant& operator=(variant&& other) noexcept(detail::all_nothrow_move_assignable<Ts...>::value) {
+  variant& operator=(detail::gated_param<std::conjunction_v<std::is_move_constructible<Ts>...>, variant&&, 3>
+                         other) noexcept(detail::all_nothrow_move_assignable<Ts...>::value) {
     if (this == &other) {
       return *this;
     }

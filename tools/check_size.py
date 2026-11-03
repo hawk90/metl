@@ -166,11 +166,18 @@ import tempfile
 # the nightlies have measured 4068 against 3768 since, inside the tolerance.
 # M3/M4/M7 had the opposite gap, 144-168 bytes of slack. Every budget below is
 # now the measurement of the PR that set it (run 40406983623).
+#
+# Raised a fourth time, by 4 bytes on every core, by #601, which links nothing
+# new. fixed_vector::operator[]'s bounds check passes __LINE__ to the assert
+# handler, and #601's gated copy and move operations moved that line from 248
+# to 261: past 255 it no longer fits a 16-bit `movs` immediate and becomes a
+# 32-bit `movw` (+4 bytes in that one function, measured with GCC 16 on M0
+# and M3; run 41559625344 measured +4 on all four cores with CI's GCC 14).
 BUDGETS = {
-    "cortex-m0": 4404,
-    "cortex-m3": 4368,
-    "cortex-m4": 4364,
-    "cortex-m7": 4368,
+    "cortex-m0": 4408,
+    "cortex-m3": 4372,
+    "cortex-m4": 4368,
+    "cortex-m7": 4372,
 }
 
 # No tolerance on any of the three sizes (#587). The toolchain does not move them

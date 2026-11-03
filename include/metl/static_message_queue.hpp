@@ -21,6 +21,7 @@
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/constant_init.hpp"
+#include "metl/detail/copy_move_gate.hpp"
 #include "metl/scope_exit.hpp"
 #include "metl/type_traits.hpp"
 
@@ -51,7 +52,10 @@ namespace metl {
 ///       empty and usable, and destroys its elements. A pointer into the source then
 ///       names a destroyed object, unlike with `std::vector`.
 template <typename T, std::size_t Capacity>
-class static_message_queue {
+// The copy and move operations are the gated ones below, which clang-tidy does not
+// recognize as such (detail/copy_move_gate.hpp).
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
+class static_message_queue : detail::no_implicit_copy_move<static_message_queue<T, Capacity>> {
   // metl is a NO-EXCEPTION library. The only T operation that runs inside a noexcept context here is
   // DESTRUCTION: pop(), clear(), pop_front() and ~static_message_queue() are noexcept and destroy T.
   // A throwing destructor would escape that noexcept boundary and call std::terminate at RUNTIME, so
@@ -94,14 +98,21 @@ class static_message_queue {
   // Once it returns the object is fully constructed, so if copying or moving
   // an element throws part-way, the destructor runs and destroys exactly the
   // elements already inserted instead of leaking them.
-  static_message_queue(const static_message_queue& other) : static_message_queue() {
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  static_message_queue(
+      detail::gated_param<std::is_copy_constructible_v<T>, const static_message_queue&, 0> other)
+      : static_message_queue() {
     for (size_type i = 0; i < other.size_; ++i) {
       const size_type index = other.physical_index(i);
       (void)emplace(other.storage_at(index));
     }
   }
 
-  static_message_queue(static_message_queue&& other) noexcept(std::is_nothrow_move_constructible_v<T>)
+  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  static_message_queue(detail::gated_param<std::is_move_constructible_v<T>, static_message_queue&&, 1>
+                           other) noexcept(std::is_nothrow_move_constructible_v<T>)
       : static_message_queue() {
     for (size_type i = 0; i < other.size_; ++i) {
       const size_type index = other.physical_index(i);
@@ -110,7 +121,8 @@ class static_message_queue {
     other.clear();
   }
 
-  static_message_queue& operator=(const static_message_queue& other) {
+  static_message_queue& operator=(
+      detail::gated_param<std::is_copy_constructible_v<T>, const static_message_queue&, 2> other) {
     if (this == &other) {
       return *this;
     }
@@ -123,7 +135,8 @@ class static_message_queue {
     return *this;
   }
 
-  static_message_queue& operator=(static_message_queue&& other) noexcept(
+  static_message_queue&
+  operator=(detail::gated_param<std::is_move_constructible_v<T>, static_message_queue&&, 3> other) noexcept(
       std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_assignable_v<T>) {
     if (this == &other) {
       return *this;
