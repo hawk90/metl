@@ -1,1 +1,0 @@
-- `docs/SCOPE.md` I2 states that the library originates no exception and rethrows a user's to keep a container valid, and names the job that covers those paths (#590).
