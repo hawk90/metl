@@ -304,15 +304,23 @@ class ring_core : no_implicit_copy_move<ring_core<T, Capacity>> {
 
   /// Constructs an element in place at the back if there is room.
   /// @return true on success; false if full (no assert).
+  /// @note An element constructor may insert into this container, or throw,
+  ///       but not both: inserting and then throwing stops at `METL_HARDEN` (#638).
   template <typename... Args>
   METL_NODISCARD bool try_emplace_back(Args&&... args) {
     if (size_ == Capacity) {
       return false;
     }
     // Claim the slot before T's constructor runs, so a constructor that pushes
-    // into this ring gets the next one; undone if the constructor throws.
-    const size_type slot = physical_index(size_++);
-    auto undo = make_scope_exit([this]() noexcept { --size_; });
+    // into this ring gets the next one; undone if the constructor throws. A
+    // constructor that pushed and then threw left a live element past the
+    // unconstructed slot, which cannot be undone without moving it (#638).
+    const size_type claimed = ++size_;
+    const size_type slot = physical_index(claimed - 1);
+    auto undo = make_scope_exit([this, claimed]() noexcept {
+      METL_HARDEN(size_ == claimed);
+      --size_;
+    });
     ::new (storage_.items[slot].addr()) T(std::forward<Args>(args)...);
     undo.release();
     return true;

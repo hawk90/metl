@@ -135,6 +135,7 @@ if(METL_BUILD_TESTS)
   set(_metl_tests
     # containers/
     containers/fixed_vector containers/fixed_vector_asan containers/fixed_string containers/fixed_string_literal containers/removal_reentrancy
+    containers/reentrant_throw
     containers/fixed_deque containers/fixed_queue containers/fixed_stack
     containers/ring_buffer containers/flat_map containers/flat_set
     containers/static_unordered_map containers/static_unordered_set containers/associative_conversion
