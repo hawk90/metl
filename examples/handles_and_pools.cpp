@@ -142,7 +142,9 @@ int demo_stale_reference() {
   }
 
   // --- handles ---
-  metl::handle_pool<connection, 2> handles;
+  // One slot, so the next try_emplace must reuse it: the pool hands out freed
+  // slots oldest first, and with two the fresh object would land in the other.
+  metl::handle_pool<connection, 1> handles;
   const auto stale_handle = handles.try_emplace(connection{8080, 0});
   if (!stale_handle.valid()) {
     return 24;

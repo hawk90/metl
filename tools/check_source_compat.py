@@ -116,6 +116,10 @@ EXPECTED_BREAKS = {
         "tests/core/compiler_test.cpp": "it tests the compiler.hpp variables and macros 1.15.0 deprecated, "
                                         "removed by #662 (#168)",
         "tests/sync/wait_test.cpp": "it uses METL_PREFETCH, deprecated in 1.15.0 and removed by #662 (#168)",
+        "metl_handle_pool_test": "it expected the slot just freed back from try_emplace; #642 reuses "
+                                 "the slot freed longest ago, a reuse order 1.x never documented",
+        "metl_example_handles_and_pools": "it showed a freed slot reused at once in a two-slot pool; "
+                                          "#642's oldest-first reuse hands out the unused slot first",
     },
 }
 
