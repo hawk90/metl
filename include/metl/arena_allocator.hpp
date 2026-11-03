@@ -161,8 +161,9 @@ class arena_allocator {
   /// @pre @c target must refer to a position at or below the current top.
   /// @pre @c target has not been invalidated: no `rewind` or `reset` since the
   ///      `mark` call has taken the arena below @c target. After such a rollback
-  ///      the offset may not be a record boundary any more, and the walk can
-  ///      overshoot it, destroying an object that straddles it.
+  ///      the offset may not be a record boundary any more. Checked by
+  ///      `METL_HARDEN`, at every hardening level: the walk stops at a record that straddles @c target
+  ///      before it destroys or releases anything at or below it.
   /// @note A destructor run by `rewind` may call back into this arena. A
   ///       nested `rewind` or `reset` stops at the object being destroyed: it
   ///       does not destroy it again, and leaves it and everything below it
@@ -174,6 +175,9 @@ class arena_allocator {
     METL_ASSERT(target.offset <= offset_);
     while (offset_ > target.offset) {
       allocation_record record = load_record(offset_);
+      // A record that starts below the target means the target is not a
+      // record boundary: the mark was invalidated (#637).
+      METL_HARDEN(record.previous_offset >= target.offset);
       if (record.destroy != nullptr) {
         // Mark the record as being destroyed before the destructor runs. The
         // destructor may rewind this arena itself, which must neither destroy
