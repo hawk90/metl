@@ -69,6 +69,8 @@ only recompiles what changed.
 Usage:
     tools/pre_push.py            # what the hook runs
     tools/pre_push.py --quick    # steps 1-2 only (no builds)
+                                 # (also what a docs-only branch gets: docs/,
+                                 # changelog.d/, top-level *.md)
     git push --no-verify         # skip the hook (CI still runs everything)
 """
 
@@ -404,6 +406,18 @@ def qemu_toolchain_usable() -> bool:
     return probe.returncode == 0
 
 
+# A branch that changes only these builds nothing a compiler reads, so steps 3
+# onward cannot fail on it: they rebuilt and reran the whole suite for a
+# paragraph of SCOPE.md. The source gates in step 2 still run -- check_docs reads
+# these files, check_changelog the fragments -- and CI still runs everything.
+DOCS_ONLY = re.compile(r"^(?:docs/[^/]+\.md|docs/assets/.*|changelog\.d/.*|[^/]+\.md|LICENSE|NOTICE)$")
+
+
+def docs_only(changed):
+    """True when every changed path is prose that no build reads."""
+    return bool(changed) and all(DOCS_ONLY.match(path) for path in changed)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -431,6 +445,11 @@ def main():
             return 1
     if args.quick:
         print("pre-push: --quick, builds skipped")
+        return 0
+    _, changed = branch_changes()
+    if docs_only(changed):
+        print(f"pre-push: this branch changes only documentation ({len(changed)} file(s)), "
+              "so the builds are skipped; CI runs them")
         return 0
 
     print("3. Release + -Werror builds")
