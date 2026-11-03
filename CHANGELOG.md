@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-11-03
+
+**Highlights.** Constant initialization under C++20, without costing C++17. A
+`handle_pool` can now be constant-initialized on request: `handle_pool(constant_init)`
+builds the empty pool during constant evaluation, at the price of `sizeof` bytes of
+flash, so a pool an early interrupt reaches is ready before `main()`. And a local
+`arena_allocator` or `monotonic_buffer` no longer zeroes its whole buffer on every
+construction under C++20. C++17 code is unchanged by both.
+
+**Upgrading from 1.12.0.** No code stops compiling; one constructor is added. One
+observable difference: under C++20, a block from a local `arena_allocator` or
+`monotonic_buffer` no longer happens to read as zeros before it is written. Both
+have always documented `allocate` as returning uninitialized memory (#628).
+
+### Added
+
+- `handle_pool(handle_pool::constant_init)`, since C++20: builds the same empty pool as the default constructor during constant evaluation, so a namespace-scope pool declared `constinit` is ready before any code runs, including an interrupt enabled by another file's constructor. Such a pool is stored in `.data` and takes `sizeof` bytes of flash, because the empty free list is not all-zero; the default constructor, which keeps the pool in `.bss`, and every operation's code are unchanged, and C++17 is unaffected (#408).
+
+### Changed
+
+- Under C++20, a local `arena_allocator` or `monotonic_buffer` no longer zeroes its whole buffer on construction. It was a `memset` or `bzero` of `Capacity` bytes on every construction, there only so that a namespace-scope instance could be constant-initialized. The buffer is now cleared only during constant evaluation, as the containers' is, so a namespace-scope instance is still constant-initialized (checked at 256 KiB on GCC and clang) and `sizeof` is unchanged. C++17 keeps the zeroing, which it needs in order to be constant-initialized, and its code is unchanged (#628).
+
 ## [1.12.0] - 2026-11-03
 
 **Highlights.** The rest of the audit. Copy, move and swap traits now follow the
