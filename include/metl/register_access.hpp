@@ -47,22 +47,82 @@ METL_FORCE_INLINE void write_once(volatile T* addr, T value) noexcept {
   *addr = value;
 }
 
-/// @brief Full (sequentially consistent) memory barrier for ordering MMIO.
+// The three hardware barriers below order device accesses, not only memory
+// shared between threads, which is all std::atomic_thread_fence promises (#586).
+// The fence it lowers to can leave device I/O out:
+// - RISC-V: `fence rw,rw` orders main-memory reads and writes; device input and
+//   output are the I and O sets, which it does not name. Linux's mb() is
+//   `fence iorw,iorw` for this reason, and its smp_mb() is `fence rw,rw`.
+// - ARM: `dmb ish` orders only within the inner-shareable domain, which need not
+//   include a peripheral or a DMA master; `dmb sy` is the full system. On
+//   M-profile, where GCC emits `dmb ish`, ARMv7-M defines only SY and runs the
+//   other options as SY without promising it.
+// Elsewhere (x86, MSVC, other cores) the fence stays std::atomic_thread_fence.
+#if defined(__GNUC__) && defined(__riscv)
+#define METL_DETAIL_IO_FENCE_FULL "fence iorw, iorw"
+#define METL_DETAIL_IO_FENCE_ACQUIRE "fence ir, iorw"
+#define METL_DETAIL_IO_FENCE_RELEASE "fence iorw, ow"
+#elif defined(__GNUC__) && defined(__aarch64__)
+#define METL_DETAIL_IO_FENCE_FULL "dmb sy"
+#define METL_DETAIL_IO_FENCE_ACQUIRE "dmb ld"
+#define METL_DETAIL_IO_FENCE_RELEASE "dmb sy"
+#elif defined(__GNUC__) && defined(__arm__) && defined(__ARM_ARCH) && __ARM_ARCH >= 7
+#define METL_DETAIL_IO_FENCE_FULL "dmb sy"
+#define METL_DETAIL_IO_FENCE_ACQUIRE "dmb sy"
+#define METL_DETAIL_IO_FENCE_RELEASE "dmb sy"
+#elif defined(__GNUC__) &&       \
+    (defined(__ARM_ARCH_6M__) || \
+     (defined(__ARM_ARCH) && __ARM_ARCH == 6 && defined(__ARM_ARCH_PROFILE) && __ARM_ARCH_PROFILE == 'M'))
+#define METL_DETAIL_IO_FENCE_FULL "dmb sy"
+#define METL_DETAIL_IO_FENCE_ACQUIRE "dmb sy"
+#define METL_DETAIL_IO_FENCE_RELEASE "dmb sy"
+#endif
+
+/// @brief Full barrier for ordering MMIO, DMA buffers and memory: every access
+///        before it is ordered before every access after it, device ones included.
 ///
-/// Maps to `std::atomic_thread_fence` and lowers to the target's fence
-/// (DMB on ARM, mfence on x86, etc.; not a DSB).
+/// `fence iorw, iorw` on RISC-V and `dmb sy` on ARM, which `std::atomic_thread_fence`
+/// does not give (see above); `std::atomic_thread_fence(seq_cst)` elsewhere, an
+/// `mfence`-class fence on x86. Not a DSB: it orders accesses, it does not wait
+/// for them to complete.
 METL_FORCE_INLINE void barrier_full() noexcept {
+#ifdef METL_DETAIL_IO_FENCE_FULL
+  // The I/O fence instruction is the point: no portable spelling orders device memory.
+  // NOLINTNEXTLINE(portability-no-assembler)
+  __asm__ __volatile__(METL_DETAIL_IO_FENCE_FULL ::: "memory");
+#else
   std::atomic_thread_fence(std::memory_order_seq_cst);
+#endif
 }
 
-/// @brief Acquire barrier: prevents later accesses from being reordered before it.
+/// @brief Acquire barrier: later accesses, device ones included, are not
+///        reordered before the reads that precede it.
+///
+/// `fence ir, iorw` on RISC-V, `dmb ld` on AArch64, `dmb sy` on 32-bit ARM;
+/// `std::atomic_thread_fence(acquire)` elsewhere.
 METL_FORCE_INLINE void barrier_acquire() noexcept {
+#ifdef METL_DETAIL_IO_FENCE_ACQUIRE
+  // The I/O fence instruction is the point: no portable spelling orders device memory.
+  // NOLINTNEXTLINE(portability-no-assembler)
+  __asm__ __volatile__(METL_DETAIL_IO_FENCE_ACQUIRE ::: "memory");
+#else
   std::atomic_thread_fence(std::memory_order_acquire);
+#endif
 }
 
-/// @brief Release barrier: prevents earlier accesses from being reordered after it.
+/// @brief Release barrier: earlier accesses, device ones included, are not
+///        reordered after the writes that follow it.
+///
+/// `fence iorw, ow` on RISC-V, `dmb sy` on ARM;
+/// `std::atomic_thread_fence(release)` elsewhere.
 METL_FORCE_INLINE void barrier_release() noexcept {
+#ifdef METL_DETAIL_IO_FENCE_RELEASE
+  // The I/O fence instruction is the point: no portable spelling orders device memory.
+  // NOLINTNEXTLINE(portability-no-assembler)
+  __asm__ __volatile__(METL_DETAIL_IO_FENCE_RELEASE ::: "memory");
+#else
   std::atomic_thread_fence(std::memory_order_release);
+#endif
 }
 
 /// @brief Compiler-only barrier: stops the OPTIMIZER reordering across this
