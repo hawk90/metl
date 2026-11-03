@@ -20,6 +20,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/constant_init.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -54,7 +55,14 @@ class arena_allocator {
   };
 
   /// @brief Construct an empty arena with all storage available.
+#if METL_DETAIL_LAZY_CONSTANT_INIT
+  // Zeroes the buffer only during constant evaluation: a local one costs no
+  // `Capacity` stores, and a namespace-scope one still lands in .bss (#628).
+  constexpr arena_allocator() noexcept : offset_(0) { detail::zero_for_constant_init(storage_); }
+#else
+  // C++17 must initialize every member of a constexpr constructor up front.
   constexpr arena_allocator() noexcept : offset_(0), storage_{} {}
+#endif
 
   /// @brief Destroys every object still in the arena (`reset()`), newest first,
   ///        so an owning `T` created by `try_emplace` does not leak when the
@@ -302,7 +310,11 @@ class arena_allocator {
   }
 
   size_type offset_;
+#if METL_DETAIL_LAZY_CONSTANT_INIT
+  detail::max_aligned_bytes<(Capacity == 0 ? 1 : Capacity)> storage_;
+#else
   alignas(std::max_align_t) unsigned char storage_[Capacity == 0 ? 1 : Capacity];
+#endif
 };
 
 }  // namespace metl

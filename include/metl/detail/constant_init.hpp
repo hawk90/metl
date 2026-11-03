@@ -40,6 +40,32 @@ METL_NODISCARD constexpr bool in_constant_evaluation() noexcept {
 #endif
 }
 
+/// 1 where a `constexpr` constructor may leave a member uninitialized until its
+/// body (C++20, P1331), so it can zero storage only during constant evaluation.
+/// 0 before that, where a type that promises constant initialization must
+/// initialize the member up front, and so on every construction.
+#if defined(__cpp_constexpr) && __cpp_constexpr >= 201907L
+#define METL_DETAIL_LAZY_CONSTANT_INIT 1
+#else
+#define METL_DETAIL_LAZY_CONSTANT_INIT 0
+#endif
+
+/// @brief `N` bytes aligned for any scalar, in a struct so that
+///        `zero_for_constant_init` clears them in one assignment (#628).
+///        Converts to `unsigned char*`, so `storage_[i]` and `storage_ + n`
+///        read as they do on the bare array it replaces under C++20; the C++17
+///        build keeps that array, and its code, as it was.
+template <std::size_t N>
+struct max_aligned_bytes {
+  alignas(std::max_align_t) unsigned char bytes[N];
+
+  // Implicit on purpose: the containing class indexes it as it did the array.
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  constexpr operator unsigned char*() noexcept { return bytes; }
+  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
+  constexpr operator const unsigned char*() const noexcept { return bytes; }
+};
+
 /// @brief Value-initializes `storage`, a buffer wrapped in a struct, during
 ///        constant evaluation; does nothing at run time.
 ///
