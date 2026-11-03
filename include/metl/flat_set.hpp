@@ -123,9 +123,8 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
                           const flat_set&,
                           0> other)
       : flat_set(other.comp_) {
-    for (const auto& item : other) {
-      emplace(item);
-    }
+    // `other` is sorted and unique: append, comparing nothing (#644).
+    append_copies_from(other);
   }
 
   /// @brief Move-construct, moving elements out of @p other and leaving it empty.
@@ -160,9 +159,8 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
 
     clear();
     comp_ = other.comp_;
-    for (const auto& item : other) {
-      emplace(item);
-    }
+    // `other` is sorted and unique: append, comparing nothing (#644).
+    append_copies_from(other);
     return *this;
   }
 
@@ -559,6 +557,15 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
 
   // Moves every element of `other` (sorted, unique) onto the end of this empty
   // container, in order.
+  // Copies a sorted, unique set's elements in order. `size_` counts each one
+  // as it is built, so a throwing copy leaves the ones before it to the
+  // destructor.
+  void append_copies_from(const flat_set& other) {
+    for (const auto& item : other) {
+      ::new (storage_.slot(size_)) value_type(item);
+      ++size_;
+    }
+  }
   void append_sorted_from(flat_set& other) noexcept(std::is_nothrow_move_constructible_v<value_type>) {
     for (auto& item : other) {
       ::new (storage_.slot(size_)) value_type(static_cast<value_type&&>(item));

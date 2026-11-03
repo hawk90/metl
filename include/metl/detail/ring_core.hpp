@@ -413,14 +413,23 @@ class ring_core : no_implicit_copy_move<ring_core<T, Capacity>> {
     }
   }
 
-  // `if constexpr`, not `?:`: a zero-capacity ring must not even instantiate
-  // the `% Capacity`, or MSVC warns of a possible division by zero (C4724).
+  // Both index helpers wrap with a compare, not `%`: ARMv6-M has no divide
+  // instruction, so `% Capacity` for a capacity that is not a power of two is
+  // a call to __aeabi_uidivmod on every access (#644). A power of two keeps
+  // the mask. `if constexpr`, not `?:`: a zero-capacity ring must not even
+  // instantiate the arithmetic, or MSVC warns of a possible division by zero
+  // (C4724).
+  static constexpr bool power_of_two_capacity = Capacity != 0 && (Capacity & (Capacity - 1)) == 0;
+
+  // `index` is below Capacity, so `index + 1` is at most Capacity.
   constexpr size_type advance(size_type index) const noexcept {
     if constexpr (Capacity == 0) {
       (void)index;
       return 0;
+    } else if constexpr (power_of_two_capacity) {
+      return (index + 1) & (Capacity - 1);
     } else {
-      return (index + 1) % Capacity;
+      return index + 1 == Capacity ? 0 : index + 1;
     }
   }
 
@@ -433,12 +442,17 @@ class ring_core : no_implicit_copy_move<ring_core<T, Capacity>> {
     }
   }
 
+  // `head_` is below Capacity and `logical_index` at most Capacity, so the sum
+  // is below 2 * Capacity and one subtraction wraps it.
   constexpr size_type physical_index(size_type logical_index) const noexcept {
     if constexpr (Capacity == 0) {
       (void)logical_index;
       return 0;
+    } else if constexpr (power_of_two_capacity) {
+      return (head_ + logical_index) & (Capacity - 1);
     } else {
-      return (head_ + logical_index) % Capacity;
+      const size_type sum = head_ + logical_index;
+      return sum >= Capacity ? sum - Capacity : sum;
     }
   }
 
