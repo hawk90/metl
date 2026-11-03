@@ -10,7 +10,10 @@
 //
 // The handler longjmps out of the undo, which runs while the exception
 // unwinds. Each container is then abandoned (namespace-scope storage that is
-// never destroyed), so nothing touches the state the trip interrupted.
+// never destroyed), so nothing touches the state the trip interrupted. The
+// exception in flight is abandoned with it: nothing can free it once the
+// handler jumps out of the unwind, so LeakSanitizer is told about that one
+// allocation, and only that one.
 
 #undef METL_HARDENING  // METL_HARDEN must fire at every level, including NONE
 #define METL_HARDENING 0
@@ -31,6 +34,12 @@ int main() {
   return metl_test::skip("reentrant_throw_test", "needs exceptions");
 }
 #else
+
+// Read by LeakSanitizer when the test runs under it; unused anywhere else.
+extern "C" const char* __lsan_default_suppressions();
+extern "C" const char* __lsan_default_suppressions() {
+  return "leak:inner_then_throw::inner_then_throw\n";
+}
 
 namespace {
 
