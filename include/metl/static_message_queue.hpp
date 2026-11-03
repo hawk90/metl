@@ -176,6 +176,8 @@ class static_message_queue : detail::no_implicit_copy_move<static_message_queue<
 
   /// @brief Construct an element in place at the back if space is available.
   /// @return True if enqueued; false if the queue is full.
+  /// @note An element constructor may insert into this container, or throw,
+  ///       but not both: inserting and then throwing stops at `METL_HARDEN` (#638).
   template <typename... Args>
   METL_NODISCARD bool try_emplace(Args&&... args) {
     if (full()) {
@@ -183,10 +185,13 @@ class static_message_queue : detail::no_implicit_copy_move<static_message_queue<
     }
     // Claim the slot before T's constructor runs, so a constructor that pushes
     // into this queue gets the next one; undone if the constructor throws.
+    // A constructor that pushed and then threw left a live element past the
+    // unconstructed slot, which cannot be undone without moving it (#638).
     const size_type slot = tail_;
     tail_ = advance(tail_);
-    ++size_;
-    auto undo = make_scope_exit([this, slot]() noexcept {
+    const size_type claimed = ++size_;
+    auto undo = make_scope_exit([this, slot, claimed]() noexcept {
+      METL_HARDEN(size_ == claimed);
       tail_ = slot;
       --size_;
     });

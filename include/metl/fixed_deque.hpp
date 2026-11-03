@@ -76,6 +76,8 @@ class fixed_deque : public detail::ring_core<T, Capacity> {
 
   /// Constructs an element in place at the front if there is room.
   /// @return true on success; false if the deque is full (no assert).
+  /// @note An element constructor may insert into this container, or throw,
+  ///       but not both: inserting and then throwing stops at `METL_HARDEN` (#638).
   template <typename... Args>
   METL_NODISCARD bool try_emplace_front(Args&&... args) {
     if (full()) {
@@ -84,11 +86,14 @@ class fixed_deque : public detail::ring_core<T, Capacity> {
     // Claim the slot before T's constructor runs, so a constructor that pushes
     // into this deque gets another one. If the constructor throws the claim is
     // undone, so head_ never stays on an unconstructed slot.
+    // A constructor that pushed and then threw left a live element beside the
+    // unconstructed slot, which cannot be undone without moving it (#638).
     const auto previous_head = this->head_;
     const auto slot = this->retreat(this->head_);
     this->head_ = slot;
-    ++this->size_;
-    auto undo = make_scope_exit([this, previous_head]() noexcept {
+    const auto claimed = ++this->size_;
+    auto undo = make_scope_exit([this, previous_head, slot, claimed]() noexcept {
+      METL_HARDEN(this->head_ == slot && this->size_ == claimed);
       this->head_ = previous_head;
       --this->size_;
     });

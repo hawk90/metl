@@ -315,6 +315,8 @@ class fixed_vector : detail::no_implicit_copy_move<fixed_vector<T, Capacity>> {
 
   /// Constructs an element in place at the back if there is room.
   /// @return true on success; false if the container is full (no assert).
+  /// @note An element constructor may insert into this container, or throw,
+  ///       but not both: inserting and then throwing stops at `METL_HARDEN` (#638).
   template <typename... Args>
   METL_NODISCARD bool try_emplace_back(Args&&... args) {
     if (full()) {
@@ -324,9 +326,12 @@ class fixed_vector : detail::no_implicit_copy_move<fixed_vector<T, Capacity>> {
     asan_unpoison_all_();
     // Claim the slot before T's constructor runs: a constructor that pushes
     // into this vector then gets the next slot instead of this one. Undone if
-    // the constructor throws.
+    // the constructor throws. A constructor that pushed and then threw left a
+    // live element above the unconstructed slot, which cannot be undone
+    // without moving it (#638).
     const size_type index = size_++;
-    auto undo = make_scope_exit([this]() noexcept {
+    auto undo = make_scope_exit([this, index]() noexcept {
+      METL_HARDEN(size_ == index + 1);
       --size_;
       asan_poison_tail_();
     });
