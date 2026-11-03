@@ -313,7 +313,7 @@ class ring_core : no_implicit_copy_move<ring_core<T, Capacity>> {
     // into this ring gets the next one; undone if the constructor throws.
     const size_type slot = physical_index(size_++);
     auto undo = make_scope_exit([this]() noexcept { --size_; });
-    ::new (storage_[slot].addr()) T(std::forward<Args>(args)...);
+    ::new (storage_.items[slot].addr()) T(std::forward<Args>(args)...);
     undo.release();
     return true;
   }
@@ -434,8 +434,8 @@ class ring_core : no_implicit_copy_move<ring_core<T, Capacity>> {
     }
   }
 
-  T& storage_at(size_type index) noexcept { return storage_[index].ref(); }
-  const T& storage_at(size_type index) const noexcept { return storage_[index].ref(); }
+  T& storage_at(size_type index) noexcept { return storage_.items[index].ref(); }
+  const T& storage_at(size_type index) const noexcept { return storage_.items[index].ref(); }
 
   slot_array<storage_type, (Capacity == 0 ? 1 : Capacity)> storage_;
   size_type head_;

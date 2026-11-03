@@ -57,18 +57,13 @@ constexpr void zero_for_constant_init(S& storage) noexcept {
 
 /// @brief An array of storage slots wrapped in a struct, so
 ///        `zero_for_constant_init` clears it in one assignment rather than one
-///        iteration per slot (#613). Same layout as `S[N]`; indexes and iterates
-///        like it.
+///        iteration per slot (#613). Same layout as `S[N]`. Containers index
+///        `items` directly: a subscript operator here changed GCC's code for
+///        object_pool at -Os (+4 bytes on Cortex-M3), and a bare array
+///        expression keeps the code what it was.
 template <typename S, std::size_t N>
 struct slot_array {
   S items[N];
-
-  constexpr S& operator[](std::size_t index) noexcept { return items[index]; }
-  METL_NODISCARD constexpr const S& operator[](std::size_t index) const noexcept { return items[index]; }
-  METL_NODISCARD constexpr S* begin() noexcept { return items; }
-  METL_NODISCARD constexpr const S* begin() const noexcept { return items; }
-  METL_NODISCARD constexpr S* end() noexcept { return items + N; }
-  METL_NODISCARD constexpr const S* end() const noexcept { return items + N; }
 };
 
 /// @brief Zeroes `bytes` during constant evaluation; does nothing at run time.

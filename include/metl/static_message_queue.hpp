@@ -190,7 +190,7 @@ class static_message_queue : detail::no_implicit_copy_move<static_message_queue<
       tail_ = slot;
       --size_;
     });
-    ::new (storage_[slot].addr()) T(std::forward<Args>(args)...);
+    ::new (storage_.items[slot].addr()) T(std::forward<Args>(args)...);
     undo.release();
     return true;
   }
@@ -268,8 +268,8 @@ class static_message_queue : detail::no_implicit_copy_move<static_message_queue<
 
   constexpr size_type physical_index(size_type offset) const noexcept { return (head_ + offset) % Capacity; }
 
-  T& storage_at(size_type index) noexcept { return storage_[index].ref(); }
-  const T& storage_at(size_type index) const noexcept { return storage_[index].ref(); }
+  T& storage_at(size_type index) noexcept { return storage_.items[index].ref(); }
+  const T& storage_at(size_type index) const noexcept { return storage_.items[index].ref(); }
 
   reference back_ref() noexcept {
     const size_type index = tail_ == 0 ? Capacity - 1 : tail_ - 1;
