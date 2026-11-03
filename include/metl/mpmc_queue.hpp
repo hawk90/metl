@@ -134,7 +134,9 @@ class mpmc_queue {
   ///       and a .data image proportional to `Capacity`, or an extra operation on
   ///       every push and pop. A namespace-scope queue is therefore initialized at
   ///       run time, in link order: construct it before enabling any interrupt
-  ///       that uses it, or share `spsc_queue` with the ISR instead.
+  ///       that uses it, or share `spsc_queue` with the ISR instead. At
+  ///       `METL_HARDENING_DEBUG`, a push or pop on a queue whose constructor has
+  ///       not run yet stops at `METL_DASSERT` (Capacity > 2; #290).
   mpmc_queue() noexcept : enqueue_pos_(0), dequeue_pos_(0) {
     // Slot i starts "ready for the producer whose ticket is i".
     for (size_type i = 0; i < Capacity; ++i) {
@@ -205,6 +207,7 @@ class mpmc_queue {
   /// Dequeues the oldest available element into `out`.
   /// @return true if an element was dequeued; false if the queue appeared empty.
   METL_NODISCARD bool try_pop(T& out) noexcept {
+    require_constructed();
     cell* target = nullptr;
     size_type pos = dequeue_pos_.load(std::memory_order_relaxed);
 
@@ -257,10 +260,24 @@ class mpmc_queue {
   METL_NODISCARD static constexpr size_type capacity() noexcept { return Capacity; }
 
  private:
+  // A queue in zeroed storage whose constructor has not run (a namespace-scope
+  // one, used from an interrupt enabled by an earlier constructor) has every
+  // sequence 0. After construction, cell 1's sequence is always 1 or 2 modulo
+  // Capacity: it starts at 1, a push leaves pos + 1 and a pop pos + Capacity,
+  // with pos = 1 modulo Capacity. Capacity is a power of two, so the size_t
+  // wrap keeps the residue, and for Capacity > 2 the value 0 cannot occur.
+  // One relaxed load, at METL_HARDENING_DEBUG only (#290).
+  void require_constructed() const noexcept {
+    if constexpr (Capacity > 2) {
+      METL_DASSERT(cells_[1].sequence.load(std::memory_order_relaxed) != 0);
+    }
+  }
+
   // The lock-free enqueue proper: claim a ticket, construct, publish. Only ever
   // called with arguments whose construction cannot throw, or with exceptions off.
   template <typename... Args>
   METL_NODISCARD bool try_claim_and_construct(Args&&... args) noexcept {
+    require_constructed();
     cell* target = nullptr;
     size_type pos = enqueue_pos_.load(std::memory_order_relaxed);
 

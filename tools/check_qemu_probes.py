@@ -120,7 +120,11 @@ CANARY_BYTES = 1024
 # The scheduler and intrusive_scheduler regions (#337) were measured by the
 # invariants run of PR #484, on the same toolchain and QEMU; the
 # intrusive_scheduler_run_once ones again by PR #487's, after its round's cursor
-# moved to intrusive_list::splice.
+# moved to intrusive_list::splice. mpmc_queue_push_pop rose 3914 -> 4681 with
+# #290's use-before-construction check: this probe builds without NDEBUG, so at
+# METL_HARDENING_DEBUG every push and pop calls it (one relaxed load and a
+# compare, ~6 instructions over 128 operations); with NDEBUG the region's code
+# is byte-identical to before (172 B on cortex-m4, ARM GCC).
 _V7M_COUNTS = {
     "fixed_queue_push_pop": 2632,
     "fixed_vector_fill_clear": 1620,
@@ -129,7 +133,7 @@ _V7M_COUNTS = {
     "intrusive_scheduler_attach_detach_4": 18823,
     "intrusive_scheduler_run_once_16": 59466,
     "intrusive_scheduler_run_once_4": 29418,
-    "mpmc_queue_push_pop": 3914,
+    "mpmc_queue_push_pop": 4681,
     "ring_buffer_push_overwrite": 1288,
     "scheduler_attach_detach_16": 303495,
     "scheduler_attach_detach_4": 39303,
