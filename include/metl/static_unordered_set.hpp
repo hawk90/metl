@@ -422,9 +422,11 @@ class static_unordered_set
   }
 
   /// @brief STL-compatible iterator-returning find (alias for @c find_iterator).
+  METL_DEPRECATED("find_iter is removed in 2.0; use find_iterator (#645)")
   METL_NODISCARD iterator find_iter(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
     return find_iterator(key);
   }
+  METL_DEPRECATED("find_iter is removed in 2.0; use find_iterator (#645)")
   METL_NODISCARD const_iterator find_iter(const key_type& key) const noexcept(lookup_cannot_throw<key_type>) {
     return find_iterator(key);
   }
@@ -472,6 +474,7 @@ class static_unordered_set
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same_v<decay_t<K>, key_type>>>
+  METL_DEPRECATED("find_iter is removed in 2.0; use find_iterator (#645)")
   METL_NODISCARD iterator find_iter(const K& key) noexcept(lookup_cannot_throw<K>) {
     return find_iterator(key);
   }
@@ -479,6 +482,7 @@ class static_unordered_set
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same_v<decay_t<K>, key_type>>>
+  METL_DEPRECATED("find_iter is removed in 2.0; use find_iterator (#645)")
   METL_NODISCARD const_iterator find_iter(const K& key) const noexcept(lookup_cannot_throw<K>) {
     return find_iterator(key);
   }

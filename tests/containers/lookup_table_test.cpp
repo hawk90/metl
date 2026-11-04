@@ -23,7 +23,7 @@ static_assert(constexpr_checks(), "lookup_table constexpr checks failed");
 }  // namespace
 
 int main() {
-  if (commands.empty() || commands[0].key != 1 || commands[1].value[1] != 't') {
+  if (commands.empty() || commands.nth(0).key != 1 || commands.nth(1).value[1] != 't') {
     return 1;
   }
 
@@ -59,9 +59,9 @@ int main() {
     }});
     CHECK(!runtime.empty());
     CHECK_EQ(runtime.size(), std::size_t{3});
-    CHECK_EQ(runtime[0].key, 10);
-    CHECK_EQ(runtime[2].value, 40);
-    CHECK_EQ(runtime.at(1).value, 30);
+    CHECK_EQ(runtime.nth(0).key, 10);
+    CHECK_EQ(runtime.nth(2).value, 40);
+    CHECK_EQ(runtime.nth(1).value, 30);
     CHECK(runtime.contains(11));
     CHECK(runtime.contains(12));
     CHECK(!runtime.contains(13));

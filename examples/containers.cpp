@@ -8,12 +8,11 @@
 //   - metl::ring_buffer   — a circular buffer / bounded FIFO.
 //
 // IMPORTANT flat_map contract (differs from std::map!):
-//   flat_map::operator[] and flat_map::at() take an *integer position*, NOT a
-//   key. They are positional accessors over the sorted storage, like a vector.
-//   To look a value up *by key* use find() / contains() / try_emplace().
-//   Using operator[](key) the way you would with std::map is a compile error
-//   for non-integral keys and a silent position lookup for integral keys, so
-//   always reach for find()/try_emplace() when you mean "by key".
+//   flat_map::nth(i) is the element at *position* i of the sorted storage, like
+//   a vector index. To look a value up *by key* use find() / contains() /
+//   try_emplace(). The positional operator[] and at() are deprecated and go in
+//   2.0 (#645): operator[](key) used the way std::map's is would compile for
+//   integral keys and silently look up a position.
 //
 // Everything here is main()-returning-0 with self-checks; a non-zero return
 // means an invariant broke.
@@ -94,7 +93,7 @@ int demo_flat_map() {
 
   // POSITIONAL access: operator[](i) / at(i) index the sorted storage. The
   // first (lowest-key) entry is key 1. This is NOT a key lookup!
-  if (readings[0].key != 1 || readings.at(0).value != 100) {
+  if (readings.nth(0).key != 1 || readings.nth(0).value != 100) {
     return 15;
   }
 

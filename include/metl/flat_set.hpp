@@ -223,11 +223,13 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
   ///          the self-documenting @c nth().
   /// @param index 0-based position in ascending order.
   /// @pre @p index < size(); a violation asserts (aborts by default), it does not throw.
+  METL_DEPRECATED("positional operator[] is removed in 2.0; use nth(index) (#645)")
   METL_NODISCARD reference operator[](size_type index) noexcept {
     METL_ASSERT(index < size_);
     return data()[index];
   }
 
+  METL_DEPRECATED("positional operator[] is removed in 2.0; use nth(index) (#645)")
   METL_NODISCARD const_reference operator[](size_type index) const noexcept {
     METL_ASSERT(index < size_);
     return data()[index];
@@ -239,18 +241,21 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
   ///          positional access prefer @c nth().
   /// @param index 0-based position in ascending order.
   /// @pre @p index < size(); a violation asserts (aborts by default), it does not throw.
+  METL_DEPRECATED("positional at is removed in 2.0; use nth(index) (#645)")
   METL_NODISCARD reference at(size_type index) noexcept {
     METL_ASSERT(index < size_);
     return data()[index];
   }
 
+  METL_DEPRECATED("positional at is removed in 2.0; use nth(index) (#645)")
   METL_NODISCARD const_reference at(size_type index) const noexcept {
     METL_ASSERT(index < size_);
     return data()[index];
   }
 
   /// @brief Explicit positional accessor: the element at 0-based @p index in sorted order.
-  /// @note Alias for @c operator[]/@c at; named to make the positional (non-key) intent obvious.
+  /// @note The positional accessor that stays in 2.0, where the deprecated @c operator[] and
+  ///       @c at are removed (#645).
   /// @pre @p index < size(); a violation asserts.
   METL_NODISCARD reference nth(size_type index) noexcept {
     METL_ASSERT(index < size_);

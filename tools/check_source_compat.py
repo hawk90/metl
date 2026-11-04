@@ -37,6 +37,9 @@ import tempfile
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
+# GCC and clang spelling; this check runs with either, never with MSVC.
+DEPRECATION_STAYS_A_WARNING = "-Wno-error=deprecated-declarations"
+
 # {tag: {old test source or ctest name: "why it may break (#issue)"}}
 EXPECTED_BREAKS = {
     "v1.3.0": {
@@ -199,6 +202,11 @@ def build_and_test(tree, build, targets=None, compiler=None):
                  "-DMETL_BUILD_EXAMPLES=ON"]
     if compiler:
         configure.append(f"-DCMAKE_CXX_COMPILER={compiler}")
+    # A deprecation keeps old code building: that is what it is for (#645). The
+    # old tree's examples build with -Werror, so without this every deprecated
+    # name an old example uses would read as a break, and nothing could ever be
+    # deprecated. The warning is still printed; only its promotion is dropped.
+    configure.append(f"-DCMAKE_CXX_FLAGS={DEPRECATION_STAYS_A_WARNING}")
     result = subprocess.run(configure, capture_output=True, text=True)
     if result.returncode != 0:
         return result.stdout + result.stderr, []

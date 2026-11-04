@@ -110,8 +110,8 @@ class intrusive_scheduler {
 
   bool is_attached(const task_node& node) const noexcept { return node.is_linked(); }
 
-  size_type task_count() const noexcept { return tasks_.size() - (2 * rounds_); }
-  bool empty() const noexcept { return task_count() == 0; }
+  size_type size() const noexcept { return tasks_.size() - (2 * rounds_); }
+  bool empty() const noexcept { return size() == 0; }
 
   /// Polls every task attached when the round starts once, in attachment
   /// order; removes the attachments that complete. @return the number that
@@ -121,7 +121,7 @@ class intrusive_scheduler {
   /// As scheduler::run_until_idle.
   size_type run_until_idle(size_type max_rounds = 1024) noexcept {
     size_type rounds = 0;
-    while (rounds < max_rounds && task_count() > 0) {
+    while (rounds < max_rounds && size() > 0) {
       (void)run_once();
       ++rounds;
     }

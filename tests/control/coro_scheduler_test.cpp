@@ -41,7 +41,7 @@ int main() {
     if (sched.try_attach_protothread(z)) {
       return 42;
     }
-    if (sched.task_count() != 2) {
+    if (sched.size() != 2) {
       return 43;
     }
 

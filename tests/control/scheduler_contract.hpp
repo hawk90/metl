@@ -140,7 +140,7 @@ int basic_contract() {
       return 5;
     }
 
-    if (sched.task_count() != 5) {
+    if (sched.size() != 5) {
       return 6;
     }
     if (sched.empty()) {
@@ -155,7 +155,7 @@ int basic_contract() {
       if (running != 5) {
         return 10;
       }
-      if (sched.task_count() != 5) {
+      if (sched.size() != 5) {
         return 11;
       }
     }
@@ -171,7 +171,7 @@ int basic_contract() {
       if (running != 4) {
         return 12;
       }
-      if (sched.task_count() != 4) {
+      if (sched.size() != 4) {
         return 13;
       }
     }
@@ -184,7 +184,7 @@ int basic_contract() {
     if (!sched.empty()) {
       return 15;
     }
-    if (sched.task_count() != 0) {
+    if (sched.size() != 0) {
       return 16;
     }
     // Verify counts.
@@ -222,7 +222,7 @@ int basic_contract() {
     if (!P::detach(sched, a)) {
       return 32;
     }
-    if (sched.task_count() != 1) {
+    if (sched.size() != 1) {
       return 33;
     }
 
@@ -303,7 +303,7 @@ int basic_contract() {
       return 63;
     }
     const auto rounds = sched.run_until_idle(9);
-    if (rounds != 9 || sched.task_count() != 1) {
+    if (rounds != 9 || sched.size() != 1) {
       return 64;
     }
     if (a.polls + b.polls != 9) {
@@ -470,14 +470,14 @@ template <typename P>
 struct nester : P::node {
   small_sched_t<P>* sched = nullptr;
   int depth = 0;
-  std::size_t count_in_round = 0;  // task_count() seen from inside the round
+  std::size_t count_in_round = 0;  // size() seen from inside the round
 };
 template <typename P>
 bool nest(void* p) noexcept {
   auto* n = static_cast<nester<P>*>(p);
   if (n->depth == 0) {
     ++n->depth;
-    n->count_in_round = n->sched->task_count();
+    n->count_in_round = n->sched->size();
     (void)n->sched->run_once();
   }
   return false;
@@ -535,15 +535,15 @@ void reentrancy_contract() {
     CHECK(P::attach(sched, a, &poll_task<P>));
     CHECK(P::attach(sched, b, &poll_task<P>));
     CHECK(P::attach(sched, c, &poll_task<P>));
-    CHECK_EQ(sched.task_count(), std::size_t(3));
+    CHECK_EQ(sched.size(), std::size_t(3));
 
     const auto running = sched.run_once();
     // a and b polled once; c detached before it was reached => never polled.
     CHECK_EQ(a.polls, 1);
     CHECK_EQ(b.polls, 1);
     CHECK_EQ(c.polls, 0);
-    CHECK_EQ(sched.task_count(), std::size_t(2));  // c gone
-    CHECK_EQ(running, std::size_t(2));             // a and b still running
+    CHECK_EQ(sched.size(), std::size_t(2));  // c gone
+    CHECK_EQ(running, std::size_t(2));       // a and b still running
     CHECK(P::is_attached(sched, a));
     CHECK(P::is_attached(sched, b));
     CHECK(!P::is_attached(sched, c));
@@ -564,7 +564,7 @@ void reentrancy_contract() {
     const auto running = sched.run_once();
     CHECK_EQ(a.polls, 1);
     CHECK_EQ(b.polls, 1);
-    CHECK_EQ(sched.task_count(), std::size_t(1));
+    CHECK_EQ(sched.size(), std::size_t(1));
     CHECK_EQ(running, std::size_t(2));
     CHECK(!P::is_attached(sched, a));
     CHECK(P::is_attached(sched, b));
@@ -585,7 +585,7 @@ void reentrancy_contract() {
     sched.run_once();
     CHECK_EQ(a.polls, 1);
     CHECK_EQ(b.polls, 1);
-    CHECK_EQ(sched.task_count(), std::size_t(1));
+    CHECK_EQ(sched.size(), std::size_t(1));
     CHECK(!P::is_attached(sched, a));
     CHECK(P::is_attached(sched, b));
   }
@@ -604,9 +604,9 @@ void reentrancy_contract() {
     CHECK(P::attach(sched, at, &attach_late<P>));
     const auto running = sched.run_once();
     CHECK_EQ(at.polls, 1);
-    CHECK_EQ(late.polls, 0);                       // not polled the round it was added
-    CHECK_EQ(running, std::size_t(1));             // only 'at' was polled
-    CHECK_EQ(sched.task_count(), std::size_t(2));  // at + late
+    CHECK_EQ(late.polls, 0);                 // not polled the round it was added
+    CHECK_EQ(running, std::size_t(1));       // only 'at' was polled
+    CHECK_EQ(sched.size(), std::size_t(2));  // at + late
     // Next round polls both.
     sched.run_once();
     CHECK_EQ(late.polls, 1);
@@ -624,7 +624,7 @@ void reentrancy_contract() {
     CHECK(P::attach(sched, after, &poll_task<P>));
     CHECK_EQ(sched.run_once(), std::size_t{1});
     CHECK_EQ(after.polls, 1);
-    CHECK_EQ(sched.task_count(), std::size_t{1});
+    CHECK_EQ(sched.size(), std::size_t{1});
   }
 
   // ---- #260: a mid-round re-attach under another poll function --------------
@@ -654,7 +654,7 @@ void reentrancy_contract() {
     // Completion removes the attachment that completed, not the one the task
     // made of itself during that poll.
     CHECK(P::is_attached(sched, task_b));
-    CHECK_EQ(sched.task_count(), std::size_t{1});
+    CHECK_EQ(sched.size(), std::size_t{1});
     (void)sched.run_once();
     CHECK_EQ(task_b.polls_b, 1);
   }
@@ -736,7 +736,7 @@ void reentrancy_contract() {
     CHECK_EQ(outer.count_in_round, std::size_t{2});  // a round running counts no task more
     CHECK(!P::is_attached(sched, outer));
     CHECK(P::is_attached(sched, other));
-    CHECK_EQ(sched.task_count(), std::size_t{1});  // no round's bookkeeping is left
+    CHECK_EQ(sched.size(), std::size_t{1});  // no round's bookkeeping is left
   }
 }
 

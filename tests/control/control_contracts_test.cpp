@@ -113,7 +113,7 @@ void test_deadline_reserve_only_during_poll() {
       }
     }
     CHECK_EQ(accepted, kDeadlineCapacity);
-    CHECK_EQ(sched.task_count(), kDeadlineCapacity);
+    CHECK_EQ(sched.size(), kDeadlineCapacity);
   }
 
   // Inside a poll: the running task's entry is popped (one slot free) and one
@@ -126,12 +126,12 @@ void test_deadline_reserve_only_during_poll() {
     CHECK(sched.try_schedule(&filler, &filling_poll, tick{0}));
     CHECK_EQ(sched.run_due(tick{0}), std::size_t{1});
     CHECK_EQ(g_accepted_in_poll, kDeadlineCapacity - 1);
-    CHECK_EQ(sched.task_count(), kDeadlineCapacity - 1);
+    CHECK_EQ(sched.size(), kDeadlineCapacity - 1);
 
     // The poll has returned: the reserved slot is released again.
     CHECK(sched.try_schedule(&g_dummy_task, &idle_poll, tick{100}));
     CHECK(!sched.try_schedule(&g_dummy_task, &idle_poll, tick{100}));
-    CHECK_EQ(sched.task_count(), kDeadlineCapacity);
+    CHECK_EQ(sched.size(), kDeadlineCapacity);
   }
 }
 

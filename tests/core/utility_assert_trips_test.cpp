@@ -85,8 +85,7 @@ void pool_trips() {
 
 void lookup_table_trips() {
   static const auto table = metl::make_lookup_table<int, int, 1>({{{1, 10}}});
-  CHECK(trips([] { (void)table[1]; }));
-  CHECK(trips([] { (void)table.at(1); }));
+  CHECK(trips([] { (void)table.nth(1); }));
 }
 
 void format_trips() {

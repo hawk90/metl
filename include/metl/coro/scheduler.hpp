@@ -165,7 +165,9 @@ class scheduler {
   size_type run_until_idle(size_type max_rounds = 1024) noexcept;
 
   /// @brief Number of currently attached tasks.
-  METL_NODISCARD size_type task_count() const noexcept { return tasks_.size(); }
+  METL_NODISCARD size_type size() const noexcept { return tasks_.size(); }
+  METL_DEPRECATED("task_count is removed in 2.0; use size() (#645)")
+  METL_NODISCARD size_type task_count() const noexcept { return size(); }
   /// @brief Whether no tasks are attached. @return true if empty.
   METL_NODISCARD bool empty() const noexcept { return tasks_.empty(); }
   /// @brief The maximum task capacity. @return `Capacity`.
@@ -332,7 +334,7 @@ typename scheduler<Capacity>::size_type scheduler<Capacity>::run_until_idle(size
   // attached, unpolled. Every task still attached after a round is one that
   // wants to run, so the loop ends when none is.
   size_type rounds = 0;
-  while (rounds < max_rounds && task_count() > 0) {
+  while (rounds < max_rounds && size() > 0) {
     (void)run_once();
     ++rounds;
   }

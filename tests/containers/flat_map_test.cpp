@@ -95,14 +95,14 @@ int main() {
     return 2;
   }
 
-  if (map.size() != 3 || map[0].key != 1 || map.at(1).key != 2 || map[2].key != 3) {
+  if (map.size() != 3 || map.nth(0).key != 1 || map.nth(1).key != 2 || map.nth(2).key != 3) {
     return 3;
   }
 
   // The const overloads are separate functions; before this they ran only in
   // the death tests (#442).
   const auto& cmap = map;
-  if (cmap.at(1).value != 20 || cmap.nth(2).value != 30) {
+  if (cmap.nth(1).value != 20 || cmap.nth(2).value != 30) {
     return 48;
   }
 
@@ -135,7 +135,7 @@ int main() {
     return 9;
   }
 
-  if (!map.erase(1) || map.contains(1) || map[0].key != 2) {
+  if (!map.erase(1) || map.contains(1) || map.nth(0).key != 2) {
     return 10;
   }
 
@@ -170,7 +170,7 @@ int main() {
     tracked.emplace(2, tracker(20));
     tracked.emplace(1, tracker(10));
 
-    if (tracked[0].key != 1 || tracked[0].value.value != 10 || tracked[1].value.value != 20) {
+    if (tracked.nth(0).key != 1 || tracked.nth(0).value.value != 10 || tracked.nth(1).value.value != 20) {
       return 16;
     }
 
@@ -189,7 +189,7 @@ int main() {
     }
 
     // Stored in descending order.
-    if (rmap[0].key != 3 || rmap[1].key != 2 || rmap[2].key != 1) {
+    if (rmap.nth(0).key != 3 || rmap.nth(1).key != 2 || rmap.nth(2).key != 1) {
       return 18;
     }
 
@@ -208,7 +208,7 @@ int main() {
       return 21;
     }
 
-    if (!rmap.erase(3) || rmap.contains(3) || rmap[0].key != 2) {
+    if (!rmap.erase(3) || rmap.contains(3) || rmap.nth(0).key != 2) {
       return 22;
     }
   }
@@ -221,13 +221,13 @@ int main() {
     }
 
     // Sorted in strcmp order: apple, banana, cherry.
-    if (std::strcmp(smap[0].key, "apple") != 0) {
+    if (std::strcmp(smap.nth(0).key, "apple") != 0) {
       return 23;
     }
-    if (std::strcmp(smap[1].key, "banana") != 0) {
+    if (std::strcmp(smap.nth(1).key, "banana") != 0) {
       return 24;
     }
-    if (std::strcmp(smap[2].key, "cherry") != 0) {
+    if (std::strcmp(smap.nth(2).key, "cherry") != 0) {
       return 25;
     }
 

@@ -230,13 +230,18 @@ int main() {
       return 20;
     }
 
-    auto it = m.find_iter(2);
+    auto it = m.find_iterator(2);
     if (it == m.end() || it->key != 2 || it->value != 22) {
       return 15;
     }
 
-    auto miss = m.find_iter(99);
+    auto miss = m.find_iterator(99);
     if (miss != m.end()) {
+      return 15;
+    }
+
+    const auto& cm = m;
+    if (cm.find_iterator(2) == cm.end() || cm.find_iterator(99) != cm.end()) {
       return 15;
     }
   }
@@ -258,8 +263,13 @@ int main() {
       return 16;
     }
 
-    auto it = m.find_iter(static_cast<const char*>("beta"));
+    auto it = m.find_iterator(static_cast<const char*>("beta"));
     if (it == m.end() || it->value != 2) {
+      return 16;
+    }
+    const auto& cm = m;
+    if (cm.find_iterator(static_cast<const char*>("beta")) == cm.end() ||
+        cm.find_iterator(static_cast<const char*>("gamma")) != cm.end()) {
       return 16;
     }
 

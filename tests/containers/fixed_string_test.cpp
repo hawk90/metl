@@ -71,7 +71,8 @@ int main() {
     return 7;
   }
 
-  if (!text.try_pop_back() || text.size() != 4 || text.c_str()[4] != '\0') {
+  text.pop_back();
+  if (text.size() != 4 || text.c_str()[4] != '\0') {
     return 8;
   }
 

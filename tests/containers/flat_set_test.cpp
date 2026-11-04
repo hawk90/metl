@@ -65,14 +65,14 @@ int main() {
     return 2;
   }
 
-  if (set.size() != 3 || set[0] != 1 || set.at(1) != 2 || set[2] != 3) {
+  if (set.size() != 3 || set.nth(0) != 1 || set.nth(1) != 2 || set.nth(2) != 3) {
     return 3;
   }
 
   // The const overloads are separate functions; before this they ran only in
   // the death tests (#442).
   const auto& cset = set;
-  if (cset[0] != 1 || cset.at(2) != 3) {
+  if (cset.nth(0) != 1 || cset.nth(2) != 3) {
     return 43;
   }
 
@@ -101,7 +101,7 @@ int main() {
     return 8;
   }
 
-  if (!set.erase(1) || set.contains(1) || set[0] != 2) {
+  if (!set.erase(1) || set.contains(1) || set.nth(0) != 2) {
     return 9;
   }
 
@@ -136,7 +136,7 @@ int main() {
     tracked.emplace(tracker(20));
     tracked.emplace(tracker(10));
 
-    if (tracked[0].value != 10 || tracked[1].value != 20) {
+    if (tracked.nth(0).value != 10 || tracked.nth(1).value != 20) {
       return 15;
     }
 
@@ -154,7 +154,7 @@ int main() {
       return 41;
     }
 
-    if (rset[0] != 3 || rset[1] != 2 || rset[2] != 1) {
+    if (rset.nth(0) != 3 || rset.nth(1) != 2 || rset.nth(2) != 1) {
       return 17;
     }
 
@@ -162,7 +162,7 @@ int main() {
       return 18;
     }
 
-    if (!rset.erase(3) || rset.contains(3) || rset[0] != 2) {
+    if (!rset.erase(3) || rset.contains(3) || rset.nth(0) != 2) {
       return 19;
     }
   }
@@ -174,13 +174,13 @@ int main() {
       return 42;
     }
 
-    if (std::strcmp(sset[0], "apple") != 0) {
+    if (std::strcmp(sset.nth(0), "apple") != 0) {
       return 20;
     }
-    if (std::strcmp(sset[1], "banana") != 0) {
+    if (std::strcmp(sset.nth(1), "banana") != 0) {
       return 21;
     }
-    if (std::strcmp(sset[2], "cherry") != 0) {
+    if (std::strcmp(sset.nth(2), "cherry") != 0) {
       return 22;
     }
 
