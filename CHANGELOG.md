@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-11-04
+
+**Highlights.** Preconditions that were documented but unchecked now stop the
+program: dispatching from an `fsm` exit hook, rewinding an `arena_allocator` to an
+invalidated mark, an element constructor that inserts into its own container and
+then throws, and, at `METL_HARDENING_DEBUG`, using an `mpmc_queue` before its
+constructor ran. `expected` of trivially destructible types is now trivially
+destructible in C++17 as well, which shrinks every call site that returns one.
+
+**Upgrading from 1.13.0.** No API is removed. Three things can change what
+existing code sees: an unnamed `scope_exit` temporary now draws a clang warning
+(an error under `-Werror`), which points at a guard that never guarded anything;
+a `fixed_function` built from an empty `delegate` or `function_ref` is now empty;
+and a `static_unordered_map` or `static_unordered_set` with keys wider than
+`size_t` and the default hash iterates in a different order. Code that broke one
+of the newly checked preconditions now stops at the check instead of corrupting
+state.
+
+### Added
+
+- `mpmc_queue` at `METL_HARDENING_DEBUG`: a push or pop on a queue whose constructor has not run yet (a namespace-scope queue reached from an interrupt enabled by an earlier constructor) now stops at `METL_DASSERT`, for capacities above 2. Other hardening levels compile the check out. The queue is still initialized at run time, as documented (#290).
+
+### Changed
+
+- `expected<T, E>` and `expected<void, E>` are trivially destructible when `T` and `E` are, in every standard. They are then literal types in C++17 too, so a `constexpr` function can return one and `try_parse_*` runs at compile time in C++17. Each caller of a function returning such an `expected` drops the destructor's settled-state check, which could not fire for these types: half the code at a typical call site on Cortex-M. The type is still not trivially copyable, so it is passed and returned as before (#474).
+- `ring_buffer` and `fixed_deque` with a capacity that is not a power of two no longer divide on every access: on Cortex-M0 each index computation called `__aeabi_uidivmod`. Capacities that are a power of two are unchanged (#644).
+- `flat_map` and `flat_set` copy construction and copy assignment append the source's elements without comparing them (264 comparator calls for 64 elements before, 0 now), and `flat_map::insert_or_assign` searches once instead of twice. A stateful comparator sees fewer calls (#644).
+
+### Fixed
+
+- `fsm::dispatch` called from an exit hook now stops at a `METL_ASSERT`. It was a documented precondition that nothing checked: the state being left is still current inside the hook, so the same transition fired again and the recursion never ended (a stack overflow). Entry hooks and transition actions may still dispatch (#636).
+- `arena_allocator::rewind` with an invalidated mark (one taken before a `reset` or a deeper `rewind`) now stops at a `METL_HARDEN`, at every hardening level. Before, it silently destroyed and released objects allocated below the mark. The precondition was documented; it is now checked (#637).
+- `fixed_vector`, `fixed_deque`, `ring_buffer` and `static_message_queue`: an element constructor that inserts into its own container and then throws now stops at a `METL_HARDEN` (at every hardening level). Before, the slot whose constructor never finished stayed counted as live and was later destroyed, and the element the constructor inserted fell outside the live range. Inserting from a constructor, or throwing from one, still works on its own (#638).
+- A `fixed_function` or `fixed_any_invocable` built or assigned from an empty `delegate` or `function_ref` is now empty, as it already was from an empty `fixed_function`. It used to report a target (`has_value()` true) and assert when called. Code that tested `if (f)` after such a conversion now takes the empty branch (#639).
+- `scope_exit` is now `[[nodiscard]]`. An unnamed `metl::scope_exit(...);` is a temporary that runs its callable at once, not at the end of the scope; clang now warns about it. GCC does not warn in C++17. Code that names its guard is unaffected (#640).
+- `static_unordered_map` and `static_unordered_set` with the default `std::hash` no longer lose the high word of a key wider than `size_t`. On a 32-bit target with libstdc++, `std::hash<std::uint64_t>` is a cast that keeps only the low 32 bits, so 64-bit keys differing only in the high word (IDs, timestamps) collided and lookups scanned the table. The containers now fold the high word in for that case. Iteration order of such tables changes; it was never specified (#643).
+
 ## [1.13.0] - 2026-11-03
 
 **Highlights.** Constant initialization under C++20, without costing C++17. A

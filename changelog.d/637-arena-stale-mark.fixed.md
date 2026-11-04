@@ -1,1 +1,0 @@
-- `arena_allocator::rewind` with an invalidated mark (one taken before a `reset` or a deeper `rewind`) now stops at a `METL_HARDEN`, at every hardening level. Before, it silently destroyed and released objects allocated below the mark. The precondition was documented; it is now checked.
