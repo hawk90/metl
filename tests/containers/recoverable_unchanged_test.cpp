@@ -24,6 +24,7 @@
 // happens to start at the beginning of its storage.
 
 #include "metl_check.hpp"
+#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
 
 #include <cstddef>
 

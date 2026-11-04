@@ -1,5 +1,7 @@
 #pragma once
 
+#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
+
 #include <metl/atomic_handle.hpp>
 #include <metl/spsc_byte_ring.hpp>
 #include <metl/spsc_queue.hpp>

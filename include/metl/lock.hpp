@@ -40,7 +40,7 @@ namespace metl {
 ///
 /// A namespace-scope `guarded` an interrupt can reach before `main()` must be
 /// valid when that interrupt fires. Since C++20 `guarded` over `fixed_vector`,
-/// `static_message_queue`, the ring containers, `flat_map`/`flat_set`, the
+/// the ring containers, `flat_map`/`flat_set`, the
 /// unordered containers, `object_pool` or `fixed_function` is
 /// constant-initialized (declare it `constinit` to have the compiler check). In
 /// C++17 those are initialized at run time, in link order, as `std::vector` is:

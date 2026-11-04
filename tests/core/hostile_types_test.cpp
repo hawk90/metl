@@ -13,6 +13,7 @@
 // the test; the checks are the other half.
 
 #include "metl_check.hpp"
+#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
 
 #include <cstddef>
 #include <cstdint>

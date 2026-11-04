@@ -10,8 +10,8 @@
 // A row is the measurement, not a limit: both directions fail. The sizeof ratchet
 // in tests/core/ram_footprint_test.cpp misses a change that keeps the size.
 
-// static_allocator is deprecated for removal in 2.0 (#645), and this probe
-// keeps building it until then: its warning is not the subject here.
+// static_allocator, variant and static_message_queue are deprecated for 2.0
+// (#645); this probe keeps building them until then, warnings off.
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
 #include <cstddef>

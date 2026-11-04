@@ -1,0 +1,4 @@
+- Deprecated for removal in 2.0 (#645):
+  - `metl::variant`: use `std::variant`, which every C++17 standard library METL supports provides. METL itself uses no `variant` (#635).
+  - `static_message_queue<T, N>`: use `guarded<fixed_queue<T, N>, irq_lock>`. The queue is not concurrent on its own, and its `try_pop(T&)` broke SCOPE.md's R5 (#166).
+  - Including either header draws no warning; only a use of the type does.

@@ -4,6 +4,7 @@
 // assert and panic handlers reset to their defaults with null.
 
 #include "metl_check.hpp"
+#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
 
 #include <cstdint>
 

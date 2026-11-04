@@ -93,6 +93,7 @@ Core types
 - [`optional`](include/metl/optional.hpp) — value-or-empty with monadic ops.
 - [`expected`](include/metl/expected.hpp) — value-or-error, including `void`.
 - [`variant`](include/metl/variant.hpp) — tagged union with visitation.
+  Deprecated for 2.0: use `std::variant` (#635).
 - [`in_place`](include/metl/in_place.hpp) — in-place construction tags.
 - [`type_traits`](include/metl/type_traits.hpp) — trait helpers and
   `storage_for<T>`.
@@ -100,7 +101,7 @@ Core types
 
 Error handling without exceptions — worked example:
 [`examples/error_handling.cpp`](examples/error_handling.cpp)
-(`expected` + `optional` + `variant`).
+(`expected` + `optional` + `std::variant`).
 
 > Contract note: `optional::value()`, `expected::value()`, and `get<T>()`
 > **assert** (abort) on the empty / wrong-alternative case — there is no
@@ -224,7 +225,8 @@ Concurrency
   initializer: an ISR that reaches it mid-initialization gets `false` instead of
   re-entering, where a function-local static is built twice or traps. Worked
   example: [`examples/lazy_driver.cpp`](examples/lazy_driver.cpp).
-- [`static_message_queue`](include/metl/static_message_queue.hpp).
+- [`static_message_queue`](include/metl/static_message_queue.hpp). Deprecated for
+  2.0: use `guarded<fixed_queue<T, N>, irq_lock>` (#166).
 - [`atomic_ref`](include/metl/atomic_ref.hpp).
 
 Worked example: [`examples/spsc_isr.cpp`](examples/spsc_isr.cpp)
@@ -301,7 +303,7 @@ Configuration
   | [`lazy_driver.cpp`](examples/lazy_driver.cpp) | `once_flag`, `try_call_once` (a driver built on first use, reached from its ISR) |
   | [`uart_byte_ring.cpp`](examples/uart_byte_ring.cpp) | `spsc_byte_ring` (zero-copy driver region, wrap) |
   | [`mmio_peripheral.cpp`](examples/mmio_peripheral.cpp) | `mmio`, `register_access`, `bitfield` |
-  | [`error_handling.cpp`](examples/error_handling.cpp) | `expected`, `optional`, `variant` |
+  | [`error_handling.cpp`](examples/error_handling.cpp) | `expected`, `optional`, `std::variant` |
   | [`log_line.cpp`](examples/log_line.cpp) | `format`, `fixed_string` (diagnostics without stdio) |
   | [`wire_values.cpp`](examples/wire_values.cpp) | `parse` (telemetry fields, boundary refusal, fixed point) |
   | [`coroutine_task.cpp`](examples/coroutine_task.cpp) | `coro/protothread` |

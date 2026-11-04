@@ -12,6 +12,7 @@
 
 #include "assert_trip.hpp"
 #include "metl_check.hpp"
+#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
 
 #include <cstddef>
 #include <utility>

@@ -65,6 +65,22 @@
 #endif
 #endif
 
+// Brackets the body of a header whose own entity is deprecated (#645). The
+// header names that entity in its own declarations, and GCC warns about each
+// such use as soon as the header is included; inside the brackets they stay
+// quiet, while a caller's use outside them still warns at the caller's line.
+#if defined(_MSC_VER) && !defined(__clang__)
+#define METL_DETAIL_DEPRECATED_HEADER_BEGIN __pragma(warning(push)) __pragma(warning(disable : 4996))
+#define METL_DETAIL_DEPRECATED_HEADER_END __pragma(warning(pop))
+#elif defined(__GNUC__)
+#define METL_DETAIL_DEPRECATED_HEADER_BEGIN \
+  _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wdeprecated-declarations\"")
+#define METL_DETAIL_DEPRECATED_HEADER_END _Pragma("GCC diagnostic pop")
+#else
+#define METL_DETAIL_DEPRECATED_HEADER_BEGIN
+#define METL_DETAIL_DEPRECATED_HEADER_END
+#endif
+
 /// @brief Maps to `[[clang::lifetimebound]]`: flags a reference/pointer parameter
 ///        whose referent must outlive the result, enabling dangling diagnostics.
 // Empty everywhere the attribute is unavailable, so it never breaks a build.
