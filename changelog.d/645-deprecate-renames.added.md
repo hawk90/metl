@@ -1,1 +1,0 @@
-- `coro::scheduler::size()` and `coro::deadline_scheduler::size()`, alongside their existing `empty()` and `capacity()`, and `lookup_table::nth(index)`, as on `flat_map` and `flat_set`: the replacements for the names deprecated by #645.

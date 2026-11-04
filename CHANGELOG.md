@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-11-04
+
+**Highlights.** The deprecation release before 2.0. Every name that 2.0 removes,
+renames, or changes in meaning behind the same signature now warns at the point
+of use and names its replacement, and the replacement already exists in 1.15.0.
+Including a header never warns; only using a deprecated name does. Nothing is
+removed and no behaviour changes.
+
+**Upgrading from 1.14.0.** Code that uses a deprecated name builds as before
+but now draws a `-Wdeprecated-declarations` warning (C4996 on MSVC), which
+fails a build that treats warnings as errors. Move to the replacement listed
+below, or turn the warning off with `-Wno-error=deprecated-declarations` while
+you do. The deprecated macros warn only on clang 14 and later
+(`-Wdeprecated-pragma`).
+
+### Upgrading to 2.0.0
+
+Each name below is removed or changed in 2.0. Its replacement is already in 1.15.0.
+
+| Deprecated in 1.15.0 | Use instead | Issue |
+|---|---|---|
+| `arena_allocator::allocate`, `monotonic_buffer::allocate` (assert on failure in 2.0) | `try_allocate` | #165 |
+| `static_allocator<T, N>` | `monotonic_buffer<N>::try_allocate_n<T>(count)`, `try_emplace<T>`, `reset()` | #165 |
+| `metl::variant` and its free functions | `std::variant` | #635 |
+| `static_message_queue<T, N>` | `guarded<fixed_queue<T, N>, irq_lock>` | #166 |
+| `fixed_string::try_pop_back()` | `if (!s.empty()) s.pop_back();` | #161 |
+| `static_unordered_map/set::find_iter` | `find_iterator` | #162 |
+| Positional `operator[]`/`at` on `flat_map`, `flat_set`, `lookup_table` | `nth(index)` | #162 |
+| `coro::scheduler::task_count()`, `coro::deadline_scheduler::task_count()` | `size()` | #164 |
+| `metl::exp::bitset`, `exp::intrusive_list`, `exp::list_hook`, `exp::intrusive_forward_list`, `exp::forward_list_hook`, `exp::once_flag`, and their `<metl/exp/...>` headers | the `metl::` name and its own header | #520, #524, #527 |
+| `metl::compiler_id`, `active_compiler`, `cxx_standard`, `is_clang`, `is_gcc`, `is_msvc`, `has_nodiscard`, `has_fallthrough` | `METL_COMPILER_*`, `METL_CXX_STANDARD`, `METL_HAS_CPP_ATTRIBUTE` | #168 |
+| `METL_ALWAYS_INLINE`, `METL_LIKELY`/`UNLIKELY` (and `_ATTR`), `METL_NORETURN`, `METL_MAYBE_UNUSED`, `METL_FALLTHROUGH`, `METL_ISR_SAFE`, `METL_HAVE_INCLUDE`, `METL_COMPILER_{CLANG,GCC}_VERSION_*`, `METL_ASSUME`, `METL_PREFETCH` | the standard attribute, `METL_FORCE_INLINE`, `METL_PREDICT_TRUE/FALSE`, or the compiler's own macro | #168 |
+| `METL_CONSTEXPR20`, `METL_FIXED_VECTOR_ASAN`, `METL_SCOPE_EXIT_CONCAT[_INNER]`, `METL_FORCE_INLINE_ATTR` (internal) | nothing: they are `METL_DETAIL_*` now | #168 |
+
+Three 2.0 changes cannot warn in 1.x, because the code that meets them keeps
+its spelling:
+
+- `fixed_vector::try_insert` and positional `try_emplace` return `bool` instead
+  of an iterator. Comparing the result with `end()` stops compiling, which is
+  the point. `if (v.try_insert(...))`, true even on failure today, starts being
+  correct (#161).
+- The default `METL_HARDENING` level becomes FAST whether or not `NDEBUG` is
+  defined. A Debug build without an explicit level loses the three
+  `METL_DASSERT` checks; set `METL_HARDENING_DEBUG` to keep them (#168).
+- `handle_pool` hands out freed slots oldest first instead of last-freed first.
+  Code that expects to get back the index it just freed gets a different one
+  (#642).
+
+
+### Added
+
+- `arena_allocator::try_allocate` and `monotonic_buffer::try_allocate`: the raw allocation under the `try_` name it has in 2.0, null when it does not fit. `monotonic_buffer::try_allocate_n<T>(count)` allocates `count` objects' worth of storage with an overflow-safe size check, aligned for `T`; it takes over `static_allocator::try_allocate`, and the `_n` keeps a count from being read as bytes (#645).
+- `coro::scheduler::size()` and `coro::deadline_scheduler::size()`, alongside their existing `empty()` and `capacity()`, and `lookup_table::nth(index)`, as on `flat_map` and `flat_set`: the replacements for the names deprecated by #645.
+
+### Deprecated
+
+- Deprecated for 2.0 (#645):
+  - `arena_allocator::allocate` and `monotonic_buffer::allocate`: use `try_allocate`, which keeps today's behaviour. In 2.0, `allocate` asserts when the block does not fit, like every other asserting form, and `if (!a.allocate(n))` would keep compiling while no longer seeing the failure.
+  - `static_allocator<T, N>`: use `monotonic_buffer<N>` with `try_allocate_n<T>(count)`, `try_emplace<T>(args...)` and `reset()`. It was a `monotonic_buffer` with a type attached.
+- The internal helpers `METL_CONSTEXPR20`, `METL_FIXED_VECTOR_ASAN`, `METL_SCOPE_EXIT_CONCAT`, `METL_SCOPE_EXIT_CONCAT_INNER` and `METL_FORCE_INLINE_ATTR` are now spelled `METL_DETAIL_*` inside METL. The old names remain as aliases until 2.0 and warn on clang 14+ (#645, #168). They were never meant for user code; write `constexpr`, or `METL_FORCE_INLINE`.
+- Deprecated for removal in 2.0 (#645, #168):
+  - The `metl::exp` names of promoted types: `exp::bitset` (#527), `exp::intrusive_list`, `exp::list_hook`, `exp::intrusive_forward_list`, `exp::forward_list_hook` (#520) and `exp::once_flag` (#524). Each is now a deprecated alias of the `metl::` type, so `std::is_same` still holds. Use the `metl::` name and its own header. `exp::try_call_once` stays a plain using-declaration: a deprecated wrapper would make an unqualified call under `using namespace metl::exp` ambiguous with `metl::try_call_once`. The deprecated `exp::once_flag` it takes warns instead.
+  - The `metl::` inline variables in `<metl/compiler.hpp>` (`compiler_id`, `active_compiler`, `cxx_standard`, `is_clang`, `is_gcc`, `is_msvc`, `has_nodiscard`, `has_fallthrough`). Their initializers differ by compiler or standard, an ODR violation as soon as two translation units disagree. Test the `METL_COMPILER_*` and `METL_CXX_STANDARD` macros instead.
+  - Unused or duplicate macros: `METL_ALWAYS_INLINE` (use `METL_FORCE_INLINE`), `METL_LIKELY`/`METL_UNLIKELY` (use `METL_PREDICT_TRUE`/`_FALSE`), `METL_LIKELY_ATTR`/`METL_UNLIKELY_ATTR`, `METL_NORETURN`, `METL_MAYBE_UNUSED`, `METL_FALLTHROUGH` (use the standard attributes), `METL_ISR_SAFE` (write `noexcept`), `METL_HAVE_INCLUDE` (use `__has_include`), `METL_COMPILER_{CLANG,GCC}_VERSION_{MAJOR,MINOR,PATCH}` (use the compiler's own macros), `METL_ASSUME` and `METL_PREFETCH`. clang 14 and later warn at each use (`-Wdeprecated-pragma`); GCC and MSVC have no per-macro warning.
+- Deprecated for removal in 2.0, each warning names its replacement (#645):
+  - `fixed_string::try_pop_back()`: write `if (!s.empty()) s.pop_back();`.
+  - `static_unordered_map::find_iter` and `static_unordered_set::find_iter`: use `find_iterator`.
+  - Positional `operator[]` and `at` on `flat_map`, `flat_set` and `lookup_table`: use `nth(index)`. In 2.0, `m[k]` on an integral-keyed `flat_map` would otherwise keep compiling as a position lookup.
+  - `coro::scheduler::task_count()` and `coro::deadline_scheduler::task_count()`: use `size()`. `deadline_scheduler` counts scheduled entries, so a task scheduled twice counts twice; the old name said tasks.
+- Deprecated for removal in 2.0 (#645):
+  - `metl::variant`: use `std::variant`, which every C++17 standard library METL supports provides. METL itself uses no `variant` (#635).
+  - `static_message_queue<T, N>`: use `guarded<fixed_queue<T, N>, irq_lock>`. The queue is not concurrent on its own, and its `try_pop(T&)` broke SCOPE.md's R5 (#166).
+  - Including either header draws no warning; only a use of the type does.
+
 ## [1.14.0] - 2026-11-04
 
 **Highlights.** Preconditions that were documented but unchecked now stop the

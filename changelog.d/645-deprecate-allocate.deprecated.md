@@ -1,3 +1,0 @@
-- Deprecated for 2.0 (#645):
-  - `arena_allocator::allocate` and `monotonic_buffer::allocate`: use `try_allocate`, which keeps today's behaviour. In 2.0, `allocate` asserts when the block does not fit, like every other asserting form, and `if (!a.allocate(n))` would keep compiling while no longer seeing the failure.
-  - `static_allocator<T, N>`: use `monotonic_buffer<N>` with `try_allocate_n<T>(count)`, `try_emplace<T>(args...)` and `reset()`. It was a `monotonic_buffer` with a type attached.
