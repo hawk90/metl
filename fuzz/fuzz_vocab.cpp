@@ -1,10 +1,10 @@
-// libFuzzer harness for metl::optional, metl::expected and metl::variant.
+// libFuzzer harness for metl::optional and metl::expected.
 //
-// These three share one hazard and it is the reason they are fuzzed together:
+// These two share one hazard and it is the reason they are fuzzed together:
 // each holds its payload in INLINE aligned storage and changes which object
 // lives there by destroying one and constructing another. Every assignment,
 // every `emplace`, every `reset` is a hand-written destroy/construct pair, and
-// `expected` and `variant` have to do it between DIFFERENT types.
+// `expected` has to do it between DIFFERENT types.
 //
 // A mistake there does not look like a memory error. Destroying twice, or
 // forgetting to destroy, or constructing over a live object all happen inside a
@@ -17,26 +17,17 @@
 // so the harness can assert the exact invariant those types owe:
 //
 //   an engaged optional holds exactly one live payload, a disengaged one holds
-//   none; a variant holds exactly one live alternative; an expected holds
-//   exactly one of value or error -- after EVERY operation, including the ones
-//   that switch between them.
+//   none; an expected holds exactly one of value or error -- after EVERY
+//   operation, including the ones that switch between them.
 //
 // Counting is not enough on its own. A move assignment that silently does
 // nothing keeps exactly one live member -- the OLD one -- and the counts
-// balance. So the expected and variant drivers also keep a model of what each
-// object should hold, and compare value and state after every operation.
+// balance. So the expected driver also keeps a model of what each object
+// should hold, and compares value and state after every operation.
 //
-// Only contract-valid operations. `value()` and `get<>()` assert when the wrong
+// Only contract-valid operations. `value()` and `error()` assert when the wrong
 // state is active, so every unchecked accessor is guarded by the corresponding
 // query first -- which is what the library tells callers to do.
-
-// variant is deprecated for 2.0
-// (#645); this probe keeps building them until then, warnings off.
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(disable : 4996)
-#else
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
 
 #include "fuzz_helpers.hpp"
 
@@ -45,7 +36,6 @@
 
 #include <metl/expected.hpp>
 #include <metl/optional.hpp>
-#include <metl/variant.hpp>
 
 namespace {
 
@@ -70,9 +60,9 @@ struct payload {
   ~payload() { --g_live; }
 };
 
-/// A second, distinct counted type, so `expected` and `variant` switching
-/// between alternatives is visible as two separate counts rather than one that
-/// happens to balance.
+/// A second, distinct counted type, so `expected` switching between value and
+/// error is visible as two separate counts rather than one that happens to
+/// balance.
 int g_live_other = 0;
 
 struct other_payload {
@@ -231,132 +221,15 @@ void drive_expected(metl_fuzz::byte_reader& in) {
   }
 }
 
-/// What a `metl::variant<payload, other_payload>` should hold.
-struct variant_model {
-  std::size_t index;
-  std::uint64_t value;
-};
-
-using vocab_variant = metl::variant<payload, other_payload>;
-
-/// Reads the active alternative through visit, so the oracle also covers
-/// dispatch on every value category, not only `get_if`.
-struct read_value {
-  std::uint64_t operator()(const payload& p) const noexcept { return p.value; }
-  std::uint64_t operator()(const other_payload& p) const noexcept { return p.value; }
-};
-
-bool matches(const vocab_variant& actual, const variant_model& model) {
-  if (actual.valueless_by_exception() || actual.index() != model.index) {
-    return false;
-  }
-  if (const payload* p = metl::get_if<payload>(&actual)) {
-    if (model.index != 0 || p->value != model.value || metl::get<payload>(actual).value != model.value) {
-      return false;
-    }
-  } else if (const other_payload* q = metl::get_if<other_payload>(&actual)) {
-    if (model.index != 1 || q->value != model.value ||
-        metl::get<other_payload>(actual).value != model.value) {
-      return false;
-    }
-  } else {
-    return false;
-  }
-  return metl::visit(read_value{}, actual) == model.value;
-}
-
-void drive_variant(metl_fuzz::byte_reader& in) {
-  vocab_variant v{payload{0}};
-  vocab_variant w{other_payload{0}};
-  variant_model mv{0, 0};
-  variant_model mw{1, 0};
-
-  while (!in.empty()) {
-    const std::uint32_t value = in.integer<std::uint32_t>();
-    switch (in.byte() % 10u) {
-      case 0:
-        v = vocab_variant{payload{value}};
-        mv = {0, value};
-        break;
-      case 1:
-        v = vocab_variant{other_payload{value}};
-        mv = {1, value};
-        break;
-      case 2:
-        v.template emplace<payload>(value);
-        mv = {0, value};
-        break;
-      case 3:
-        v.template emplace<other_payload>(value);
-        mv = {1, value};
-        break;
-      case 4:
-        w.template emplace<payload>(value);
-        mw = {0, value};
-        break;
-      case 5:
-        w = other_payload{value};
-        mw = {1, value};
-        break;
-      case 6:  // copy-assign between named objects, same and different index
-        v = w;
-        mv = mw;
-        break;
-      case 7:  // move-assign; payload's move copies, so w keeps its value
-        v = static_cast<vocab_variant&&>(w);
-        mv = mw;
-        break;
-      case 8:  // rvalue visit of a copy: reaches the rvalue overload
-        if (metl::visit(read_value{}, vocab_variant{v}) != mv.value) {
-          METL_FUZZ_TRAP();
-        }
-        break;
-      default: {
-        // Self-assignment: the case where "destroy the old, construct the new"
-        // destroys the thing it is about to read. Writing it as `v = v` is the
-        // point of the test, so the diagnostic that objects to it is suppressed
-        // HERE and nowhere wider -- a file-level or build-level suppression
-        // would also hide a real accidental self-assignment.
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wself-assign-overloaded"
-#endif
-        v = v;
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
-        break;
-      }
-    }
-
-    // valueless_by_exception() is unreachable without a throwing alternative;
-    // matches() rejects it, so if it happens it is reported.
-    if (!matches(v, mv) || !matches(w, mw)) {
-      METL_FUZZ_TRAP();
-    }
-    // Exactly one alternative alive in each, and it is the one `index()` claims.
-    const int firsts = (v.index() == 0 ? 1 : 0) + (w.index() == 0 ? 1 : 0);
-    if (g_live != firsts || g_live_other != 2 - firsts) {
-      METL_FUZZ_TRAP();
-    }
-  }
-}
-
 }  // namespace
 
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
   metl_fuzz::byte_reader in(data, size);
 
-  switch (in.byte() % 3u) {
-    case 0:
-      drive_optional(in);
-      break;
-    case 1:
-      drive_expected(in);
-      break;
-    default:
-      drive_variant(in);
-      break;
+  if (in.byte() % 2u == 0) {
+    drive_optional(in);
+  } else {
+    drive_expected(in);
   }
 
   // Everything above went out of scope. Anything still counted is a payload the

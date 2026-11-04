@@ -534,8 +534,7 @@ class optional : detail::no_implicit_copy_move<optional<T>> {
         *data() = std::forward<U>(value);
         return;
       } else {
-        // A const T has no assignment: replace the object, as variant does
-        // for an alternative it cannot assign.
+        // A const T has no assignment: replace the object.
         reset();
       }
     }

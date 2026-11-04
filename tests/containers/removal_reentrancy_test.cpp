@@ -8,7 +8,6 @@
 // after. (The sequence containers are in sequence_reentrancy_test.cpp.)
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <cstddef>
 #include <functional>
@@ -18,7 +17,6 @@
 #include <metl/optional.hpp>
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
-#include <metl/variant.hpp>
 
 namespace {
 
@@ -171,7 +169,7 @@ void unordered_set_unregisters() {
   CHECK_EQ(s.size(), 0u);
 }
 
-// --- optional / variant ---------------------------------------------------------
+// --- optional -------------------------------------------------------------------
 
 metl::optional<tracked>& opt() {
   static metl::optional<tracked> o;
@@ -191,21 +189,6 @@ void optional_disengages_first() {
   CHECK(!opt().has_value());
 }
 
-metl::variant<int, tracked>& var() {
-  static metl::variant<int, tracked> v;
-  return v;
-}
-bool g_still_active = false;
-
-void variant_leaves_the_alternative_first() {
-  reset_counts();
-  var().emplace<tracked>(2, [](int) { g_still_active = metl::holds_alternative<tracked>(var()); });
-  var().emplace<int>(5);
-  CHECK(!g_still_active);
-  CHECK_EQ(g_destroyed[2], 1);
-  CHECK(metl::holds_alternative<int>(var()));
-}
-
 }  // namespace
 
 int main() {
@@ -214,6 +197,5 @@ int main() {
   unordered_map_unregisters();
   unordered_set_unregisters();
   optional_disengages_first();
-  variant_leaves_the_alternative_first();
   return metl_test::exit_code();
 }

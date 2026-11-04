@@ -5,11 +5,9 @@
 // `std::is_copy_constructible_v<fixed_vector<U, 2>>` was true for a `U` that
 // cannot be copied, and the error appeared only once the body was instantiated.
 // Code that asks the trait first -- `std::optional` of a container, a
-// `variant`, a generic algorithm -- got a hard error instead of a clean false.
+// `std::variant`, a generic algorithm -- got a hard error instead of a clean false.
 // Now each operation exists only when its element allows it
 // (detail/copy_move_gate.hpp). `std::array` and `std::optional` are the model.
-
-#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <cstddef>
 #include <functional>
@@ -28,7 +26,6 @@
 #include <metl/ring_buffer.hpp>
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
-#include <metl/variant.hpp>
 
 namespace {
 
@@ -102,8 +99,6 @@ template <typename T>
 using expected_of = metl::expected<T, int>;
 template <typename T>
 using error_of = metl::expected<void, T>;
-template <typename T>
-using variant_of = metl::variant<int, T>;
 
 #define METL_TRAITS_ROW(alias)                                                            \
   static_assert(none<alias<pinned>>, #alias ": neither copyable nor movable");            \
@@ -122,7 +117,6 @@ METL_TRAITS_ROW(unordered_set_of)
 METL_TRAITS_ROW(optional_of)
 METL_TRAITS_ROW(expected_of)
 METL_TRAITS_ROW(error_of)
-METL_TRAITS_ROW(variant_of)
 
 #undef METL_TRAITS_ROW
 

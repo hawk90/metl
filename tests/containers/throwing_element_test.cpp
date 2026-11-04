@@ -16,7 +16,6 @@
 // the old shift did.)
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <array>
 #include <cstddef>

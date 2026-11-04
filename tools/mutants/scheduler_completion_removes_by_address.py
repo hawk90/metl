@@ -1,6 +1,5 @@
 """A mutant for tools/check_mutants.py: one behaviour change a named gate must reject."""
 
-# metl::variant (#202)
 MUTANT = {
     "name": "scheduler_completion_removes_by_address",
     "file": "include/metl/coro/scheduler.hpp",

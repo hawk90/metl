@@ -20,7 +20,6 @@
 
 #include "assert_trip.hpp"
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <array>
 #include <initializer_list>

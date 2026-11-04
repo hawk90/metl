@@ -81,7 +81,6 @@
 #include "metl/static_unordered_set.hpp"
 #include "metl/tick_extender.hpp"
 #include "metl/type_traits.hpp"
-#include "metl/variant.hpp"
 #include "metl/version.hpp"
 #include "metl/versioned_handle.hpp"
 #include "metl/wait.hpp"

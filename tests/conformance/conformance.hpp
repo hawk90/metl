@@ -22,7 +22,6 @@
 // its header with a `// conformance-header:` line next to the adapter.
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <array>
 #include <atomic>
@@ -54,7 +53,6 @@
 #include <metl/spsc_queue.hpp>
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
-#include <metl/variant.hpp>
 
 namespace conformance {
 
@@ -1160,48 +1158,6 @@ struct expected_adapter {
   }
 };
 
-// conformance-header: variant.hpp
-struct variant_adapter {
-  using type = metl::variant<int, probe>;
-  static constexpr const char* name = "variant";
-  static constexpr bool add_moves_others = false;
-  static constexpr bool remove_moves_others = false;
-  static constexpr const char* zero_capacity_refused = "no capacity parameter: it holds at most one";
-  static constexpr std::size_t capacity = 1;
-  static constexpr bool movable = true;
-  static constexpr bool move_empties_source = false;
-  static constexpr bool fixed_count = true;
-  static constexpr constant_init constant_init_level = constant_init::always;
-  template <typename C>
-  static bool try_add(C& c, int id) {
-    if (metl::holds_alternative<probe>(c)) {
-      return false;
-    }
-    c.template emplace<probe>(id);
-    return true;
-  }
-  template <typename C>
-  static std::size_t held(const C& c) {
-    return metl::holds_alternative<probe>(c) ? 1 : 0;
-  }
-  template <typename C>
-  static void remove_one(C& c) {
-    c.template emplace<int>(0);
-  }
-  template <typename C>
-  static void clear(C& c) {
-    c.template emplace<int>(0);
-  }
-  static constexpr int copy_own_ops = 1;
-  static constexpr int copy_own_fill = 1;
-  template <typename C>
-  static copy_result copy_own(C& c, int, int) {
-    const int id = metl::get<probe>(c).id;
-    c.template emplace<probe>(metl::get<probe>(c));
-    return {1, id, 1};
-  }
-};
-
 // A probe the wrapper can call.
 struct callable_probe {
   probe held;
@@ -1260,7 +1216,6 @@ using registry = std::tuple<fixed_vector_adapter,
                             mpmc_queue_adapter,
                             optional_adapter,
                             expected_adapter,
-                            variant_adapter,
                             fixed_function_adapter>;
 
 // How many elements a property fills: three, or fewer for a type that holds

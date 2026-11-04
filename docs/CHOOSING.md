@@ -195,14 +195,28 @@ Worked example: [`examples/callbacks.cpp`](../examples/callbacks.cpp).
 |---|---|
 | A value, or nothing | [`optional<T>`](../include/metl/optional.hpp) |
 | A value, or an error explaining why not | [`expected<T, E>`](../include/metl/expected.hpp) (`T` may be `void`) |
-| One of several alternatives | `std::variant<Ts...>` (`metl::variant` is deprecated for 2.0, #635) |
+| One of several alternatives | `std::variant<Ts...>`: METL has no variant of its own; see the note below on `std::get` without exceptions |
 | A view of someone else's contiguous data | [`span<T>`](../include/metl/span.hpp) |
 
 > **There are no `bad_*_access` exceptions.** METL is exception-free, so
-> `value()`, `operator*`, `get<T>()` and `at()` **assert** (abort by default) on the
-> empty / wrong / out-of-range case. Branch on `has_value()` /
-> `holds_alternative<>()` first, or use the total accessors `value_or`, `get_if`,
-> `find`.
+> `value()`, `operator*` and `at()` **assert** (abort by default) on the
+> empty / error / out-of-range case. Branch on `has_value()` first, or use the
+> total accessors `value_or`, `find`.
+
+> **`std::variant` with `-fno-exceptions`.** `std::get` on the wrong
+> alternative cannot throw `std::bad_variant_access`, so it aborts, without
+> passing through METL's handlers. Check first with `std::holds_alternative<T>(v)`,
+> or use `std::get_if<T>(&v)`, which returns null instead. To route the failure
+> to a handler, check before `std::get`:
+>
+> ```cpp
+> METL_ASSERT(std::holds_alternative<reading>(v));  // assert handler, at the hardening level
+> // or, whatever the hardening level:
+> if (!std::holds_alternative<reading>(v)) {
+>     metl::panic("wrong alternative", __FILE__, __LINE__);  // panic handler, then abort
+> }
+> use(std::get<reading>(v));
+> ```
 
 ## I need to talk to hardware
 

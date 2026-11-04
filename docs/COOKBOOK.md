@@ -57,7 +57,6 @@ the ones that bite people; read them before anything else.
 | `at(i)` out of range | **asserts** (aborts by default) | throws `std::out_of_range` |
 | `optional::value()` when empty | **asserts** | throws `std::bad_optional_access` |
 | `expected::value()` on error | **asserts** | throws `std::bad_expected_access` |
-| `variant` `get<T>()` wrong alternative (deprecated for 2.0, #635) | **asserts** | throws `std::bad_variant_access` |
 | `flat_map::operator[]` / `at()` | **do not exist**; `nth(i)` is the positional accessor | key lookup / insert (`std::map`) |
 | A failed assert | is provably `[[noreturn]]` — **aborts**, never falls through | n/a |
 | `function_ref` construction | **rejects rvalue callables** (deleted overload) | — (`std::function_ref`, P0792, accepts temporaries) |
@@ -73,10 +72,10 @@ Consequences:
   half-sorted. A `swap` of a sequence container (`fixed_vector`,
   `fixed_deque`, `ring_buffer`, `fixed_queue`, `fixed_stack`) is the one case
   that does neither: if it throws, both stay valid, each holding elements of
-  either. Unchecked accessors (`value()`, `operator*`, `get<>()`, `at()`)
+  either. Unchecked accessors (`value()`, `operator*`, `at()`)
   assert on a broken precondition and, by default, `std::abort()`. **Always branch on
-  `has_value()` / `operator bool` / `holds_alternative<>()` first**, or use the
-  total accessors `value_or(default)` / `find()` / `get_if()`.
+  `has_value()` / `operator bool` first**, or use the
+  total accessors `value_or(default)` / `find()`.
 - **The assert path cannot continue.** `metl::detail::assertion_failed` and
   `panic` are `[[noreturn]]` and call `std::abort()` after invoking the
   (customizable) handler, so even a user handler that mistakenly `return`s
@@ -223,7 +222,7 @@ int nth = rb[0];            // indexed from the front
 ```cpp
 #include <metl/expected.hpp>
 #include <metl/optional.hpp>
-#include <metl/variant.hpp>
+#include <variant>
 
 enum class parse_error : std::uint8_t { empty, not_a_digit, overflow };
 
@@ -243,8 +242,7 @@ if (auto r = parse_u32(text)) {
 // optional: value_or() is the safe, branch-free default path.
 std::int32_t gain = config_lookup("gain").value_or(1);
 
-// std::variant: dispatch with visit (handles every alternative). metl::variant
-// is deprecated for 2.0 (#635).
+// std::variant: dispatch with visit (handles every alternative).
 using result = std::variant<ok_result, busy_result>;
 std::uint32_t code = std::visit([](auto&& alt) -> std::uint32_t {
     using A = std::decay_t<decltype(alt)>;
@@ -254,9 +252,11 @@ std::uint32_t code = std::visit([](auto&& alt) -> std::uint32_t {
 ```
 
 Remember: METL's `value()` and `operator*` **assert** — there is no
-`bad_*_access` exception in METL. `std::get` on the wrong alternative throws
-instead, so check with `holds_alternative` or use `get_if`. Check presence
-first, or use `value_or` / `get_if` / `find`.
+`bad_*_access` exception in METL. Check presence first, or use `value_or` /
+`find`. `std::get` on the wrong alternative throws, or aborts under
+`-fno-exceptions`, so check with `std::holds_alternative` or use `std::get_if`
+([CHOOSING.md](CHOOSING.md#i-need-to-return-something-that-might-not-exist-or-might-fail)
+shows how to route it to a handler).
 
 ## Per-tick scratch memory without malloc
 

@@ -1,11 +1,11 @@
-// expected and variant are constant-initialized at namespace scope (#395).
+// expected is constant-initialized at namespace scope (#395).
 //
 // A dynamically initialized global is built at startup, in link order, so an
 // interrupt enabled early or another translation unit's static initializer can
 // see it before its constructor ran. The conformance suite checks one adapter
 // per type (conformance_constinit_test.cpp); this test covers the constructors
 // and specializations that suite does not reach: the default, value, error and
-// in-place constructors, expected<void, E>, and an alternative with a
+// in-place constructors, expected<void, E>, and a value type with a
 // non-trivial constructor and destructor.
 //
 // Two checks, so that every build checks something:
@@ -20,11 +20,9 @@
 //     comes first. A constant-initialized object therefore already holds its
 //     value when the copy is taken; a dynamically initialized one still holds
 //     the zeros of static storage. main() compares the copy with the object, so
-//     each object it checks must have a value whose bytes are not all zero --
-//     variant_default (index 0, int 0) is the one that cannot be checked so.
+//     each object it checks must have a value whose bytes are not all zero.
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <cstddef>
 #include <cstdio>
@@ -33,7 +31,6 @@
 #include <metl/attributes.hpp>
 #include <metl/expected.hpp>
 #include <metl/fixed_function.hpp>
-#include <metl/variant.hpp>
 
 #if (defined(__cpp_constinit) && __cpp_constinit >= 201907L) || \
     METL_HAS_CPP_ATTRIBUTE(clang::require_constant_initialization)
@@ -67,11 +64,6 @@ extern metl::expected<int, error_code> expected_unexpected;
 extern metl::expected<counted, error_code> expected_counted;
 extern metl::expected<void, int> expected_void;
 extern metl::expected<void, int> expected_void_error;
-extern metl::variant<int, counted> variant_default;
-extern metl::variant<counted, int> variant_counted;
-extern metl::variant<int, counted> variant_converting;
-extern metl::variant<int, counted> variant_in_place_type;
-extern metl::variant<int, long> variant_in_place_index;
 
 constexpr std::size_t max_bytes = 64;
 
@@ -99,10 +91,6 @@ struct early_copies {
   bytes_of expected_counted;
   bytes_of expected_void;
   bytes_of expected_void_error;
-  bytes_of variant_counted;
-  bytes_of variant_converting;
-  bytes_of variant_in_place_type;
-  bytes_of variant_in_place_index;
 };
 
 early_copies take_early_copies() {
@@ -113,11 +101,7 @@ early_copies take_early_copies() {
           copy_bytes(vocab_constant_init::expected_unexpected),
           copy_bytes(vocab_constant_init::expected_counted),
           copy_bytes(vocab_constant_init::expected_void),
-          copy_bytes(vocab_constant_init::expected_void_error),
-          copy_bytes(vocab_constant_init::variant_counted),
-          copy_bytes(vocab_constant_init::variant_converting),
-          copy_bytes(vocab_constant_init::variant_in_place_type),
-          copy_bytes(vocab_constant_init::variant_in_place_index)};
+          copy_bytes(vocab_constant_init::expected_void_error)};
 }
 
 // Dynamically initialized, and defined before every object it copies.
@@ -132,12 +116,6 @@ METL_CONST_INIT metl::expected<int, error_code> expected_unexpected{
 METL_CONST_INIT metl::expected<counted, error_code> expected_counted;
 METL_CONST_INIT metl::expected<void, int> expected_void;
 METL_CONST_INIT metl::expected<void, int> expected_void_error{metl::unexpect, 3};
-
-METL_CONST_INIT metl::variant<int, counted> variant_default;
-METL_CONST_INIT metl::variant<counted, int> variant_counted;
-METL_CONST_INIT metl::variant<int, counted> variant_converting{9};
-METL_CONST_INIT metl::variant<int, counted> variant_in_place_type{metl::in_place_type<counted>, 4};
-METL_CONST_INIT metl::variant<int, long> variant_in_place_index{metl::in_place_index<1>, 8L};
 
 // Empty callables built from nullptr, as the default constructor's are (#578).
 // Their bytes are all zero, so only the compile-time check applies.
@@ -182,12 +160,6 @@ int main() {
   CHECK(held_before_dynamic_init("expected_counted", early.expected_counted, expected_counted));
   CHECK(held_before_dynamic_init("expected_void", early.expected_void, expected_void));
   CHECK(held_before_dynamic_init("expected_void_error", early.expected_void_error, expected_void_error));
-  CHECK(held_before_dynamic_init("variant_counted", early.variant_counted, variant_counted));
-  CHECK(held_before_dynamic_init("variant_converting", early.variant_converting, variant_converting));
-  CHECK(
-      held_before_dynamic_init("variant_in_place_type", early.variant_in_place_type, variant_in_place_type));
-  CHECK(held_before_dynamic_init(
-      "variant_in_place_index", early.variant_in_place_index, variant_in_place_index));
 
   CHECK(expected_default.has_value());
   CHECK_EQ(*expected_default, 0);
@@ -199,17 +171,9 @@ int main() {
   CHECK(expected_void.has_value());
   CHECK_EQ(expected_void_error.error(), 3);
 
-  CHECK_EQ(metl::get<int>(variant_default), 0);
-  CHECK_EQ(metl::get<counted>(variant_counted).value, 7);
-  CHECK_EQ(metl::get<int>(variant_converting), 9);
-  CHECK_EQ(metl::get<counted>(variant_in_place_type).value, 4);
-  CHECK_EQ(metl::get<1>(variant_in_place_index), 8L);
-
-  // The objects stay usable: a switch destroys the old member once.
+  // The object stays usable: a switch destroys the old member once.
   expected_counted = metl::unexpected<error_code>(error_code::none);
   CHECK_EQ(destroyed, 1);
-  variant_counted.emplace<int>(1);
-  CHECK_EQ(destroyed, 2);
 
   std::printf("vocab_constant_init_test: run-time check done; METL_CONST_INIT %s\n",
               VOCAB_CONST_INIT_ENFORCED ? "enforced by the compiler" : "not enforced by this compiler");

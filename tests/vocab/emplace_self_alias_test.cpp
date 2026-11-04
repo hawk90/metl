@@ -1,5 +1,5 @@
 // Regression tests for `emplace` whose arguments refer into
-// the object's own current value or alternative. Each block failed against the
+// the object's own current value. Each block failed against the
 // unfixed headers, which destroyed the current member before reading `args`.
 //
 // `poisoned` writes -1 into itself on destruction and -2 when moved from, so a
@@ -8,13 +8,9 @@
 // No exceptions, no heap: runs on QEMU too.
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
-
-#include <type_traits>
 
 #include <metl/expected.hpp>
 #include <metl/optional.hpp>
-#include <metl/variant.hpp>
 
 namespace {
 
@@ -70,15 +66,6 @@ struct throwing_move {
   ~throwing_move() { *static_cast<volatile int*>(&value) = -1; }
 };
 
-using poison_or_node = metl::variant<poisoned, node>;
-static_assert(noexcept(std::declval<poison_or_node&>().emplace<poisoned>(1)),
-              "nothrow construct + nothrow move: emplace stays noexcept");
-static_assert(noexcept(std::declval<poison_or_node&>().emplace<0>(1)), "same, by index");
-using int_or_throwing = metl::variant<int, throwing_move>;
-static_assert(!noexcept(std::declval<int_or_throwing&>().emplace<throwing_move>()),
-              "the new value is moved into place: a throwing move makes emplace throwing");
-static_assert(!noexcept(std::declval<int_or_throwing&>().emplace<1>()), "same, by index");
-
 }  // namespace
 
 int main() {
@@ -110,32 +97,6 @@ int main() {
     p.emplace(1);
     p.emplace(2);
     CHECK_EQ(p->value, 2);
-  }
-
-  // variant: same alternative, by type and by index.
-  {
-    poison_or_node v(metl::in_place_index<0>, 11);
-    v.emplace<poisoned>(metl::get<poisoned>(v));
-    CHECK_EQ(metl::get<0>(v).value, 11);
-    v.emplace<0>(metl::get<0>(v));
-    CHECK_EQ(metl::get<0>(v).value, 11);
-  }
-  // variant: switching alternative, argument is a subobject of the old one.
-  {
-    poison_or_node v(metl::in_place_index<1>, 2, poisoned(13));
-    v.emplace<0>(metl::get<1>(v).member);
-    CHECK_EQ(v.index(), 0u);
-    CHECK_EQ(metl::get<0>(v).value, 13);
-    v.emplace<node>(metl::get<0>(v));
-    CHECK_EQ(metl::get<1>(v).member.value, 13);
-    v.emplace<poisoned>(metl::get<node>(v).member);
-    CHECK_EQ(metl::get<poisoned>(v).value, 13);
-  }
-  // variant: converting operator= (now routed through emplace) still builds first.
-  {
-    poison_or_node v(metl::in_place_index<1>, 2, poisoned(17));
-    v = metl::get<1>(v).member;
-    CHECK_EQ(metl::get<0>(v).value, 17);
   }
 
   // expected: same-state emplace of the value and of the error.

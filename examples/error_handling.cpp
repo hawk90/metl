@@ -4,20 +4,20 @@
 //
 //   - metl::expected<T, E> — a value OR an error, returned by value.
 //   - metl::optional<T>    — a value OR nothing.
-//   - std::variant<...>    — a type-safe tagged union. METL's own variant is
-//                            deprecated for 2.0 (#635); the standard one is
-//                            in every C++17 library METL supports.
+//   - std::variant<...>    — a type-safe tagged union, in every C++17
+//                            library METL supports.
 //
 // These replace exceptions and out-parameters on freestanding targets where
 // throwing is banned or unavailable.
 //
 // !!! Contract note (differs from the standard library): the "unchecked"
 // !!! accessors ASSERT rather than throw. metl::expected::value() /
-// !!! metl::optional::value() / metl::optional::operator* / metl::get<>()
-// !!! all call METL_ASSERT on the empty/wrong-alternative case, which aborts
-// !!! by default (there is no std::bad_optional_access / bad_expected_access).
-// !!! So you must branch on has_value() / operator bool / holds_alternative()
-// !!! FIRST, exactly as this example does. value_or() is the safe default-path.
+// !!! metl::optional::value() / metl::optional::operator* all call
+// !!! METL_ASSERT on the empty/error case, which aborts by default (there is
+// !!! no std::bad_optional_access / bad_expected_access). So you must branch
+// !!! on has_value() / operator bool FIRST, and on std::holds_alternative()
+// !!! before std::get, exactly as this example does. value_or() is the safe
+// !!! default-path.
 
 #include <cstdint>
 #include <cstdio>

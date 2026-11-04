@@ -2,9 +2,9 @@
 // Included by a test that exercises a name deprecated for removal in 2.0
 // (#645), so the deprecation warnings it would otherwise draw at every use do
 // not fail the -Werror builds. Only a test that still exercises a deprecated
-// component until #662 removes it includes it (variant, the metl::exp aliases, the compiler.hpp macros and
-// variables). Every other test uses the replacement, so a new use of a deprecated name anywhere else still
-// fails.
+// component until #662 removes it includes it (the metl::exp aliases, the
+// compiler.hpp macros and variables). Every other test uses the replacement,
+// so a new use of a deprecated name anywhere else still fails.
 //
 // The pragmas stay in force for the rest of the translation unit, which is the
 // point: GCC reports a use inside a template where it is instantiated, at the

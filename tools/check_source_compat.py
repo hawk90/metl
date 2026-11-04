@@ -40,9 +40,9 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 # GCC and clang spelling; this check runs with either, never with MSVC.
 DEPRECATION_STAYS_A_WARNING = "-Wno-error=deprecated-declarations"
 
-# The reason shared by every old file that broke when static_message_queue went.
-_REMOVED_MESSAGE_QUEUE = ("it includes or uses static_message_queue, deprecated in 1.15.0 and removed "
-                          "by #662 (conformance.hpp registers it for every conformance test)")
+# The reason shared by every old file that broke when a deprecated type went.
+_REMOVED_TYPE = ("it includes or uses static_message_queue or metl::variant, deprecated in 1.15.0 "
+                 "and removed by #662 (conformance.hpp registers both for every conformance test)")
 
 # {tag: {old test source or ctest name: "why it may break (#issue)"}}
 EXPECTED_BREAKS = {
@@ -72,28 +72,42 @@ EXPECTED_BREAKS = {
                                                 "2.0; #662 removes them",
         "tests/memory/static_allocator_test.cpp": "static_allocator, deprecated in 1.15.0, is removed "
                                                   "by #662",
-        "tests/conformance/conformance_alias_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/conformance/conformance_capacity_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/conformance/conformance_constinit_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/conformance/conformance_copy_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/conformance/conformance_move_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/conformance/conformance_removal_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/conformance/conformance_self_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/conformance/conformance_stability_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/conformance/conformance_std_parity_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/conformance/conformance_throwing_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/containers/constinit_size_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/containers/container_assert_trips_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/containers/copy_move_traits_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/containers/moved_from_contract_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/containers/recoverable_unchanged_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/containers/reentrant_throw_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/containers/sequence_reentrancy_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/containers/throwing_element_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/core/harden_floor_memory_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/core/hostile_types_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/core/rare_paths_test.cpp": _REMOVED_MESSAGE_QUEUE,
-        "tests/sync/static_message_queue_test.cpp": _REMOVED_MESSAGE_QUEUE,
+        "tests/conformance/conformance_alias_test.cpp": _REMOVED_TYPE,
+        "tests/conformance/conformance_capacity_test.cpp": _REMOVED_TYPE,
+        "tests/conformance/conformance_constinit_test.cpp": _REMOVED_TYPE,
+        "tests/conformance/conformance_copy_test.cpp": _REMOVED_TYPE,
+        "tests/conformance/conformance_move_test.cpp": _REMOVED_TYPE,
+        "tests/conformance/conformance_removal_test.cpp": _REMOVED_TYPE,
+        "tests/conformance/conformance_self_test.cpp": _REMOVED_TYPE,
+        "tests/conformance/conformance_stability_test.cpp": _REMOVED_TYPE,
+        "tests/conformance/conformance_std_parity_test.cpp": _REMOVED_TYPE,
+        "tests/conformance/conformance_throwing_test.cpp": _REMOVED_TYPE,
+        "tests/containers/constinit_size_test.cpp": _REMOVED_TYPE,
+        "tests/containers/container_assert_trips_test.cpp": _REMOVED_TYPE,
+        "tests/containers/copy_move_traits_test.cpp": _REMOVED_TYPE,
+        "tests/containers/moved_from_contract_test.cpp": _REMOVED_TYPE,
+        "tests/containers/recoverable_unchanged_test.cpp": _REMOVED_TYPE,
+        "tests/containers/reentrant_throw_test.cpp": _REMOVED_TYPE,
+        "tests/containers/sequence_reentrancy_test.cpp": _REMOVED_TYPE,
+        "tests/containers/throwing_element_test.cpp": _REMOVED_TYPE,
+        "tests/core/harden_floor_memory_test.cpp": _REMOVED_TYPE,
+        "tests/core/hostile_types_test.cpp": _REMOVED_TYPE,
+        "tests/core/rare_paths_test.cpp": _REMOVED_TYPE,
+        "tests/sync/static_message_queue_test.cpp": _REMOVED_TYPE,
+        "fuzz/fuzz_vocab.cpp": _REMOVED_TYPE,
+        "metl_variant_stack_frame": _REMOVED_TYPE,
+        "tests/containers/removal_reentrancy_test.cpp": _REMOVED_TYPE,
+        "tests/control/control_contracts_test.cpp": _REMOVED_TYPE,
+        "tests/core/ram_footprint_test.cpp": _REMOVED_TYPE,
+        "tests/embedded/variant_stack_probe.cpp": _REMOVED_TYPE,
+        "tests/vocab/emplace_self_alias_test.cpp": _REMOVED_TYPE,
+        "tests/vocab/variant_regression_test.cpp": _REMOVED_TYPE,
+        "tests/vocab/variant_selfassign_test.cpp": _REMOVED_TYPE,
+        "tests/vocab/variant_state_pairs_test.cpp": _REMOVED_TYPE,
+        "tests/vocab/variant_test.cpp": _REMOVED_TYPE,
+        "tests/vocab/vocab_assert_trips_test.cpp": _REMOVED_TYPE,
+        "tests/vocab/vocab_assignment_test.cpp": _REMOVED_TYPE,
+        "tests/vocab/vocab_constant_init_test.cpp": _REMOVED_TYPE,
     },
 }
 
