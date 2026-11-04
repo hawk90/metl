@@ -92,8 +92,9 @@ Core types
 - [`span`](include/metl/span.hpp) — non-owning contiguous view.
 - [`optional`](include/metl/optional.hpp) — value-or-empty with monadic ops.
 - [`expected`](include/metl/expected.hpp) — value-or-error, including `void`.
-- [`variant`](include/metl/variant.hpp) — tagged union with visitation.
-  Deprecated for 2.0: use `std::variant` (#635).
+- One of several alternatives: use `std::variant`;
+  [CHOOSING.md](docs/CHOOSING.md#i-need-to-return-something-that-might-not-exist-or-might-fail)
+  shows how to check before `std::get` without exceptions.
 - [`in_place`](include/metl/in_place.hpp) — in-place construction tags.
 - [`type_traits`](include/metl/type_traits.hpp) — trait helpers and
   `storage_for<T>`.
@@ -103,10 +104,9 @@ Error handling without exceptions — worked example:
 [`examples/error_handling.cpp`](examples/error_handling.cpp)
 (`expected` + `optional` + `std::variant`).
 
-> Contract note: `optional::value()`, `expected::value()`, and `get<T>()`
-> **assert** (abort) on the empty / wrong-alternative case — there is no
-> `bad_*_access` exception. Check `has_value()` / `holds_alternative<>()` first,
-> or use `value_or` / `get_if` / `find`.
+> Contract note: `optional::value()` and `expected::value()` **assert** (abort)
+> on the empty / error case — there is no `bad_*_access` exception. Check
+> `has_value()` first, or use `value_or` / `find`.
 
 Containers
 

@@ -1,8 +1,8 @@
 # Compile-failure cases
 
 METL's public headers carry dozens of user-facing `static_assert`s -- "Capacity must be
-power of two", "variant_alternative index out of range", "get_if<T> requires
-unique alternative type". For a template library those messages **are** the
+power of two", "bitfield T must be unsigned", "atomic_ref requires a
+trivially copyable type". For a template library those messages **are** the
 error handling: they are what a caller sees when they misuse the API, and they
 are the only thing standing between a misuse and whatever the compiler would
 otherwise say about a 40-line instantiation stack. (`tools/check_compile_fail.py`

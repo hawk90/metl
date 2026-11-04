@@ -1085,8 +1085,8 @@ class expected : detail::expected_members<T, E> {
   void reinit_as_value(Args&&... args) {
     if constexpr (std::is_move_constructible_v<T>) {
       // Build the new value BEFORE touching the old member: `args` may refer
-      // into it (`e = e.error().fallback`), and destroying first read a dead
-      // object (variant's converting assignment had the same bug).
+      // into it (`e = e.error().fallback`), and destroying first would read a
+      // dead object.
       // A throw here leaves the state untouched.
       T incoming(std::forward<Args>(args)...);
       commit_value(static_cast<T&&>(incoming));
@@ -1148,8 +1148,8 @@ class expected : detail::expected_members<T, E> {
   void reinit_as_error(Args&&... args) {
     if constexpr (std::is_move_constructible_v<E>) {
       // Build the new error BEFORE touching the old member: `args` may refer
-      // into it (`e = e.value().code`), and destroying first read a dead
-      // object (variant's converting assignment had the same bug).
+      // into it (`e = e.value().code`), and destroying first would read a dead
+      // object.
       // A throw here leaves the state untouched.
       E incoming(std::forward<Args>(args)...);
       commit_error(static_cast<E&&>(incoming));

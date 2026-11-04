@@ -18,7 +18,7 @@ set(_metl_examples
   lazy_driver       # once_flag: a driver built on first use, reached from its ISR
   uart_byte_ring    # spsc_byte_ring zero-copy driver region + seam
   mmio_peripheral   # mmio + register_access + bitfield (fake peripheral)
-  error_handling    # expected + optional + variant (no exceptions)
+  error_handling    # expected + optional + std::variant (no exceptions)
   callbacks         # function_ref / delegate / fixed_function / event_dispatcher / scope_exit
   log_line          # format.hpp int-to-text + fixed_string, no stdio formatting
   wire_values       # parse.hpp text-to-int: boundary refusal, fixed point, round trip

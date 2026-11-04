@@ -7,8 +7,8 @@
 // is involved beyond the archiver.
 
 // ---- Every public header ---------------------------------------------------
-// variant is deprecated for 2.0
-// (#645); this probe keeps building them until then, warnings off.
+// compiler.hpp's cxx_standard is deprecated for 2.0 (#645); this probe keeps
+// building it until then, warnings off.
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
 #include "metl/arena_allocator.hpp"
@@ -56,7 +56,6 @@
 #include "metl/static_unordered_map.hpp"
 #include "metl/static_unordered_set.hpp"
 #include "metl/type_traits.hpp"
-#include "metl/variant.hpp"
 #include "metl/version.hpp"
 #include "metl/versioned_handle.hpp"
 #include "metl/wait.hpp"
@@ -287,9 +286,6 @@ static_assert(sizeof(metl::storage_for<int>) >= sizeof(int), "type_traits.hpp st
 [[maybe_unused]] const auto _cpu_relax_ptr = &metl::cpu_relax;
 [[maybe_unused]] const auto _wait_for_event_ptr = &metl::wait_for_event;
 [[maybe_unused]] const auto _send_event_ptr = &metl::send_event;
-
-// variant.hpp
-[[maybe_unused]] metl::variant<int, char> _variant{0};
 
 // version.hpp
 static_assert(metl::version::major == metl::version_major, "version.hpp major");

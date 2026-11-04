@@ -10,10 +10,6 @@
 // A row is the measurement, not a limit: both directions fail. The sizeof ratchet
 // in tests/core/ram_footprint_test.cpp misses a change that keeps the size.
 
-// variant is deprecated for 2.0
-// (#645); this probe keeps building them until then, warnings off.
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-
 #include <cstddef>
 #include <cstdint>
 
@@ -63,7 +59,6 @@
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
 #include <metl/tick_extender.hpp>
-#include <metl/variant.hpp>
 #include <metl/versioned_handle.hpp>
 
 namespace {
@@ -133,7 +128,6 @@ LAYOUT(192, 64, metl::spsc_queue<std::uint32_t, 4>);
 LAYOUT(148, 4, metl::static_unordered_map<std::uint32_t, std::uint32_t, 8>);
 LAYOUT(84, 4, metl::static_unordered_set<std::uint32_t, 8>);
 LAYOUT(8, 8, metl::tick_extender<16>);
-LAYOUT(8, 4, metl::variant<std::uint32_t, std::uint8_t>);
 LAYOUT(4, 4, metl::versioned_handle<layout_tag>);
 LAYOUT(12, 4, metl::list_hook<>);
 LAYOUT(8, 4, metl::forward_list_hook<>);

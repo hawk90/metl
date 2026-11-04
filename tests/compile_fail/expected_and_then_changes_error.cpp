@@ -4,9 +4,6 @@
 // expected must carry the SAME E. A callable that returns a different error
 // type has no meaning here: there is nowhere for the original error to go, and
 // without the assertion the conversion that made it compile would be silent.
-//
-// The same shape as the `metl::visit` result-type defect (#84): a template that
-// deduces from one side and quietly converts the other.
 
 #include <metl/expected.hpp>
 

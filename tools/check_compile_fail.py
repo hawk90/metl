@@ -2,8 +2,8 @@
 """Prove METL's compile-time contracts still fire.
 
 WHY. The public headers carry user-facing `static_assert`s -- "Capacity must be
-power of two", "variant_alternative index out of range", "get_if<T> requires
-unique alternative type". For a template library those messages ARE the error
+power of two", "bitfield T must be unsigned", "atomic_ref requires a
+trivially copyable type". For a template library those messages ARE the error
 handling: they are what a caller meets when they misuse the API, and the only
 thing between a misuse and forty lines of instantiation backtrace.
 
@@ -19,11 +19,6 @@ the same shape as a CI step that can only pass, which this repository has spent
 a long time removing everywhere else. Every checker under tools/ has a
 `--self-test` proving the CHECKER still bites. Nothing proved the CONTRACTS did.
 This is that, for the library.
-
-It also removes a real limit. #84 fixed `metl::visit` silently truncating a
-visitor's result, and had to test the TRAIT rather than the call, because
-instantiating `visit` with a bad visitor is a hard error and there was nowhere
-to put a case that expects one.
 
 HOW. Each case is compiled TWICE:
 
@@ -108,12 +103,6 @@ GUARD = "METL_COMPILE_FAIL"
 #
 #   one is DERIVED -- static_unordered_map's bucket_count is bit_ceil(2 *
 #   Capacity), so no caller can make it a non-power-of-two.
-#
-# Two more were UNREACHABLE until #309: variant's `emplace<I> index out of
-# range` and `get_if<I> index out of range` sat in the body of a function whose
-# RETURN TYPE is variant_alternative_t<I, ...>, which asserts `variant_alternative
-# index out of range` first. They were removed, and cases now pin that both
-# calls get that message.
 #
 # So the floor is 5. Lowering it means changing the library, not adding a case.
 MAX_UNCOVERED = 5

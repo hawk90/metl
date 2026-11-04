@@ -1,6 +1,5 @@
 """A mutant for tools/check_mutants.py: one behaviour change a named gate must reject."""
 
-# metl::variant (#202)
 MUTANT = {
     "name": "flat_map_clear_relocates",
     "file": "include/metl/flat_map.hpp",

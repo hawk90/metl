@@ -31,7 +31,6 @@
 // the matrix including the cross-syntax jobs, and `main` has nothing to do.
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <cstddef>
 #include <cstdint>
@@ -52,7 +51,6 @@
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
 #include <metl/type_traits.hpp>
-#include <metl/variant.hpp>
 
 namespace {
 
@@ -273,11 +271,10 @@ static_assert(alignof(metl::function_ref<void()>) == alignof(void*),
               "a two-pointer union aligns like a pointer");
 
 // ---------------------------------------------------------------------------
-// expected and variant hold their member in a union: the largest member,
-// rounded up to the largest alignment, then the discriminant -- one byte for
-// expected, a size_t for variant. Exact, not a bound: the union's empty member,
-// which the constructors need for the state that holds nothing, must never
-// cost a byte.
+// expected holds its member in a union: the larger member, rounded up to the
+// larger alignment, then a one-byte discriminant. Exact, not a bound: the
+// union's empty member, which the constructors need for the state that holds
+// nothing, must never cost a byte.
 // ---------------------------------------------------------------------------
 namespace union_pin {
 constexpr std::size_t max_of(std::size_t a, std::size_t b) {
@@ -294,22 +291,10 @@ constexpr bool expected_exact_v =
                  max_of(alignof(T), alignof(E))) &&
     alignof(metl::expected<T, E>) == max_of(alignof(T), alignof(E));
 
-template <typename A, typename B>
-constexpr bool variant_exact_v =
-    sizeof(metl::variant<A, B>) ==
-        round_up(round_up(max_of(sizeof(A), sizeof(B)), max_of(alignof(A), alignof(B))) + sizeof(std::size_t),
-                 max_of(max_of(alignof(A), alignof(B)), alignof(std::size_t))) &&
-    alignof(metl::variant<A, B>) == max_of(max_of(alignof(A), alignof(B)), alignof(std::size_t));
-
 struct none {};
 struct five {
   char bytes[5];
 };
-// Not u64: i386 aligns a u64 member to 4 although alignof(u64) is 8.
-struct alignas(8) eight {
-  char bytes[8];
-};
-
 static_assert(expected_exact_v<u32, u32>, "expected<u32, u32> is one u32 and a byte, aligned");
 static_assert(expected_exact_v<char, char>, "expected<char, char> is two bytes");
 static_assert(expected_exact_v<none, none>, "expected of two empty types is two bytes");
@@ -318,15 +303,6 @@ static_assert(expected_exact_v<layout_pin::wide, char>, "expected of an over-ali
 static_assert(sizeof(metl::expected<void, u32>) == 2 * sizeof(u32),
               "expected<void, u32> is the error and a byte");
 static_assert(sizeof(metl::expected<void, none>) == 2, "expected<void, E> of an empty E is two bytes");
-static_assert(variant_exact_v<u32, eight>, "variant of a u32 and an 8-byte type is 8 bytes and a size_t");
-static_assert(variant_exact_v<char, none>, "variant of a char and an empty type");
-static_assert(variant_exact_v<five, u32>,
-              "variant rounds the largest alternative up to the largest alignment");
-static_assert(variant_exact_v<layout_pin::wide, char>, "variant of an over-aligned type");
-static_assert(sizeof(metl::variant<char, five, std::uint16_t>) ==
-                  round_up(round_up(sizeof(five), alignof(std::uint16_t)) + sizeof(std::size_t),
-                           alignof(std::size_t)),
-              "a third alternative nests one union deeper and costs nothing");
 }  // namespace union_pin
 
 }  // namespace

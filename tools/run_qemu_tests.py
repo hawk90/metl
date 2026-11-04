@@ -93,7 +93,6 @@ DENIED = {
     "core/assert_test.cpp": "setjmp/longjmp around an abort path; host-runtime specific",
     "memory/arena_throwing_ctor_test.cpp": "throws; needs -fexceptions",
     "vocab/expected_regression_test.cpp": "throws; needs -fexceptions",
-    "vocab/variant_regression_test.cpp": "throws; needs -fexceptions",
     "conformance/conformance_throwing_test.cpp": "throws; needs -fexceptions",
     "containers/throwing_element_test.cpp": "throws; needs -fexceptions",
     "containers/reentrant_throw_test.cpp": "throws; needs -fexceptions",

@@ -30,6 +30,7 @@ ALLOWED_CHANGES: dict[str, dict[str, str]] = {
     "v1.15.0": {
         "metl::static_allocator<std::uint32_t, 4>": "removed by #662, deprecated in 1.15.0",
         "metl::static_message_queue<std::uint32_t, 4>": "removed by #662, deprecated in 1.15.0",
+        "metl::variant<std::uint32_t, std::uint8_t>": "removed by #635, deprecated in 1.15.0",
     },
 }
 

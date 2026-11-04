@@ -78,8 +78,6 @@ ASSERT_ALLOWLIST = {
         "add_ref/release are called by intrusive_ptr only with a non-null pointer",
     ("intrusive_ptr.hpp", "ptr_ != nullptr"):
         "operator* / operator->: the caller's access",
-    ("variant.hpp", "pointer != nullptr"):
-        "get<>: the caller's access, as std::get without exceptions",
     ("fixed_vector.hpp", "size_ < Capacity"):
         "assign(first, last): a full emplace_back returns the last element, in bounds",
     ("fixed_vector.hpp", "il.size() <= Capacity"):
@@ -236,7 +234,7 @@ def never_constant_functions(text, path):
 
         def on_every_path(pattern):
             # Reached on every path: no `return` comes before it. One that does
-            # leaves a path that can be constant, as get_if's null check is.
+            # leaves a path that can be constant, as an early null return does.
             found = re.search(pattern, body)
             return found is not None and not re.search(r"\breturn\b[^;]*;", body[:found.start()])
 
@@ -384,8 +382,8 @@ constexpr bool aligned(T* p) noexcept {
     for shape, text in missed_shapes.items():
         if [rule for _, _, rule, _ in check_text(text, "<canary-S3-shape>")] != ["S3"]:
             failures.append(f"S3 missed {shape}: {check_text(text, '<canary-S3-shape>')}")
-    # A path that returns before the cast or call can be constant (get_if's
-    # null check), so S3 does not apply; nor does a call into an overload set
+    # A path that returns before the cast or call can be constant (an early
+    # null return), so S3 does not apply; nor does a call into an overload set
     # the header also defines constexpr.
     for text in ("template <typename T> constexpr T* get_if(void* p) noexcept {\n"
                  "  if (p == nullptr) {\n    return nullptr;\n  }\n  return static_cast<T*>(p);\n}\n",
@@ -397,15 +395,15 @@ constexpr bool aligned(T* p) noexcept {
     # #588: #579's guard, a container's size against its capacity.
     if [rule for _, _, rule, _ in check_text("void f() { METL_ASSERT(size_ < Capacity); }", "x.hpp")] != ["S2"]:
         failures.append("S2 missed METL_ASSERT(size_ < Capacity)")
-    allowed ='void f(int* p) { METL_ASSERT(pointer != nullptr); }'
-    if check_text(allowed, "variant.hpp"):
+    allowed ='void f(int* p) { METL_ASSERT(ptr_ != nullptr); }'
+    if check_text(allowed, "intrusive_ptr.hpp"):
         failures.append("an ASSERT_ALLOWLIST entry was flagged anyway")
     # An allowlist entry whose METL_ASSERT is gone is an error, so the list
     # cannot outlive the code it excuses.
     with tempfile.TemporaryDirectory() as tmp:
-        (pathlib.Path(tmp) / "variant.hpp").write_text(allowed + "\n")
+        (pathlib.Path(tmp) / "intrusive_ptr.hpp").write_text(allowed + "\n")
         stale = [message for _, _, rule, message in check_tree(pathlib.Path(tmp))[0] if rule == "S2"]
-        if len(stale) != len(ASSERT_ALLOWLIST) - 1 or any("pointer != nullptr" in m for m in stale):
+        if len(stale) != len(ASSERT_ALLOWLIST) - 1 or any("ptr_ != nullptr" in m for m in stale):
             failures.append(f"stale ASSERT_ALLOWLIST entries were not each reported: {stale}")
     noise = check_text(CANARY_CLEAN, "<canary-clean>")
     if noise:

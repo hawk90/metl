@@ -13,7 +13,6 @@
 // the test; the checks are the other half.
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <cstddef>
 #include <cstdint>
@@ -40,7 +39,6 @@
 #include <metl/ring_buffer.hpp>
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
-#include <metl/variant.hpp>
 
 namespace {
 
@@ -188,12 +186,6 @@ void deleted_operator_new() {
     metl::fixed_queue<no_heap, 2> q;
     q.emplace(6);
     CHECK_EQ(q.front().value, 6);
-  }
-  {
-    metl::variant<int, no_heap> v;
-    v.emplace<no_heap>(8);
-    metl::variant<int, no_heap> copy = v;
-    CHECK_DEREF_EQ(metl::get_if<no_heap>(&copy), no_heap{8});
   }
   {
     metl::flat_set<no_heap, 4> s;

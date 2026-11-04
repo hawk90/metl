@@ -9,10 +9,6 @@
 // tools/check_probe_coverage.py fails when a public header is neither named here
 // or there nor listed with a reason.
 
-// variant is deprecated for 2.0
-// (#645); this probe keeps building them until then, warnings off.
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -59,7 +55,6 @@
 #include <metl/scope_exit.hpp>
 #include <metl/static_unordered_set.hpp>
 #include <metl/tick_extender.hpp>
-#include <metl/variant.hpp>
 #include <metl/versioned_handle.hpp>
 #include <metl/wait.hpp>
 
@@ -171,10 +166,6 @@ void exercise_vocabulary() noexcept {
   sink(maybe.has_value() ? 1u : 0u);
   maybe.emplace(1u);
   sink(*maybe);
-
-  metl::variant<std::uint32_t, std::uint8_t> either{std::uint32_t{2u}};
-  either = std::uint8_t{3u};
-  sink(metl::holds_alternative<std::uint8_t>(either) ? 1u : 0u);
 
   struct node final : metl::intrusive_ref_counter<node> {};
   // Never allocated: the counter's own add-ref and release paths are what link.

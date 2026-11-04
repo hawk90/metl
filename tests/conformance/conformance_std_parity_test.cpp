@@ -24,7 +24,6 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
-#include <variant>
 #include <vector>
 #if defined(__cpp_impl_three_way_comparison) && defined(__cpp_lib_three_way_comparison)
 #include <compare>
@@ -77,11 +76,6 @@ struct counterpart<conformance::static_unordered_set_adapter>
     : emplace_counterpart<std::unordered_set<probe, conformance::probe_hash>> {};
 template <>
 struct counterpart<conformance::optional_adapter> : emplace_counterpart<std::optional<probe>> {};
-template <>
-struct counterpart<conformance::variant_adapter> {
-  using type = std::variant<int, probe>;
-  static void add(type& s, int id) { s.template emplace<probe>(id); }
-};
 
 #define METL_NO_COUNTERPART(adapter, reason)       \
   template <>                                      \

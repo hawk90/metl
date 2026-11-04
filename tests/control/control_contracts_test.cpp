@@ -7,12 +7,10 @@
 //     is on the stack; otherwise it accepts exactly Capacity entries.
 //   * scheduler::run_once does not poll a task another task's poll detached
 //     earlier in the same round.
-//   * variant::emplace with a throwing constructor leaves the variant unchanged.
 //   * fixed_priority_queue clears itself when the comparator throws, and the
 //     exception reaches the caller.
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <cstddef>
 #include <cstdint>
@@ -23,7 +21,6 @@
 #include <metl/delegate.hpp>
 #include <metl/event_dispatcher.hpp>
 #include <metl/fixed_priority_queue.hpp>
-#include <metl/variant.hpp>
 
 namespace {
 
@@ -176,52 +173,6 @@ void test_scheduler_skips_detached_in_round() {
 
 #if !METL_NO_EXCEPTIONS
 
-// --- variant::emplace ---------------------------------------------------------
-
-struct throw_tag {};
-
-struct fragile {
-  int value;
-  explicit fragile(int v) : value(v) {}
-  explicit fragile(throw_tag) : value(0) { throw 42; }
-  fragile(const fragile&) = default;
-  fragile(fragile&&) noexcept = default;
-};
-
-void test_variant_emplace_throw_unchanged() {
-  // From another alternative.
-  {
-    metl::variant<int, fragile> v(5);
-    bool thrown = false;
-    try {
-      v.emplace<fragile>(throw_tag{});
-    } catch (int) {
-      thrown = true;
-    }
-    CHECK(thrown);
-    CHECK(!v.valueless_by_exception());
-    CHECK_EQ(v.index(), std::size_t{0});
-    if (const int* held = metl::get_if<int>(&v); CHECK(held != nullptr)) {
-      CHECK_EQ(*held, 5);
-    }
-  }
-  // Over the same alternative, by index.
-  {
-    metl::variant<int, fragile> v(fragile(9));
-    bool thrown = false;
-    try {
-      v.emplace<1>(throw_tag{});
-    } catch (int) {
-      thrown = true;
-    }
-    CHECK(thrown);
-    CHECK_EQ(v.index(), std::size_t{1});
-    if (const fragile* held = metl::get_if<fragile>(&v); CHECK(held != nullptr)) {
-      CHECK_EQ(held->value, 9);
-    }
-  }
-}
-
 // --- fixed_priority_queue -----------------------------------------------------
 
 bool g_compare_throws = false;
@@ -283,7 +234,6 @@ int main() {
   test_deadline_reserve_only_during_poll();
   test_scheduler_skips_detached_in_round();
 #if !METL_NO_EXCEPTIONS
-  test_variant_emplace_throw_unchanged();
   test_priority_queue_comparator_throw();
 #endif
   return metl_test::exit_code();

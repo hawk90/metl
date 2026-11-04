@@ -46,7 +46,7 @@ recorded in tools/coverage_records.txt with the reason no test can reach it.
 The record stays out of the headers, which users include: a header states its
 contract, not how this repository measures it.
 
-    include/metl/variant.hpp
+    include/metl/static_unordered_map.hpp
         unreachable: <why, in the present tense>
             <the line's code as the header has it, without the indentation>
 
@@ -78,8 +78,7 @@ these limits:
   * It is its own build because -fcoverage-mcdc moves the line and branch
     figures (+1 point of lines on Apple Clang 21, mostly constexpr headers),
     and those must stay the ones the floors were set against.
-  * LLVM 23.1's llvm-cov crashes (SIGILL) on the MC/DC records of
-    variant.hpp; Apple Clang 21 does not. A crash fails this run rather than
+  * An llvm-cov crash on the MC/DC records fails this run rather than
     printing no figure.
 
 ONE BINARY AT A TIME. Every test is its own program, and the programs share

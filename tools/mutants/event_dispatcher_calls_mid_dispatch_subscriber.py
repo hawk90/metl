@@ -1,6 +1,5 @@
 """A mutant for tools/check_mutants.py: one behaviour change a named gate must reject."""
 
-# metl::variant (#202)
 MUTANT = {
     "name": "event_dispatcher_calls_mid_dispatch_subscriber",
     "file": "include/metl/event_dispatcher.hpp",
