@@ -224,8 +224,6 @@ Concurrency
   initializer: an ISR that reaches it mid-initialization gets `false` instead of
   re-entering, where a function-local static is built twice or traps. Worked
   example: [`examples/lazy_driver.cpp`](examples/lazy_driver.cpp).
-- [`static_message_queue`](include/metl/static_message_queue.hpp). Deprecated for
-  2.0: use `guarded<fixed_queue<T, N>, irq_lock>` (#166).
 - [`atomic_ref`](include/metl/atomic_ref.hpp).
 
 Worked example: [`examples/spsc_isr.cpp`](examples/spsc_isr.cpp)

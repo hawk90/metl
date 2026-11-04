@@ -10,19 +10,17 @@
 // fallback a compile error. C++17 cannot constant-initialize these containers
 // at all (see constant_init.hpp), so the check is C++20's.
 
-#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
-
 #include <cstdint>
 
 #include <metl/arena_allocator.hpp>
 #include <metl/fixed_deque.hpp>
 #include <metl/fixed_function.hpp>
+#include <metl/fixed_queue.hpp>
 #include <metl/fixed_vector.hpp>
 #include <metl/flat_map.hpp>
 #include <metl/monotonic_buffer.hpp>
 #include <metl/object_pool.hpp>
 #include <metl/ring_buffer.hpp>
-#include <metl/static_message_queue.hpp>
 #include <metl/static_unordered_set.hpp>
 
 #if __cplusplus >= 202002L
@@ -33,7 +31,7 @@ constinit metl::fixed_deque<unsigned char, 262145> g_deque;
 constinit metl::flat_map<std::uint16_t, std::uint16_t, 65537> g_map;
 // Past both compilers' limits as a slot loop.
 constinit metl::ring_buffer<std::uint32_t, 262145> g_ring;
-constinit metl::static_message_queue<std::uint32_t, 262145> g_queue;
+constinit metl::fixed_queue<std::uint32_t, 262145> g_queue;
 constinit metl::object_pool<std::uint32_t, 262145> g_pool;
 constinit metl::static_unordered_set<std::uint32_t, 131073> g_set;
 // A small raw buffer keeps the byte loop; it must still constant-initialize.

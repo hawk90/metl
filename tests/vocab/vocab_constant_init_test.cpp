@@ -24,7 +24,7 @@
 //     variant_default (index 0, int 0) is the one that cannot be checked so.
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
+#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <cstddef>
 #include <cstdio>

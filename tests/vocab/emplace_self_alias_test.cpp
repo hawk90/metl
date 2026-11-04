@@ -8,7 +8,7 @@
 // No exceptions, no heap: runs on QEMU too.
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
+#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <type_traits>
 

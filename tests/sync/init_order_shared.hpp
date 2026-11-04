@@ -1,7 +1,5 @@
 #pragma once
 
-#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
-
 #include <metl/atomic_handle.hpp>
 #include <metl/spsc_byte_ring.hpp>
 #include <metl/spsc_queue.hpp>
@@ -20,14 +18,14 @@ extern metl::atomic_handle<init_order_handle> g_handle;
 // during constant evaluation. In C++17 they stay dynamically initialized.
 #if defined(__cpp_constinit)
 #define INIT_ORDER_CONTAINERS 1
+#include <metl/fixed_queue.hpp>
 #include <metl/fixed_vector.hpp>
 #include <metl/lock.hpp>
 #include <metl/ring_buffer.hpp>
-#include <metl/static_message_queue.hpp>
 
 extern metl::fixed_vector<int, 8> g_vector;
 extern metl::ring_buffer<int, 8> g_ring_buffer;
-extern metl::guarded<metl::static_message_queue<int, 8>, metl::null_lock> g_messages;
+extern metl::guarded<metl::fixed_queue<int, 8>, metl::null_lock> g_messages;
 #else
 #define INIT_ORDER_CONTAINERS 0
 #endif

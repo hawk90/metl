@@ -19,10 +19,9 @@ int main() {
 #if INIT_ORDER_CONTAINERS
   CHECK_EQ(g_vector.size(), std::size_t{1});
   CHECK_EQ(g_ring_buffer.size(), std::size_t{1});
-  g_messages.with([](metl::static_message_queue<int, 8>& queue) {
-    int message = 0;
-    CHECK(queue.try_pop(message));
-    CHECK_EQ(message, 9);
+  g_messages.with([](metl::fixed_queue<int, 8>& queue) {
+    CHECK_EQ(queue.size(), std::size_t{1});
+    CHECK(!queue.empty() && queue.front() == 9);
   });
 #endif
   return metl_test::exit_code();

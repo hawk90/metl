@@ -8,7 +8,7 @@
 // after. (The sequence containers are in sequence_reentrancy_test.cpp.)
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
+#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <cstddef>
 #include <functional>

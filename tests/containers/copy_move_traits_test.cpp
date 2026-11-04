@@ -9,7 +9,7 @@
 // Now each operation exists only when its element allows it
 // (detail/copy_move_gate.hpp). `std::array` and `std::optional` are the model.
 
-#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
+#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <cstddef>
 #include <functional>
@@ -26,7 +26,6 @@
 #include <metl/flat_set.hpp>
 #include <metl/optional.hpp>
 #include <metl/ring_buffer.hpp>
-#include <metl/static_message_queue.hpp>
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
 #include <metl/variant.hpp>
@@ -98,8 +97,6 @@ using unordered_map_of = metl::static_unordered_map<int, T, 2>;
 template <typename T>
 using unordered_set_of = metl::static_unordered_set<T, 2, any_hash>;
 template <typename T>
-using message_queue_of = metl::static_message_queue<T, 2>;
-template <typename T>
 using optional_of = metl::optional<T>;
 template <typename T>
 using expected_of = metl::expected<T, int>;
@@ -122,7 +119,6 @@ METL_TRAITS_ROW(map_of)
 METL_TRAITS_ROW(set_of)
 METL_TRAITS_ROW(unordered_map_of)
 METL_TRAITS_ROW(unordered_set_of)
-METL_TRAITS_ROW(message_queue_of)
 METL_TRAITS_ROW(optional_of)
 METL_TRAITS_ROW(expected_of)
 METL_TRAITS_ROW(error_of)

@@ -1,0 +1,1 @@
+- **Breaking:** `static_message_queue` is removed (#662, #166). It was a single-threaded FIFO whose name promised RTOS IPC. Use `fixed_queue<T, N>`, or `guarded<fixed_queue<T, N>, irq_lock>` where an ISR shares it; that pair is constant-initialized in C++20. `try_pop(T& out)` becomes `if (!q.empty()) { out = std::move(q.front()); q.pop(); }`.

@@ -7,7 +7,7 @@
 // is involved beyond the archiver.
 
 // ---- Every public header ---------------------------------------------------
-// variant and static_message_queue are deprecated for 2.0
+// variant is deprecated for 2.0
 // (#645); this probe keeps building them until then, warnings off.
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
@@ -53,7 +53,6 @@
 #include "metl/scope_exit.hpp"
 #include "metl/span.hpp"
 #include "metl/spsc_queue.hpp"
-#include "metl/static_message_queue.hpp"
 #include "metl/static_unordered_map.hpp"
 #include "metl/static_unordered_set.hpp"
 #include "metl/type_traits.hpp"
@@ -271,9 +270,6 @@ inline auto _smoke_make_scope_exit() noexcept {
 
 // spsc_queue.hpp
 [[maybe_unused]] metl::spsc_queue<int, 4> _spsc;
-
-// static_message_queue.hpp
-[[maybe_unused]] metl::static_message_queue<int, 4> _smqueue;
 
 // static_unordered_map.hpp
 [[maybe_unused]] metl::static_unordered_map<int, int, 8> _sumap;

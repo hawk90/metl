@@ -4,14 +4,12 @@
 // assert and panic handlers reset to their defaults with null.
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
 
 #include <cstdint>
 
 #include <metl/arena_allocator.hpp>
 #include <metl/assert.hpp>
 #include <metl/coro/stepper.hpp>
-#include <metl/static_message_queue.hpp>
 
 namespace {
 
@@ -35,31 +33,6 @@ void stepper_stays_failed() {
   CHECK(task.is_done());
   CHECK(!task.poll());
   CHECK_EQ(task.steps, 1);
-}
-
-// ---- static_message_queue ----------------------------------------------------------
-
-void message_queue_pop_empty_and_wrap() {
-  metl::static_message_queue<int, 3> queue;
-  int out = -1;
-  CHECK(!queue.try_pop(out));
-  CHECK_EQ(out, -1);
-
-  // Push three, pop two and push two more: the tail wraps past the last slot,
-  // and each push still returns the element it built.
-  queue.push(1);
-  queue.push(2);
-  queue.push(3);
-  CHECK(queue.try_pop(out));
-  CHECK(queue.try_pop(out));
-  CHECK_EQ(queue.push(4), 4);
-  CHECK_EQ(queue.push(5), 5);
-  CHECK_EQ(queue.size(), std::size_t{3});
-  for (const int expected : {3, 4, 5}) {
-    CHECK(queue.try_pop(out));
-    CHECK_EQ(out, expected);
-  }
-  CHECK(!queue.try_pop(out));
 }
 
 // ---- arena_allocator --------------------------------------------------------------------
@@ -94,7 +67,6 @@ void null_handler_restores_the_default() {
 
 int main() {
   stepper_stays_failed();
-  message_queue_pop_empty_and_wrap();
   arena_refuses_padding_beyond_its_space();
   null_handler_restores_the_default();
   return metl_test::exit_code();

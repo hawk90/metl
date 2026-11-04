@@ -31,7 +31,7 @@
 // the matrix including the cross-syntax jobs, and `main` has nothing to do.
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
+#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <cstddef>
 #include <cstdint>

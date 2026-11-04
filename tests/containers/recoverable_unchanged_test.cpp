@@ -16,7 +16,7 @@
 //   * arena_allocator: a failed try_emplace leaves used() and the record chain
 //     -- observed through what reset() destroys, and in which order.
 //   * flat_set / static_unordered_set: try_emplace of a NEW key when full.
-//   * static_message_queue, ring_buffer, fixed_queue, fixed_stack: a full
+//   * ring_buffer, fixed_queue, fixed_stack: a full
 //     try_push / try_emplace.
 //
 // The rings are wrapped before they are filled (head not at slot 0), so a
@@ -24,7 +24,6 @@
 // happens to start at the beginning of its storage.
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
 
 #include <cstddef>
 
@@ -35,7 +34,6 @@
 #include <metl/fixed_stack.hpp>
 #include <metl/flat_set.hpp>
 #include <metl/ring_buffer.hpp>
-#include <metl/static_message_queue.hpp>
 #include <metl/static_unordered_set.hpp>
 
 namespace {
@@ -258,33 +256,6 @@ void static_unordered_set_full_new_key_unchanged() {
 
 // --- FIFO / LIFO adaptors -----------------------------------------------------
 
-void static_message_queue_full_unchanged() {
-  metl::static_message_queue<int, 4> q;
-  q.push(0);
-  q.push(0);
-  int sink = 0;
-  CHECK(q.try_pop(sink));
-  CHECK(q.try_pop(sink));
-  q.push(1);
-  q.push(2);
-  q.push(3);
-  q.push(4);
-  CHECK(q.full());
-
-  const int value = 9;
-  CHECK(!q.try_push(value));
-  CHECK(!q.try_push(9));
-  CHECK(!q.try_emplace(9));
-
-  CHECK_EQ(q.size(), 4u);
-  for (int expected = 1; expected <= 4; ++expected) {
-    int out = 0;
-    CHECK(q.try_pop(out));
-    CHECK_EQ(out, expected);
-  }
-  CHECK(q.empty());
-}
-
 void ring_buffer_full_unchanged() {
   metl::ring_buffer<int, 4> r;
   r.emplace_back(0);
@@ -365,7 +336,6 @@ int main() {
   arena_failed_emplace_unchanged();
   flat_set_full_new_key_unchanged();
   static_unordered_set_full_new_key_unchanged();
-  static_message_queue_full_unchanged();
   ring_buffer_full_unchanged();
   fixed_queue_full_unchanged();
   fixed_stack_full_unchanged();

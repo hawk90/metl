@@ -19,16 +19,15 @@
 #define METL_HARDENING 0
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
 
 #include <csetjmp>
 #include <new>
 
 #include <metl/assert.hpp>
 #include <metl/fixed_deque.hpp>
+#include <metl/fixed_queue.hpp>
 #include <metl/fixed_vector.hpp>
 #include <metl/ring_buffer.hpp>
-#include <metl/static_message_queue.hpp>
 
 #if METL_NO_EXCEPTIONS
 int main() {
@@ -90,7 +89,7 @@ bool trips(F insert) {
 using vector_t = metl::fixed_vector<inner_then_throw, 4>;
 using deque_t = metl::fixed_deque<inner_then_throw, 4>;
 using ring_t = metl::ring_buffer<inner_then_throw, 4>;
-using queue_t = metl::static_message_queue<inner_then_throw, 4>;
+using queue_t = metl::fixed_queue<inner_then_throw, 4>;
 
 vector_t* g_vector = nullptr;
 deque_t* g_deque = nullptr;

@@ -22,7 +22,7 @@
 // its header with a `// conformance-header:` line next to the adapter.
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
+#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <array>
 #include <atomic>
@@ -52,7 +52,6 @@
 #include <metl/optional.hpp>
 #include <metl/ring_buffer.hpp>
 #include <metl/spsc_queue.hpp>
-#include <metl/static_message_queue.hpp>
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
 #include <metl/variant.hpp>
@@ -581,44 +580,6 @@ struct fixed_priority_queue_adapter {
   static copy_result copy_own(C& c, int, int) {
     const int id = c.top().id;
     c.push(c.top());
-    return {2, id, 2};
-  }
-};
-
-// conformance-header: static_message_queue.hpp
-struct static_message_queue_adapter {
-  using type = metl::static_message_queue<probe, 4>;
-  static constexpr const char* name = "static_message_queue";
-  static constexpr bool add_moves_others = false;
-  static constexpr bool remove_moves_others = false;
-  static constexpr const char* zero_capacity_refused = "a static_assert: it could hold nothing";
-  static constexpr std::size_t capacity = 4;
-  static constexpr bool movable = true;
-  static constexpr bool move_empties_source = true;
-  static constexpr bool fixed_count = true;
-  static constexpr constant_init constant_init_level = constant_init::since_cxx20;
-  template <typename C>
-  static bool try_add(C& c, int id) {
-    return c.try_emplace(id);
-  }
-  template <typename C>
-  static std::size_t held(const C& c) {
-    return c.size();
-  }
-  template <typename C>
-  static void remove_one(C& c) {
-    c.pop();
-  }
-  template <typename C>
-  static void clear(C& c) {
-    c.clear();
-  }
-  static constexpr int copy_own_ops = 1;
-  static constexpr int copy_own_fill = 1;
-  template <typename C>
-  static copy_result copy_own(C& c, int, int) {
-    const int id = c.front().id;
-    c.push(c.front());
     return {2, id, 2};
   }
 };
@@ -1288,7 +1249,6 @@ using registry = std::tuple<fixed_vector_adapter,
                             fixed_queue_adapter,
                             fixed_stack_adapter,
                             fixed_priority_queue_adapter,
-                            static_message_queue_adapter,
                             flat_map_adapter,
                             flat_set_adapter,
                             static_unordered_map_adapter,

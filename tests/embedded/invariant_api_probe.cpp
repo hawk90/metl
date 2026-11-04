@@ -9,7 +9,7 @@
 // tools/check_probe_coverage.py fails when a public header is neither named here
 // or there nor listed with a reason.
 
-// variant and static_message_queue are deprecated for 2.0
+// variant is deprecated for 2.0
 // (#645); this probe keeps building them until then, warnings off.
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
