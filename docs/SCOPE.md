@@ -116,7 +116,7 @@ Examples and their gates:
 | Feature | Requires | Fallback |
 |---|---|---|
 | `atomic_handle` | lock-free single-word CAS (ARMv7-M+) | **none** — `static_assert` fires; mask interrupts instead. Job: `handle-atomics` |
-| bounded MPMC queue | CAS (ARMv7-M+, RV32A) | `guarded<fixed_queue, irq_lock>` on Cortex-M0 — **landed**, so the fallback is a real type, not a promise (`static_message_queue`, the earlier fallback, is deprecated for 2.0, #166) |
+| bounded MPMC queue | CAS (ARMv7-M+, RV32A) | `guarded<fixed_queue, irq_lock>` on Cortex-M0 — **landed**, so the fallback is a real type, not a promise |
 | ~~`atomic<bitfield<...>>`~~ | — | **Not planned** as a distinct type; compose `std::atomic<Carrier>` with `bitfield` — see §5 |
 | ~~double-width CAS free-list~~ | — | **Not planned** — superseded by `versioned_handle`; see §5 |
 | ~~bounded hazard domain~~ | — | **Not planned** — no caller; see §5 |
@@ -639,12 +639,11 @@ it in 1.x, as `std::atomic_ref`'s do, so they wait for 2.0.0.
 
 Underflow gets a `try_` form only where a pre-check is unavailable or unsafe —
 that is, on the concurrent queues (`spsc_queue`, `mpmc_queue`), where
-`if (!q.empty()) q.pop();` is a race. `static_message_queue::try_pop(T&)` broke
-this rule on a queue that is not concurrent; the type is deprecated for 2.0 in
-favour of `guarded<fixed_queue<T, N>, irq_lock>` (#166). On a
-single-threaded container `if (!v.empty()) v.pop_back();` is already exact, so no
-underflow twin is added. `fixed_string::try_pop_back`, which predated this rule,
-was removed in 2.0 (#662).
+`if (!q.empty()) q.pop();` is a race. On a single-threaded container
+`if (!v.empty()) v.pop_back();` is already exact, so no underflow twin is added.
+2.0 removed the two that predated this rule: `static_message_queue`, whose
+`try_pop(T&)` sat on a queue that is not concurrent (use
+`guarded<fixed_queue<T, N>, irq_lock>`), and `fixed_string::try_pop_back` (#662).
 
 ### R6 — observers are `[[nodiscard]]`
 

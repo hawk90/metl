@@ -13,12 +13,11 @@
 // element it built.
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
 
 #include <metl/fixed_deque.hpp>
+#include <metl/fixed_queue.hpp>
 #include <metl/fixed_vector.hpp>
 #include <metl/ring_buffer.hpp>
-#include <metl/static_message_queue.hpp>
 
 namespace {
 
@@ -100,7 +99,7 @@ void fixed_vector_reentrancy() {
   CHECK_EQ(v.size(), 0u);  // not SIZE_MAX
 }
 
-// --- ring_buffer / fixed_deque / static_message_queue -------------------------
+// --- ring_buffer / fixed_deque / fixed_queue -------------------------
 
 struct ring_item;
 using ring_t = metl::ring_buffer<ring_item, 4>;
@@ -149,7 +148,7 @@ deque_t& deque() {
 }
 
 struct queue_item;
-using queue_t = metl::static_message_queue<queue_item, 4>;
+using queue_t = metl::fixed_queue<queue_item, 4>;
 queue_t& queue();
 struct queue_item {
   int id;

@@ -77,7 +77,6 @@
 #include "metl/span.hpp"
 #include "metl/spsc_byte_ring.hpp"
 #include "metl/spsc_queue.hpp"
-#include "metl/static_message_queue.hpp"
 #include "metl/static_unordered_map.hpp"
 #include "metl/static_unordered_set.hpp"
 #include "metl/tick_extender.hpp"

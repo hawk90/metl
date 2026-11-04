@@ -16,7 +16,7 @@ void early_isr() {
 #if INIT_ORDER_CONTAINERS
   (void)g_vector.try_push_back(7);
   (void)g_ring_buffer.try_push_back(8);
-  g_messages.with([](metl::static_message_queue<int, 8>& queue) { (void)queue.try_push(9); });
+  g_messages.with([](metl::fixed_queue<int, 8>& queue) { (void)queue.try_push(9); });
 #endif
 }
 

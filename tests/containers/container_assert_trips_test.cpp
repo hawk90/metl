@@ -1,6 +1,6 @@
 // Trips every METL_ASSERT precondition of the containers once (#364):
 // fixed_vector, fixed_string, ring_buffer and fixed_deque (ring_core),
-// flat_map, flat_set, static_message_queue, and static_unordered_map/set's
+// flat_map, flat_set, and static_unordered_map/set's
 // capacity checks.
 //
 // Each is a precondition a caller can break: an index past the end, front()
@@ -20,7 +20,7 @@
 
 #include "assert_trip.hpp"
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
+#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <array>
 #include <initializer_list>
@@ -33,7 +33,6 @@
 #include <metl/flat_set.hpp>
 #include <metl/ring_buffer.hpp>
 #include <metl/span.hpp>
-#include <metl/static_message_queue.hpp>
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
 
@@ -160,18 +159,6 @@ void flat_trips() {
   CHECK(keys.size() == 2);
 }
 
-// ---- static_message_queue ---------------------------------------------------------------------
-
-void message_queue_trips() {
-  using queue = metl::static_message_queue<int, 1>;
-  static queue empty;
-  static queue full;
-  (void)full.try_emplace(1);
-  CHECK(trips([] { (void)empty.front(); }));
-  CHECK(trips([] { (void)static_cast<const queue&>(empty).front(); }));
-  CHECK(trips([] { (void)full.emplace(2); }));
-}
-
 // ---- static_unordered_map / static_unordered_set -------------------------------------------------
 
 void unordered_capacity_trips() {
@@ -199,7 +186,6 @@ int main() {
   fixed_string_trips();
   ring_trips();
   flat_trips();
-  message_queue_trips();
   unordered_capacity_trips();
   return metl_test::exit_code();
 }

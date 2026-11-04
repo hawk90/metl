@@ -16,7 +16,7 @@
 // the old shift did.)
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
+#include "metl_deprecated.hpp"  // still tests metl::variant (#635)
 
 #include <array>
 #include <cstddef>
@@ -33,7 +33,6 @@
 #include <metl/mpmc_queue.hpp>
 #include <metl/ring_buffer.hpp>
 #include <metl/spsc_queue.hpp>
-#include <metl/static_message_queue.hpp>
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
 
@@ -274,10 +273,6 @@ int main() {
   check_constructor_throw<metl::fixed_deque<armed, 8>>([](auto& c) {
     for (int i = 0; i < 5; ++i)
       c.emplace_back(i);
-  });
-  check_constructor_throw<metl::static_message_queue<armed, 8>>([](auto& c) {
-    for (int i = 0; i < 5; ++i)
-      c.emplace(i);
   });
   check_constructor_throw<metl::flat_map<int, armed, 8>>([](auto& c) {
     for (int i = 0; i < 5; ++i)

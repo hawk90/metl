@@ -30,7 +30,7 @@
 // entangled with this gate. For the same reason embedded_smoke.cpp, which holds
 // namespace-scope instantiations of every public type, is NOT linked here.
 
-// variant and static_message_queue are deprecated for 2.0
+// variant is deprecated for 2.0
 // (#645); this probe keeps building them until then, warnings off.
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
@@ -49,7 +49,6 @@
 #include <metl/span.hpp>
 #include <metl/spsc_byte_ring.hpp>
 #include <metl/spsc_queue.hpp>
-#include <metl/static_message_queue.hpp>
 #include <metl/static_unordered_map.hpp>
 
 namespace {
@@ -74,17 +73,6 @@ void exercise_fixed_vector() noexcept {
 void exercise_spsc_queue() noexcept {
   metl::spsc_queue<std::uint32_t, 8> queue;
   for (std::uint32_t i = 0; i < 8; ++i) {
-    sink(queue.try_push(i) ? 1u : 0u);
-  }
-  std::uint32_t out = 0;
-  while (queue.try_pop(out)) {
-    sink(out);
-  }
-}
-
-void exercise_message_queue() noexcept {
-  metl::static_message_queue<std::uint32_t, 4> queue;
-  for (std::uint32_t i = 0; i < 4; ++i) {
     sink(queue.try_push(i) ? 1u : 0u);
   }
   std::uint32_t out = 0;
@@ -233,7 +221,6 @@ void exercise_intrusive_lists() noexcept {
 extern "C" int probe_main(void) {
   exercise_fixed_vector();
   exercise_spsc_queue();
-  exercise_message_queue();
   exercise_object_pool();
   exercise_handle_pool();
   exercise_unordered_map();

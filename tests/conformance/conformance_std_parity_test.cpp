@@ -95,7 +95,6 @@ METL_NO_COUNTERPART(fixed_stack_adapter,
                     "it offers no comparison, iteration or erase to compare with std::stack")
 METL_NO_COUNTERPART(fixed_priority_queue_adapter,
                     "it offers no comparison, iteration or erase to compare with std::priority_queue")
-METL_NO_COUNTERPART(static_message_queue_adapter, "the standard library has no message queue")
 METL_NO_COUNTERPART(object_pool_adapter, "the standard library has no object pool")
 METL_NO_COUNTERPART(handle_pool_adapter, "the standard library has no handle pool")
 METL_NO_COUNTERPART(arena_allocator_adapter, "the standard library has no arena")

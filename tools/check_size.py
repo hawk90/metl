@@ -176,11 +176,14 @@ import tempfile
 #
 # Lowered by 52 bytes on every core by #474 (run 41733121080), which gives
 # expected no destructor of its own when T and E are trivially destructible.
+#
+# Lowered by #662, which removes static_message_queue and with it the probe's
+# exercise_message_queue (run on PR #665: M0 -92, M3 -20, M4 -20, M7 -28).
 BUDGETS = {
-    "cortex-m0": 4356,
-    "cortex-m3": 4320,
-    "cortex-m4": 4316,
-    "cortex-m7": 4320,
+    "cortex-m0": 4264,
+    "cortex-m3": 4300,
+    "cortex-m4": 4296,
+    "cortex-m7": 4292,
 }
 
 # No tolerance on any of the three sizes (#587). The toolchain does not move them

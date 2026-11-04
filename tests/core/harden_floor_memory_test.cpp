@@ -21,7 +21,6 @@
 #define METL_HARDENING 0
 
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
 
 #include <atomic>
 #include <csetjmp>
@@ -53,7 +52,6 @@
 #include <metl/ring_buffer.hpp>
 #include <metl/span.hpp>
 #include <metl/spsc_byte_ring.hpp>
-#include <metl/static_message_queue.hpp>
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
 
@@ -213,41 +211,6 @@ int main() {
     }
     CHECK(g_fired);
     CHECK_EQ(queue.size(), 0u);
-
-    metl::static_message_queue<int, 4> messages;
-    g_fired = false;
-    if (setjmp(g_jump) == 0) {
-      messages.pop();
-    }
-    CHECK(g_fired);
-    CHECK_EQ(messages.size(), 0u);
-  }
-
-  // static_message_queue::emplace on a full queue, with its METL_ASSERT gone:
-  // it builds nothing and hands back the newest element, not the slot at
-  // tail_ (the front's, still live). Once with tail_ at 0, where the newest
-  // element is in the last slot, and once with tail_ past it.
-  {
-    metl::static_message_queue<int, 4> messages;
-    int* newest = nullptr;
-    for (int i = 0; i < 4; ++i) {
-      newest = &messages.push(i);
-    }
-    int* got = nullptr;
-    CHECK(!guarded_against([&] { got = &messages.push(99); }));
-    CHECK_EQ(got, newest);
-    CHECK_EQ(messages.size(), 4u);
-
-    messages.pop();
-    newest = &messages.push(4);
-    CHECK(!guarded_against([&] { got = &messages.emplace(99); }));
-    CHECK_EQ(got, newest);
-    for (int expected = 1; expected <= 4; ++expected) {
-      int out = 0;
-      CHECK(messages.try_pop(out));
-      CHECK_EQ(out, expected);
-    }
-    CHECK(messages.empty());
   }
 
   // fixed_vector: positions outside [begin, end], empty and reversed erase, a
