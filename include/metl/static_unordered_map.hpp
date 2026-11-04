@@ -436,16 +436,6 @@ class static_unordered_map
     return const_iterator(this, index == npos ? bucket_count : index);
   }
 
-  /// @brief STL-compatible iterator-returning find (alias for @c find_iterator).
-  METL_DEPRECATED("find_iter is removed in 2.0; use find_iterator (#645)")
-  METL_NODISCARD iterator find_iter(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
-    return find_iterator(key);
-  }
-  METL_DEPRECATED("find_iter is removed in 2.0; use find_iterator (#645)")
-  METL_NODISCARD const_iterator find_iter(const key_type& key) const noexcept(lookup_cannot_throw<key_type>) {
-    return find_iterator(key);
-  }
-
   // ---- Heterogeneous lookup overloads (enabled when both Hash and KeyEqual are transparent) ----
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
@@ -484,22 +474,6 @@ class static_unordered_map
   METL_NODISCARD const_iterator find_iterator(const K& key) const noexcept(lookup_cannot_throw<K>) {
     const size_type index = find_existing_index(key);
     return const_iterator(this, index == npos ? bucket_count : index);
-  }
-
-  template <typename K,
-            typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
-                                   !std::is_same_v<decay_t<K>, key_type>>>
-  METL_DEPRECATED("find_iter is removed in 2.0; use find_iterator (#645)")
-  METL_NODISCARD iterator find_iter(const K& key) noexcept(lookup_cannot_throw<K>) {
-    return find_iterator(key);
-  }
-
-  template <typename K,
-            typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
-                                   !std::is_same_v<decay_t<K>, key_type>>>
-  METL_DEPRECATED("find_iter is removed in 2.0; use find_iterator (#645)")
-  METL_NODISCARD const_iterator find_iter(const K& key) const noexcept(lookup_cannot_throw<K>) {
-    return find_iterator(key);
   }
 
   template <typename K,

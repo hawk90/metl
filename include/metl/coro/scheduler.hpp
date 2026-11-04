@@ -166,8 +166,6 @@ class scheduler {
 
   /// @brief Number of currently attached tasks.
   METL_NODISCARD size_type size() const noexcept { return tasks_.size(); }
-  METL_DEPRECATED("task_count is removed in 2.0; use size() (#645)")
-  METL_NODISCARD size_type task_count() const noexcept { return size(); }
   /// @brief Whether no tasks are attached. @return true if empty.
   METL_NODISCARD bool empty() const noexcept { return tasks_.empty(); }
   /// @brief The maximum task capacity. @return `Capacity`.

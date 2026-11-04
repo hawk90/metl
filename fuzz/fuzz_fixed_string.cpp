@@ -1,7 +1,7 @@
 // libFuzzer harness for metl::fixed_string.
 //
 // Drives a fixed-capacity string with an opcode stream of CONTRACT-VALID
-// operations only (try_push_back / try_pop_back / try_assign / try_append / clear plus
+// operations only (try_push_back / guarded pop_back / try_assign / try_append / clear plus
 // bounded reads). Overflowing operations that would assert-abort are never
 // invoked; every try_* reports overflow via its bool result instead.
 // Round-trip invariants (assign then c_str()/size()) are checked so a mismatch
@@ -44,7 +44,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         (void)str.try_push_back(static_cast<char>(in.byte()));
         break;
       }
-      case 1: {  // pop_back behind the empty() check that replaces try_pop_back
+      case 1: {  // pop_back behind an empty() check
         if (!str.empty()) {
           str.pop_back();
         }

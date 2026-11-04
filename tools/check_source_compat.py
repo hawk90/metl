@@ -61,6 +61,12 @@ EXPECTED_BREAKS = {
                                          "METL_HARDENING_NONE for both unordered containers: inserts "
                                          "past Capacity going through until the buckets ran out",
     },
+    # 2.0 removes what 1.15.0 deprecated (#645). These are the breaks the
+    # deprecations announced, one entry per old file that used a removed name.
+    "v1.15.0": {
+        "tests/core/deprecated_names_test.cpp": "it calls the names 1.15.0 deprecated for removal in "
+                                                "2.0; #662 removes them",
+    },
 }
 
 # Where a tree states its own version: (file, pattern whose group 2 is the version).

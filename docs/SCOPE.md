@@ -643,8 +643,8 @@ that is, on the concurrent queues (`spsc_queue`, `mpmc_queue`), where
 this rule on a queue that is not concurrent; the type is deprecated for 2.0 in
 favour of `guarded<fixed_queue<T, N>, irq_lock>` (#166). On a
 single-threaded container `if (!v.empty()) v.pop_back();` is already exact, so no
-underflow twin is added. `fixed_string::try_pop_back` predates this rule; it is
-deprecated in 1.15.0 and removed in 2.0 (#645).
+underflow twin is added. `fixed_string::try_pop_back`, which predated this rule,
+was removed in 2.0 (#662).
 
 ### R6 — observers are `[[nodiscard]]`
 

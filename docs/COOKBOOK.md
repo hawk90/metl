@@ -32,7 +32,7 @@ ctest --test-dir build -R metl_example --output-on-failure
 
 - [Non-standard contracts you must know](#non-standard-contracts-you-must-know)
 - [A fixed-capacity vector without the heap](#a-fixed-capacity-vector-without-the-heap)
-- [Key/value lookup with flat_map (positional vs. key access!)](#keyvalue-lookup-with-flat_map)
+- [Key/value lookup with flat_map](#keyvalue-lookup-with-flat_map)
 - [A bounded FIFO / rolling window with ring_buffer](#a-bounded-fifo--rolling-window-with-ring_buffer)
 - [Error handling without exceptions](#error-handling-without-exceptions)
 - [Per-tick scratch memory without malloc](#per-tick-scratch-memory-without-malloc)
@@ -58,7 +58,7 @@ the ones that bite people; read them before anything else.
 | `optional::value()` when empty | **asserts** | throws `std::bad_optional_access` |
 | `expected::value()` on error | **asserts** | throws `std::bad_expected_access` |
 | `variant` `get<T>()` wrong alternative (deprecated for 2.0, #635) | **asserts** | throws `std::bad_variant_access` |
-| `flat_map::operator[]` / `at()` | **positional index** into sorted storage | key lookup / insert (`std::map`) |
+| `flat_map::operator[]` / `at()` | **do not exist**; `nth(i)` is the positional accessor | key lookup / insert (`std::map`) |
 | A failed assert | is provably `[[noreturn]]` — **aborts**, never falls through | n/a |
 | `function_ref` construction | **rejects rvalue callables** (deleted overload) | — (`std::function_ref`, P0792, accepts temporaries) |
 
@@ -87,8 +87,8 @@ Consequences:
   `front()`, `value()`) is undefined behaviour, as with the `std` type it
   mirrors. Where the library itself would corrupt memory, hang, or hand back a
   hazard, a `METL_HARDEN` guard remains; the rule is in `config.hpp`.
-- **`flat_map` is not `std::map`.** `operator[]` and `at()` take an integer
-  **position** into the key-sorted storage (like a vector), *not* a key. To work
+- **`flat_map` is not `std::map`.** It has no `operator[]` or `at()`, so
+  `m[k]` does not compile; `nth(i)` reaches the i-th entry in key order. To work
   by key, use `find(key)` (returns `mapped_type*` / `nullptr`), `contains(key)`,
   `try_emplace(key, value)`, `try_insert_or_assign(key, value)`, or `erase(key)`.
 - **`function_ref` binds lvalues only.** Constructing one from a temporary
@@ -167,8 +167,8 @@ Two consequences worth knowing:
 *Full example: [`examples/containers.cpp`](../examples/containers.cpp)*
 
 `flat_map` keeps entries sorted by key in inline storage and looks them up with
-binary search. **Its `operator[]` / `at()` are positional, not key lookups** —
-see [contracts](#non-standard-contracts-you-must-know).
+binary search. It has no `operator[]`: use `find` by key and `nth` by position
+(see [contracts](#non-standard-contracts-you-must-know)).
 
 ```cpp
 #include <metl/flat_map.hpp>

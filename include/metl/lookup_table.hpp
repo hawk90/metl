@@ -77,23 +77,6 @@ class lookup_table {
   /// Returns true if the table has no entries.
   METL_NODISCARD constexpr bool empty() const noexcept { return Size == 0; }
 
-  /// Accesses the entry at `index`.
-  /// @pre `index < size()`; out-of-range asserts and aborts (does not throw).
-  METL_DEPRECATED("positional operator[] is removed in 2.0; use nth(index) (#645)")
-  METL_NODISCARD constexpr const value_type& operator[](size_type index) const noexcept {
-    METL_ASSERT(index < Size);
-    return entries_[index];
-  }
-
-  /// Accesses the entry at `index`. Unlike std::array::at, does NOT throw: an
-  /// out-of-range index asserts and aborts by default.
-  /// @pre `index < size()`.
-  METL_DEPRECATED("positional at is removed in 2.0; use nth(index) (#645)")
-  METL_NODISCARD constexpr const value_type& at(size_type index) const noexcept {
-    METL_ASSERT(index < Size);
-    return entries_[index];
-  }
-
   /// The entry at 0-based `index`, in the order the table was built.
   /// @pre `index < size()`; out-of-range asserts and aborts (does not throw).
   METL_NODISCARD constexpr const value_type& nth(size_type index) const noexcept {

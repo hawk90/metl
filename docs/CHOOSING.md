@@ -46,9 +46,10 @@ need one, see the driver section below.
 | Bigger table, hashing available, order does not matter | [`static_unordered_map`](../include/metl/static_unordered_map.hpp) / [`static_unordered_set`](../include/metl/static_unordered_set.hpp) | O(1) lookup, **unspecified iteration order**, tombstones on erase, reclaimed by an occasional in-place rebuild on a new-key insert (which invalidates all iterators) — only for nothrow-movable elements; otherwise never reclaimed |
 | A handful of entries fixed at compile time | [`lookup_table<K, V, N>`](../include/metl/lookup_table.hpp) | Immutable, linear scan — usually `constexpr`, and smaller than either map |
 
-> **`flat_map::operator[]` and `at()` take a POSITION, not a key** — the opposite
-> of `std::map`. Look up by key with `find` / `contains` / `try_emplace`. This is
-> the single most common surprise in the library.
+> **`flat_map` has no `operator[]` or `at()`.** Look up by key with `find` /
+> `contains` / `try_emplace`; reach the i-th entry in key order with `nth(i)`.
+> Until 2.0 they took a position, not a key, which was the most common surprise
+> in the library.
 
 ### …and on an MCU, the deciding factor is usually RAM
 

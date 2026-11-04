@@ -179,8 +179,6 @@ class deadline_scheduler {
 
   /// @brief Number of pending scheduled entries. A task scheduled twice counts twice.
   METL_NODISCARD size_type size() const noexcept { return queue_.size(); }
-  METL_DEPRECATED("task_count is removed in 2.0; use size() (#645)")
-  METL_NODISCARD size_type task_count() const noexcept { return size(); }
   /// @brief Whether nothing is scheduled.
   METL_NODISCARD bool empty() const noexcept { return queue_.empty(); }
   /// @brief The maximum number of simultaneously scheduled tasks.
