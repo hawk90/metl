@@ -269,7 +269,7 @@ Remember: `value()`, `operator*`, and `get<T>()` **assert** — there is no
 metl::monotonic_buffer<256> scratch;
 for (;;) {
     auto* block = scratch.try_emplace<sample_block>();  // nullptr if it won't fit
-    void* raw   = scratch.allocate(16, alignof(std::max_align_t));
+    void* raw   = scratch.try_allocate(16, alignof(std::max_align_t));
     // ... use block / raw ...
     scratch.reset();   // O(1) reclaim of the whole tick
 }

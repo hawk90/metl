@@ -114,7 +114,7 @@ struct resets_on_destroy {
     g_arena.reset();
     g_used_inside = g_arena.used();
     g_older_alive_inside = below == nullptr || below->tag == 11;
-    auto* fresh = static_cast<unsigned char*>(g_arena.allocate(sizeof(int), alignof(int)));
+    auto* fresh = static_cast<unsigned char*>(g_arena.try_allocate(sizeof(int), alignof(int)));
     const auto overlaps = [fresh](const void* object, std::size_t size) {
       const auto* start = static_cast<const unsigned char*>(object);
       return fresh != nullptr && fresh < start + size && start < fresh + sizeof(int);

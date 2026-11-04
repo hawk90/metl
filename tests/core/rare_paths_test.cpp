@@ -68,9 +68,9 @@ void message_queue_pop_empty_and_wrap() {
 // request fails and uses nothing.
 void arena_refuses_padding_beyond_its_space() {
   alignas(256) metl::arena_allocator<64> arena;
-  CHECK(arena.allocate(1, 256) == nullptr);
+  CHECK(arena.try_allocate(1, 256) == nullptr);
   CHECK_EQ(arena.used(), std::size_t{0});
-  CHECK(arena.allocate(1, 1) != nullptr);
+  CHECK(arena.try_allocate(1, 1) != nullptr);
 }
 
 // ---- assert and panic handlers ---------------------------------------------------------------

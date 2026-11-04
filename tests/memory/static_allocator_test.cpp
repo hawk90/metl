@@ -1,3 +1,5 @@
+#include "metl_deprecated.hpp"  // static_allocator is deprecated (#645)
+
 #include <metl/static_allocator.hpp>
 
 namespace {

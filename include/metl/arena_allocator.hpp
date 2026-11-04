@@ -87,13 +87,23 @@ class arena_allocator {
   /// Every successful allocation pushes a record so `rewind` can always walk back
   /// through allocations in LIFO order. Raw allocations carry no destructor, so
   /// rewind only unwinds offsets for them. This keeps rewind safe even when raw
-  /// `allocate` is interleaved with `try_emplace`.
+  /// `try_allocate` is interleaved with `try_emplace`.
   ///
   /// @param bytes Number of bytes to allocate; a request of 0 returns null.
   /// @param alignment Required alignment: a power of two (checked by `METL_HARDEN`).
   /// @return Pointer to the block, or null if the arena lacks space (no throw).
-  METL_NODISCARD void* allocate(size_type bytes, size_type alignment = alignof(std::max_align_t)) noexcept {
+  METL_NODISCARD void* try_allocate(size_type bytes,
+                                    size_type alignment = alignof(std::max_align_t)) noexcept {
     return allocate_impl(bytes, alignment, nullptr);
+  }
+
+  /// @brief The same as `try_allocate`.
+  /// @deprecated In 2.0, `allocate` asserts when the arena lacks space, as every
+  ///             other asserting form does, and `if (!a.allocate(n))` would keep
+  ///             compiling while no longer seeing the failure. Use `try_allocate`.
+  METL_DEPRECATED("allocate asserts on failure in 2.0; use try_allocate, which keeps returning null (#645)")
+  METL_NODISCARD void* allocate(size_type bytes, size_type alignment = alignof(std::max_align_t)) noexcept {
+    return try_allocate(bytes, alignment);
   }
 
   /// @brief Construct a @c T in the arena, registering its destructor for `rewind`.
@@ -244,7 +254,7 @@ class arena_allocator {
   void* allocate_impl(size_type bytes, size_type alignment, destroy_fn_t destroy) noexcept {
     // `align_up`'s bitmask arithmetic is only correct for a power-of-two
     // alignment; a non-power-of-two `alignment` (only reachable via the runtime
-    // `allocate(bytes, alignment)` overload) would silently corrupt the offset
+    // `try_allocate(bytes, alignment)` overload) would silently corrupt the offset
     // and hand back overlapping/out-of-bounds allocations. Always-on hard guard
     // so this memory-safety floor survives METL_HARDENING_NONE. Checked before
     // the size, as monotonic_buffer checks it: a bad alignment is a caller bug

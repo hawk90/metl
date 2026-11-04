@@ -158,7 +158,7 @@ METL has `guarded<T, Lock>` instead of locking containers; see
 | A pool of live objects, addressed by pointer | [`object_pool<T, N>`](../include/metl/object_pool.hpp) | Per object, via `destroy(ptr)` |
 | The same, but a stale reference must be **detectable** | [`handle_pool<T, N>`](../include/metl/handle_pool.hpp) | Per object; a freed handle resolves to `nullptr` instead of a recycled object |
 | Scratch memory for one tick, thrown away wholesale | [`monotonic_buffer<N>`](../include/metl/monotonic_buffer.hpp) | Only in bulk, via `reset()` |
-| The same, but typed | [`static_allocator<T, N>`](../include/metl/static_allocator.hpp) | Only in bulk |
+| The same, but typed | `monotonic_buffer<N>::try_allocate_n<T>(count)`; `static_allocator<T, N>` is deprecated for 2.0 (#645) | Only in bulk |
 | Nested scratch that unwinds in LIFO order, running destructors | [`arena_allocator<N>`](../include/metl/arena_allocator.hpp) | `mark()` / `rewind()`, `reset()`, and its destructor; not copyable or movable |
 | Shared ownership of a long-lived object | [`intrusive_ptr<T>`](../include/metl/intrusive_ptr.hpp) | Refcount in the object itself — no control block, no allocation |
 

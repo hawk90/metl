@@ -1,4 +1,5 @@
-// libFuzzer harness for metl::arena_allocator / metl::static_allocator.
+// libFuzzer harness for metl::arena_allocator / metl::monotonic_buffer's typed
+// allocation (try_allocate_n, which replaced the deprecated static_allocator).
 //
 // Drives both bump/LIFO allocators with an opcode stream of CONTRACT-VALID
 // operations only: try_allocate / try_new / allocate-via-try / mark / rewind /
@@ -20,7 +21,7 @@
 #include <vector>
 
 #include <metl/arena_allocator.hpp>
-#include <metl/static_allocator.hpp>
+#include <metl/monotonic_buffer.hpp>
 
 namespace {
 
@@ -46,7 +47,7 @@ void drive_arena(metl_fuzz::byte_reader& in) {
         const std::size_t bytes = in.byte() % (kArenaBytes / 2 + 1);
         const std::size_t align = bounded_alignment(in.byte());
         const std::size_t before = arena->used();
-        void* p = arena->allocate(bytes, align);
+        void* p = arena->try_allocate(bytes, align);
         if (p != nullptr) {
           std::memset(p, 0xA5, bytes);
           if (arena->used() <= before || arena->used() > arena->capacity()) {
@@ -94,13 +95,13 @@ void drive_arena(metl_fuzz::byte_reader& in) {
 }
 
 void drive_static(metl_fuzz::byte_reader& in) {
-  auto alloc = std::make_unique<metl::static_allocator<std::uint32_t, kStaticBytes>>();
+  auto alloc = std::make_unique<metl::monotonic_buffer<kStaticBytes>>();
 
   while (!in.empty()) {
     switch (in.byte() % 4u) {
-      case 0: {  // try_allocate(count) + full write over count elements
+      case 0: {  // try_allocate_n(count) + full write over count elements
         const std::size_t count = in.byte() % 16u;
-        std::uint32_t* p = alloc->try_allocate(count);
+        std::uint32_t* p = alloc->try_allocate_n<std::uint32_t>(count);
         if (p != nullptr) {
           for (std::size_t i = 0; i < count; ++i) {
             p[i] = static_cast<std::uint32_t>(i);
@@ -108,8 +109,8 @@ void drive_static(metl_fuzz::byte_reader& in) {
         }
         break;
       }
-      case 1: {  // try_new — construct one element
-        std::uint32_t* p = alloc->try_new(in.integer<std::uint32_t>());
+      case 1: {  // try_emplace — construct one element
+        std::uint32_t* p = alloc->try_emplace<std::uint32_t>(in.integer<std::uint32_t>());
         if (p != nullptr) {
           volatile std::uint32_t v = *p;
           (void)v;
@@ -121,7 +122,7 @@ void drive_static(metl_fuzz::byte_reader& in) {
         break;
       }
       default: {
-        if (alloc->used_bytes() > alloc->capacity_bytes()) {
+        if (alloc->used() > alloc->capacity()) {
           METL_FUZZ_TRAP();
         }
         break;
