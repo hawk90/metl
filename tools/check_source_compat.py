@@ -66,6 +66,8 @@ EXPECTED_BREAKS = {
     "v1.15.0": {
         "tests/core/deprecated_names_test.cpp": "it calls the names 1.15.0 deprecated for removal in "
                                                 "2.0; #662 removes them",
+        "tests/memory/static_allocator_test.cpp": "static_allocator, deprecated in 1.15.0, is removed "
+                                                  "by #662",
     },
 }
 

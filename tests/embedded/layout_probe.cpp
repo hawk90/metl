@@ -10,7 +10,7 @@
 // A row is the measurement, not a limit: both directions fail. The sizeof ratchet
 // in tests/core/ram_footprint_test.cpp misses a change that keeps the size.
 
-// static_allocator, variant and static_message_queue are deprecated for 2.0
+// variant and static_message_queue are deprecated for 2.0
 // (#645); this probe keeps building them until then, warnings off.
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
@@ -60,7 +60,6 @@
 #include <metl/span.hpp>
 #include <metl/spsc_byte_ring.hpp>
 #include <metl/spsc_queue.hpp>
-#include <metl/static_allocator.hpp>
 #include <metl/static_message_queue.hpp>
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
@@ -132,7 +131,6 @@ LAYOUT(8, 4, metl::span<std::uint32_t>);
 LAYOUT(4, 4, metl::span<std::uint32_t, 4>);
 LAYOUT(192, 64, metl::spsc_byte_ring<16>);
 LAYOUT(192, 64, metl::spsc_queue<std::uint32_t, 4>);
-LAYOUT(16, 8, metl::static_allocator<std::uint32_t, 4>);
 LAYOUT(28, 4, metl::static_message_queue<std::uint32_t, 4>);
 LAYOUT(148, 4, metl::static_unordered_map<std::uint32_t, std::uint32_t, 8>);
 LAYOUT(84, 4, metl::static_unordered_set<std::uint32_t, 8>);

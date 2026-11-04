@@ -87,7 +87,6 @@ EXEMPT = {
     "fixed_string.hpp": "holds characters, not objects",
     "lookup_table.hpp": "built once from its entries; nothing is added or removed",
     "monotonic_buffer.hpp": "builds objects but never destroys them; their lifetime is the caller's",
-    "static_allocator.hpp": "hands out storage; constructs nothing",
     "scope_exit.hpp": "holds one callable for its whole lifetime; nothing is added or removed",
     "lock.hpp": "guarded<T> holds one T for its whole lifetime; nothing is added or removed",
     "exp/bitset.hpp": "a using-declaration of bitset.hpp's type, which is EXEMPT below",

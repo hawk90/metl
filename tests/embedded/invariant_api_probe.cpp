@@ -9,7 +9,7 @@
 // tools/check_probe_coverage.py fails when a public header is neither named here
 // or there nor listed with a reason.
 
-// static_allocator, variant and static_message_queue are deprecated for 2.0
+// variant and static_message_queue are deprecated for 2.0
 // (#645); this probe keeps building them until then, warnings off.
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
@@ -57,7 +57,6 @@
 #include <metl/register_access.hpp>
 #include <metl/ring_buffer.hpp>
 #include <metl/scope_exit.hpp>
-#include <metl/static_allocator.hpp>
 #include <metl/static_unordered_set.hpp>
 #include <metl/tick_extender.hpp>
 #include <metl/variant.hpp>
@@ -92,15 +91,6 @@ void exercise_allocators() noexcept {
   sink(buffer.try_allocate(8) != nullptr ? 1u : 0u);
   sink(buffer.try_emplace<std::uint32_t>(2u) != nullptr ? 1u : 0u);
   buffer.reset();
-
-  metl::static_allocator<counted, 2> slots;
-  counted* const made = slots.try_new(3u);
-  sink(made != nullptr ? 1u : 0u);
-  if (made != nullptr) {
-    slots.destroy(made);
-  }
-  sink(slots.try_allocate() != nullptr ? 1u : 0u);
-  slots.reset();
 }
 
 // ---- Callables -------------------------------------------------------------

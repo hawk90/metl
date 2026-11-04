@@ -88,13 +88,13 @@ class monotonic_buffer {
     return result;
   }
 
-  /// @brief The same as `try_allocate`.
-  /// @deprecated In 2.0, `allocate` asserts when the buffer lacks space, as every
-  ///             other asserting form does, and `if (!b.allocate(n))` would keep
-  ///             compiling while no longer seeing the failure. Use `try_allocate`.
-  METL_DEPRECATED("allocate asserts on failure in 2.0; use try_allocate, which keeps returning null (#645)")
+  /// @brief Like `try_allocate`, but asserts that the allocation succeeds.
+  /// @return Pointer to the block (never null on success).
+  /// @pre `bytes > 0`, and the buffer has room for `bytes` at `alignment`.
   METL_NODISCARD void* allocate(size_type bytes, size_type alignment = alignof(std::max_align_t)) noexcept {
-    return try_allocate(bytes, alignment);
+    void* memory = try_allocate(bytes, alignment);
+    METL_ASSERT(memory != nullptr);
+    return memory;
   }
 
   /// @brief Allocate uninitialized storage for @c count objects of type @c T.

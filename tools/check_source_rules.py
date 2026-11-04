@@ -62,12 +62,10 @@ ASSERT_ALLOWLIST = {
         "asserting emplace: stripped, it returns the null try_emplace gave; the caller dereferences",
     ("object_pool.hpp", "object != nullptr"):
         "asserting emplace: stripped, it returns the null try_emplace gave; the caller dereferences",
-    ("static_allocator.hpp", "memory != nullptr"):
+    ("arena_allocator.hpp", "memory != nullptr"):
         "asserting allocate: stripped, it returns the null try_allocate gave",
-    ("static_allocator.hpp", "object != nullptr"):
-        "asserting create: stripped, it returns the null try_new gave",
-    ("static_allocator.hpp", "location != nullptr"):
-        "construct/destroy at a caller-supplied address: the caller's access",
+    ("monotonic_buffer.hpp", "memory != nullptr"):
+        "asserting allocate: stripped, it returns the null try_allocate gave",
     ("arena_allocator.hpp", "target.offset <= offset_"):
         "rewind to a stale mark: stripped, the unwinding loop does nothing",
     ("fixed_vector.hpp", "n <= Capacity - size_"):

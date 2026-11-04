@@ -30,7 +30,7 @@
 // state is active, so every unchecked accessor is guarded by the corresponding
 // query first -- which is what the library tells callers to do.
 
-// static_allocator, variant and static_message_queue are deprecated for 2.0
+// variant and static_message_queue are deprecated for 2.0
 // (#645); this probe keeps building them until then, warnings off.
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 4996)

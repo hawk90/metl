@@ -1,5 +1,5 @@
 // libFuzzer harness for metl::arena_allocator / metl::monotonic_buffer's typed
-// allocation (try_allocate_n, which replaced the deprecated static_allocator).
+// allocation (try_allocate_n).
 //
 // Drives both bump/LIFO allocators with an opcode stream of CONTRACT-VALID
 // operations only: try_allocate / try_new / allocate-via-try / mark / rewind /
