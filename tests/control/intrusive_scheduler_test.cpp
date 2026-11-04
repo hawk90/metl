@@ -87,7 +87,7 @@ void attaching_an_attached_task_traps() {
   first.attach(t, &t, &poll_job);
   CHECK(trips([&] { first.attach(t, &t, &poll_job_otherwise); }));
   CHECK(trips([&] { second.attach(t, &t, &poll_job_otherwise); }));
-  CHECK_EQ(first.task_count(), std::size_t{1});
+  CHECK_EQ(first.size(), std::size_t{1});
   CHECK(second.empty());
   CHECK_EQ(first.run_once(), std::size_t{1});
   CHECK_EQ(t.polls, 1);

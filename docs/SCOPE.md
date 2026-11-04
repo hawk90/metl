@@ -641,8 +641,8 @@ Underflow gets a `try_` form only where a pre-check is unavailable or unsafe —
 that is, on the concurrent queues (`spsc_queue`, `mpmc_queue`,
 `static_message_queue`), where `if (!q.empty()) q.pop();` is a race. On a
 single-threaded container `if (!v.empty()) v.pop_back();` is already exact, so no
-underflow twin is added. `fixed_string::try_pop_back` predates this rule and is
-kept for character-at-a-time parse loops; the header says so.
+underflow twin is added. `fixed_string::try_pop_back` predates this rule; it is
+deprecated in 1.15.0 and removed in 2.0 (#645).
 
 ### R6 — observers are `[[nodiscard]]`
 

@@ -68,7 +68,7 @@ constexpr std::size_t kMaxEraseRun = 32;
 void check_sorted(const map_type& map) {
   metl_fuzz::require(map.size() <= map.capacity());
   for (std::size_t i = 1; i < map.size(); ++i) {
-    metl_fuzz::require(map[i - 1].key < map[i].key);
+    metl_fuzz::require(map.nth(i - 1).key < map.nth(i).key);
   }
 }
 

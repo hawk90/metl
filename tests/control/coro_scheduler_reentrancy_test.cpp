@@ -44,7 +44,7 @@ bool descend(void* p) noexcept {
     CHECK(l->sched->try_attach(l->next, &descend));
     (void)l->sched->run_once();
   } else {
-    CHECK_EQ(l->sched->task_count(), std::size_t{0});
+    CHECK_EQ(l->sched->size(), std::size_t{0});
     l->probe_attached = l->sched->try_attach(l->probe, &poll_forever_tiny);
   }
   return false;
@@ -66,7 +66,7 @@ int main() {
     CHECK(sched.try_attach(&outer, &descend));
     (void)sched.run_once();
     CHECK(!innermost.probe_attached);
-    CHECK_EQ(sched.task_count(), std::size_t{0});
+    CHECK_EQ(sched.size(), std::size_t{0});
     CHECK(sched.try_attach(&probe, &poll_forever_tiny));
   }
 

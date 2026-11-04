@@ -112,7 +112,7 @@ int main() {
     CHECK(scheduler.try_schedule(&b, &one_shot::poll, 200));
     CHECK(scheduler.try_schedule(&c, &one_shot::poll, 300));
     CHECK(scheduler.try_schedule(&a, &one_shot::poll, 100));
-    CHECK_EQ(scheduler.task_count(), 3u);
+    CHECK_EQ(scheduler.size(), 3u);
 
     const metl::optional<tick> next = scheduler.next_deadline();
     CHECK(next.has_value());
@@ -122,13 +122,13 @@ int main() {
     reset_log();
     CHECK_EQ(scheduler.run_due(99), 0u);
     CHECK_EQ(g_log_size, 0u);
-    CHECK_EQ(scheduler.task_count(), 3u);
+    CHECK_EQ(scheduler.size(), 3u);
 
     // A deadline exactly equal to `now` is due.
     CHECK_EQ(scheduler.run_due(100), 1u);
     CHECK_EQ(g_log_size, 1u);
     CHECK_EQ(g_log[0], 10);
-    CHECK_EQ(scheduler.task_count(), 2u);
+    CHECK_EQ(scheduler.size(), 2u);
 
     // Everything remaining goes at once, still in deadline order.
     CHECK_EQ(scheduler.run_due(999), 2u);
@@ -158,7 +158,7 @@ int main() {
     for (std::size_t i = 0; i < 8; ++i) {
       CHECK(scheduler.try_schedule(&tasks[i], &one_shot::poll, deadlines[i]));
     }
-    CHECK_EQ(scheduler.task_count(), 8u);
+    CHECK_EQ(scheduler.size(), 8u);
 
     reset_log();
     CHECK_EQ(scheduler.run_due(999), 8u);
@@ -180,7 +180,7 @@ int main() {
     reset_log();
 
     CHECK_EQ(scheduler.run_due(100), 1u);
-    CHECK_EQ(scheduler.task_count(), 1u);
+    CHECK_EQ(scheduler.size(), 1u);
     const metl::optional<tick> after_first = scheduler.next_deadline();
     CHECK(after_first.has_value());
     CHECK_EQ(*after_first, 150u);
@@ -209,7 +209,7 @@ int main() {
     CHECK_EQ(g_log_size, 5u);
     // Still scheduled and still due: the bound stopped the loop, it did not
     // silently drop the task.
-    CHECK_EQ(scheduler.task_count(), 1u);
+    CHECK_EQ(scheduler.size(), 1u);
     const metl::optional<tick> still = scheduler.next_deadline();
     CHECK(still.has_value());
     CHECK_EQ(*still, 1000u);
@@ -226,11 +226,11 @@ int main() {
     scheduler.schedule(&a, &one_shot::poll, 100);
     scheduler.schedule(&b, &one_shot::poll, 200);
     scheduler.schedule(&a, &one_shot::poll, 300);  // same task, twice
-    CHECK_EQ(scheduler.task_count(), 3u);
+    CHECK_EQ(scheduler.size(), 3u);
     CHECK(scheduler.is_scheduled(&a));
 
     CHECK(scheduler.cancel(&a));  // removes both of a's entries
-    CHECK_EQ(scheduler.task_count(), 1u);
+    CHECK_EQ(scheduler.size(), 1u);
     CHECK(!scheduler.is_scheduled(&a));
     CHECK(scheduler.is_scheduled(&b));
     CHECK(!scheduler.cancel(&a));  // nothing left to cancel
@@ -255,9 +255,9 @@ int main() {
     for (std::size_t i = 0; i < 8; ++i) {
       CHECK(scheduler.try_schedule(&tasks[i], &one_shot::poll, static_cast<tick>(i)));
     }
-    CHECK_EQ(scheduler.task_count(), 8u);
+    CHECK_EQ(scheduler.size(), 8u);
     CHECK(!scheduler.try_schedule(&tasks[8], &one_shot::poll, 0));
-    CHECK_EQ(scheduler.task_count(), 8u);
+    CHECK_EQ(scheduler.size(), 8u);
 
     scheduler.clear();
     CHECK(scheduler.empty());
@@ -279,7 +279,7 @@ int main() {
     CHECK_EQ(scheduler.run_due(10, 1), 1u);
     CHECK_EQ(hog.accepted, 7u);
     // 7 fillers + the re-armed greedy task = 8, exactly full and not overflowed.
-    CHECK_EQ(scheduler.task_count(), 8u);
+    CHECK_EQ(scheduler.size(), 8u);
     CHECK(scheduler.is_scheduled(&hog));
 
     const metl::optional<tick> next = scheduler.next_deadline();

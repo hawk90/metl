@@ -625,16 +625,16 @@ int main() {
     const metl::coro::poll_fn poll = [](void*) noexcept { return true; };
     CHECK(!guarded_against([&] { CHECK(scheduler.try_attach(&task, poll)); }));
     CHECK(guarded_against([&] { (void)scheduler.try_attach(&task, poll); }));
-    CHECK_EQ(scheduler.task_count(), std::size_t{1});
+    CHECK_EQ(scheduler.size(), std::size_t{1});
     CHECK(!guarded_against([&] { CHECK(scheduler.try_attach(&other, poll)); }));
     // Once detached it may be attached again.
     CHECK(scheduler.detach(&task));
     CHECK(!guarded_against([&] { CHECK(scheduler.try_attach(&task, poll)); }));
-    CHECK_EQ(scheduler.task_count(), std::size_t{2});
+    CHECK_EQ(scheduler.size(), std::size_t{2});
     // A null poll would be called by run_once: a jump to address 0 (#570).
     int third = 0;
     CHECK(guarded_against([&] { (void)scheduler.try_attach(&third, nullptr); }));
-    CHECK_EQ(scheduler.task_count(), std::size_t{2});
+    CHECK_EQ(scheduler.size(), std::size_t{2});
   }
 
   // coro::deadline_scheduler: the same null poll, called by run_due (#570).

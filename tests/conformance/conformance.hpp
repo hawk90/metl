@@ -654,7 +654,7 @@ struct flat_map_adapter {
   static constexpr int copy_own_fill = 2;
   template <typename C>
   static copy_result copy_own(C& c, int op, int k) {
-    const probe& own = c[static_cast<std::size_t>(k)].value;
+    const probe& own = c.nth(static_cast<std::size_t>(k)).value;
     const int id = own.id;
     // Key 0 sorts first, so the new entry shifts every held one.
     switch (op) {
@@ -666,7 +666,7 @@ struct flat_map_adapter {
         return {3, id, 2};
       default:
         // Assigns over the other element's value.
-        c.insert_or_assign(c[static_cast<std::size_t>(1 - k)].key, own);
+        c.insert_or_assign(c.nth(static_cast<std::size_t>(1 - k)).key, own);
         return {2, id, 2};
     }
   }
@@ -705,8 +705,8 @@ struct flat_set_adapter {
   static constexpr int copy_own_fill = 2;
   template <typename C>
   static copy_result copy_own(C& c, int, int k) {
-    const int id = c[static_cast<std::size_t>(k)].id;
-    (void)c.try_emplace(c[static_cast<std::size_t>(k)]);
+    const int id = c.nth(static_cast<std::size_t>(k)).id;
+    (void)c.try_emplace(c.nth(static_cast<std::size_t>(k)));
     return {2, id, 1};
   }
 };

@@ -1,0 +1,5 @@
+- Deprecated for removal in 2.0, each warning names its replacement (#645):
+  - `fixed_string::try_pop_back()`: write `if (!s.empty()) s.pop_back();`.
+  - `static_unordered_map::find_iter` and `static_unordered_set::find_iter`: use `find_iterator`.
+  - Positional `operator[]` and `at` on `flat_map`, `flat_set` and `lookup_table`: use `nth(index)`. In 2.0, `m[k]` on an integral-keyed `flat_map` would otherwise keep compiling as a position lookup.
+  - `coro::scheduler::task_count()` and `coro::deadline_scheduler::task_count()`: use `size()`. `deadline_scheduler` counts scheduled entries, so a task scheduled twice counts twice; the old name said tasks.

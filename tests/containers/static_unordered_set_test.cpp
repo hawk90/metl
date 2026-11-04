@@ -168,11 +168,15 @@ int main() {
     if (!s.try_emplace(7) || !s.try_emplace(11)) {
       return 21;
     }
-    auto it = s.find_iter(11);
+    auto it = s.find_iterator(11);
     if (it == s.end() || *it != 11) {
       return 14;
     }
-    if (s.find_iter(99) != s.end()) {
+    if (s.find_iterator(99) != s.end()) {
+      return 14;
+    }
+    const auto& cs = s;
+    if (cs.find_iterator(11) == cs.end() || cs.find_iterator(99) != cs.end()) {
       return 14;
     }
   }
@@ -192,8 +196,13 @@ int main() {
       return 15;
     }
 
-    auto it = s.find_iter(static_cast<const char*>("beta"));
+    auto it = s.find_iterator(static_cast<const char*>("beta"));
     if (it == s.end() || !cstr_equal(it->c_str(), "beta")) {
+      return 15;
+    }
+    const auto& cs = s;
+    if (cs.find_iterator(static_cast<const char*>("beta")) == cs.end() ||
+        cs.find_iterator(static_cast<const char*>("gamma")) != cs.end()) {
       return 15;
     }
 

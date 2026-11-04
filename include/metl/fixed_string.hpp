@@ -39,8 +39,7 @@ namespace metl {
 /// Stores up to `Capacity` characters (plus a terminating '\0') inline; performs
 /// NO heap allocation. Overflowing operations that assert (constructor, assign,
 /// append, push_back) abort by default; the bool-returning members (try_assign,
-/// try_append, try_push_back, try_pop_back) report overflow/underflow instead. Not
-/// thread-safe.
+/// try_append, try_push_back) report overflow instead. Not thread-safe.
 ///
 /// @tparam Capacity Maximum number of characters, excluding the terminator.
 /// @note Moving is copying: the source keeps its contents, unlike the other
@@ -188,23 +187,16 @@ class fixed_string {
 
   /// Removes the last character if the string is non-empty.
   /// @return true on success; false if the string is empty (no assert).
-  /// @note Underflow normally does not get a `try_` form — `if (!s.empty())` is an
-  /// exact, non-racy pre-check on a single-threaded container (see SCOPE.md R5).
-  /// This one exists because a character-at-a-time parse loop reads better with it.
-  METL_NODISCARD bool try_pop_back() noexcept {
-    if (empty()) {
-      return false;
-    }
-
-    --size_;
-    storage_[size_] = '\0';
-    return true;
-  }
+  /// @deprecated Removed in 2.0: underflow gets no `try_` form, because
+  /// `if (!s.empty())` is an exact, non-racy pre-check on a single-threaded
+  /// container (SCOPE.md R5). Write `if (!s.empty()) s.pop_back();`.
+  METL_DEPRECATED("try_pop_back is removed in 2.0; use if (!s.empty()) s.pop_back() (#645)")
+  METL_NODISCARD bool try_pop_back() noexcept { return try_remove_last(); }
 
   /// Removes the last character.
   /// @pre String is non-empty; asserts and aborts otherwise.
   void pop_back() noexcept {
-    const bool removed = try_pop_back();
+    const bool removed = try_remove_last();
     METL_ASSERT(removed);
     (void)removed;
   }
@@ -355,6 +347,16 @@ class fixed_string {
   /// @}
 
  private:
+  // Removes the last character if there is one; false if the string is empty.
+  METL_NODISCARD bool try_remove_last() noexcept {
+    if (empty()) {
+      return false;
+    }
+    --size_;
+    storage_[size_] = '\0';
+    return true;
+  }
+
   // <0, 0 or >0 as *this orders before, equal to or after `text`, comparing as
   // unsigned char like the fixed_string operators. Stops at text's terminator.
   int compare_c(const char* text) const noexcept {

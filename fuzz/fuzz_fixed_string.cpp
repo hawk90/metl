@@ -44,8 +44,10 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         (void)str.try_push_back(static_cast<char>(in.byte()));
         break;
       }
-      case 1: {  // try_pop_back — never asserts (returns false when empty)
-        (void)str.try_pop_back();
+      case 1: {  // pop_back behind the empty() check that replaces try_pop_back
+        if (!str.empty()) {
+          str.pop_back();
+        }
         break;
       }
       case 2: {  // try_assign from a bounded, NUL-terminated slice

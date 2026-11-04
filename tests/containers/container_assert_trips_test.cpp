@@ -121,10 +121,6 @@ void flat_trips() {
   using map = metl::flat_map<int, int, 1>;
   static map full;
   (void)full.try_emplace(1, 10);
-  CHECK(trips([] { (void)full[1]; }));
-  CHECK(trips([] { (void)static_cast<const map&>(full)[1]; }));
-  CHECK(trips([] { (void)full.at(1); }));
-  CHECK(trips([] { (void)static_cast<const map&>(full).at(1); }));
   CHECK(trips([] { (void)full.nth(1); }));
   CHECK(trips([] { (void)static_cast<const map&>(full).nth(1); }));
   CHECK(trips([] { (void)full.emplace(2, 20); }));
@@ -133,10 +129,6 @@ void flat_trips() {
   using set = metl::flat_set<int, 1>;
   static set one;
   (void)one.try_emplace(1);
-  CHECK(trips([] { (void)one[1]; }));
-  CHECK(trips([] { (void)static_cast<const set&>(one)[1]; }));
-  CHECK(trips([] { (void)one.at(1); }));
-  CHECK(trips([] { (void)static_cast<const set&>(one).at(1); }));
   CHECK(trips([] { (void)one.nth(1); }));
   CHECK(trips([] { (void)static_cast<const set&>(one).nth(1); }));
   CHECK(trips([] { (void)one.emplace(2); }));
