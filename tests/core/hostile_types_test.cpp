@@ -37,7 +37,6 @@
 #include <metl/object_pool.hpp>
 #include <metl/optional.hpp>
 #include <metl/ring_buffer.hpp>
-#include <metl/static_allocator.hpp>
 #include <metl/static_message_queue.hpp>
 #include <metl/static_unordered_map.hpp>
 #include <metl/static_unordered_set.hpp>
@@ -236,8 +235,7 @@ void deleted_operator_new() {
     CHECK_EQ(arena.emplace<no_heap>(11)->value, 11);
     metl::monotonic_buffer<64> mono;
     CHECK_EQ(mono.emplace<no_heap>(12)->value, 12);
-    metl::static_allocator<no_heap, 64> alloc;
-    CHECK_EQ(alloc.create(13)->value, 13);
+    CHECK(mono.try_allocate_n<no_heap>(1) != nullptr);
   }
 }
 

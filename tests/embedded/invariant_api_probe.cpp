@@ -9,6 +9,10 @@
 // tools/check_probe_coverage.py fails when a public header is neither named here
 // or there nor listed with a reason.
 
+// static_allocator is deprecated for removal in 2.0 (#645), and this probe
+// keeps building it until then: its warning is not the subject here.
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -79,13 +83,13 @@ struct counted {
 void exercise_allocators() noexcept {
   metl::arena_allocator<128> arena;
   const auto mark = arena.mark();
-  sink(arena.allocate(8) != nullptr ? 1u : 0u);
+  sink(arena.try_allocate(8) != nullptr ? 1u : 0u);
   sink(arena.try_emplace<counted>(1u) != nullptr ? 1u : 0u);
   arena.rewind(mark);
   arena.reset();
 
   metl::monotonic_buffer<64> buffer;
-  sink(buffer.allocate(8) != nullptr ? 1u : 0u);
+  sink(buffer.try_allocate(8) != nullptr ? 1u : 0u);
   sink(buffer.try_emplace<std::uint32_t>(2u) != nullptr ? 1u : 0u);
   buffer.reset();
 

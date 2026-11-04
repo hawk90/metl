@@ -64,7 +64,7 @@ enum class refcount_kind { non_atomic, atomic };
 ///
 /// So the object must live in storage that will not destroy it again: a static
 /// or stack buffer the caller placement-news into, or a raw block from
-/// `arena_allocator::allocate` or `monotonic_buffer`. **Not** an object from
+/// `arena_allocator::try_allocate` or `monotonic_buffer`. **Not** an object from
 /// `object_pool`, `handle_pool` or `arena_allocator::try_emplace`/`emplace`:
 /// those still count the object as live after the last release, and destroy it
 /// a second time when the slot is freed or the arena rewinds (#573). There is

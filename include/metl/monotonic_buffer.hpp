@@ -58,7 +58,8 @@ class monotonic_buffer {
   /// @param bytes Number of bytes to allocate; a request of 0 returns null.
   /// @param alignment Required alignment: a power of two (checked by `METL_HARDEN`).
   /// @return Pointer to the block, or null if the buffer lacks space (no throw).
-  METL_NODISCARD void* allocate(size_type bytes, size_type alignment = alignof(std::max_align_t)) noexcept {
+  METL_NODISCARD void* try_allocate(size_type bytes,
+                                    size_type alignment = alignof(std::max_align_t)) noexcept {
     // As arena_allocator: a non-power-of-two alignment makes align_up return a
     // misaligned pointer, so this is a memory-safety floor.
     // Named first: inside METL_HARDEN's `!(expr)` the conjunction is a
@@ -87,6 +88,33 @@ class monotonic_buffer {
     return result;
   }
 
+  /// @brief The same as `try_allocate`.
+  /// @deprecated In 2.0, `allocate` asserts when the buffer lacks space, as every
+  ///             other asserting form does, and `if (!b.allocate(n))` would keep
+  ///             compiling while no longer seeing the failure. Use `try_allocate`.
+  METL_DEPRECATED("allocate asserts on failure in 2.0; use try_allocate, which keeps returning null (#645)")
+  METL_NODISCARD void* allocate(size_type bytes, size_type alignment = alignof(std::max_align_t)) noexcept {
+    return try_allocate(bytes, alignment);
+  }
+
+  /// @brief Allocate uninitialized storage for @c count objects of type @c T.
+  ///
+  /// Counts, where `try_allocate` takes bytes: the name says which. The size is
+  /// checked before `sizeof(T) * count` is formed, so a huge count cannot wrap
+  /// into a small request that fits.
+  /// @tparam T Object type. The block is aligned to `alignof(T)`, as
+  ///         `try_allocate` aligns to any power of two.
+  /// @param count Number of contiguous @c T objects; 0 returns null.
+  /// @return Pointer to the storage, or null on overflow or insufficient space.
+  template <typename T>
+  METL_NODISCARD T* try_allocate_n(size_type count) noexcept {
+    // Rejected before sizeof(T) * count is formed; sizeof(T) >= 1.
+    if (count == 0 || count > static_cast<size_type>(-1) / sizeof(T)) {
+      return nullptr;
+    }
+    return static_cast<T*>(try_allocate(sizeof(T) * count, alignof(T)));
+  }
+
   /// @brief Construct a @c T in the buffer (its destructor is NOT tracked or run).
   /// @tparam T Object type to construct; its alignment must not exceed max alignment.
   /// @return Pointer to the constructed object, or null if out of space.
@@ -95,7 +123,7 @@ class monotonic_buffer {
     static_assert(alignof(T) <= alignof(std::max_align_t),
                   "type alignment exceeds monotonic_buffer maximum alignment");
 
-    void* memory = allocate(sizeof(T), alignof(T));
+    void* memory = try_allocate(sizeof(T), alignof(T));
     if (memory == nullptr) {
       return nullptr;
     }

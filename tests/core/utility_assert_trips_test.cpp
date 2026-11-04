@@ -1,6 +1,6 @@
 // Trips every METL_ASSERT precondition of the allocators, pools and the
 // remaining utilities once (#364): arena_allocator, monotonic_buffer,
-// static_allocator, object_pool, handle_pool, lookup_table, format,
+// object_pool, handle_pool, lookup_table, format,
 // spsc_byte_ring, tick_extender, coro::deadline_scheduler and coro::scheduler.
 //
 // Most are the asserting form of a try_ operation that does not fit: emplace
@@ -29,7 +29,6 @@
 #include <metl/optional.hpp>
 #include <metl/span.hpp>
 #include <metl/spsc_byte_ring.hpp>
-#include <metl/static_allocator.hpp>
 #include <metl/tick_extender.hpp>
 
 namespace {
@@ -50,25 +49,17 @@ void allocator_trips() {
   // the walk releases the block above, then stops at the straddling record
   // instead of releasing it and the bytes below the mark.
   static metl::arena_allocator<128> stale;
-  (void)stale.allocate(4);
+  (void)stale.try_allocate(4);
   static metl::arena_allocator<128>::mark_type invalidated = stale.mark();
   stale.reset();
-  (void)stale.allocate(16);  // straddles invalidated.offset
-  (void)stale.allocate(4);
+  (void)stale.try_allocate(16);  // straddles invalidated.offset
+  (void)stale.try_allocate(4);
   CHECK(invalidated.offset > 0 && invalidated.offset < stale.used());
   CHECK(trips([] { stale.rewind(invalidated); }));
   CHECK(stale.used() > invalidated.offset);
 
   static metl::monotonic_buffer<16> buffer;
   CHECK(trips([] { (void)buffer.emplace<std::array<unsigned char, 32>>(); }));
-
-  using allocator = metl::static_allocator<int, 1>;
-  static allocator one;
-  CHECK(trips([] { (void)one.allocate(2); }));
-  (void)one.try_allocate(1);
-  CHECK(trips([] { (void)one.create(1); }));
-  CHECK(trips([] { one.construct(nullptr, 1); }));
-  CHECK(trips([] { one.destroy(nullptr); }));
 }
 
 void pool_trips() {

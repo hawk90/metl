@@ -56,7 +56,7 @@ int demo_monotonic() {
     }
 
     // Raw byte allocation is also available (returns void*, respects alignment).
-    void* raw = scratch.allocate(16, alignof(std::max_align_t));
+    void* raw = scratch.try_allocate(16, alignof(std::max_align_t));
     if (raw == nullptr) {
       return 3;
     }

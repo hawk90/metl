@@ -27,7 +27,7 @@ int main() {
     return 1;
   }
 
-  void* raw = buffer.allocate(3, 1);
+  void* raw = buffer.try_allocate(3, 1);
   if (raw == nullptr || buffer.used() != 3 || buffer.remaining() != 29) {
     return 2;
   }
@@ -43,7 +43,7 @@ int main() {
   }
 
   const std::size_t used_before_fail = buffer.used();
-  if (buffer.allocate(128, 1) != nullptr || buffer.used() != used_before_fail) {
+  if (buffer.try_allocate(128, 1) != nullptr || buffer.used() != used_before_fail) {
     return 5;
   }
 

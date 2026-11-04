@@ -36,8 +36,13 @@ namespace metl {
 /// @tparam T Element type this allocator produces storage for.
 /// @tparam Capacity Backing storage size in bytes.
 /// @warning NOT thread-safe: use from a single thread and never from an ISR.
+/// @deprecated Removed in 2.0 (#645): it is a `monotonic_buffer` with a type
+///             attached. Use `monotonic_buffer<Capacity>` and its
+///             `try_allocate_n<T>(count)` (the same overflow-safe count check),
+///             `try_emplace<T>(args...)` and `reset()`.
 template <typename T, std::size_t Capacity>
-class static_allocator {
+class METL_DEPRECATED("static_allocator is removed in 2.0; use monotonic_buffer and try_allocate_n<T> (#645)")
+    static_allocator {
  public:
   using value_type = T;
   using pointer = T*;
@@ -51,19 +56,8 @@ class static_allocator {
   /// @param count Number of contiguous @c T objects to reserve; 0 returns null.
   /// @return Pointer to the storage, or null on overflow or insufficient space.
   METL_NODISCARD pointer try_allocate(size_type count = 1) noexcept {
-    if (count == 0) {
-      return nullptr;
-    }
-
-    // Overflow-safe: reject before computing sizeof(T) * count so a huge count
-    // cannot wrap size_type into a small byte request that slips past the
-    // buffer's bounds check. sizeof(T) >= 1, so the division is well-defined.
-    if (count > static_cast<size_type>(-1) / sizeof(T)) {
-      return nullptr;
-    }
-
-    void* memory = buffer_.allocate(sizeof(T) * count, alignof(T));
-    return static_cast<pointer>(memory);
+    // The same overflow-safe count check, now monotonic_buffer's own (#645).
+    return buffer_.template try_allocate_n<T>(count);
   }
 
   /// @brief Like `try_allocate`, but asserts that the allocation succeeds.

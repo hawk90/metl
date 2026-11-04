@@ -54,7 +54,7 @@ int main() {
     return 1;
   }
 
-  void* raw = arena.allocate(3, 1);
+  void* raw = arena.try_allocate(3, 1);
   if (raw == nullptr || arena.used() == 0) {
     return 2;
   }
@@ -85,7 +85,7 @@ int main() {
   }
 
   const std::size_t used_before_fail = arena.used();
-  if (arena.allocate(1024, 1) != nullptr || arena.used() != used_before_fail) {
+  if (arena.try_allocate(1024, 1) != nullptr || arena.used() != used_before_fail) {
     return 7;
   }
 
@@ -94,7 +94,7 @@ int main() {
     return 8;
   }
 
-  void* reused_raw = arena.allocate(8, alignof(std::uint32_t));
+  void* reused_raw = arena.try_allocate(8, alignof(std::uint32_t));
   if (reused_raw == nullptr) {
     return 9;
   }
@@ -115,7 +115,7 @@ int main() {
   tracker::destructions = 0;
 
   const auto stage0 = arena.mark();
-  void* raw_a = arena.allocate(4, 1);
+  void* raw_a = arena.try_allocate(4, 1);
   if (raw_a == nullptr) {
     return 12;
   }
@@ -125,7 +125,7 @@ int main() {
     return 13;
   }
 
-  void* raw_b = arena.allocate(7, 1);
+  void* raw_b = arena.try_allocate(7, 1);
   if (raw_b == nullptr) {
     return 14;
   }
@@ -135,7 +135,7 @@ int main() {
     return 15;
   }
 
-  void* raw_c = arena.allocate(2, alignof(std::uint16_t));
+  void* raw_c = arena.try_allocate(2, alignof(std::uint16_t));
   if (raw_c == nullptr) {
     return 16;
   }
@@ -151,7 +151,7 @@ int main() {
   }
 
   // Allocate raw memory after rewind to confirm the offset state is clean.
-  void* fresh_raw = arena.allocate(8, alignof(std::uint64_t));
+  void* fresh_raw = arena.try_allocate(8, alignof(std::uint64_t));
   if (fresh_raw == nullptr) {
     return 19;
   }
@@ -171,7 +171,7 @@ int main() {
 
   // Zero-byte raw allocate returns nullptr without consuming any space.
   const std::size_t used_before_zero = arena.used();
-  if (arena.allocate(0, 1) != nullptr || arena.used() != used_before_zero) {
+  if (arena.try_allocate(0, 1) != nullptr || arena.used() != used_before_zero) {
     return 23;
   }
 
@@ -179,11 +179,11 @@ int main() {
   // payload starts where the previous record ended (rounded up to alignment).
   {
     metl::arena_allocator<256> exact;
-    const auto* base = static_cast<unsigned char*>(exact.allocate(1, 1));
+    const auto* base = static_cast<unsigned char*>(exact.try_allocate(1, 1));
     CHECK(base != nullptr);
     CHECK_EQ(exact.used(), 1 + record_size);
     CHECK_EQ(exact.remaining(), 256 - (1 + record_size));
-    const auto* second = static_cast<unsigned char*>(exact.allocate(5, 1));
+    const auto* second = static_cast<unsigned char*>(exact.try_allocate(5, 1));
     CHECK(second != nullptr);
     CHECK_EQ(second - base, static_cast<std::ptrdiff_t>(1 + record_size));
     CHECK_EQ(exact.used(), 1 + record_size + 5 + record_size);
@@ -196,13 +196,13 @@ int main() {
   {
     constexpr std::size_t capacity = 64;
     metl::arena_allocator<capacity> full;
-    CHECK(full.allocate(capacity - record_size + 1, 1) == nullptr);
+    CHECK(full.try_allocate(capacity - record_size + 1, 1) == nullptr);
     CHECK(full.empty());
-    void* fits = full.allocate(capacity - record_size, 1);
+    void* fits = full.try_allocate(capacity - record_size, 1);
     CHECK(fits != nullptr);
     CHECK_EQ(full.used(), capacity);
     CHECK_EQ(full.remaining(), std::size_t{0});
-    CHECK(full.allocate(1, 1) == nullptr);
+    CHECK(full.try_allocate(1, 1) == nullptr);
   }
 
   // A zero-byte arena refuses every raw allocation and stays empty. try_emplace
@@ -210,8 +210,8 @@ int main() {
   // refusal.
   {
     metl::arena_allocator<0> none;
-    CHECK(none.allocate(1, 1) == nullptr);
-    CHECK(none.allocate(8) == nullptr);
+    CHECK(none.try_allocate(1, 1) == nullptr);
+    CHECK(none.try_allocate(8) == nullptr);
     CHECK(none.empty());
     CHECK_EQ(none.remaining(), std::size_t{0});
   }

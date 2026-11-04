@@ -172,16 +172,16 @@ int main() {
     metl::monotonic_buffer<64> buffer;
     g_fired = false;
     if (setjmp(g_jump) == 0) {
-      (void)buffer.allocate(4, 3);
+      (void)buffer.try_allocate(4, 3);
     }
     CHECK(g_fired);
     g_fired = false;
     if (setjmp(g_jump) == 0) {
-      (void)buffer.allocate(4, 0);
+      (void)buffer.try_allocate(4, 0);
     }
     CHECK(g_fired);
     g_fired = false;
-    void* ok = buffer.allocate(4, 4);
+    void* ok = buffer.try_allocate(4, 4);
     CHECK(!g_fired);
     CHECK(ok != nullptr);
   }
@@ -461,26 +461,26 @@ int main() {
   // as monotonic_buffer's does.
   {
     metl::arena_allocator<64> arena;
-    CHECK(guarded_against([&] { (void)arena.allocate(4, 3); }));
-    CHECK(guarded_against([&] { (void)arena.allocate(4, 0); }));
+    CHECK(guarded_against([&] { (void)arena.try_allocate(4, 3); }));
+    CHECK(guarded_against([&] { (void)arena.try_allocate(4, 0); }));
     CHECK(arena.empty());
-    CHECK(!guarded_against([&] { (void)arena.allocate(4, 4); }));
+    CHECK(!guarded_against([&] { (void)arena.try_allocate(4, 4); }));
     // The alignment is checked whatever the size, as monotonic_buffer checks it:
     // an empty request with a bad alignment is the same caller bug, and
     // returning null for it hid that.
-    CHECK(guarded_against([&] { (void)arena.allocate(0, 3); }));
-    CHECK(!guarded_against([&] { CHECK(arena.allocate(0, 4) == nullptr); }));
+    CHECK(guarded_against([&] { (void)arena.try_allocate(0, 3); }));
+    CHECK(!guarded_against([&] { CHECK(arena.try_allocate(0, 4) == nullptr); }));
   }
 
   // arena_allocator: rewind to a mark invalidated by reset, then straddled by
   // a later allocation, would release the bytes below the mark (#637).
   {
     static metl::arena_allocator<128> stale;
-    (void)stale.allocate(4);
+    (void)stale.try_allocate(4);
     static const auto invalidated = stale.mark();
     stale.reset();
-    (void)stale.allocate(16);
-    (void)stale.allocate(4);
+    (void)stale.try_allocate(16);
+    (void)stale.try_allocate(4);
     CHECK(guarded_against([&] { stale.rewind(invalidated); }));
     CHECK(stale.used() > invalidated.offset);
   }
@@ -488,8 +488,8 @@ int main() {
   // monotonic_buffer: the same zero-byte cases, which it already got right.
   {
     metl::monotonic_buffer<64> buffer;
-    CHECK(guarded_against([&] { (void)buffer.allocate(0, 3); }));
-    CHECK(!guarded_against([&] { CHECK(buffer.allocate(0, 4) == nullptr); }));
+    CHECK(guarded_against([&] { (void)buffer.try_allocate(0, 3); }));
+    CHECK(!guarded_against([&] { CHECK(buffer.try_allocate(0, 4) == nullptr); }));
   }
 
   // spsc_byte_ring: consuming more than is readable moves the read index past

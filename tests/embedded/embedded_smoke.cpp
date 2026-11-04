@@ -7,6 +7,10 @@
 // is involved beyond the archiver.
 
 // ---- Every public header ---------------------------------------------------
+// static_allocator is deprecated for removal in 2.0 (#645), and this probe
+// keeps building it until then: its warning is not the subject here.
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 #include "metl/arena_allocator.hpp"
 #include "metl/assert.hpp"
 #include "metl/atomic_handle.hpp"
