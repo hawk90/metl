@@ -1,22 +1,22 @@
 LLVMFuzzerTestOneInput:
-   97|    197|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
-   98|    197|  metl_fuzz::byte_reader in(data, size);
-   99|    197|  ring_type ring;
-  100|    197|  model expected;
+   97|    199|extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
+   98|    199|  metl_fuzz::byte_reader in(data, size);
+   99|    199|  ring_type ring;
+  100|    199|  model expected;
   101|       |
-  102|  4.17k|  while (!in.empty()) {
+  102|  4.20k|  while (!in.empty()) {
   ------------------
-  |  Branch (102:10): [True: 3.97k, False: 197]
+  |  Branch (102:10): [True: 4.00k, False: 199]
   ------------------
-  103|  3.97k|    switch (in.byte() % 6u) {
-  104|    729|      case 0: {  // zero-copy write across the seam
+  103|  4.00k|    switch (in.byte() % 6u) {
+  104|    727|      case 0: {  // zero-copy write across the seam
   ------------------
-  |  Branch (104:7): [True: 729, False: 3.24k]
+  |  Branch (104:7): [True: 727, False: 3.28k]
   ------------------
-  105|    729|        const metl::span<std::byte> out = ring.writable_span();
-  106|    729|        if (out.size() > ring.writable_size()) {
+  105|    727|        const metl::span<std::byte> out = ring.writable_span();
+  106|    727|        if (out.size() > ring.writable_size()) {
   ------------------
-  |  Branch (106:13): [True: 0, False: 729]
+  |  Branch (106:13): [True: 0, False: 727]
   ------------------
   107|      0|          METL_FUZZ_TRAP();  // the span may be shorter than the free space, never longer
   ------------------
@@ -25,74 +25,74 @@ LLVMFuzzerTestOneInput:
   108|      0|        }
   109|       |        // Fill a bounded prefix and commit exactly that much -- committing more
   110|       |        // than the span held is a contract violation, not a bug to find.
-  111|    729|        std::size_t want = out.empty() ? 0 : (in.byte() % (out.size() + 1));
+  111|    727|        std::size_t want = out.empty() ? 0 : (in.byte() % (out.size() + 1));
   ------------------
-  |  Branch (111:28): [True: 198, False: 531]
+  |  Branch (111:28): [True: 196, False: 531]
   ------------------
   112|  4.22k|        for (std::size_t i = 0; i < want; ++i) {
   ------------------
-  |  Branch (112:33): [True: 3.49k, False: 729]
+  |  Branch (112:33): [True: 3.49k, False: 727]
   ------------------
   113|  3.49k|          const std::uint8_t value = in.byte();
   114|  3.49k|          out[i] = static_cast<std::byte>(value);
   115|  3.49k|          expected.push(value);
   116|  3.49k|        }
-  117|    729|        ring.commit_write(want);
-  118|    729|        break;
-  119|    729|      }
-  120|    784|      case 1: {  // copying write, refused rather than truncated when it will not fit
+  117|    727|        ring.commit_write(want);
+  118|    727|        break;
+  119|    727|      }
+  120|    816|      case 1: {  // copying write, refused rather than truncated when it will not fit
   ------------------
-  |  Branch (120:7): [True: 784, False: 3.19k]
+  |  Branch (120:7): [True: 816, False: 3.19k]
   ------------------
-  121|    784|        std::size_t len = 0;
-  122|    784|        const std::uint8_t* bytes = in.slice(&len);
-  123|    784|        if (len > kCapacity) {
+  121|    816|        std::size_t len = 0;
+  122|    816|        const std::uint8_t* bytes = in.slice(&len);
+  123|    816|        if (len > kCapacity) {
   ------------------
-  |  Branch (123:13): [True: 83, False: 701]
+  |  Branch (123:13): [True: 115, False: 701]
   ------------------
-  124|     83|          len = kCapacity;
-  125|     83|        }
-  126|    784|        std::byte staging[kCapacity];
-  127|  7.85k|        for (std::size_t i = 0; i < len; ++i) {
+  124|    115|          len = kCapacity;
+  125|    115|        }
+  126|    816|        std::byte staging[kCapacity];
+  127|  9.93k|        for (std::size_t i = 0; i < len; ++i) {
   ------------------
-  |  Branch (127:33): [True: 7.07k, False: 784]
+  |  Branch (127:33): [True: 9.12k, False: 816]
   ------------------
-  128|  7.07k|          staging[i] = static_cast<std::byte>(bytes[i]);
-  129|  7.07k|        }
-  130|    784|        const std::size_t before = ring.readable_size();
-  131|    784|        if (ring.try_write(metl::span<const std::byte>(staging, len))) {
+  128|  9.12k|          staging[i] = static_cast<std::byte>(bytes[i]);
+  129|  9.12k|        }
+  130|    816|        const std::size_t before = ring.readable_size();
+  131|    816|        if (ring.try_write(metl::span<const std::byte>(staging, len))) {
   ------------------
-  |  Branch (131:13): [True: 515, False: 269]
+  |  Branch (131:13): [True: 517, False: 299]
   ------------------
-  132|  2.59k|          for (std::size_t i = 0; i < len; ++i) {
+  132|  2.72k|          for (std::size_t i = 0; i < len; ++i) {
   ------------------
-  |  Branch (132:35): [True: 2.07k, False: 515]
+  |  Branch (132:35): [True: 2.20k, False: 517]
   ------------------
-  133|  2.07k|            expected.push(bytes[i]);
-  134|  2.07k|          }
-  135|    515|          if (ring.readable_size() != before + len) {
+  133|  2.20k|            expected.push(bytes[i]);
+  134|  2.20k|          }
+  135|    517|          if (ring.readable_size() != before + len) {
   ------------------
-  |  Branch (135:15): [True: 0, False: 515]
+  |  Branch (135:15): [True: 0, False: 517]
   ------------------
   136|      0|            METL_FUZZ_TRAP();
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
   137|      0|          }
-  138|    515|        } else if (ring.readable_size() != before) {
+  138|    517|        } else if (ring.readable_size() != before) {
   ------------------
-  |  Branch (138:20): [True: 0, False: 269]
+  |  Branch (138:20): [True: 0, False: 299]
   ------------------
   139|      0|          METL_FUZZ_TRAP();  // a refused write must leave the ring untouched
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
   140|      0|        }
-  141|    784|        break;
-  142|    784|      }
-  143|    784|      case 2: {  // zero-copy read, then release exactly what was inspected
+  141|    816|        break;
+  142|    816|      }
+  143|    816|      case 2: {  // zero-copy read, then release exactly what was inspected
   ------------------
-  |  Branch (143:7): [True: 755, False: 3.22k]
+  |  Branch (143:7): [True: 755, False: 3.25k]
   ------------------
   144|    755|        const metl::span<const std::byte> readable = ring.readable_span();
   145|    755|        const std::size_t take = readable.empty() ? 0 : (in.byte() % (readable.size() + 1));
@@ -124,7 +124,7 @@ LLVMFuzzerTestOneInput:
   156|    755|      }
   157|    558|      case 3: {  // copying read
   ------------------
-  |  Branch (157:7): [True: 558, False: 3.41k]
+  |  Branch (157:7): [True: 558, False: 3.44k]
   ------------------
   158|    558|        const std::size_t want = in.byte() % (kCapacity + 1);
   159|    558|        std::byte out[kCapacity];
@@ -156,7 +156,7 @@ LLVMFuzzerTestOneInput:
   170|    558|      }
   171|    558|      case 4: {  // drain everything -- `consume` is bounded by readable_size, not by the run
   ------------------
-  |  Branch (171:7): [True: 411, False: 3.56k]
+  |  Branch (171:7): [True: 411, False: 3.59k]
   ------------------
   172|    411|        const std::size_t all = ring.readable_size();
   173|  1.22k|        for (std::size_t i = 0; i < all; ++i) {
@@ -180,7 +180,7 @@ LLVMFuzzerTestOneInput:
   181|    411|      }
   182|    740|      default: {  // query-only step, so the state machine can idle at any offset
   ------------------
-  |  Branch (182:7): [True: 740, False: 3.23k]
+  |  Branch (182:7): [True: 740, False: 3.26k]
   ------------------
   183|    740|        if (ring.full() && ring.writable_size() != 0) {
   ------------------
@@ -204,24 +204,24 @@ LLVMFuzzerTestOneInput:
   188|      0|        }
   189|    740|        break;
   190|    740|      }
-  191|  3.97k|    }
-  192|  3.97k|    check_invariants(ring, expected);
-  193|  3.97k|  }
+  191|  4.00k|    }
+  192|  4.00k|    check_invariants(ring, expected);
+  193|  4.00k|  }
   194|       |
-  195|    197|  return 0;
-  196|    197|}
+  195|    199|  return 0;
+  196|    199|}
 fuzz_byte_ring.cpp:_ZN12_GLOBAL__N_15model4pushEh:
-   49|  5.57k|  void push(std::uint8_t value) {
-   50|  5.57k|    if (size_ < kCapacity) {
+   49|  5.70k|  void push(std::uint8_t value) {
+   50|  5.70k|    if (size_ < kCapacity) {
   ------------------
-  |  Branch (50:9): [True: 5.57k, False: 0]
+  |  Branch (50:9): [True: 5.70k, False: 0]
   ------------------
-   51|  5.57k|      data_[(head_ + size_) % kCapacity] = value;
-   52|  5.57k|      ++size_;
-   53|  5.57k|    }
-   54|  5.57k|  }
+   51|  5.70k|      data_[(head_ + size_) % kCapacity] = value;
+   52|  5.70k|      ++size_;
+   53|  5.70k|    }
+   54|  5.70k|  }
 fuzz_byte_ring.cpp:_ZNK12_GLOBAL__N_15model4peekEm:
-   63|  60.6k|  std::uint8_t peek(std::size_t offset) const { return data_[(head_ + offset) % kCapacity]; }
+   63|  62.6k|  std::uint8_t peek(std::size_t offset) const { return data_[(head_ + offset) % kCapacity]; }
 fuzz_byte_ring.cpp:_ZN12_GLOBAL__N_15model3popEv:
    56|  2.40k|  std::uint8_t pop() {
    57|  2.40k|    const std::uint8_t value = data_[head_];
@@ -230,19 +230,19 @@ fuzz_byte_ring.cpp:_ZN12_GLOBAL__N_15model3popEv:
    60|  2.40k|    return value;
    61|  2.40k|  }
 fuzz_byte_ring.cpp:_ZN12_GLOBAL__N_116check_invariantsERKN4metl14spsc_byte_ringILm64EEERKNS_5modelE:
-   73|  3.97k|void check_invariants(const ring_type& ring, const model& expected) {
-   74|  3.97k|  if (ring.readable_size() != expected.size()) {
+   73|  4.00k|void check_invariants(const ring_type& ring, const model& expected) {
+   74|  4.00k|  if (ring.readable_size() != expected.size()) {
   ------------------
-  |  Branch (74:7): [True: 0, False: 3.97k]
+  |  Branch (74:7): [True: 0, False: 4.00k]
   ------------------
    75|      0|    METL_FUZZ_TRAP();
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
    76|      0|  }
-   77|  3.97k|  if (ring.readable_size() + ring.writable_size() != kCapacity) {
+   77|  4.00k|  if (ring.readable_size() + ring.writable_size() != kCapacity) {
   ------------------
-  |  Branch (77:7): [True: 0, False: 3.97k]
+  |  Branch (77:7): [True: 0, False: 4.00k]
   ------------------
    78|      0|    METL_FUZZ_TRAP();
   ------------------
@@ -252,10 +252,10 @@ fuzz_byte_ring.cpp:_ZN12_GLOBAL__N_116check_invariantsERKN4metl14spsc_byte_ringI
    80|       |  // The readable span is a contiguous run, so it can only be shorter than the
    81|       |  // readable size -- never longer, which would hand the consumer bytes the
    82|       |  // producer has not published.
-   83|  3.97k|  const metl::span<const std::byte> readable = ring.readable_span();
-   84|  3.97k|  if (readable.size() > ring.readable_size()) {
+   83|  4.00k|  const metl::span<const std::byte> readable = ring.readable_span();
+   84|  4.00k|  if (readable.size() > ring.readable_size()) {
   ------------------
-  |  Branch (84:7): [True: 0, False: 3.97k]
+  |  Branch (84:7): [True: 0, False: 4.00k]
   ------------------
    85|      0|    METL_FUZZ_TRAP();
   ------------------
@@ -263,52 +263,52 @@ fuzz_byte_ring.cpp:_ZN12_GLOBAL__N_116check_invariantsERKN4metl14spsc_byte_ringI
   ------------------
    86|      0|  }
    87|       |  // ...and the bytes it exposes must be the ones that went in, in order.
-   88|  63.8k|  for (std::size_t i = 0; i < readable.size(); ++i) {
+   88|  65.7k|  for (std::size_t i = 0; i < readable.size(); ++i) {
   ------------------
-  |  Branch (88:27): [True: 59.8k, False: 3.97k]
+  |  Branch (88:27): [True: 61.7k, False: 4.00k]
   ------------------
-   89|  59.8k|    if (static_cast<std::uint8_t>(readable[i]) != expected.peek(i)) {
+   89|  61.7k|    if (static_cast<std::uint8_t>(readable[i]) != expected.peek(i)) {
   ------------------
-  |  Branch (89:9): [True: 0, False: 59.8k]
+  |  Branch (89:9): [True: 0, False: 61.7k]
   ------------------
    90|      0|      METL_FUZZ_TRAP();
   ------------------
   |  |   30|      0|#define METL_FUZZ_TRAP() __builtin_trap()
   ------------------
    91|      0|    }
-   92|  59.8k|  }
-   93|  3.97k|}
+   92|  61.7k|  }
+   93|  4.00k|}
 fuzz_byte_ring.cpp:_ZNK12_GLOBAL__N_15model4sizeEv:
-   65|  3.97k|  std::size_t size() const { return size_; }
+   65|  4.00k|  std::size_t size() const { return size_; }
 
 _ZN9metl_fuzz11byte_readerC2EPKhm:
-   42|    197|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
+   42|    199|  byte_reader(const std::uint8_t* data, std::size_t size) noexcept : data_(data), size_(size), pos_(0) {}
 _ZNK9metl_fuzz11byte_reader5emptyEv:
-   45|  4.17k|  bool empty() const noexcept { return remaining() == 0; }
+   45|  4.20k|  bool empty() const noexcept { return remaining() == 0; }
 _ZNK9metl_fuzz11byte_reader9remainingEv:
-   44|  4.98k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
+   44|  5.04k|  std::size_t remaining() const noexcept { return pos_ < size_ ? size_ - pos_ : 0; }
   ------------------
-  |  Branch (44:51): [True: 4.77k, False: 208]
+  |  Branch (44:51): [True: 4.83k, False: 210]
   ------------------
 _ZN9metl_fuzz11byte_reader4byteEv:
-   48|  9.90k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
+   48|  9.96k|  std::uint8_t byte() noexcept { return pos_ < size_ ? data_[pos_++] : std::uint8_t{0}; }
   ------------------
-  |  Branch (48:41): [True: 9.20k, False: 699]
+  |  Branch (48:41): [True: 9.26k, False: 699]
   ------------------
 _ZN9metl_fuzz11byte_reader5sliceEPm:
-  100|    784|  const std::uint8_t* slice(std::size_t* len) noexcept {
-  101|    784|    std::size_t want = byte();
-  102|    784|    if (want > remaining()) {
+  100|    816|  const std::uint8_t* slice(std::size_t* len) noexcept {
+  101|    816|    std::size_t want = byte();
+  102|    816|    if (want > remaining()) {
   ------------------
-  |  Branch (102:9): [True: 25, False: 759]
+  |  Branch (102:9): [True: 27, False: 789]
   ------------------
-  103|     25|      want = remaining();
-  104|     25|    }
-  105|    784|    const std::uint8_t* begin = data_ + pos_;
-  106|    784|    pos_ += want;
-  107|    784|    *len = want;
-  108|    784|    return begin;
-  109|    784|  }
+  103|     27|      want = remaining();
+  104|     27|    }
+  105|    816|    const std::uint8_t* begin = data_ + pos_;
+  106|    816|    pos_ += want;
+  107|    816|    *len = want;
+  108|    816|    return begin;
+  109|    816|  }
 
 _ZN4metl6detail22clamped_index_distanceEmmm:
    27|  1.89k|                                             std::size_t capacity) noexcept {
@@ -326,16 +326,16 @@ _ZN4metl6detail22clamped_index_distanceEmmm:
    33|  1.89k|}
 
 _ZN4metl6detail11word_atomicImEC2Em:
-   73|    394|  constexpr explicit word_atomic(T value) noexcept : value_(value) {}
+   73|    398|  constexpr explicit word_atomic(T value) noexcept : value_(value) {}
 _ZNK4metl6detail11word_atomicImE4loadENSt3__112memory_orderE:
-   90|  66.4k|  T load(std::memory_order order) const noexcept { return value_.load(order); }
+   90|  66.9k|  T load(std::memory_order order) const noexcept { return value_.load(order); }
 _ZN4metl6detail11word_atomicImE5storeEmNSt3__112memory_orderE:
    91|  2.96k|  void store(T value, std::memory_order order) noexcept { value_.store(value, order); }
 
 _ZNK4metl4spanISt4byteLm18446744073709551615EE4sizeEv:
-  224|  6.42k|  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size; }
+  224|  6.41k|  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size; }
 _ZNK4metl4spanISt4byteLm18446744073709551615EE5emptyEv:
-  230|    729|  METL_NODISCARD constexpr bool empty() const noexcept { return storage_.size == 0; }
+  230|    727|  METL_NODISCARD constexpr bool empty() const noexcept { return storage_.size == 0; }
 _ZNK4metl4spanISt4byteLm18446744073709551615EEixEm:
   216|  4.25k|  METL_NODISCARD constexpr reference operator[](size_type index) const noexcept {
   217|  4.25k|    METL_ASSERT(index < size());
@@ -366,16 +366,16 @@ _ZNK4metl4spanISt4byteLm18446744073709551615EEixEm:
   218|  4.25k|    return storage_.data[index];
   219|  4.25k|  }
 _ZN4metl4spanIKSt4byteLm18446744073709551615EEC2EPS2_m:
-  118|  5.51k|  constexpr span(pointer ptr, size_type count) noexcept : storage_(ptr, count) {
-  119|  5.51k|    METL_HARDEN(Extent == dynamic_extent || count == Extent);
+  118|  5.57k|  constexpr span(pointer ptr, size_type count) noexcept : storage_(ptr, count) {
+  119|  5.57k|    METL_HARDEN(Extent == dynamic_extent || count == Extent);
   ------------------
-  |  |  163|  5.51k|  do {                                                                           \
-  |  |  164|  5.51k|    if (METL_PREDICT_FALSE(!(expr))) {                                           \
+  |  |  163|  5.57k|  do {                                                                           \
+  |  |  164|  5.57k|    if (METL_PREDICT_FALSE(!(expr))) {                                           \
   |  |  ------------------
-  |  |  |  |   25|  5.51k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  5.57k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [Folded, False: 5.51k]
-  |  |  |  |  |  Branch (25:70): [True: 5.51k, Folded]
+  |  |  |  |  |  Branch (25:34): [Folded, False: 5.57k]
+  |  |  |  |  |  Branch (25:70): [True: 5.57k, Folded]
   |  |  |  |  |  Branch (25:70): [True: 0, False: 0]
   |  |  |  |  ------------------
   |  |  ------------------
@@ -389,28 +389,28 @@ _ZN4metl4spanIKSt4byteLm18446744073709551615EEC2EPS2_m:
   |  |  |  |   87|       |#define METL_DETAIL_CHECK_FILE __FILE__
   |  |  ------------------
   |  |  167|      0|    }                                                                            \
-  |  |  168|  5.51k|  } while (false)
+  |  |  168|  5.57k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (168:12): [Folded, False: 5.51k]
+  |  |  |  Branch (168:12): [Folded, False: 5.57k]
   |  |  ------------------
   ------------------
-  120|  5.51k|  }
+  120|  5.57k|  }
 _ZN4metl6detail12span_storageIKSt4byteLm18446744073709551615EEC2EPS3_m:
-   78|  5.51k|  constexpr span_storage(T* ptr, std::size_t count) noexcept : data(ptr), size(count) {}
+   78|  5.57k|  constexpr span_storage(T* ptr, std::size_t count) noexcept : data(ptr), size(count) {}
 _ZNK4metl4spanIKSt4byteLm18446744073709551615EE5emptyEv:
   230|    755|  METL_NODISCARD constexpr bool empty() const noexcept { return storage_.size == 0; }
 _ZNK4metl4spanIKSt4byteLm18446744073709551615EE4sizeEv:
-  224|   135k|  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size; }
+  224|   139k|  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size; }
 _ZNK4metl4spanIKSt4byteLm18446744073709551615EEixEm:
-  216|  62.7k|  METL_NODISCARD constexpr reference operator[](size_type index) const noexcept {
-  217|  62.7k|    METL_ASSERT(index < size());
+  216|  64.8k|  METL_NODISCARD constexpr reference operator[](size_type index) const noexcept {
+  217|  64.8k|    METL_ASSERT(index < size());
   ------------------
-  |  |  129|  62.7k|  do {                                                                           \
-  |  |  130|  62.7k|    if (METL_PREDICT_FALSE(!(expr))) {                                           \
+  |  |  129|  64.8k|  do {                                                                           \
+  |  |  130|  64.8k|    if (METL_PREDICT_FALSE(!(expr))) {                                           \
   |  |  ------------------
-  |  |  |  |   25|  62.7k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|  64.8k|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 62.7k]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 64.8k]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |  131|      0|      ::metl::detail::assertion_failed(                                          \
@@ -423,13 +423,13 @@ _ZNK4metl4spanIKSt4byteLm18446744073709551615EEixEm:
   |  |  |  |   87|       |#define METL_DETAIL_CHECK_FILE __FILE__
   |  |  ------------------
   |  |  133|      0|    }                                                                            \
-  |  |  134|  62.7k|  } while (false)
+  |  |  134|  64.8k|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (134:12): [Folded, False: 62.7k]
+  |  |  |  Branch (134:12): [Folded, False: 64.8k]
   |  |  ------------------
   ------------------
-  218|  62.7k|    return storage_.data[index];
-  219|  62.7k|  }
+  218|  64.8k|    return storage_.data[index];
+  219|  64.8k|  }
 _ZN4metl4spanISt4byteLm18446744073709551615EEC2EPS1_m:
   118|  1.28k|  constexpr span(pointer ptr, size_type count) noexcept : storage_(ptr, count) {
   119|  1.28k|    METL_HARDEN(Extent == dynamic_extent || count == Extent);
@@ -464,40 +464,40 @@ _ZN4metl6detail12span_storageISt4byteLm18446744073709551615EEC2EPS2_m:
    78|  1.28k|  constexpr span_storage(T* ptr, std::size_t count) noexcept : data(ptr), size(count) {}
 
 _ZN4metl14spsc_byte_ringILm64EEC2Ev:
-   79|    197|  constexpr spsc_byte_ring() noexcept : head_(0), tail_(0) {}
+   79|    199|  constexpr spsc_byte_ring() noexcept : head_(0), tail_(0) {}
 _ZNK4metl14spsc_byte_ringILm64EE13readable_sizeEv:
-  181|  14.6k|  METL_NODISCARD size_type readable_size() const noexcept {
-  182|  14.6k|    const size_type tail = tail_.load(std::memory_order_acquire);
-  183|  14.6k|    const size_type head = head_.load(std::memory_order_relaxed);
-  184|  14.6k|    return tail - head;
-  185|  14.6k|  }
+  181|  14.8k|  METL_NODISCARD size_type readable_size() const noexcept {
+  182|  14.8k|    const size_type tail = tail_.load(std::memory_order_acquire);
+  183|  14.8k|    const size_type head = head_.load(std::memory_order_relaxed);
+  184|  14.8k|    return tail - head;
+  185|  14.8k|  }
 _ZNK4metl14spsc_byte_ringILm64EE13writable_sizeEv:
-   94|  4.90k|  METL_NODISCARD size_type writable_size() const noexcept {
-   95|  4.90k|    const size_type tail = tail_.load(std::memory_order_relaxed);
-   96|  4.90k|    const size_type head = head_.load(std::memory_order_acquire);
-   97|  4.90k|    return Capacity - (tail - head);
-   98|  4.90k|  }
+   94|  4.92k|  METL_NODISCARD size_type writable_size() const noexcept {
+   95|  4.92k|    const size_type tail = tail_.load(std::memory_order_relaxed);
+   96|  4.92k|    const size_type head = head_.load(std::memory_order_acquire);
+   97|  4.92k|    return Capacity - (tail - head);
+   98|  4.92k|  }
 _ZNK4metl14spsc_byte_ringILm64EE13readable_spanEv:
-  191|  4.73k|  METL_NODISCARD span<const std::byte> readable_span() const noexcept {
-  192|  4.73k|    const size_type head = head_.load(std::memory_order_relaxed);
-  193|  4.73k|    return span<const std::byte>(storage_ + (head & (Capacity - 1)), readable_run());
-  194|  4.73k|  }
+  191|  4.76k|  METL_NODISCARD span<const std::byte> readable_span() const noexcept {
+  192|  4.76k|    const size_type head = head_.load(std::memory_order_relaxed);
+  193|  4.76k|    return span<const std::byte>(storage_ + (head & (Capacity - 1)), readable_run());
+  194|  4.76k|  }
 _ZNK4metl14spsc_byte_ringILm64EE12readable_runEv:
-  276|  4.73k|  size_type readable_run() const noexcept {
-  277|  4.73k|    const size_type tail = tail_.load(std::memory_order_acquire);
-  278|  4.73k|    const size_type head = head_.load(std::memory_order_relaxed);
-  279|  4.73k|    const size_type available = tail - head;
-  280|  4.73k|    const size_type to_end = Capacity - (head & (Capacity - 1));
-  281|  4.73k|    return available < to_end ? available : to_end;
+  276|  4.76k|  size_type readable_run() const noexcept {
+  277|  4.76k|    const size_type tail = tail_.load(std::memory_order_acquire);
+  278|  4.76k|    const size_type head = head_.load(std::memory_order_relaxed);
+  279|  4.76k|    const size_type available = tail - head;
+  280|  4.76k|    const size_type to_end = Capacity - (head & (Capacity - 1));
+  281|  4.76k|    return available < to_end ? available : to_end;
   ------------------
-  |  Branch (281:12): [True: 3.34k, False: 1.38k]
+  |  Branch (281:12): [True: 3.34k, False: 1.41k]
   ------------------
-  282|  4.73k|  }
+  282|  4.76k|  }
 _ZN4metl14spsc_byte_ringILm64EE13writable_spanEv:
-  112|    729|  METL_NODISCARD span<std::byte> writable_span() noexcept {
-  113|    729|    const size_type tail = tail_.load(std::memory_order_relaxed);
-  114|    729|    return span<std::byte>(storage_ + (tail & (Capacity - 1)), writable_run());
-  115|    729|  }
+  112|    727|  METL_NODISCARD span<std::byte> writable_span() noexcept {
+  113|    727|    const size_type tail = tail_.load(std::memory_order_relaxed);
+  114|    727|    return span<std::byte>(storage_ + (tail & (Capacity - 1)), writable_run());
+  115|    727|  }
 _ZNK4metl14spsc_byte_ringILm64EE12writable_runEv:
   267|  1.45k|  size_type writable_run() const noexcept {
   268|  1.45k|    const size_type tail = tail_.load(std::memory_order_relaxed);
@@ -506,22 +506,22 @@ _ZNK4metl14spsc_byte_ringILm64EE12writable_runEv:
   271|  1.45k|    const size_type to_end = Capacity - (tail & (Capacity - 1));
   272|  1.45k|    return free_total < to_end ? free_total : to_end;
   ------------------
-  |  Branch (272:12): [True: 410, False: 1.04k]
+  |  Branch (272:12): [True: 406, False: 1.04k]
   ------------------
   273|  1.45k|  }
 _ZN4metl14spsc_byte_ringILm64EE12commit_writeEm:
-  137|    729|  void commit_write(size_type count) noexcept {
+  137|    727|  void commit_write(size_type count) noexcept {
   138|       |    // Never stripped: a bad count publishes bytes that were never written, and
   139|       |    // every later span calculation is built on this index, so this must hold even
   140|       |    // at METL_HARDENING_NONE.
-  141|    729|    METL_HARDEN(count <= writable_run());
+  141|    727|    METL_HARDEN(count <= writable_run());
   ------------------
-  |  |  163|    729|  do {                                                                           \
-  |  |  164|    729|    if (METL_PREDICT_FALSE(!(expr))) {                                           \
+  |  |  163|    727|  do {                                                                           \
+  |  |  164|    727|    if (METL_PREDICT_FALSE(!(expr))) {                                           \
   |  |  ------------------
-  |  |  |  |   25|    729|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
+  |  |  |  |   25|    727|#define METL_PREDICT_FALSE(expr) (__builtin_expect(static_cast<bool>(expr), false))
   |  |  |  |  ------------------
-  |  |  |  |  |  Branch (25:34): [True: 0, False: 729]
+  |  |  |  |  |  Branch (25:34): [True: 0, False: 727]
   |  |  |  |  ------------------
   |  |  ------------------
   |  |  165|      0|      ::metl::detail::assertion_failed(                                          \
@@ -534,35 +534,35 @@ _ZN4metl14spsc_byte_ringILm64EE12commit_writeEm:
   |  |  |  |   87|       |#define METL_DETAIL_CHECK_FILE __FILE__
   |  |  ------------------
   |  |  167|      0|    }                                                                            \
-  |  |  168|    729|  } while (false)
+  |  |  168|    727|  } while (false)
   |  |  ------------------
-  |  |  |  Branch (168:12): [Folded, False: 729]
+  |  |  |  Branch (168:12): [Folded, False: 727]
   |  |  ------------------
   ------------------
-  142|    729|    const size_type tail = tail_.load(std::memory_order_relaxed);
+  142|    727|    const size_type tail = tail_.load(std::memory_order_relaxed);
   143|       |    // Release: everything the producer wrote into the span happens-before the
   144|       |    // consumer's acquire load of this index.
-  145|    729|    tail_.store(tail + count, std::memory_order_release);
-  146|    729|  }
+  145|    727|    tail_.store(tail + count, std::memory_order_release);
+  146|    727|  }
 _ZN4metl14spsc_byte_ringILm64EE9try_writeENS_4spanIKSt4byteLm18446744073709551615EEE:
-  152|    784|  METL_NODISCARD bool try_write(span<const std::byte> source) noexcept {
-  153|    784|    const size_type tail = tail_.load(std::memory_order_relaxed);
-  154|    784|    const size_type head = head_.load(std::memory_order_acquire);
-  155|    784|    if (source.size() > Capacity - (tail - head)) {
+  152|    816|  METL_NODISCARD bool try_write(span<const std::byte> source) noexcept {
+  153|    816|    const size_type tail = tail_.load(std::memory_order_relaxed);
+  154|    816|    const size_type head = head_.load(std::memory_order_acquire);
+  155|    816|    if (source.size() > Capacity - (tail - head)) {
   ------------------
-  |  Branch (155:9): [True: 269, False: 515]
+  |  Branch (155:9): [True: 299, False: 517]
   ------------------
-  156|    269|      return false;
-  157|    269|    }
-  158|  2.59k|    for (size_type i = 0; i < source.size(); ++i) {
+  156|    299|      return false;
+  157|    299|    }
+  158|  2.72k|    for (size_type i = 0; i < source.size(); ++i) {
   ------------------
-  |  Branch (158:27): [True: 2.07k, False: 515]
+  |  Branch (158:27): [True: 2.20k, False: 517]
   ------------------
-  159|  2.07k|      storage_[(tail + i) & (Capacity - 1)] = source[i];
-  160|  2.07k|    }
-  161|    515|    tail_.store(tail + source.size(), std::memory_order_release);
-  162|    515|    return true;
-  163|    784|  }
+  159|  2.20k|      storage_[(tail + i) & (Capacity - 1)] = source[i];
+  160|  2.20k|    }
+  161|    517|    tail_.store(tail + source.size(), std::memory_order_release);
+  162|    517|    return true;
+  163|    816|  }
 _ZN4metl14spsc_byte_ringILm64EE7consumeEm:
   205|  1.16k|  void consume(size_type count) noexcept {
   206|  1.16k|    const size_type tail = tail_.load(std::memory_order_acquire);
