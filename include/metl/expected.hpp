@@ -164,7 +164,7 @@ enum class expected_state : unsigned char { error, value, switching };
 
 // The one METL_HARDEN on the state, shared by every expected operation and by
 // the destructors in expected_members, so one set of trip tests reaches it.
-inline METL_CONSTEXPR20 void require_settled(expected_state state) noexcept {
+inline METL_DETAIL_CONSTEXPR20 void require_settled(expected_state state) noexcept {
   METL_HARDEN(state != expected_state::switching);
 }
 
@@ -195,7 +195,7 @@ union expected_union {
   expected_union(expected_union&&) = delete;
   expected_union& operator=(const expected_union&) = delete;
   expected_union& operator=(expected_union&&) = delete;
-  METL_CONSTEXPR20 ~expected_union() {}
+  METL_DETAIL_CONSTEXPR20 ~expected_union() {}
 };
 
 // T and E trivially destructible: no user-provided destructor, so the union,
@@ -231,7 +231,7 @@ union expected_error_union {
   expected_error_union(expected_error_union&&) = delete;
   expected_error_union& operator=(const expected_error_union&) = delete;
   expected_error_union& operator=(expected_error_union&&) = delete;
-  METL_CONSTEXPR20 ~expected_error_union() {}
+  METL_DETAIL_CONSTEXPR20 ~expected_error_union() {}
 };
 
 template <typename E>
@@ -270,7 +270,7 @@ struct expected_members {
   expected_members& operator=(expected_members&&) = delete;
   // A member destructor that reaches back into the expected finds it
   // switching: has_value() is false, and a change fails METL_HARDEN (#374).
-  METL_CONSTEXPR20 ~expected_members() {
+  METL_DETAIL_CONSTEXPR20 ~expected_members() {
     require_settled(state_);
     const bool had_value = state_ == expected_state::value;
     state_ = expected_state::switching;
@@ -321,7 +321,7 @@ struct expected_void_members {
   expected_void_members(expected_void_members&&) = delete;
   expected_void_members& operator=(const expected_void_members&) = delete;
   expected_void_members& operator=(expected_void_members&&) = delete;
-  METL_CONSTEXPR20 ~expected_void_members() {
+  METL_DETAIL_CONSTEXPR20 ~expected_void_members() {
     require_settled(state_);
     if (state_ != expected_state::value) {
       state_ = expected_state::switching;
@@ -611,7 +611,7 @@ class expected : detail::expected_members<T, E> {
   /// @brief Accesses a member of the contained value.
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
-  METL_NODISCARD METL_CONSTEXPR20 const T* operator->() const noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 const T* operator->() const noexcept {
     METL_ASSERT(holds_value());
     return value_ptr();
   }
@@ -619,7 +619,7 @@ class expected : detail::expected_members<T, E> {
   /// @brief Accesses a member of the contained value.
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
-  METL_NODISCARD METL_CONSTEXPR20 T* operator->() noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 T* operator->() noexcept {
     METL_ASSERT(holds_value());
     return value_ptr();
   }
@@ -627,7 +627,7 @@ class expected : detail::expected_members<T, E> {
   /// @brief Returns a reference to the contained value.
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
-  METL_NODISCARD METL_CONSTEXPR20 const T& operator*() const& noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 const T& operator*() const& noexcept {
     METL_ASSERT(holds_value());
     return *value_ptr();
   }
@@ -635,7 +635,7 @@ class expected : detail::expected_members<T, E> {
   /// @brief Returns a reference to the contained value.
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
-  METL_NODISCARD METL_CONSTEXPR20 T& operator*() & noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 T& operator*() & noexcept {
     METL_ASSERT(holds_value());
     return *value_ptr();
   }
@@ -643,7 +643,7 @@ class expected : detail::expected_members<T, E> {
   /// @brief Returns an rvalue reference to the contained value.
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
-  METL_NODISCARD METL_CONSTEXPR20 const T&& operator*() const&& noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 const T&& operator*() const&& noexcept {
     METL_ASSERT(holds_value());
     return static_cast<const T&&>(*value_ptr());
   }
@@ -651,7 +651,7 @@ class expected : detail::expected_members<T, E> {
   /// @brief Returns an rvalue reference to the contained value.
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
-  METL_NODISCARD METL_CONSTEXPR20 T&& operator*() && noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 T&& operator*() && noexcept {
     METL_ASSERT(holds_value());
     return static_cast<T&&>(*value_ptr());
   }
@@ -660,7 +660,7 @@ class expected : detail::expected_members<T, E> {
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does NOT throw
   /// std::bad_expected_access. Use `value_or` for a checked fallback.
-  METL_NODISCARD METL_CONSTEXPR20 T& value() & noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 T& value() & noexcept {
     METL_ASSERT(holds_value());
     return *value_ptr();
   }
@@ -668,7 +668,7 @@ class expected : detail::expected_members<T, E> {
   /// @brief Returns a reference to the contained value.
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does NOT throw.
-  METL_NODISCARD METL_CONSTEXPR20 const T& value() const& noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 const T& value() const& noexcept {
     METL_ASSERT(holds_value());
     return *value_ptr();
   }
@@ -676,7 +676,7 @@ class expected : detail::expected_members<T, E> {
   /// @brief Returns an rvalue reference to the contained value.
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does NOT throw.
-  METL_NODISCARD METL_CONSTEXPR20 T&& value() && noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 T&& value() && noexcept {
     METL_ASSERT(holds_value());
     return static_cast<T&&>(*value_ptr());
   }
@@ -684,7 +684,7 @@ class expected : detail::expected_members<T, E> {
   /// @brief Returns an rvalue reference to the contained value.
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does NOT throw.
-  METL_NODISCARD METL_CONSTEXPR20 const T&& value() const&& noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 const T&& value() const&& noexcept {
     METL_ASSERT(holds_value());
     return static_cast<const T&&>(*value_ptr());
   }
@@ -693,7 +693,7 @@ class expected : detail::expected_members<T, E> {
   /// @pre !has_value()
   /// @warning Asserts (aborts by default) in the value state; it does NOT throw.
   /// Use `error_or` for a checked fallback.
-  METL_NODISCARD METL_CONSTEXPR20 E& error() & noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 E& error() & noexcept {
     METL_ASSERT(holds_error());
     return *error_ptr();
   }
@@ -701,7 +701,7 @@ class expected : detail::expected_members<T, E> {
   /// @brief Returns a reference to the contained error.
   /// @pre !has_value()
   /// @warning Asserts (aborts by default) in the value state; it does NOT throw.
-  METL_NODISCARD METL_CONSTEXPR20 const E& error() const& noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 const E& error() const& noexcept {
     METL_ASSERT(holds_error());
     return *error_ptr();
   }
@@ -709,7 +709,7 @@ class expected : detail::expected_members<T, E> {
   /// @brief Returns an rvalue reference to the contained error.
   /// @pre !has_value()
   /// @warning Asserts (aborts by default) in the value state; it does NOT throw.
-  METL_NODISCARD METL_CONSTEXPR20 E&& error() && noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 E&& error() && noexcept {
     METL_ASSERT(holds_error());
     return static_cast<E&&>(*error_ptr());
   }
@@ -717,7 +717,7 @@ class expected : detail::expected_members<T, E> {
   /// @brief Returns an rvalue reference to the contained error.
   /// @pre !has_value()
   /// @warning Asserts (aborts by default) in the value state; it does NOT throw.
-  METL_NODISCARD METL_CONSTEXPR20 const E&& error() const&& noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 const E&& error() const&& noexcept {
     METL_ASSERT(holds_error());
     return static_cast<const E&&>(*error_ptr());
   }
@@ -725,13 +725,13 @@ class expected : detail::expected_members<T, E> {
   /// @brief Returns the value if present, else `default_value`. Never asserts.
   /// @param default_value Returned (converted to `T`) in the error state.
   template <typename U>
-  METL_NODISCARD METL_CONSTEXPR20 std::remove_cv_t<T> value_or(U&& default_value) const& {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 std::remove_cv_t<T> value_or(U&& default_value) const& {
     return holds_value() ? *value_ptr() : static_cast<std::remove_cv_t<T>>(std::forward<U>(default_value));
   }
 
   /// @brief Returns the value if present, else `default_value`. Never asserts.
   template <typename U>
-  METL_NODISCARD METL_CONSTEXPR20 std::remove_cv_t<T> value_or(U&& default_value) && {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 std::remove_cv_t<T> value_or(U&& default_value) && {
     return holds_value() ? static_cast<T&&>(*value_ptr())
                          : static_cast<std::remove_cv_t<T>>(std::forward<U>(default_value));
   }
@@ -739,13 +739,13 @@ class expected : detail::expected_members<T, E> {
   /// @brief Returns the error if present, else `default_value`. Never asserts.
   /// @param default_value Returned (converted to `E`) in the value state.
   template <typename G>
-  METL_NODISCARD METL_CONSTEXPR20 E error_or(G&& default_value) const& {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 E error_or(G&& default_value) const& {
     return holds_error() ? *error_ptr() : static_cast<E>(std::forward<G>(default_value));
   }
 
   /// @brief Returns the error if present, else `default_value`. Never asserts.
   template <typename G>
-  METL_NODISCARD METL_CONSTEXPR20 E error_or(G&& default_value) && {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 E error_or(G&& default_value) && {
     return holds_error() ? static_cast<E&&>(*error_ptr()) : static_cast<E>(std::forward<G>(default_value));
   }
 
@@ -1014,13 +1014,13 @@ class expected : detail::expected_members<T, E> {
   // Laundered: emplace and assignment can end a member and build a new one in
   // its place, which C++17 [basic.life]/8 does not let the member's name reach
   // when T or E has a const or reference member.
-  METL_CONSTEXPR20 T* value_ptr() noexcept { return std::launder(detail::addressof(storage_.value)); }
-  METL_CONSTEXPR20 const T* value_ptr() const noexcept {
+  METL_DETAIL_CONSTEXPR20 T* value_ptr() noexcept { return std::launder(detail::addressof(storage_.value)); }
+  METL_DETAIL_CONSTEXPR20 const T* value_ptr() const noexcept {
     return std::launder(detail::addressof(storage_.value));
   }
 
-  METL_CONSTEXPR20 E* error_ptr() noexcept { return std::launder(detail::addressof(storage_.error)); }
-  METL_CONSTEXPR20 const E* error_ptr() const noexcept {
+  METL_DETAIL_CONSTEXPR20 E* error_ptr() noexcept { return std::launder(detail::addressof(storage_.error)); }
+  METL_DETAIL_CONSTEXPR20 const E* error_ptr() const noexcept {
     return std::launder(detail::addressof(storage_.error));
   }
 
@@ -1042,7 +1042,7 @@ class expected : detail::expected_members<T, E> {
   METL_NODISCARD constexpr bool settled() const noexcept {
     return state_ != detail::expected_state::switching;
   }
-  METL_CONSTEXPR20 void require_settled() const noexcept { detail::require_settled(state_); }
+  METL_DETAIL_CONSTEXPR20 void require_settled() const noexcept { detail::require_settled(state_); }
 
   template <typename... Args>
   void construct_value(Args&&... args) {
@@ -1450,22 +1450,22 @@ class expected<void, E> : detail::expected_void_members<E> {
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
   // value() returns void; asserts on error state.
-  METL_CONSTEXPR20 void value() const& noexcept { METL_ASSERT(holds_value()); }
+  METL_DETAIL_CONSTEXPR20 void value() const& noexcept { METL_ASSERT(holds_value()); }
   /// @brief Verifies the success state (returns void).
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
-  METL_CONSTEXPR20 void value() && noexcept { METL_ASSERT(holds_value()); }
+  METL_DETAIL_CONSTEXPR20 void value() && noexcept { METL_ASSERT(holds_value()); }
 
   /// @brief Verifies the success state (returns void).
   /// @pre has_value()
   /// @warning Asserts (aborts by default) in the error state; it does not throw.
   // operator*() returns void.
-  METL_CONSTEXPR20 void operator*() const noexcept { METL_ASSERT(holds_value()); }
+  METL_DETAIL_CONSTEXPR20 void operator*() const noexcept { METL_ASSERT(holds_value()); }
 
   /// @brief Returns a reference to the contained error.
   /// @pre !has_value()
   /// @warning Asserts (aborts by default) in the success state; it does not throw.
-  METL_NODISCARD METL_CONSTEXPR20 E& error() & noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 E& error() & noexcept {
     METL_ASSERT(holds_error());
     return *error_ptr();
   }
@@ -1473,7 +1473,7 @@ class expected<void, E> : detail::expected_void_members<E> {
   /// @brief Returns a reference to the contained error.
   /// @pre !has_value()
   /// @warning Asserts (aborts by default) in the success state; it does not throw.
-  METL_NODISCARD METL_CONSTEXPR20 const E& error() const& noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 const E& error() const& noexcept {
     METL_ASSERT(holds_error());
     return *error_ptr();
   }
@@ -1481,7 +1481,7 @@ class expected<void, E> : detail::expected_void_members<E> {
   /// @brief Returns an rvalue reference to the contained error.
   /// @pre !has_value()
   /// @warning Asserts (aborts by default) in the success state; it does not throw.
-  METL_NODISCARD METL_CONSTEXPR20 E&& error() && noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 E&& error() && noexcept {
     METL_ASSERT(holds_error());
     return static_cast<E&&>(*error_ptr());
   }
@@ -1489,20 +1489,20 @@ class expected<void, E> : detail::expected_void_members<E> {
   /// @brief Returns an rvalue reference to the contained error.
   /// @pre !has_value()
   /// @warning Asserts (aborts by default) in the success state; it does not throw.
-  METL_NODISCARD METL_CONSTEXPR20 const E&& error() const&& noexcept {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 const E&& error() const&& noexcept {
     METL_ASSERT(holds_error());
     return static_cast<const E&&>(*error_ptr());
   }
 
   /// @brief Returns the error if present, else `default_value`. Never asserts.
   template <typename G>
-  METL_NODISCARD METL_CONSTEXPR20 E error_or(G&& default_value) const& {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 E error_or(G&& default_value) const& {
     return holds_error() ? *error_ptr() : static_cast<E>(std::forward<G>(default_value));
   }
 
   /// @brief Returns the error if present, else `default_value`. Never asserts.
   template <typename G>
-  METL_NODISCARD METL_CONSTEXPR20 E error_or(G&& default_value) && {
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 E error_or(G&& default_value) && {
     return holds_error() ? static_cast<E&&>(*error_ptr()) : static_cast<E>(std::forward<G>(default_value));
   }
 
@@ -1790,8 +1790,8 @@ class expected<void, E> : detail::expected_void_members<E> {
   }
 
  private:
-  METL_CONSTEXPR20 E* error_ptr() noexcept { return std::launder(detail::addressof(storage_.error)); }
-  METL_CONSTEXPR20 const E* error_ptr() const noexcept {
+  METL_DETAIL_CONSTEXPR20 E* error_ptr() noexcept { return std::launder(detail::addressof(storage_.error)); }
+  METL_DETAIL_CONSTEXPR20 const E* error_ptr() const noexcept {
     return std::launder(detail::addressof(storage_.error));
   }
 
@@ -1805,7 +1805,7 @@ class expected<void, E> : detail::expected_void_members<E> {
   METL_NODISCARD constexpr bool settled() const noexcept {
     return state_ != detail::expected_state::switching;
   }
-  METL_CONSTEXPR20 void require_settled() const noexcept { detail::require_settled(state_); }
+  METL_DETAIL_CONSTEXPR20 void require_settled() const noexcept { detail::require_settled(state_); }
 
   template <typename... Args>
   void construct_error(Args&&... args) {

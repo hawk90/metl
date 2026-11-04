@@ -1,0 +1,1 @@
+- The internal helpers `METL_CONSTEXPR20`, `METL_FIXED_VECTOR_ASAN`, `METL_SCOPE_EXIT_CONCAT`, `METL_SCOPE_EXIT_CONCAT_INNER` and `METL_FORCE_INLINE_ATTR` are now spelled `METL_DETAIL_*` inside METL. The old names remain as aliases until 2.0 and warn on clang 14+ (#645, #168). They were never meant for user code; write `constexpr`, or `METL_FORCE_INLINE`.

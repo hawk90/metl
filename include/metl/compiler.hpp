@@ -152,15 +152,17 @@
 //   - no virtual dispatch
 //   - bounded execution time
 // The macro applies noexcept and an always_inline hint for predictable latency.
-#define METL_ISR_SAFE noexcept METL_FORCE_INLINE_ATTR
+#define METL_ISR_SAFE noexcept METL_DETAIL_FORCE_INLINE_ATTR
 
 #if METL_COMPILER_MSVC
-#define METL_FORCE_INLINE_ATTR
+#define METL_DETAIL_FORCE_INLINE_ATTR
 #elif METL_HAS_ATTRIBUTE(always_inline) || METL_COMPILER_GCC || METL_COMPILER_CLANG
-#define METL_FORCE_INLINE_ATTR __attribute__((always_inline))
+#define METL_DETAIL_FORCE_INLINE_ATTR __attribute__((always_inline))
 #else
-#define METL_FORCE_INLINE_ATTR
+#define METL_DETAIL_FORCE_INLINE_ATTR
 #endif
+// The old public spelling of an internal helper; removed in 2.0 (#168, #645).
+#define METL_FORCE_INLINE_ATTR METL_DETAIL_FORCE_INLINE_ATTR
 
 // Brackets the body of a header whose own entity is deprecated (#645). The
 // header names that entity in its own declarations, and GCC warns about each
@@ -252,6 +254,7 @@ METL_DETAIL_DEPRECATED_HEADER_END
 #pragma clang deprecated(METL_LIKELY_ATTR, "removed in 2.0; use [[likely]] where the standard has it (#645)")
 #pragma clang deprecated(METL_UNLIKELY_ATTR, \
                          "removed in 2.0; use [[unlikely]] where the standard has it (#645)")
+#pragma clang deprecated(METL_FORCE_INLINE_ATTR, "internal; removed in 2.0, use METL_FORCE_INLINE (#645)")
 #pragma clang deprecated(METL_ISR_SAFE, \
                          "removed in 2.0; it only adds noexcept and always_inline: write noexcept (#645)")
 #endif

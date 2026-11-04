@@ -25,7 +25,8 @@
       implied. "Always" means no `return` statement comes first. A cast inside
       an `#if` arm, or inside the `if` statement of an is-constant-evaluated
       test, is exempt, since another arm can be constant; the rest of the body
-      is still checked. METL_CONSTEXPR20 counts as `constexpr`.
+      is still checked. METL_DETAIL_CONSTEXPR20 (and its old spelling
+      METL_CONSTEXPR20) counts as `constexpr`.
 
 The companion rule -- take a user object's address with `detail::addressof`,
 never `&obj` -- is not checked here. Which `&` applies to a user's type is a
@@ -103,7 +104,7 @@ _INITIALIZER = r"[\w:]+(?:<[^<>;{}]*>)?\s*(?:" + _PARENS + r"|\{[^{}]*\})"
 _INITIALIZERS = r"(?:\s*:\s*" + _INITIALIZER + r"(?:\s*,\s*" + _INITIALIZER + r")*)?"
 _TAIL = _QUALIFIERS + r"\s*(?:->[^{;]*?)?" + _INITIALIZERS + r"\s*\{"
 CONSTEXPR_FUNCTION = re.compile(
-    r"\b(?:constexpr|METL_CONSTEXPR20)\b(?P<signature>[^;{}]*?\))" + _TAIL, re.S)
+    r"\b(?:constexpr|METL_(?:DETAIL_)?CONSTEXPR20)\b(?P<signature>[^;{}]*?\))" + _TAIL, re.S)
 # Any function definition: its name, and the declaration text before the name.
 FUNCTION_DEFINITION = re.compile(
     r"(?P<prefix>[^;{}]*?)(?<![\w.>:])(?P<name>~?[A-Za-z_]\w*)\s*\((?P<params>[^;{}]*?)\)" + _TAIL, re.S)
@@ -215,7 +216,7 @@ def non_constexpr_functions(code):
         prefix = match.group("prefix")
         if name in NOT_A_FUNCTION or name.startswith("~") or re.search(r"=\s*$|\breturn\s*$", prefix):
             continue
-        if re.search(r"\b(?:constexpr|METL_CONSTEXPR20)\b", prefix):
+        if re.search(r"\b(?:constexpr|METL_(?:DETAIL_)?CONSTEXPR20)\b", prefix):
             constant.add(name)
         elif not re.search(r"\bconstexpr\s*$", prefix):
             plain.add(name)

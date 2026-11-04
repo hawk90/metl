@@ -49,10 +49,17 @@
 // access past size() (à la absl::InlinedVector). Enabled only under
 // AddressSanitizer; a no-op otherwise. Uses the manual poison interface.
 #if defined(__SANITIZE_ADDRESS__) || METL_HAVE_FEATURE(address_sanitizer)
-#define METL_FIXED_VECTOR_ASAN 1
+#define METL_DETAIL_FIXED_VECTOR_ASAN 1
 #include <sanitizer/asan_interface.h>
 #else
-#define METL_FIXED_VECTOR_ASAN 0
+#define METL_DETAIL_FIXED_VECTOR_ASAN 0
+#endif
+// The old public spelling of an internal switch; removed in 2.0 (#168, #645).
+#define METL_FIXED_VECTOR_ASAN METL_DETAIL_FIXED_VECTOR_ASAN
+#if defined(__clang__) && defined(__has_warning)
+#if __has_warning("-Wdeprecated-pragma")
+#pragma clang deprecated(METL_FIXED_VECTOR_ASAN, "internal; removed in 2.0 (#645)")
+#endif
 #endif
 
 namespace metl {
@@ -756,7 +763,7 @@ class fixed_vector : detail::no_implicit_copy_move<fixed_vector<T, Capacity>> {
     }
   }
 
-#if METL_FIXED_VECTOR_ASAN
+#if METL_DETAIL_FIXED_VECTOR_ASAN
   // How many element destructors of this vector type are running on this
   // thread. A destructor may re-enter its vector (#190), and a nested removal
   // would poison the tail -- including the slot whose destructor is still on
