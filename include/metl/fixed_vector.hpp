@@ -54,13 +54,6 @@
 #else
 #define METL_DETAIL_FIXED_VECTOR_ASAN 0
 #endif
-// The old public spelling of an internal switch; removed in 2.0 (#168, #645).
-#define METL_FIXED_VECTOR_ASAN METL_DETAIL_FIXED_VECTOR_ASAN
-#if defined(__clang__) && defined(__has_warning)
-#if __has_warning("-Wdeprecated-pragma")
-#pragma clang deprecated(METL_FIXED_VECTOR_ASAN, "internal; removed in 2.0 (#645)")
-#endif
-#endif
 
 namespace metl {
 

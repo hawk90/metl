@@ -10,9 +10,8 @@
 // IMPORTANT flat_map contract (differs from std::map!):
 //   flat_map::nth(i) is the element at *position* i of the sorted storage, like
 //   a vector index. To look a value up *by key* use find() / contains() /
-//   try_emplace(). The positional operator[] and at() are deprecated and go in
-//   2.0 (#645): operator[](key) used the way std::map's is would compile for
-//   integral keys and silently look up a position.
+//   try_emplace(). There is no operator[] or at(), so m[k] cannot be mistaken
+//   for a key lookup.
 //
 // Everything here is main()-returning-0 with self-checks; a non-zero return
 // means an invariant broke.

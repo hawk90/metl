@@ -2,11 +2,10 @@
 
 // Optimization / codegen hints (abseil `absl/base/optimization.h` style).
 //
-// Branch-prediction, assumption and cache-line helpers. Every macro has a
-// portable fallback: the branch-prediction macros collapse to the plain
-// boolean value, METL_ASSUME collapses to a no-op, and the cache-line helpers
-// use standard `alignas`. Nothing here changes program semantics — only the
-// code the compiler is allowed to generate.
+// Branch-prediction and cache-line helpers. Every macro has a portable
+// fallback: the branch-prediction macros collapse to the plain boolean value,
+// and the cache-line helpers use standard `alignas`. Nothing here changes
+// program semantics — only the code the compiler is allowed to generate.
 
 #include "metl/compiler.hpp"
 
@@ -26,35 +25,6 @@
 #else
 #define METL_PREDICT_TRUE(expr) (static_cast<bool>(expr))
 #define METL_PREDICT_FALSE(expr) (static_cast<bool>(expr))
-#endif
-
-// METL_ASSUME(cond)
-//   Tell the optimizer it may assume `cond` holds. Reaching this macro with a
-//   false `cond` is undefined behavior, so use it only for facts you can prove.
-//   `cond` may be evaluated; keep it side-effect free.
-/// @brief Tell the optimizer it may assume `cond` holds. Reaching this with a
-///        false `cond` is undefined behavior; keep `cond` side-effect free.
-#if METL_COMPILER_MSVC
-#define METL_ASSUME(cond) __assume(cond)
-#elif METL_HAS_BUILTIN(__builtin_assume)
-#define METL_ASSUME(cond) __builtin_assume(static_cast<bool>(cond))
-#elif METL_HAS_BUILTIN(__builtin_unreachable) || METL_COMPILER_GCC || METL_COMPILER_CLANG
-#define METL_ASSUME(cond) (static_cast<bool>(cond) ? void(0) : __builtin_unreachable())
-#else
-#define METL_ASSUME(cond) (static_cast<void>(0))
-#endif
-
-// METL_PREFETCH(addr) — hint that `addr` will be read soon.
-//   A pure hint: it never faults on a bad address and never changes program
-//   semantics, so passing a null or unmapped pointer is harmless. Collapses to
-//   nothing where the compiler has no prefetch builtin (including MSVC, whose
-//   intrinsic requires a platform header this header will not pull in).
-/// @brief Hint that the cache line containing `addr` will be read soon. Pure
-///        hint: never faults, never changes semantics, may compile to nothing.
-#if METL_HAS_BUILTIN(__builtin_prefetch) || defined(__GNUC__)
-#define METL_PREFETCH(addr) __builtin_prefetch(static_cast<const void*>(addr))
-#else
-#define METL_PREFETCH(addr) (static_cast<void>(0))
 #endif
 
 // METL_CACHELINE_SIZE — the target's assumed hardware cache-line size in bytes.
@@ -89,14 +59,4 @@
 #else
 #define METL_CACHELINE_PADDED_BEGIN
 #define METL_CACHELINE_PADDED_END
-#endif
-
-// Macros deprecated for removal in 2.0 (#168, #645). A macro cannot carry
-// [[deprecated]]; clang 14+ warns at each expansion (-Wdeprecated-pragma).
-// GCC and MSVC have no per-macro warning, so their users have the CHANGELOG.
-#if defined(__clang__) && defined(__has_warning)
-#if __has_warning("-Wdeprecated-pragma")
-#pragma clang deprecated(METL_ASSUME, "removed in 2.0; nothing in METL uses it (#645)")
-#pragma clang deprecated(METL_PREFETCH, "removed in 2.0; use __builtin_prefetch (#645)")
-#endif
 #endif

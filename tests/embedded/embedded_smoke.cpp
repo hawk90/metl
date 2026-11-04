@@ -7,10 +7,6 @@
 // is involved beyond the archiver.
 
 // ---- Every public header ---------------------------------------------------
-// compiler.hpp's cxx_standard is deprecated for 2.0 (#645); this probe keeps
-// building it until then, warnings off.
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-
 #include "metl/arena_allocator.hpp"
 #include "metl/assert.hpp"
 #include "metl/atomic_handle.hpp"
@@ -121,8 +117,8 @@ static_assert(metl::popcount(std::uint32_t{0xFFu}) == 8, "bit.hpp popcount");
 using smoke_bitfield = metl::bitfield<0, 4>;
 static_assert(smoke_bitfield::width == 4, "bitfield width");
 
-// compiler.hpp -- exercise inline constexpr values.
-static_assert(metl::cxx_standard >= 201703L, "compiler.hpp cxx_standard");
+// compiler.hpp -- detection macros only.
+static_assert(METL_CXX_STANDARD >= 201703L, "compiler.hpp METL_CXX_STANDARD");
 
 // config.hpp -- inline constexpr.
 static_assert(metl::version_major >= 1, "config.hpp version_major");

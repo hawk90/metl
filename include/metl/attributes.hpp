@@ -24,38 +24,6 @@
 #endif
 #endif
 
-/// @brief Maps to `[[noreturn]]`: the function never returns to its caller.
-#ifndef METL_NORETURN
-#if METL_HAS_CPP_ATTRIBUTE(noreturn) >= 200809L
-#define METL_NORETURN [[noreturn]]
-#else
-#define METL_NORETURN
-#endif
-#endif
-
-/// @brief Force inlining regardless of optimizer heuristics. Maps to
-///        `__forceinline` (MSVC) or `inline __attribute__((always_inline))`.
-// Expands exactly like METL_FORCE_INLINE (compiler.hpp); this is the abseil
-// ABSL_ATTRIBUTE_ALWAYS_INLINE spelling.
-#ifndef METL_ALWAYS_INLINE
-#if METL_COMPILER_MSVC
-#define METL_ALWAYS_INLINE __forceinline
-#elif METL_HAS_ATTRIBUTE(always_inline) || METL_COMPILER_GCC || METL_COMPILER_CLANG
-#define METL_ALWAYS_INLINE inline __attribute__((always_inline))
-#else
-#define METL_ALWAYS_INLINE inline
-#endif
-#endif
-
-/// @brief Maps to `[[maybe_unused]]`: suppress unused-entity warnings.
-#ifndef METL_MAYBE_UNUSED
-#if METL_HAS_CPP_ATTRIBUTE(maybe_unused) >= 201603L
-#define METL_MAYBE_UNUSED [[maybe_unused]]
-#else
-#define METL_MAYBE_UNUSED
-#endif
-#endif
-
 /// @brief Maps to `[[deprecated(msg)]]`: mark an entity deprecated with a message.
 #ifndef METL_DEPRECATED
 #if METL_HAS_CPP_ATTRIBUTE(deprecated) >= 201309L
@@ -100,16 +68,5 @@
 #define METL_ATTRIBUTE_TRIVIAL_ABI __attribute__((trivial_abi))
 #else
 #define METL_ATTRIBUTE_TRIVIAL_ABI
-#endif
-#endif
-
-// Macros deprecated for removal in 2.0 (#168, #645). A macro cannot carry
-// [[deprecated]]; clang 14+ warns at each expansion (-Wdeprecated-pragma).
-// GCC and MSVC have no per-macro warning, so their users have the CHANGELOG.
-#if defined(__clang__) && defined(__has_warning)
-#if __has_warning("-Wdeprecated-pragma")
-#pragma clang deprecated(METL_NORETURN, "removed in 2.0; use [[noreturn]] (#645)")
-#pragma clang deprecated(METL_ALWAYS_INLINE, "removed in 2.0; use METL_FORCE_INLINE (#645)")
-#pragma clang deprecated(METL_MAYBE_UNUSED, "removed in 2.0; use [[maybe_unused]] (#645)")
 #endif
 #endif

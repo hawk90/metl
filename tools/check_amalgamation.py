@@ -193,7 +193,7 @@ def self_test(cxx):
             failures.append(f"a two-TU test built alone was classified {got!r}")
     with tempfile.TemporaryDirectory() as scratch:
         tier2 = Path(scratch) / "exp_test.cpp"
-        tier2.write_text('#include <metl/exp/bitset.hpp>\nint main() { return 0; }\n')
+        tier2.write_text('#include <metl/exp/thing.hpp>\nint main() { return 0; }\n')
         core = Path(scratch) / "core_test.cpp"
         core.write_text('// mentions metl/exp/ in a comment only\n#include <metl/span.hpp>\n')
         if tier2_tests([tier2, core]) != [tier2]:

@@ -48,14 +48,6 @@
 #define METL_DETAIL_CONSTEXPR_LIFETIME 0
 #define METL_DETAIL_CONSTEXPR20
 #endif
-// The old public spelling of an internal helper; removed in 2.0 (#168, #645).
-#define METL_CONSTEXPR20 METL_DETAIL_CONSTEXPR20
-#if defined(__clang__) && defined(__has_warning)
-#if __has_warning("-Wdeprecated-pragma")
-#pragma clang deprecated(METL_CONSTEXPR20, \
-                         "internal; removed in 2.0, write constexpr (C++20) or nothing (#645)")
-#endif
-#endif
 
 namespace metl {
 namespace detail {
