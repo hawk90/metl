@@ -134,7 +134,7 @@ all three have, as the unordered containers do.
 | Whole objects, one producer, one consumer | [`spsc_queue<T, N>`](../include/metl/spsc_queue.hpp) | Nothing beyond C++17 atomics — the default |
 | **Bytes**, with a pointer a peripheral can fill | [`spsc_byte_ring<N>`](../include/metl/spsc_byte_ring.hpp) | Same; see the driver section |
 | A compound operation to be atomic (`if (!full) push`) | [`guarded<T, Lock>`](../include/metl/lock.hpp) with `irq_lock` | Single core: this is the correct ISR↔main lock. There is deliberately **no spin_lock** |
-| Many producers or many consumers | [`static_message_queue<T, N>`](../include/metl/static_message_queue.hpp) wrapped in `guarded<..., irq_lock>` | Masking interrupts; works on Cortex-M0 too |
+| Many producers or many consumers | [`fixed_queue<T, N>`](../include/metl/fixed_queue.hpp) wrapped in `guarded<..., irq_lock>` (`static_message_queue` is deprecated for 2.0, #166) | Masking interrupts; works on Cortex-M0 too |
 | One shared word (a flag) | [`atomic_ref<T>`](../include/metl/atomic_ref.hpp) | `load` / `store` only. Its read-modify-write operations (`fetch_add`, CAS) are lock-free retry loops: **not** for ISR↔main on one core |
 
 **Lock-free is multi-core only.** [`mpmc_queue<T, N>`](../include/metl/mpmc_queue.hpp),
@@ -194,7 +194,7 @@ Worked example: [`examples/callbacks.cpp`](../examples/callbacks.cpp).
 |---|---|
 | A value, or nothing | [`optional<T>`](../include/metl/optional.hpp) |
 | A value, or an error explaining why not | [`expected<T, E>`](../include/metl/expected.hpp) (`T` may be `void`) |
-| One of several alternatives | [`variant<Ts...>`](../include/metl/variant.hpp) |
+| One of several alternatives | `std::variant<Ts...>` (`metl::variant` is deprecated for 2.0, #635) |
 | A view of someone else's contiguous data | [`span<T>`](../include/metl/span.hpp) |
 
 > **There are no `bad_*_access` exceptions.** METL is exception-free, so

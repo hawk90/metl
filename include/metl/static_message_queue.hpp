@@ -30,6 +30,8 @@
 #include <type_traits>
 #include <utility>
 
+METL_DETAIL_DEPRECATED_HEADER_BEGIN
+
 namespace metl {
 
 /// @brief Fixed-capacity single-threaded FIFO message queue (bounded ring buffer).
@@ -54,8 +56,11 @@ namespace metl {
 template <typename T, std::size_t Capacity>
 // The copy and move operations are the gated ones below, which clang-tidy does not
 // recognize as such (detail/copy_move_gate.hpp).
-// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
-class static_message_queue : detail::no_implicit_copy_move<static_message_queue<T, Capacity>> {
+// NOLINTBEGIN(cppcoreguidelines-special-member-functions)
+class METL_DEPRECATED(
+    "static_message_queue is removed in 2.0; use guarded<fixed_queue<T, N>, irq_lock> (#166)")
+    static_message_queue : detail::no_implicit_copy_move<static_message_queue<T, Capacity>> {
+  // NOLINTEND(cppcoreguidelines-special-member-functions)
   // metl is a NO-EXCEPTION library. The only T operation that runs inside a noexcept context here is
   // DESTRUCTION: pop(), clear(), pop_front() and ~static_message_queue() are noexcept and destroy T.
   // A throwing destructor would escape that noexcept boundary and call std::terminate at RUNTIME, so
@@ -298,3 +303,5 @@ class static_message_queue : detail::no_implicit_copy_move<static_message_queue<
 };
 
 }  // namespace metl
+
+METL_DETAIL_DEPRECATED_HEADER_END

@@ -38,7 +38,7 @@ namespace metl {
 /// does not**, and the `static_assert` below fires there rather than silently
 /// degrading to a lock. On such a target, or on any single-core target where a
 /// lock-free retry loop is the wrong tool, use
-/// `guarded<static_message_queue<T, N>, irq_lock>` instead — masking interrupts
+/// `guarded<fixed_queue<T, N>, irq_lock>` instead — masking interrupts
 /// is the correct lock between an ISR and the main loop, and a lock-free retry
 /// loop is not. On one core the ISR's operation completes, but the main loop's
 /// compare-exchange retry fails every time an interrupt lands inside it (exception
@@ -113,7 +113,7 @@ class mpmc_queue {
   static_assert(detail::dependent_true_v<T> && std::atomic<std::size_t>::is_always_lock_free,
                 "metl::mpmc_queue requires a lock-free compare-exchange on std::size_t. "
                 "ARMv6-M (Cortex-M0/M0+) has no CAS instruction. Use "
-                "metl::guarded<metl::static_message_queue<T, N>, metl::irq_lock> there — and "
+                "metl::guarded<metl::fixed_queue<T, N>, metl::irq_lock> there — and "
                 "on any single-core target, where a lock-free retry loop preempted by an ISR "
                 "would spin forever.");
 

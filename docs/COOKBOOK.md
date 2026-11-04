@@ -57,7 +57,7 @@ the ones that bite people; read them before anything else.
 | `at(i)` out of range | **asserts** (aborts by default) | throws `std::out_of_range` |
 | `optional::value()` when empty | **asserts** | throws `std::bad_optional_access` |
 | `expected::value()` on error | **asserts** | throws `std::bad_expected_access` |
-| `variant` `get<T>()` wrong alternative | **asserts** | throws `std::bad_variant_access` |
+| `variant` `get<T>()` wrong alternative (deprecated for 2.0, #635) | **asserts** | throws `std::bad_variant_access` |
 | `flat_map::operator[]` / `at()` | **positional index** into sorted storage | key lookup / insert (`std::map`) |
 | A failed assert | is provably `[[noreturn]]` — **aborts**, never falls through | n/a |
 | `function_ref` construction | **rejects rvalue callables** (deleted overload) | — (`std::function_ref`, P0792, accepts temporaries) |
@@ -243,18 +243,20 @@ if (auto r = parse_u32(text)) {
 // optional: value_or() is the safe, branch-free default path.
 std::int32_t gain = config_lookup("gain").value_or(1);
 
-// variant: dispatch with visit (handles every alternative).
-using result = metl::variant<ok_result, busy_result>;
-std::uint32_t code = metl::visit([](auto&& alt) -> std::uint32_t {
+// std::variant: dispatch with visit (handles every alternative). metl::variant
+// is deprecated for 2.0 (#635).
+using result = std::variant<ok_result, busy_result>;
+std::uint32_t code = std::visit([](auto&& alt) -> std::uint32_t {
     using A = std::decay_t<decltype(alt)>;
     if constexpr (std::is_same_v<A, busy_result>) return 1000u + alt.retry_ms;
     else return alt.value;
 }, run_command(busy));
 ```
 
-Remember: `value()`, `operator*`, and `get<T>()` **assert** — there is no
-`bad_*_access` exception in METL. Check presence first, or use `value_or` /
-`get_if` / `find`.
+Remember: METL's `value()` and `operator*` **assert** — there is no
+`bad_*_access` exception in METL. `std::get` on the wrong alternative throws
+instead, so check with `holds_alternative` or use `get_if`. Check presence
+first, or use `value_or` / `get_if` / `find`.
 
 ## Per-tick scratch memory without malloc
 

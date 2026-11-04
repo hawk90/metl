@@ -13,6 +13,7 @@
 // element it built.
 
 #include "metl_check.hpp"
+#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
 
 #include <metl/fixed_deque.hpp>
 #include <metl/fixed_vector.hpp>

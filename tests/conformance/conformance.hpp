@@ -22,6 +22,7 @@
 // its header with a `// conformance-header:` line next to the adapter.
 
 #include "metl_check.hpp"
+#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
 
 #include <array>
 #include <atomic>

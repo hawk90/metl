@@ -9,6 +9,8 @@
 // Now each operation exists only when its element allows it
 // (detail/copy_move_gate.hpp). `std::array` and `std::optional` are the model.
 
+#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
+
 #include <cstddef>
 #include <functional>
 #include <optional>

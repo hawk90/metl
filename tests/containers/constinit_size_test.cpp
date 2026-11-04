@@ -10,6 +10,8 @@
 // fallback a compile error. C++17 cannot constant-initialize these containers
 // at all (see constant_init.hpp), so the check is C++20's.
 
+#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
+
 #include <cstdint>
 
 #include <metl/arena_allocator.hpp>

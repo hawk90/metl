@@ -50,13 +50,18 @@
 #define METL_DETAIL_VARIANT_UNREACHABLE_OK_END
 #endif
 
+METL_DETAIL_DEPRECATED_HEADER_BEGIN
+
 namespace metl {
 
 /// @brief Sentinel index value for a valueless variant (largest size_t).
 constexpr std::size_t variant_npos = static_cast<std::size_t>(-1);
 
+/// @deprecated Removed in 2.0 (#635): use `std::variant`. It is in every C++17
+///             standard library METL supports, METL calls nothing through
+///             `metl::variant`, and the two differ in code size on Cortex-M.
 template <typename... Ts>
-class variant;
+class METL_DEPRECATED("metl::variant is removed in 2.0; use std::variant (#635)") variant;
 
 namespace detail {
 
@@ -1208,3 +1213,5 @@ constexpr bool operator>=(const variant<Ts...>& lhs, const variant<Ts...>& rhs) 
 }
 
 }  // namespace metl
+
+METL_DETAIL_DEPRECATED_HEADER_END

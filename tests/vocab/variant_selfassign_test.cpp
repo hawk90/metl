@@ -4,6 +4,7 @@
 // through emplace(), which destroyed the active alternative BEFORE reading the
 // (possibly aliasing) source — a use-after-destruction for `v = get<T>(v)`.
 #include "metl_check.hpp"
+#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
 
 #include <metl/variant.hpp>
 

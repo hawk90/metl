@@ -1,3 +1,5 @@
+#include "metl_deprecated.hpp"  // still tests metl::variant / static_message_queue (#645)
+
 #include <metl/static_message_queue.hpp>
 
 namespace {

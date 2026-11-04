@@ -30,6 +30,10 @@
 // entangled with this gate. For the same reason embedded_smoke.cpp, which holds
 // namespace-scope instantiations of every public type, is NOT linked here.
 
+// static_allocator, variant and static_message_queue are deprecated for 2.0
+// (#645); this probe keeps building them until then, warnings off.
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 #include <cstddef>
 #include <cstdint>
 

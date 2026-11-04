@@ -4,7 +4,9 @@
 //
 //   - metl::expected<T, E> — a value OR an error, returned by value.
 //   - metl::optional<T>    — a value OR nothing.
-//   - metl::variant<...>   — a type-safe tagged union.
+//   - std::variant<...>    — a type-safe tagged union. METL's own variant is
+//                            deprecated for 2.0 (#635); the standard one is
+//                            in every C++17 library METL supports.
 //
 // These replace exceptions and out-parameters on freestanding targets where
 // throwing is banned or unavailable.
@@ -19,10 +21,10 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <variant>
 
 #include <metl/expected.hpp>
 #include <metl/optional.hpp>
-#include <metl/variant.hpp>
 
 namespace {
 
@@ -67,7 +69,7 @@ struct ok_result {
 struct busy_result {
   std::uint32_t retry_ms;
 };
-using command_result = metl::variant<ok_result, busy_result>;
+using command_result = std::variant<ok_result, busy_result>;
 
 command_result run_command(bool device_busy) noexcept {
   if (device_busy) {
@@ -118,17 +120,18 @@ int main() {
   // ---- variant: dispatch on the active alternative -------------------------
   {
     command_result res = run_command(/*device_busy=*/false);
-    if (!metl::holds_alternative<ok_result>(res)) {
+    if (!std::holds_alternative<ok_result>(res)) {
       return 7;
     }
-    if (metl::get<ok_result>(res).value != 7) {
+    // get_if, not get: std::get reports a wrong alternative by throwing.
+    if (std::get_if<ok_result>(&res)->value != 7) {
       return 8;
     }
   }
   {
     command_result res = run_command(/*device_busy=*/true);
     // visit handles every alternative in one place.
-    const std::uint32_t code = metl::visit(
+    const std::uint32_t code = std::visit(
         [](auto&& alt) -> std::uint32_t {
           using A = std::decay_t<decltype(alt)>;
           if constexpr (std::is_same_v<A, busy_result>) {

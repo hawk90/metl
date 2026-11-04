@@ -12,6 +12,10 @@
 // stay far below the alternative's size; the out-of-line temporary paths are
 // excluded by name, since holding the temporary is their job.
 
+// static_allocator, variant and static_message_queue are deprecated for 2.0
+// (#645); this probe keeps building them until then, warnings off.
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 #include <metl/variant.hpp>
 
 // Named, not anonymous: a function taking a type from an unnamed namespace has
