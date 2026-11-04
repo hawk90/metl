@@ -138,9 +138,8 @@ Worked example: [`examples/containers.cpp`](examples/containers.cpp)
 (`fixed_vector` + `flat_map` + `ring_buffer`).
 
 > **Contract notes.** `at()` **asserts** on out-of-range (it does not throw).
-> `flat_map::operator[]` / `at()` are **positional** index accessors over the
-> sorted storage — the *opposite* of `std::map`. Look up by key with
-> `find` / `contains` / `try_emplace` instead.
+> `flat_map` has no `operator[]` or `at()`: look up by key with
+> `find` / `contains` / `try_emplace`, and by position with `nth(i)`.
 
 **Every operation that can run out of capacity comes in two forms.** `X(...)`
 treats "full" as a programming error and asserts; `try_X(...)` treats it as a
@@ -331,7 +330,7 @@ Configuration
   ```
 
 - **Non-standard contracts** — a few types deliberately diverge from `std::`
-  (asserting accessors, positional `flat_map` indexing, lvalue-only
+  (asserting accessors, no `flat_map::operator[]`, lvalue-only
   `function_ref`). See the
   [contracts table in the Cookbook](docs/COOKBOOK.md#non-standard-contracts-you-must-know).
 

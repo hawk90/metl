@@ -185,14 +185,6 @@ class fixed_string {
     (void)appended;
   }
 
-  /// Removes the last character if the string is non-empty.
-  /// @return true on success; false if the string is empty (no assert).
-  /// @deprecated Removed in 2.0: underflow gets no `try_` form, because
-  /// `if (!s.empty())` is an exact, non-racy pre-check on a single-threaded
-  /// container (SCOPE.md R5). Write `if (!s.empty()) s.pop_back();`.
-  METL_DEPRECATED("try_pop_back is removed in 2.0; use if (!s.empty()) s.pop_back() (#645)")
-  METL_NODISCARD bool try_pop_back() noexcept { return try_remove_last(); }
-
   /// Removes the last character.
   /// @pre String is non-empty; asserts and aborts otherwise.
   void pop_back() noexcept {
