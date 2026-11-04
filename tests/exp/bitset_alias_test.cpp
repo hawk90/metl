@@ -2,6 +2,7 @@
 // it, so code that still names it there passes its sets to code that does not.
 
 #include "metl_check.hpp"
+#include "metl_deprecated.hpp"  // tests the metl::exp aliases deprecated for 2.0 (#645)
 
 #include <cstddef>
 #include <type_traits>

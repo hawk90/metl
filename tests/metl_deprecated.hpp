@@ -4,7 +4,8 @@
 // not fail the -Werror builds. Only two kinds of test include it:
 // tests/core/deprecated_names_test.cpp, and a test that still exercises a
 // deprecated component until 2.0 removes it (static_allocator, variant,
-// static_message_queue). Every other test uses the replacement, so a new use
+// static_message_queue, the metl::exp aliases, the compiler.hpp macros and
+// variables). Every other test uses the replacement, so a new use
 // of a deprecated name anywhere else still fails.
 //
 // The pragmas stay in force for the rest of the translation unit, which is the
@@ -14,4 +15,10 @@
 #pragma warning(disable : 4996)
 #else
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+// The deprecated macros warn under their own flag, on clang 14+ only.
+#if defined(__clang__) && defined(__has_warning)
+#if __has_warning("-Wdeprecated-pragma")
+#pragma clang diagnostic ignored "-Wdeprecated-pragma"
+#endif
 #endif

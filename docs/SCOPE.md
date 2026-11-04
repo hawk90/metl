@@ -279,7 +279,7 @@ for a caller.
 | Item | Note |
 |---|---|
 | `cpu_relax()` / `wait_for_event()` / `send_event()` | **Landed.** Split deliberately: on Cortex-M `yield` is effectively a no-op, so the real idle idiom is `WFE`/`SEV`. One name for two semantics would be a lie. Emission verified per target. |
-| `METL_PREFETCH` / `compiler_barrier()` | **Landed.** Branch hints (`METL_PREDICT_TRUE/FALSE`) and `METL_ASSUME` already existed in `optimization.hpp`; only the prefetch hint and the compiler-only barrier were missing. |
+| `METL_PREFETCH` / `compiler_barrier()` | **Landed.** Branch hints (`METL_PREDICT_TRUE/FALSE`) and `METL_ASSUME` already existed in `optimization.hpp`; only the prefetch hint and the compiler-only barrier were missing. `METL_PREFETCH` and `METL_ASSUME` found no caller in METL and are deprecated for 2.0 (#645); `compiler_barrier()` stays. |
 | cache-line isolation | **Already present.** `optimization.hpp` has `METL_CACHELINE_SIZE`/`METL_CACHELINE_ALIGNED` with its own `constexpr` size (`std::hardware_*_interference_size` carries a libstdc++ ABI warning), and `spsc_queue` already puts `head_`, `tail_` and the ring on separate lines. No `cacheline_padded<T>` wrapper was needed. |
 | `versioned_handle` + `handle_pool` | **Landed.** See §7. A stale `handle_pool` handle resolves to `nullptr` instead of a recycled slot. |
 | lock policy (`irq_lock` / `null_lock`) + `guarded<T, Lock>` | **Landed**, but *not* retrofitted onto existing types — see below. `spin_lock` deliberately omitted. |

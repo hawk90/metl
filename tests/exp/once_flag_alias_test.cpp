@@ -3,6 +3,7 @@
 // try_call_once called under either name.
 
 #include "metl_check.hpp"
+#include "metl_deprecated.hpp"  // tests the metl::exp aliases deprecated for 2.0 (#645)
 
 #include <type_traits>
 

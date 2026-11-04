@@ -90,3 +90,13 @@
 #define METL_CACHELINE_PADDED_BEGIN
 #define METL_CACHELINE_PADDED_END
 #endif
+
+// Macros deprecated for removal in 2.0 (#168, #645). A macro cannot carry
+// [[deprecated]]; clang 14+ warns at each expansion (-Wdeprecated-pragma).
+// GCC and MSVC have no per-macro warning, so their users have the CHANGELOG.
+#if defined(__clang__) && defined(__has_warning)
+#if __has_warning("-Wdeprecated-pragma")
+#pragma clang deprecated(METL_ASSUME, "removed in 2.0; nothing in METL uses it (#645)")
+#pragma clang deprecated(METL_PREFETCH, "removed in 2.0; use __builtin_prefetch (#645)")
+#endif
+#endif
