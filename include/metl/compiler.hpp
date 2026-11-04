@@ -162,10 +162,34 @@
 #define METL_FORCE_INLINE_ATTR
 #endif
 
+// Brackets the body of a header whose own entity is deprecated (#645). The
+// header names that entity in its own declarations, and GCC warns about each
+// such use as soon as the header is included; inside the brackets they stay
+// quiet, while a caller's use outside them still warns at the caller's line.
+#if defined(_MSC_VER) && !defined(__clang__)
+#define METL_DETAIL_DEPRECATED_HEADER_BEGIN __pragma(warning(push)) __pragma(warning(disable : 4996))
+#define METL_DETAIL_DEPRECATED_HEADER_END __pragma(warning(pop))
+#elif defined(__GNUC__)
+#define METL_DETAIL_DEPRECATED_HEADER_BEGIN \
+  _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wdeprecated-declarations\"")
+#define METL_DETAIL_DEPRECATED_HEADER_END _Pragma("GCC diagnostic pop")
+#else
+#define METL_DETAIL_DEPRECATED_HEADER_BEGIN
+#define METL_DETAIL_DEPRECATED_HEADER_END
+#endif
+
+// The variables below are deprecated for removal in 2.0 (#168, #645). Each is
+// an inline variable whose initializer differs by compiler or standard, which
+// is an ODR violation the moment two translation units disagree. Plain
+// [[deprecated]]: <metl/attributes.hpp> is not read yet when this header is
+// included first.
+METL_DETAIL_DEPRECATED_HEADER_BEGIN
+
 namespace metl {
 
 /// Identifies the compiler that built the translation unit.
-enum class compiler_id {
+enum class [[deprecated(
+    "metl::compiler_id is removed in 2.0; test METL_COMPILER_CLANG, _GCC or _MSVC (#645)")]] compiler_id {
   unknown = 0,  ///< Compiler not recognized by the detection macros.
   clang = 1,    ///< LLVM/Clang.
   gcc = 2,      ///< GNU GCC.
@@ -173,6 +197,7 @@ enum class compiler_id {
 };
 
 /// The compiler that built this translation unit (compile-time constant).
+[[deprecated("metl::active_compiler is removed in 2.0; test METL_COMPILER_CLANG, _GCC or _MSVC (#645)")]]
 inline constexpr compiler_id active_compiler =
 #if METL_COMPILER_CLANG
     compiler_id::clang;
@@ -187,19 +212,50 @@ inline constexpr compiler_id active_compiler =
 /// The active language standard value (e.g. 201703L for C++17): `__cplusplus`,
 /// or `_MSVC_LANG` on MSVC, whose `__cplusplus` reads 199711L unless
 /// `/Zc:__cplusplus` is passed.
+[[deprecated("metl::cxx_standard is removed in 2.0; use METL_CXX_STANDARD (#645)")]]
 inline constexpr long cxx_standard = METL_CXX_STANDARD;
 /// True when the active compiler is Clang.
+[[deprecated("metl::is_clang is removed in 2.0; use METL_COMPILER_CLANG (#645)")]]
 inline constexpr bool is_clang = METL_COMPILER_CLANG != 0;
 /// True when the active compiler is GCC.
+[[deprecated("metl::is_gcc is removed in 2.0; use METL_COMPILER_GCC (#645)")]]
 inline constexpr bool is_gcc = METL_COMPILER_GCC != 0;
 /// True when the active compiler is MSVC.
+[[deprecated("metl::is_msvc is removed in 2.0; use METL_COMPILER_MSVC (#645)")]]
 inline constexpr bool is_msvc = METL_COMPILER_MSVC != 0;
 /// True when the `[[nodiscard]]` attribute is available.
+[[deprecated("metl::has_nodiscard is removed in 2.0; use METL_HAS_CPP_ATTRIBUTE(nodiscard) (#645)")]]
 inline constexpr bool has_nodiscard = METL_DETAIL_HAS_NODISCARD != 0;
 /// True when the `[[fallthrough]]` attribute is available.
+[[deprecated("metl::has_fallthrough is removed in 2.0; use METL_HAS_CPP_ATTRIBUTE(fallthrough) (#645)")]]
 inline constexpr bool has_fallthrough = METL_DETAIL_HAS_FALLTHROUGH != 0;
 
 }  // namespace metl
+
+METL_DETAIL_DEPRECATED_HEADER_END
+
+// Macros deprecated for removal in 2.0 (#168, #645). A macro cannot carry
+// [[deprecated]]; clang 14+ warns at each expansion (-Wdeprecated-pragma).
+// GCC and MSVC have no per-macro warning, so their users have the CHANGELOG.
+#if defined(__clang__) && defined(__has_warning)
+#if __has_warning("-Wdeprecated-pragma")
+#pragma clang deprecated(METL_COMPILER_CLANG_VERSION_MAJOR, "removed in 2.0; use __clang_major__ (#645)")
+#pragma clang deprecated(METL_COMPILER_CLANG_VERSION_MINOR, "removed in 2.0; use __clang_minor__ (#645)")
+#pragma clang deprecated(METL_COMPILER_CLANG_VERSION_PATCH, "removed in 2.0; use __clang_patchlevel__ (#645)")
+#pragma clang deprecated(METL_COMPILER_GCC_VERSION_MAJOR, "removed in 2.0; use __GNUC__ (#645)")
+#pragma clang deprecated(METL_COMPILER_GCC_VERSION_MINOR, "removed in 2.0; use __GNUC_MINOR__ (#645)")
+#pragma clang deprecated(METL_COMPILER_GCC_VERSION_PATCH, "removed in 2.0; use __GNUC_PATCHLEVEL__ (#645)")
+#pragma clang deprecated(METL_HAVE_INCLUDE, "removed in 2.0; use __has_include (#645)")
+#pragma clang deprecated(METL_FALLTHROUGH, "removed in 2.0; use [[fallthrough]] (#645)")
+#pragma clang deprecated(METL_LIKELY, "removed in 2.0; use METL_PREDICT_TRUE (#645)")
+#pragma clang deprecated(METL_UNLIKELY, "removed in 2.0; use METL_PREDICT_FALSE (#645)")
+#pragma clang deprecated(METL_LIKELY_ATTR, "removed in 2.0; use [[likely]] where the standard has it (#645)")
+#pragma clang deprecated(METL_UNLIKELY_ATTR, \
+                         "removed in 2.0; use [[unlikely]] where the standard has it (#645)")
+#pragma clang deprecated(METL_ISR_SAFE, \
+                         "removed in 2.0; it only adds noexcept and always_inline: write noexcept (#645)")
+#endif
+#endif
 
 // Attribute layer (METL_NODISCARD, METL_LIFETIME_BOUND, METL_CONST_INIT, ...).
 // Included last so it can use the detection macros defined above; guarded by

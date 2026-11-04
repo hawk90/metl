@@ -1,4 +1,5 @@
 #include "metl_check.hpp"
+#include "metl_deprecated.hpp"  // tests macros and variables deprecated for 2.0 (#645)
 
 #include <cstdint>
 
