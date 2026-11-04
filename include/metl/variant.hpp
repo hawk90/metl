@@ -175,7 +175,7 @@ union alternative_storage<T, Rest...> {
   alternative_storage(alternative_storage&&) = delete;
   alternative_storage& operator=(const alternative_storage&) = delete;
   alternative_storage& operator=(alternative_storage&&) = delete;
-  METL_CONSTEXPR20 ~alternative_storage() {}
+  METL_DETAIL_CONSTEXPR20 ~alternative_storage() {}
 };
 
 template <typename T>

@@ -28,7 +28,7 @@
 // constexpr-lifetime path on only when the standard LIBRARY also provides a
 // constexpr std::construct_at (__cpp_lib_constexpr_dynamic_alloc). A toolchain
 // can be in C++20 mode with a standard library that does not, and there
-// METL_CONSTEXPR20 is empty, optional's destructor is not constexpr, optional is
+// METL_DETAIL_CONSTEXPR20 is empty, optional's destructor is not constexpr, optional is
 // therefore not a literal type -- and static_asserts written against __cplusplus
 // demand constexpr from a type the library never claimed was constexpr.
 //

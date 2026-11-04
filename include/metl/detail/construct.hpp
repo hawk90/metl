@@ -2,7 +2,7 @@
 
 /// @file
 /// @brief Object-lifetime helpers: `metl::detail::construct_at` / `destroy_at`
-///        and the `METL_CONSTEXPR20` marker. Internal.
+///        and the `METL_DETAIL_CONSTEXPR20` marker. Internal.
 
 // Internal object-lifetime helpers: metl::detail::construct_at / destroy_at.
 //
@@ -21,7 +21,7 @@
 //   * C++17: falls back to placement-new / explicit destructor call (not
 //            constant-evaluable, so the constexpr labels have no effect there).
 //
-// METL_CONSTEXPR20 expands to `constexpr` only when the C++20 constexpr path is
+// METL_DETAIL_CONSTEXPR20 expands to `constexpr` only when the C++20 constexpr path is
 // active (constexpr destructors + constexpr construct_at), and to nothing on
 // C++17. Use it on the members that drive an object's storage lifetime
 // (constructors that construct into storage, reset/destroy, the destructor).
@@ -43,10 +43,18 @@
 #include <memory>  // std::construct_at, constexpr std::destroy_at
 #define METL_DETAIL_CONSTEXPR_LIFETIME 1
 /// @brief `constexpr` when the C++20 constexpr-lifetime path is active, else empty.
-#define METL_CONSTEXPR20 constexpr
+#define METL_DETAIL_CONSTEXPR20 constexpr
 #else
 #define METL_DETAIL_CONSTEXPR_LIFETIME 0
-#define METL_CONSTEXPR20
+#define METL_DETAIL_CONSTEXPR20
+#endif
+// The old public spelling of an internal helper; removed in 2.0 (#168, #645).
+#define METL_CONSTEXPR20 METL_DETAIL_CONSTEXPR20
+#if defined(__clang__) && defined(__has_warning)
+#if __has_warning("-Wdeprecated-pragma")
+#pragma clang deprecated(METL_CONSTEXPR20, \
+                         "internal; removed in 2.0, write constexpr (C++20) or nothing (#645)")
+#endif
 #endif
 
 namespace metl {

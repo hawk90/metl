@@ -141,7 +141,7 @@ class optional : detail::no_implicit_copy_move<optional<T>> {
   }
 
   /// @brief Destroys the contained value if engaged (constexpr on C++20).
-  METL_CONSTEXPR20 ~optional() { reset(); }
+  METL_DETAIL_CONSTEXPR20 ~optional() { reset(); }
 
   // ---- Assignment -----------------------------------------------------------
 
@@ -346,7 +346,7 @@ class optional : detail::no_implicit_copy_move<optional<T>> {
   /// @note The optional is empty before the value's destructor runs, so that
   ///       destructor may call reset() or has_value(). It must not emplace into
   ///       this optional: the storage being destroyed is the storage it would use.
-  METL_CONSTEXPR20 void reset() noexcept {
+  METL_DETAIL_CONSTEXPR20 void reset() noexcept {
     if (!has_value_) {
       return;
     }
@@ -509,7 +509,7 @@ class optional : detail::no_implicit_copy_move<optional<T>> {
     // T's lifetime is managed explicitly by optional; the union itself does
     // nothing on destruction (constexpr in C++20 so optional can be a literal
     // type).
-    METL_CONSTEXPR20 ~storage_union() {}
+    METL_DETAIL_CONSTEXPR20 ~storage_union() {}
   };
 
   // For a T with a const or reference member, C++17 [basic.life]/8 does not let
@@ -518,11 +518,11 @@ class optional : detail::no_implicit_copy_move<optional<T>> {
   // compiler optimises on it, so optional does not launder here. std::launder
   // is constexpr, so this is not a constant-evaluation constraint: `expected`
   // launders in its accessors and stays constant-evaluable (#584).
-  METL_NODISCARD METL_CONSTEXPR20 T* data() noexcept { return detail::addressof(storage_.value_); }
+  METL_NODISCARD METL_DETAIL_CONSTEXPR20 T* data() noexcept { return detail::addressof(storage_.value_); }
   METL_NODISCARD constexpr const T* data() const noexcept { return detail::addressof(storage_.value_); }
 
   template <typename... Args>
-  METL_CONSTEXPR20 void construct(Args&&... args) {
+  METL_DETAIL_CONSTEXPR20 void construct(Args&&... args) {
     detail::construct_at(detail::addressof(storage_.value_), std::forward<Args>(args)...);
     has_value_ = true;
   }
