@@ -156,7 +156,7 @@ if(METL_BUILD_TESTS)
     conformance/conformance_stability conformance/conformance_alias conformance/conformance_constinit
     conformance/conformance_std_parity
     # memory/
-    memory/arena_allocator memory/static_allocator memory/monotonic_buffer
+    memory/arena_allocator memory/monotonic_buffer
     memory/object_pool memory/allocator_overflow
     memory/arena_throwing_ctor memory/object_pool_foreign_ptr
     memory/handle_pool memory/handle_pool_constant_init memory/pool_reentrancy
@@ -192,7 +192,6 @@ if(METL_BUILD_TESTS)
     core/hardening_none core/hardening_fast core/hardening_debug core/hostile_types
     core/harden_floor_none core/harden_floor_memory core/low_findings core/audit_g6
     core/conditional_noexcept core/rare_paths core/utility_assert_trips core/assert_strings_off
-    core/deprecated_names
   )
 
   foreach(_t IN LISTS _metl_tests)

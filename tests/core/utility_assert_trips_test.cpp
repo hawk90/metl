@@ -38,6 +38,11 @@ using metl_test::trips;
 void allocator_trips() {
   static metl::arena_allocator<64> arena;
   CHECK(trips([] { (void)arena.emplace<std::array<unsigned char, 128>>(); }));
+  // allocate is the asserting form of try_allocate (#662): a block that does
+  // not fit, and a request of 0, which try_allocate answers with null.
+  CHECK(arena.allocate(8) != nullptr);
+  CHECK(trips([] { (void)arena.allocate(4096); }));
+  CHECK(trips([] { (void)arena.allocate(0); }));
   arena.reset();
   static metl::arena_allocator<64>::mark_type later = arena.mark();
   (void)arena.try_emplace<int>(1);
@@ -60,6 +65,11 @@ void allocator_trips() {
 
   static metl::monotonic_buffer<16> buffer;
   CHECK(trips([] { (void)buffer.emplace<std::array<unsigned char, 32>>(); }));
+  CHECK(buffer.allocate(8, 8) != nullptr);
+  CHECK(buffer.used() == 8);
+  CHECK(trips([] { (void)buffer.allocate(4096); }));
+  CHECK(trips([] { (void)buffer.allocate(0); }));
+  CHECK(buffer.used() == 8);  // a refused request leaves the buffer as it was
 }
 
 void pool_trips() {

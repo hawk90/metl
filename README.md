@@ -179,7 +179,7 @@ Memory
 - [`intrusive_ptr`](include/metl/intrusive_ptr.hpp) with CRTP refcount base.
 - [`arena_allocator`](include/metl/arena_allocator.hpp),
   [`monotonic_buffer`](include/metl/monotonic_buffer.hpp)
-  (`static_allocator` is deprecated for 2.0: use `monotonic_buffer::try_allocate_n<T>`).
+  (typed arrays: `monotonic_buffer::try_allocate_n<T>`).
 - [`object_pool`](include/metl/object_pool.hpp).
 - [`handle_pool`](include/metl/handle_pool.hpp) +
   [`versioned_handle`](include/metl/versioned_handle.hpp) — slot pool addressed

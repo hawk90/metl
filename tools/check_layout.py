@@ -25,7 +25,12 @@ PROBE = "tests/embedded/layout_probe.cpp"
 CONFIG = "include/metl/config.hpp"
 
 # {previous release tag: {row key: "why it may change (#issue)"}}
-ALLOWED_CHANGES: dict[str, dict[str, str]] = {}
+ALLOWED_CHANGES: dict[str, dict[str, str]] = {
+    # 2.0 removes what 1.15.0 deprecated (#662).
+    "v1.15.0": {
+        "metl::static_allocator<std::uint32_t, 4>": "removed by #662, deprecated in 1.15.0",
+    },
+}
 
 # A name that proves the header's type is recorded, where it is not the stem.
 NAME_IN_HEADER = {

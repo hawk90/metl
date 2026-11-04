@@ -7,7 +7,7 @@
 // is involved beyond the archiver.
 
 // ---- Every public header ---------------------------------------------------
-// static_allocator, variant and static_message_queue are deprecated for 2.0
+// variant and static_message_queue are deprecated for 2.0
 // (#645); this probe keeps building them until then, warnings off.
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
@@ -53,7 +53,6 @@
 #include "metl/scope_exit.hpp"
 #include "metl/span.hpp"
 #include "metl/spsc_queue.hpp"
-#include "metl/static_allocator.hpp"
 #include "metl/static_message_queue.hpp"
 #include "metl/static_unordered_map.hpp"
 #include "metl/static_unordered_set.hpp"
@@ -81,7 +80,7 @@ enum class smoke_event : std::uint8_t { toggle };
 // also exercises the read_once/write_once volatile codegen path.
 volatile std::uint32_t g_smoke_mmio_reg{};
 
-// Source containers backing span / static_allocator instantiations.
+// Source containers backing span instantiations.
 std::array<int, 4> g_smoke_int_buf{};
 
 // Atomic refs require an externally-owned, suitably-aligned trivially
@@ -272,9 +271,6 @@ inline auto _smoke_make_scope_exit() noexcept {
 
 // spsc_queue.hpp
 [[maybe_unused]] metl::spsc_queue<int, 4> _spsc;
-
-// static_allocator.hpp
-[[maybe_unused]] metl::static_allocator<int, 4> _salloc;
 
 // static_message_queue.hpp
 [[maybe_unused]] metl::static_message_queue<int, 4> _smqueue;

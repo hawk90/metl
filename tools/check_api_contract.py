@@ -194,7 +194,6 @@ VALUE_ALLOWLIST = {
     "copies_in_place": _PRIVATE_VALUE,
     "copy_assign_ops": _PRIVATE_VALUE,
     "copy_ops": _PRIVATE_VALUE,
-    "create": _ASSERTING_VALUE,
     "data": _OBSERVER_VALUE,
     "destroy_ops": _PRIVATE_VALUE,
     "detach": "intrusive_ptr gives up its pointer; nothing can fail",
@@ -224,15 +223,14 @@ VALUE_ALLOWLIST = {
 # A name that means different things in different headers, by (header file name,
 # function name). `allocate` asserts here and returns null in the two below.
 VALUE_ALLOWLIST_BY_HEADER = {
-    ("static_allocator.hpp", "allocate"): _ASSERTING_VALUE,
+    ("arena_allocator.hpp", "allocate"): _ASSERTING_VALUE,
+    ("monotonic_buffer.hpp", "allocate"): _ASSERTING_VALUE,
 }
 
 # Known R2 violations, each named with the issue that fixes it. They break user
 # code to change, so they wait for 2.0.0. An entry no header still needs is
 # reported.
 R2_EXEMPT = {
-    ("arena_allocator.hpp", "allocate"): "returns null when full; #165 makes it try_allocate in 2.0.0",
-    ("monotonic_buffer.hpp", "allocate"): "returns null when full; #165 makes it try_allocate in 2.0.0",
     ("event_dispatcher.hpp", "subscribe"): "returns an empty optional when full; #155 makes it assert in 2.0.0",
 }
 
@@ -585,9 +583,10 @@ def self_test():
         if check_text(text, "<canary-value-clean>"):
             failures.append(f"R2 flagged {text!r}")
     allocate = "METL_NODISCARD void* allocate(size_type bytes) noexcept;"
-    if check_text(allocate, "include/metl/arena_allocator.hpp"):
+    subscribe = "METL_NODISCARD optional<listener_id> subscribe(listener_type listener) noexcept;"
+    if check_text(subscribe, "include/metl/event_dispatcher.hpp"):
         failures.append("R2 flagged a declaration R2_EXEMPT excuses")
-    if check_text(allocate, "include/metl/static_allocator.hpp"):
+    if check_text(allocate, "include/metl/arena_allocator.hpp"):
         failures.append("R2 flagged a declaration VALUE_ALLOWLIST_BY_HEADER excuses")
     if "R2" not in {r for _, _, r, _ in check_text(allocate, "include/metl/other_allocator.hpp")}:
         failures.append("R2 let a per-header excuse apply to a header it does not name")
