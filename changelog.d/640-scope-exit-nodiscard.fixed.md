@@ -1,1 +1,0 @@
-- `scope_exit` is now `[[nodiscard]]`. An unnamed `metl::scope_exit(...);` is a temporary that runs its callable at once, not at the end of the scope; clang now warns about it. GCC does not warn in C++17. Code that names its guard is unaffected.

@@ -1,2 +1,0 @@
-- `ring_buffer` and `fixed_deque` with a capacity that is not a power of two no longer divide on every access: on Cortex-M0 each index computation called `__aeabi_uidivmod`. Capacities that are a power of two are unchanged.
-- `flat_map` and `flat_set` copy construction and copy assignment append the source's elements without comparing them (264 comparator calls for 64 elements before, 0 now), and `flat_map::insert_or_assign` searches once instead of twice. A stateful comparator sees fewer calls.
