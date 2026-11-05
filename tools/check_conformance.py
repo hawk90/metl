@@ -89,12 +89,8 @@ EXEMPT = {
     "monotonic_buffer.hpp": "builds objects but never destroys them; their lifetime is the caller's",
     "scope_exit.hpp": "holds one callable for its whole lifetime; nothing is added or removed",
     "lock.hpp": "guarded<T> holds one T for its whole lifetime; nothing is added or removed",
-    "exp/bitset.hpp": "a using-declaration of bitset.hpp's type, which is EXEMPT below",
     "bitset.hpp": "holds bits, not objects",
-    "exp/once_flag.hpp": "using-declarations of once_flag.hpp's names, which is EXEMPT below",
     "once_flag.hpp": "holds a state word; the initializer's object is the caller's",
-    "exp/intrusive_forward_list.hpp": "using-declarations of intrusive_forward_list.hpp's types, which are EXEMPT below",
-    "exp/intrusive_list.hpp": "using-declarations of intrusive_list.hpp's types, which are EXEMPT below",
     "intrusive_forward_list.hpp": ("links objects the caller owns; stores, constructs and destroys none. "
                     "std parity: agrees_with_std_forward_list in its own test"),
     "intrusive_list.hpp": ("links objects the caller owns; stores, constructs and destroys none. "

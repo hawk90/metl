@@ -133,15 +133,6 @@ auto operator+(scope_exit_tag,
 
 #define METL_DETAIL_SCOPE_EXIT_CONCAT_INNER(a, b) a##b
 #define METL_DETAIL_SCOPE_EXIT_CONCAT(a, b) METL_DETAIL_SCOPE_EXIT_CONCAT_INNER(a, b)
-// The old public spellings of internal helpers; removed in 2.0 (#168, #645).
-#define METL_SCOPE_EXIT_CONCAT_INNER(a, b) METL_DETAIL_SCOPE_EXIT_CONCAT_INNER(a, b)
-#define METL_SCOPE_EXIT_CONCAT(a, b) METL_DETAIL_SCOPE_EXIT_CONCAT(a, b)
-#if defined(__clang__) && defined(__has_warning)
-#if __has_warning("-Wdeprecated-pragma")
-#pragma clang deprecated(METL_SCOPE_EXIT_CONCAT_INNER, "internal; removed in 2.0 (#645)")
-#pragma clang deprecated(METL_SCOPE_EXIT_CONCAT, "internal; removed in 2.0 (#645)")
-#endif
-#endif
 
 // Creates an anonymous RAII guard executing `expr` when the enclosing
 // scope ends. The expression is wrapped in a noexcept lambda capturing

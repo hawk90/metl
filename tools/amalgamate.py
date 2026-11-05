@@ -23,7 +23,7 @@ makes that safe for the compiler; for us it is a cycle.
 
 The distinction that resolves it is positional, so the tool derives it rather
 than carrying a hardcoded exception: an internal include placed **before** any
-of the file's own code is a dependency (it must be emitted first), and one
+of the file's own code (a declaration, or a `#define`) is a dependency (it must be emitted first), and one
 placed **after** is a re-export (it only has to appear somewhere, and by then
 this file has already been emitted). Re-export edges therefore constrain
 reachability but not order. Any cycle among genuine dependency edges is still a
@@ -53,6 +53,7 @@ import sys
 INTERNAL_INCLUDE = re.compile(r'^\s*#\s*include\s*"(metl/[^"]+)"\s*$')
 EXTERNAL_INCLUDE = re.compile(r'^\s*#\s*include\s*<([^>]+)>\s*$')
 PRAGMA_ONCE = re.compile(r'^\s*#\s*pragma\s+once\s*$')
+DEFINE = re.compile(r'^#\s*define\b')
 
 
 def read_header(include_dir: pathlib.Path, rel: str) -> list[str]:
@@ -93,7 +94,11 @@ def split_includes(rel: str, lines: list[str]) -> tuple[list[str], list[str]]:
             (reexports if code_started else dependencies).append(m.group(1))
             continue
         stripped = line.strip()
-        if not stripped or stripped.startswith(("//", "/*", "*", "#")):
+        if not stripped or stripped.startswith(("//", "/*", "*")):
+            continue
+        # A directive is not code, except a #define: a header of macros only,
+        # such as compiler.hpp, has no other code of its own.
+        if stripped.startswith("#") and not DEFINE.match(stripped):
             continue
         code_started = True
     return dependencies, reexports
@@ -217,12 +222,26 @@ def self_test() -> int:
         except SystemExit:
             pass
 
+        # A header of macros only re-exports from its last line, as
+        # compiler.hpp does: its #define lines are its own code, so the
+        # mutual include is a re-export, not a cycle.
+        (include / "metl" / "root.hpp").write_text('#pragma once\n#define ROOT 1\n#include "metl/a.hpp"\n')
+        (include / "metl" / "a.hpp").write_text('#pragma once\n#include "metl/root.hpp"\nint a();\n')
+        try:
+            order, _, reexports = topological_order(include, ["metl/root.hpp"])
+            if order != ["metl/root.hpp", "metl/a.hpp"] or reexports != [("metl/root.hpp", "metl/a.hpp")]:
+                failures.append(f"a macro-only header's trailing include was ordered {order}, "
+                                f"re-exports {reexports}")
+        except SystemExit as refusal:
+            failures.append(f"a macro-only header's trailing include was read as a cycle: {refusal}")
+
     for failure in failures:
         print(f"SELF-TEST FAILED: {failure}", file=sys.stderr)
     if failures:
         return 1
     print("self-test passed: dependencies are emitted first, conditional external includes stay "
-          "in place, and an internal include under #if and a dependency cycle are refused")
+          "in place, a macro-only header's trailing include is a re-export, and an internal "
+          "include under #if and a dependency cycle are refused")
     return 0
 
 

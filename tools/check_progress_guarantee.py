@@ -53,10 +53,6 @@ EXEMPT = {
     "metl.hpp": "umbrella header; every operation belongs to an included header",
     "optimization.hpp": "branch/inline hint macros, no operations",
     "type_traits.hpp": "compile-time traits, and storage_for's addr(), which only returns an address",
-    "exp/bitset.hpp": "a using-declaration only; the operations are bitset.hpp's",
-    "exp/intrusive_forward_list.hpp": "using-declarations only; the operations are intrusive_forward_list.hpp's",
-    "exp/intrusive_list.hpp": "using-declarations only; the operations are intrusive_list.hpp's",
-    "exp/once_flag.hpp": "using-declarations only; the operations are once_flag.hpp's",
     "version.hpp": "version macros and constants, no operations",
 }
 

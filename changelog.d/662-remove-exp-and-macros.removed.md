@@ -1,0 +1,22 @@
+- **Breaking:** the `metl/exp/` forwarding headers are removed (#662, #520, #524, #527), and with them every `metl::exp` name. Use the promoted names and their own headers:
+  - `<metl/exp/bitset.hpp>`, `metl::exp::bitset`: `metl::bitset` from `<metl/bitset.hpp>`.
+  - `<metl/exp/intrusive_list.hpp>`, `metl::exp::intrusive_list` and `metl::exp::list_hook`: `metl::intrusive_list` and `metl::list_hook` from `<metl/intrusive_list.hpp>`.
+  - `<metl/exp/intrusive_forward_list.hpp>`, `metl::exp::intrusive_forward_list` and `metl::exp::forward_list_hook`: `metl::intrusive_forward_list` and `metl::forward_list_hook` from `<metl/intrusive_forward_list.hpp>`.
+  - `<metl/exp/once_flag.hpp>`, `metl::exp::once_flag` and `metl::exp::try_call_once`: `metl::once_flag` and `metl::try_call_once` from `<metl/once_flag.hpp>`.
+- **Breaking:** the `<metl/compiler.hpp>` inline variables 1.15.0 deprecated are removed (#662, #168), since their initializers differ by compiler or standard, an ODR violation as soon as two translation units disagree. Test the macros instead:
+  - `metl::compiler_id` and `metl::active_compiler`: `METL_COMPILER_CLANG`, `METL_COMPILER_GCC` or `METL_COMPILER_MSVC`.
+  - `metl::cxx_standard`: `METL_CXX_STANDARD`.
+  - `metl::is_clang`, `metl::is_gcc`, `metl::is_msvc`: `METL_COMPILER_CLANG`, `METL_COMPILER_GCC`, `METL_COMPILER_MSVC`.
+  - `metl::has_nodiscard`, `metl::has_fallthrough`: `METL_HAS_CPP_ATTRIBUTE(nodiscard)`, `METL_HAS_CPP_ATTRIBUTE(fallthrough)`.
+- **Breaking:** the unused or duplicate macros 1.15.0 deprecated are removed (#662, #168). A use now fails to compile, or, inside `#if`, reads as 0:
+  - `METL_ALWAYS_INLINE`: `METL_FORCE_INLINE`.
+  - `METL_LIKELY`, `METL_UNLIKELY`: `METL_PREDICT_TRUE`, `METL_PREDICT_FALSE`.
+  - `METL_LIKELY_ATTR`, `METL_UNLIKELY_ATTR`: `[[likely]]`, `[[unlikely]]` where the standard has them.
+  - `METL_NORETURN`, `METL_MAYBE_UNUSED`, `METL_FALLTHROUGH`: `[[noreturn]]`, `[[maybe_unused]]`, `[[fallthrough]]`.
+  - `METL_ISR_SAFE`: write `noexcept`.
+  - `METL_HAVE_INCLUDE`: `__has_include`.
+  - `METL_COMPILER_CLANG_VERSION_{MAJOR,MINOR,PATCH}`: `__clang_major__`, `__clang_minor__`, `__clang_patchlevel__`.
+  - `METL_COMPILER_GCC_VERSION_{MAJOR,MINOR,PATCH}`: `__GNUC__`, `__GNUC_MINOR__`, `__GNUC_PATCHLEVEL__`.
+  - `METL_PREFETCH`: `__builtin_prefetch`.
+  - `METL_ASSUME`: no replacement; nothing in METL used it.
+- **Breaking:** the old spellings of the internal helper macros are removed (#662, #168): `METL_CONSTEXPR20` (write `constexpr` in C++20, or nothing), `METL_FORCE_INLINE_ATTR` (use `METL_FORCE_INLINE`), and `METL_FIXED_VECTOR_ASAN`, `METL_SCOPE_EXIT_CONCAT` and `METL_SCOPE_EXIT_CONCAT_INNER` (no replacement). They were never meant for user code; METL's own `METL_DETAIL_*` spellings are internal.

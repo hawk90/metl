@@ -1,9 +1,7 @@
 #include "metl_check.hpp"
-#include "metl_deprecated.hpp"  // tests macros and variables deprecated for 2.0 (#645)
 
 #include <cstdint>
 
-#include <metl/optimization.hpp>
 #include <metl/register_access.hpp>
 #include <metl/wait.hpp>
 
@@ -55,14 +53,6 @@ int main() {
     }
   }
   CHECK_EQ(spins, std::uint32_t{100});
-
-  // --- METL_PREFETCH is a pure hint -------------------------------------------
-  // Documented as never faulting, which includes a null address. If this ever
-  // starts crashing, the macro stopped being a hint.
-  std::uint32_t buffer[16] = {};
-  METL_PREFETCH(&buffer[0]);
-  METL_PREFETCH(static_cast<const void*>(nullptr));
-  CHECK_EQ(buffer[0], std::uint32_t{0});
 
   // --- barriers compose with the hints ----------------------------------------
   metl::barrier_release();

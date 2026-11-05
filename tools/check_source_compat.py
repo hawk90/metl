@@ -108,6 +108,14 @@ EXPECTED_BREAKS = {
         "tests/vocab/vocab_assert_trips_test.cpp": _REMOVED_TYPE,
         "tests/vocab/vocab_assignment_test.cpp": _REMOVED_TYPE,
         "tests/vocab/vocab_constant_init_test.cpp": _REMOVED_TYPE,
+        "tests/exp/bitset_alias_test.cpp": "metl/exp/bitset.hpp, deprecated in 1.15.0, is removed by #662 (#527)",
+        "tests/exp/intrusive_lists_alias_test.cpp": "the metl/exp/ intrusive list headers, deprecated in 1.15.0, "
+                                                    "are removed by #662 (#520)",
+        "tests/exp/once_flag_alias_test.cpp": "metl/exp/once_flag.hpp, deprecated in 1.15.0, is removed by #662 "
+                                              "(#524)",
+        "tests/core/compiler_test.cpp": "it tests the compiler.hpp variables and macros 1.15.0 deprecated, "
+                                        "removed by #662 (#168)",
+        "tests/sync/wait_test.cpp": "it uses METL_PREFETCH, deprecated in 1.15.0 and removed by #662 (#168)",
     },
 }
 

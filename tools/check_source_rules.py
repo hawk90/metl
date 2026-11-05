@@ -25,8 +25,7 @@
       implied. "Always" means no `return` statement comes first. A cast inside
       an `#if` arm, or inside the `if` statement of an is-constant-evaluated
       test, is exempt, since another arm can be constant; the rest of the body
-      is still checked. METL_DETAIL_CONSTEXPR20 (and its old spelling
-      METL_CONSTEXPR20) counts as `constexpr`.
+      is still checked. METL_DETAIL_CONSTEXPR20 counts as `constexpr`.
 
 The companion rule -- take a user object's address with `detail::addressof`,
 never `&obj` -- is not checked here. Which `&` applies to a user's type is a
@@ -100,7 +99,7 @@ _INITIALIZER = r"[\w:]+(?:<[^<>;{}]*>)?\s*(?:" + _PARENS + r"|\{[^{}]*\})"
 _INITIALIZERS = r"(?:\s*:\s*" + _INITIALIZER + r"(?:\s*,\s*" + _INITIALIZER + r")*)?"
 _TAIL = _QUALIFIERS + r"\s*(?:->[^{;]*?)?" + _INITIALIZERS + r"\s*\{"
 CONSTEXPR_FUNCTION = re.compile(
-    r"\b(?:constexpr|METL_(?:DETAIL_)?CONSTEXPR20)\b(?P<signature>[^;{}]*?\))" + _TAIL, re.S)
+    r"\b(?:constexpr|METL_DETAIL_CONSTEXPR20)\b(?P<signature>[^;{}]*?\))" + _TAIL, re.S)
 # Any function definition: its name, and the declaration text before the name.
 FUNCTION_DEFINITION = re.compile(
     r"(?P<prefix>[^;{}]*?)(?<![\w.>:])(?P<name>~?[A-Za-z_]\w*)\s*\((?P<params>[^;{}]*?)\)" + _TAIL, re.S)
@@ -212,7 +211,7 @@ def non_constexpr_functions(code):
         prefix = match.group("prefix")
         if name in NOT_A_FUNCTION or name.startswith("~") or re.search(r"=\s*$|\breturn\s*$", prefix):
             continue
-        if re.search(r"\b(?:constexpr|METL_(?:DETAIL_)?CONSTEXPR20)\b", prefix):
+        if re.search(r"\b(?:constexpr|METL_DETAIL_CONSTEXPR20)\b", prefix):
             constant.add(name)
         elif not re.search(r"\bconstexpr\s*$", prefix):
             plain.add(name)
@@ -367,8 +366,8 @@ constexpr bool aligned(T* p) noexcept {
     missed_shapes = {
         "a ref-qualified member":
             "struct s { void* p_; constexpr int& get() & noexcept { return *reinterpret_cast<int*>(p_); } };",
-        "a METL_CONSTEXPR20 function":
-            "METL_CONSTEXPR20 int* get(char* p) noexcept { return reinterpret_cast<int*>(p); }",
+        "a METL_DETAIL_CONSTEXPR20 function":
+            "METL_DETAIL_CONSTEXPR20 int* get(char* p) noexcept { return reinterpret_cast<int*>(p); }",
         "a constructor with member initializers":
             "struct s { constexpr s(char* p) noexcept : p_(p), q_{} { touch(reinterpret_cast<int*>(p)); } "
             "char* p_; int q_; };",

@@ -129,7 +129,7 @@ OBSERVER_EXEMPT = {
 DECL_CONST_SUBSCRIPT = re.compile(r"\boperator\[\]\([^)]*\)\s*const\b")
 
 # Declaration specifiers, the repository's own macros among them (#589):
-# METL_CONSTEXPR20, METL_FORCE_INLINE and any METL_ attribute macro stand where
+# METL_DETAIL_CONSTEXPR20, METL_FORCE_INLINE and any METL_ attribute macro stand where
 # constexpr or inline would, and must not be read as the return type.
 SPECIFIER = r"(?:METL_[A-Z0-9_]+|constexpr|static|inline|friend|explicit|virtual)"
 
@@ -526,7 +526,7 @@ def self_test():
     if "R6" not in {rule for _, _, rule, _ in check_text(CANARY_R6, "include/metl/span.hpp")}:
         failures.append("R6 let OBSERVER_EXEMPT excuse an observer it does not name")
     # #589: the repository's macros in a declaration, and the reverse iterators.
-    for text, rule in (("METL_CONSTEXPR20 bool stash(int value);", "R2"),
+    for text, rule in (("METL_DETAIL_CONSTEXPR20 bool stash(int value);", "R2"),
                        ("METL_FORCE_INLINE bool stash(int value);", "R2"),
                        ("METL_FORCE_INLINE T* stash() noexcept;", "R2"),
                        ("METL_FORCE_INLINE METL_NODISCARD bool erase(int key);", "R4"),
@@ -538,7 +538,7 @@ def self_test():
     if check_text("METL_FORCE_INLINE METL_NODISCARD size_type size() const noexcept;", "<canary-macro>"):
         failures.append("R6 read a macro before METL_NODISCARD as the return type")
     for text in ("constexpr size_type\nsize() const noexcept { return 0; }",
-                 "METL_CONSTEXPR20 T* data() noexcept { return p; }",
+                 "METL_DETAIL_CONSTEXPR20 T* data() noexcept { return p; }",
                  "reference front() { return *p; }",
                  "const_iterator cend() const;",
                  "template <bool C = true>\nstatic constexpr bool empty() noexcept { return C; }"):
