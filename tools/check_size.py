@@ -251,10 +251,10 @@ RODATA_TOLERANCE_BYTES = 0
 # a 4-byte free-list tail (measured 23,048 on M3; .bss layout is the same on
 # every core).
 RAM_BUDGETS = {
-    "cortex-m0": 23_048,
-    "cortex-m3": 23_048,
-    "cortex-m4": 23_048,
-    "cortex-m7": 23_048,
+    "cortex-m0": 22_936,
+    "cortex-m3": 22_936,
+    "cortex-m4": 22_936,
+    "cortex-m7": 22_936,
 }
 RAM_TOLERANCE_BYTES = 0
 
