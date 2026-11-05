@@ -179,11 +179,14 @@ import tempfile
 #
 # Lowered by #662, which removes static_message_queue and with it the probe's
 # exercise_message_queue (run on PR #665: M0 -92, M3 -20, M4 -20, M7 -28).
+#
+# Moved by #642 (PR #668), whose FIFO free list gives handle_pool a tail index:
+# M0 +40, M3 0, M4 -4, M7 +8 on CI's GCC 14 linked image.
 BUDGETS = {
-    "cortex-m0": 4264,
+    "cortex-m0": 4304,
     "cortex-m3": 4300,
-    "cortex-m4": 4296,
-    "cortex-m7": 4292,
+    "cortex-m4": 4292,
+    "cortex-m7": 4300,
 }
 
 # No tolerance on any of the three sizes (#587). The toolchain does not move them
@@ -236,11 +239,14 @@ RODATA_TOLERANCE_BYTES = 0
 # only a note asked for that: #499 (handle_pool, -384), #503 (object_pool, -112)
 # and #504 (the unordered containers, -768). A size under the budget by more
 # than the tolerance now fails, so the change that shrinks it records the budget.
+# Raised by 8 bytes by #642 (PR #668): the probe's two handle_pools each gain
+# a 4-byte free-list tail (measured 23,048 on M3; .bss layout is the same on
+# every core).
 RAM_BUDGETS = {
-    "cortex-m0": 23_040,
-    "cortex-m3": 23_040,
-    "cortex-m4": 23_040,
-    "cortex-m7": 23_040,
+    "cortex-m0": 23_048,
+    "cortex-m3": 23_048,
+    "cortex-m4": 23_048,
+    "cortex-m7": 23_048,
 }
 RAM_TOLERANCE_BYTES = 0
 
