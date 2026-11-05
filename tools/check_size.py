@@ -187,10 +187,10 @@ import tempfile
 # the default hardening level is now FAST rather than DEBUG there, so its
 # METL_DASSERT checks compile out: M0 -32, M3 -16, M4 -12, M7 -16.
 BUDGETS = {
-    "cortex-m0": 4272,
-    "cortex-m3": 4284,
-    "cortex-m4": 4280,
-    "cortex-m7": 4284,
+    "cortex-m0": 4256,
+    "cortex-m3": 4272,
+    "cortex-m4": 4272,
+    "cortex-m7": 4272,
 }
 
 # No tolerance on any of the three sizes (#587). The toolchain does not move them
