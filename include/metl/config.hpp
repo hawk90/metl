@@ -41,6 +41,13 @@
 // translation unit linked into a program — mixing levels (e.g. a Debug TU with a
 // Release TU) is an ODR violation (UB). This is the same constraint as NDEBUG and
 // libc++'s _LIBCPP_HARDENING_MODE; set it once, project-wide.
+//
+// The C++ standard is part of the same constraint. Every translation unit must
+// be compiled with the same -std: under C++20 some headers change the bodies of
+// inline functions (METL_DETAIL_CONSTEXPR20, METL_DETAIL_LAZY_CONSTANT_INIT),
+// and arena_allocator and monotonic_buffer change the type of their storage
+// member. A C++17 TU and a C++20 TU that share one of those types define it
+// twice, an ODR violation that nothing detects at link time.
 // ---------------------------------------------------------------------------
 // METL_CRC_TABLE — how the CRC-8/16/32 helpers trade flash for speed.
 //
