@@ -548,7 +548,10 @@ Three more things before you point DMA at it:
 - **No cache maintenance.** If your DMA engine is not coherent with the data
   cache, invalidate the region before reading what DMA deposited and clean it
   before DMA transmits what you wrote. The operations are core- and MPU-specific;
-  METL has no portable way to do them and does not pretend to.
+  METL has no portable way to do them and does not pretend to. Maintenance
+  works by cache line, so give the ring the line size as its second argument,
+  `spsc_byte_ring<512, 32>` on a Cortex-M7: then no line the storage covers
+  also holds the ring's indices.
 - **`writable_span()` is a query, not a checkout.** It records nothing, so calling
   it twice returns the same region. While a transfer is filling it, do not write
   into it yourself and do not `commit_write` until the transfer reports its count.

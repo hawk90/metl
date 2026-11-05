@@ -127,6 +127,9 @@ CANARY_BYTES = 1024
 # is byte-identical to before (172 B on cortex-m4, ARM GCC). Back to 3914 with
 # #168 (PR #672, run 42013825474, M3/M4/M7): the default level is FAST whether
 # or not NDEBUG is defined, so the probe no longer runs that METL_DASSERT.
+# Cortex-M0 spsc_byte_ring_write_read fell 8566 -> 8054 with #562 (PR #676,
+# run of 0cc5178b8): the ring's storage is now aligned to 8, not 64, on M
+# profile, and the M3, M4 and M7 counts did not move.
 _V7M_COUNTS = {
     "fixed_queue_push_pop": 2632,
     "fixed_vector_fill_clear": 1620,
@@ -158,7 +161,7 @@ INSTRUCTION_BUDGETS = {
         "scheduler_attach_detach_4": 44842,
         "scheduler_run_once_16": 159671,
         "scheduler_run_once_4": 24511,
-        "spsc_byte_ring_write_read": 8566,
+        "spsc_byte_ring_write_read": 8054,
         "spsc_queue_push_pop": 2952,
     },
     "cortex-m3": dict(_V7M_COUNTS, spsc_byte_ring_write_read=7052),

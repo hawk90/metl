@@ -27,27 +27,53 @@
 #define METL_PREDICT_FALSE(expr) (static_cast<bool>(expr))
 #endif
 
-// METL_CACHELINE_SIZE — the target's assumed hardware cache-line size in bytes.
-//   Used to pad/align hot data so independent fields land on distinct lines and
-//   avoid false sharing. Overridable by defining METL_CACHELINE_SIZE upfront.
-/// @brief Assumed hardware cache-line size in bytes for the target. Used to pad
-///        or align hot data to avoid false sharing. Overridable by predefining it.
-#ifndef METL_CACHELINE_SIZE
-#if defined(__powerpc64__) || defined(__PPC64__) || defined(__ppc64__)
+// METL_CACHELINE_SIZE — the cache-line size METL assumes for the target, in
+// bytes. spsc_queue, spsc_byte_ring and mpmc_queue align their producer index,
+// consumer index and storage to it, so it sets those types' sizeof and layout.
+//
+// It is a fixed value per target, not a setting: two translation units that
+// disagreed on it would define those types twice with different layouts, an
+// ODR violation. Defining it before including METL is an #error.
+//
+//   Cortex-M (ARMv6-M/v7-M/v8-M)   8    The M profile has no coherent multi-core
+//                                       cache to share a line across, so there is
+//                                       no false sharing to pad against; 8 keeps
+//                                       64-bit atomics aligned. spsc_queue<int, 4>
+//                                       is 32 B rather than 192.
+//   Apple arm64                     128  hw.cachelinesize on Apple silicon.
+//   ppc64                           128
+//   s390x                           256
+//   everything else                 64
+//
+// Not std::hardware_destructive_interference_size: libstdc++ warns that its
+// value is not ABI-stable, and C++17 compilers do not all provide it.
+/// @brief Cache-line size in bytes that METL assumes for the target. Fixed per
+///        target; predefining it is an error.
+#ifdef METL_CACHELINE_SIZE
+#error \
+    "METL_CACHELINE_SIZE must not be predefined: it sets the layout of spsc_queue, spsc_byte_ring and mpmc_queue, so it is fixed per target"
+#endif
+#if defined(__ARM_ARCH_PROFILE) && __ARM_ARCH_PROFILE == 'M'
+#define METL_CACHELINE_SIZE 8
+#elif defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
+#define METL_CACHELINE_SIZE 128
+#elif defined(__powerpc64__) || defined(__PPC64__) || defined(__ppc64__)
 #define METL_CACHELINE_SIZE 128
 #elif defined(__s390x__)
 #define METL_CACHELINE_SIZE 256
 #else
 #define METL_CACHELINE_SIZE 64
 #endif
-#endif
 
-// METL_CACHELINE_ALIGNED — align a variable/member to a full cache line. Uses
-// standard `alignas`, so it is portable to every C++17 compiler.
+// METL_CACHELINE_ALIGNED — align a variable/member to METL_CACHELINE_SIZE. Uses
+// standard `alignas`, so it is portable to every C++17 compiler. Like the size,
+// it is not a setting.
 /// @brief Align a variable/member to a full cache line (portable `alignas`).
-#ifndef METL_CACHELINE_ALIGNED
-#define METL_CACHELINE_ALIGNED alignas(METL_CACHELINE_SIZE)
+#ifdef METL_CACHELINE_ALIGNED
+#error \
+    "METL_CACHELINE_ALIGNED must not be predefined: it is alignas(METL_CACHELINE_SIZE), which is fixed per target"
 #endif
+#define METL_CACHELINE_ALIGNED alignas(METL_CACHELINE_SIZE)
 
 // METL_CACHELINE_PADDED_BEGIN / _END bracket a class whose members are
 // METL_CACHELINE_ALIGNED. MSVC reports the padding that alignment exists to

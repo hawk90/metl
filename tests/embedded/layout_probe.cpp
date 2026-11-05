@@ -123,8 +123,9 @@ LAYOUT(24, 4, metl::ring_buffer<std::uint32_t, 4>);
 LAYOUT(8, 4, layout_scope_exit);
 LAYOUT(8, 4, metl::span<std::uint32_t>);
 LAYOUT(4, 4, metl::span<std::uint32_t, 4>);
-LAYOUT(192, 64, metl::spsc_byte_ring<16>);
-LAYOUT(192, 64, metl::spsc_queue<std::uint32_t, 4>);
+LAYOUT(32, 8, metl::spsc_byte_ring<16>);
+LAYOUT(64, 32, metl::spsc_byte_ring<16, 32>);
+LAYOUT(32, 8, metl::spsc_queue<std::uint32_t, 4>);
 LAYOUT(148, 4, metl::static_unordered_map<std::uint32_t, std::uint32_t, 8>);
 LAYOUT(84, 4, metl::static_unordered_set<std::uint32_t, 8>);
 LAYOUT(8, 8, metl::tick_extender<16>);
@@ -136,7 +137,7 @@ LAYOUT(12, 4, metl::intrusive_forward_list<layout_list_node>);
 
 // Cortex-M0 has no compare-and-swap, so these two do not exist there.
 #if !defined(__ARM_ARCH_6M__)
-LAYOUT(192, 64, metl::mpmc_queue<std::uint32_t, 4>);
+LAYOUT(48, 8, metl::mpmc_queue<std::uint32_t, 4>);
 LAYOUT(4, 4, metl::atomic_handle<metl::versioned_handle<layout_tag>>);
 #endif
 
