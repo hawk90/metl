@@ -273,7 +273,9 @@ Configuration
   (keep or drop the text of a failed check), plus the check macros
   it defines — `METL_ASSERT` / `METL_DASSERT`, which the hardening level
   controls, and `METL_HARDEN`, which is always on. Set them identically in
-  every translation unit.
+  every translation unit, and compile every translation unit with the same C++
+  standard (`-std`): some types change their members or inline functions under
+  C++20.
 - [`assert.hpp`](include/metl/assert.hpp) — `set_assert_handler`, to log or
   record a failed check before the unconditional `abort()`.
 
