@@ -26,7 +26,18 @@ include(MetlCcRules)
 # ---------------------------------------------------------------------------
 # Options
 # ---------------------------------------------------------------------------
-option(METL_BUILD_TESTS "Build METL tests" ON)
+# Tests and docs default ON only when METL is the top-level project. Under
+# add_subdirectory or FetchContent they would add METL's tests to the
+# consumer's build and ctest, and require Threads, which a bare-metal toolchain
+# may not provide. (PROJECT_IS_TOP_LEVEL needs CMake 3.21; the floor is 3.16.)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  set(_metl_is_top_level ON)
+else()
+  set(_metl_is_top_level OFF)
+endif()
+
+option(METL_BUILD_TESTS "Build METL tests (default: ON only as the top-level project)"
+       ${_metl_is_top_level})
 option(METL_BUILD_EXAMPLES "Build METL examples" OFF)
 option(METL_BUILD_EMBEDDED_SMOKE
        "Build the freestanding embedded smoke compile-check static library" OFF)
@@ -556,11 +567,13 @@ endif()
 # ---------------------------------------------------------------------------
 # Documentation  (Doxygen)
 # ---------------------------------------------------------------------------
-# `cmake --build build --target docs` generates HTML API docs into
+# `cmake --build build --target metl_docs` generates HTML API docs into
 # build/docs/html from the public headers. Optional: only wired up when Doxygen
 # is found, so it never blocks a normal build. The CI `docs` job runs it with
 # WARN_AS_ERROR so malformed doc comments fail.
-option(METL_BUILD_DOCS "Add the Doxygen `docs` target when Doxygen is available" ON)
+option(METL_BUILD_DOCS
+       "Add the Doxygen `metl_docs` target when Doxygen is available (default: ON only as the top-level project)"
+       ${_metl_is_top_level})
 if(METL_BUILD_DOCS)
   find_package(Doxygen QUIET)
   if(DOXYGEN_FOUND)
@@ -575,14 +588,14 @@ if(METL_BUILD_DOCS)
     set(_doxyfile "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile")
     configure_file(${_doxyfile_in} ${_doxyfile} @ONLY)
 
-    add_custom_target(docs
+    add_custom_target(metl_docs
       COMMAND ${CMAKE_COMMAND} -E make_directory ${METL_DOXYGEN_OUTPUT_DIR}
       COMMAND ${DOXYGEN_EXECUTABLE} ${_doxyfile}
       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       COMMENT "Generating METL API documentation with Doxygen"
       VERBATIM)
   else()
-    add_custom_target(docs
+    add_custom_target(metl_docs
       COMMAND ${CMAKE_COMMAND} -E echo
               "Doxygen not found — install doxygen to build the API docs."
       COMMAND ${CMAKE_COMMAND} -E false
