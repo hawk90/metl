@@ -24,6 +24,8 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 PROBE = "tests/embedded/layout_probe.cpp"
 CONFIG = "include/metl/config.hpp"
 
+_CACHELINE_8 = "#562 fixes METL_CACHELINE_SIZE at 8 on the M profile, not 64: 192 B to 32 or 48, aligned 8"
+
 # {previous release tag: {row key: "why it may change (#issue)"}}
 ALLOWED_CHANGES: dict[str, dict[str, str]] = {
     # 2.0 removes what 1.15.0 deprecated (#662).
@@ -32,6 +34,9 @@ ALLOWED_CHANGES: dict[str, dict[str, str]] = {
         "metl::static_message_queue<std::uint32_t, 4>": "removed by #662, deprecated in 1.15.0",
         "metl::variant<std::uint32_t, std::uint8_t>": "removed by #635, deprecated in 1.15.0",
         "metl::handle_pool<std::uint32_t, 4>": "#642's FIFO free list keeps a tail index: +4 B",
+        "metl::spsc_byte_ring<16>": _CACHELINE_8,
+        "metl::spsc_queue<std::uint32_t, 4>": _CACHELINE_8,
+        "metl::mpmc_queue<std::uint32_t, 4>": _CACHELINE_8,
     },
 }
 
