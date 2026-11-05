@@ -29,6 +29,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Fixed-capacity LIFO arena allocator with rewind and object destruction.
 ///
@@ -331,4 +332,5 @@ class arena_allocator {
 #endif
 };
 
+METL_DETAIL_ABI_END
 }  // namespace metl

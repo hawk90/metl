@@ -33,6 +33,7 @@
 #include <cstddef>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// Null-terminated character string with a compile-time FIXED capacity.
 ///
@@ -478,6 +479,7 @@ inline bool operator>=(const fixed_string<N1>& lhs, const fixed_string<N2>& rhs)
   return !(lhs < rhs);
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl
 
 namespace std {

@@ -11,12 +11,14 @@
 /// 64-bit type; GCC and Clang usually recognise it and emit `REV`/`REV16` or `bswap`.
 
 #include "metl/compiler.hpp"
+#include "metl/detail/abi.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Byte-order enumeration with `native` bound to the target's endianness.
 /// @note The native byte order is detected at compile time from `__BYTE_ORDER__` and a chain of
@@ -137,4 +139,5 @@ METL_NODISCARD constexpr T from_big_endian(T value) noexcept {
   return to_big_endian(value);
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

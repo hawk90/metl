@@ -56,6 +56,7 @@
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Letter case for the hex digits `a`-`f`.
 enum class hex_case : unsigned char {
@@ -289,4 +290,5 @@ METL_NODISCARD constexpr span<char> format_hex(span<char> out,
   return text;
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

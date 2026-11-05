@@ -20,6 +20,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief RAII cleanup guard that runs a stored callable when the scope ends.
 ///
@@ -129,6 +130,7 @@ auto operator+(scope_exit_tag,
 
 }  // namespace detail
 
+METL_DETAIL_ABI_END
 }  // namespace metl
 
 #define METL_DETAIL_SCOPE_EXIT_CONCAT_INNER(a, b) a##b

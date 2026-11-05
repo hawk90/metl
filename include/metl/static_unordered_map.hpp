@@ -109,6 +109,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Fixed-capacity hash map using open addressing with linear probing.
 ///
@@ -1085,4 +1086,5 @@ typename static_unordered_map<Key, T, Capacity, Hash, KeyEqual>::size_type erase
   return erased;
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

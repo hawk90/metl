@@ -27,6 +27,7 @@
 #include <cstddef>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief One transition rule: `from` state + `event` moves to `to` state,
 ///        optionally invoking `action(from, event, to)`.
@@ -189,4 +190,5 @@ class fsm {
   std::array<state_hook_type, ExitHookCount> exit_hooks_;
 };
 
+METL_DETAIL_ABI_END
 }  // namespace metl

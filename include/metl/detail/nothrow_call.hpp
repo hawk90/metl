@@ -19,11 +19,14 @@
 /// Every header that uses this already includes `<functional>` for its default
 /// comparator, so it adds no dependency.
 
+#include "metl/detail/abi.hpp"
+
 #include <functional>
 #include <type_traits>
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 /// @brief `true` when `F{}(a, b)` with `a : A`, `b : B` cannot throw.
@@ -52,4 +55,5 @@ template <typename F, typename A>
 inline constexpr bool nothrow_unary_call_v = noexcept(std::declval<F&>()(std::declval<A>()));
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

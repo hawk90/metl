@@ -9,7 +9,7 @@ project(
 )
 
 # The version is written in three places a release must agree on: here, the
-# metl::version_* constants in include/metl/config.hpp (checked by
+# METL_VERSION_* macros in include/metl/detail/abi.hpp (checked by
 # tests/core/version_test.cpp) and the ESP-IDF component manifest (checked
 # here, at configure time, so every CI job catches a mismatch -- not only the
 # release job, after the tag is already pushed).

@@ -22,6 +22,7 @@
 #include "metl/crc32.hpp"
 #include "metl/crc8.hpp"
 #include "metl/delegate.hpp"
+#include "metl/detail/abi.hpp"
 #include "metl/detail/addressof.hpp"
 #include "metl/detail/array_storage.hpp"
 #include "metl/detail/bitset.hpp"

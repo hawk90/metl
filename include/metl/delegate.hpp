@@ -19,6 +19,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 template <typename>
 class delegate;
@@ -113,4 +114,5 @@ class delegate<R(Args...)> {
   callback_type callback_;
 };
 
+METL_DETAIL_ABI_END
 }  // namespace metl

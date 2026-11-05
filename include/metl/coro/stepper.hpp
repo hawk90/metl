@@ -23,10 +23,12 @@
 // it has no allocations and the dtor is virtual + noexcept.
 
 #include "metl/compiler.hpp"
+#include "metl/detail/abi.hpp"
 
 #include <cstddef>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace coro {
 
 /// @brief Outcome of one `stepper::step()` call.
@@ -114,4 +116,5 @@ class stepper {
 };
 
 }  // namespace coro
+METL_DETAIL_ABI_END
 }  // namespace metl

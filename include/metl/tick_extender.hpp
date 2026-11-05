@@ -43,6 +43,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Extends a free-running `Bits`-bit up-counter into a monotonic,
 ///        non-wrapping 64-bit tick, safely across ISR and main-loop callers.
@@ -145,4 +146,5 @@ class tick_extender {
   tick_type total_ = 0;
 };
 
+METL_DETAIL_ABI_END
 }  // namespace metl

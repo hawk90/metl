@@ -12,13 +12,13 @@
 #if defined(METL_EXPECTED_VERSION_MAJOR)
 static_assert(metl::version_major == METL_EXPECTED_VERSION_MAJOR &&
                   METL_VERSION_MAJOR == METL_EXPECTED_VERSION_MAJOR,
-              "METL_VERSION_MAJOR in config.hpp does not match project(VERSION) in CMakeLists.txt");
+              "METL_VERSION_MAJOR in metl/detail/abi.hpp does not match project(VERSION) in CMakeLists.txt");
 static_assert(metl::version_minor == METL_EXPECTED_VERSION_MINOR &&
                   METL_VERSION_MINOR == METL_EXPECTED_VERSION_MINOR,
-              "METL_VERSION_MINOR in config.hpp does not match project(VERSION) in CMakeLists.txt");
+              "METL_VERSION_MINOR in metl/detail/abi.hpp does not match project(VERSION) in CMakeLists.txt");
 static_assert(metl::version_patch == METL_EXPECTED_VERSION_PATCH &&
                   METL_VERSION_PATCH == METL_EXPECTED_VERSION_PATCH,
-              "METL_VERSION_PATCH in config.hpp does not match project(VERSION) in CMakeLists.txt");
+              "METL_VERSION_PATCH in metl/detail/abi.hpp does not match project(VERSION) in CMakeLists.txt");
 #endif
 
 int main() {

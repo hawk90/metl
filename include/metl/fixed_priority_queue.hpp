@@ -25,6 +25,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Fixed-capacity binary heap: the largest element per @c Compare is always
 ///        on top. No heap allocation; storage is inline.
@@ -344,4 +345,5 @@ inline void swap(fixed_priority_queue<T, N, Compare>& a,
   a.swap(b);
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

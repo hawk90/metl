@@ -26,6 +26,8 @@
 // C++17. Use it on the members that drive an object's storage lifetime
 // (constructors that construct into storage, reset/destroy, the destructor).
 
+#include "metl/detail/abi.hpp"
+
 #include <new>
 #include <utility>
 // The feature-test macro below lives in <version> (and <memory>). libc++ also
@@ -50,6 +52,7 @@
 #endif
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 #if METL_DETAIL_CONSTEXPR_LIFETIME
@@ -82,4 +85,5 @@ void destroy_at(T* location) noexcept {
 #endif
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

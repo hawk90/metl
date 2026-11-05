@@ -6,11 +6,13 @@
 ///        the open-addressing hash containers. Internal detail utilities.
 
 #include "metl/bit.hpp"
+#include "metl/detail/abi.hpp"
 #include "metl/type_traits.hpp"
 
 #include <cstddef>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 /// @brief Detect a "transparent" functor: a hasher or comparator that declares a
@@ -43,4 +45,5 @@ constexpr std::size_t compute_bucket_count(std::size_t capacity) noexcept {
 }
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

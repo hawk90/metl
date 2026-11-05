@@ -1,10 +1,12 @@
 #pragma once
 
 #include "metl/compiler.hpp"
+#include "metl/detail/abi.hpp"
 
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 // Whether converting the invoke result `U` to the return type `R` would bind
@@ -89,4 +91,5 @@ inline constexpr bool is_nothrow_invocable_r_without_temporary_v =
     is_nothrow_invocable_r_without_temporary<R, F, Args...>::value;
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

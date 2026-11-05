@@ -41,12 +41,14 @@
 /// rather than patched.
 
 #include "metl/attributes.hpp"
+#include "metl/detail/abi.hpp"
 
 #include <cstddef>
 #include <new>
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 /// @brief Storage for up to `N` `T`s, reached as one implicitly created `T[N]`.
@@ -77,4 +79,5 @@ struct array_storage {
 };
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

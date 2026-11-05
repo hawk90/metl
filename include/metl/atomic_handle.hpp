@@ -1,12 +1,14 @@
 #pragma once
 
 #include "metl/attributes.hpp"
+#include "metl/detail/abi.hpp"
 #include "metl/versioned_handle.hpp"
 
 #include <atomic>
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @file
 /// @brief Atomic cell holding a `versioned_handle` — the Tier 1 primitive for
@@ -166,4 +168,5 @@ class atomic_handle {
   std::atomic<packed_type> value_;
 };
 
+METL_DETAIL_ABI_END
 }  // namespace metl

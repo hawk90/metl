@@ -26,6 +26,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// A single key/value pair stored in a lookup_table.
 template <typename Key, typename Value>
@@ -119,4 +120,5 @@ make_lookup_table(const std::array<lookup_entry<Key, Value>, Size>& entries) noe
   return lookup_table<Key, Value, Size>(entries);
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

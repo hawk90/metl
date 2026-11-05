@@ -17,6 +17,7 @@
 /// Single-threaded: this type does not synchronise.
 
 #include "metl/compiler.hpp"
+#include "metl/detail/abi.hpp"
 #include "metl/fixed_vector.hpp"
 
 #include <cstddef>
@@ -24,6 +25,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// LIFO stack with a compile-time FIXED capacity, backed by a fixed_vector.
 ///
@@ -121,4 +123,5 @@ inline void swap(fixed_stack<T, N>& a, fixed_stack<T, N>& b) noexcept(noexcept(a
   a.swap(b);
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

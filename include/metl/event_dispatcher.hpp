@@ -32,6 +32,7 @@
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 template <typename Signature, std::size_t Capacity>
 class event_dispatcher;
@@ -182,4 +183,5 @@ class event_dispatcher<R(Args...), Capacity> {
   slot slots_[Capacity == 0 ? 1 : Capacity];
 };
 
+METL_DETAIL_ABI_END
 }  // namespace metl

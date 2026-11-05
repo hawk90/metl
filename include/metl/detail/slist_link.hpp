@@ -1,6 +1,9 @@
 #pragma once
 
+#include "metl/detail/abi.hpp"
+
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 /// @brief One link of a singly linked list: the successor, and the list the
@@ -45,4 +48,5 @@ inline slist_link& slist_previous(slist_link& head, const slist_link& node) noex
 }
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

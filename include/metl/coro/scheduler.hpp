@@ -50,6 +50,7 @@
 #include <cstddef>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace coro {
 
 /// @brief Type-erased poll function. @return true if the task still wants to run.
@@ -349,4 +350,5 @@ typename scheduler<Capacity>::size_type scheduler<Capacity>::run_until_idle(size
 }
 
 }  // namespace coro
+METL_DETAIL_ABI_END
 }  // namespace metl

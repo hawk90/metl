@@ -10,6 +10,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @file
 /// @brief Lock policies and the `guarded<T, Lock>` wrapper.
@@ -353,4 +354,5 @@ class guarded {
   T value_{};
 };
 
+METL_DETAIL_ABI_END
 }  // namespace metl

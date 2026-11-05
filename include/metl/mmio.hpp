@@ -24,6 +24,7 @@
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 namespace detail {
 
@@ -193,4 +194,5 @@ class mmio_ptr {
   volatile T* addr_;
 };
 
+METL_DETAIL_ABI_END
 }  // namespace metl

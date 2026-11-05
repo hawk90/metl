@@ -276,7 +276,10 @@ Configuration
   doing so is an `#error`). Set them identically in
   every translation unit, and compile every translation unit with the same C++
   standard (`-std`): some types change their members or inline functions under
-  C++20.
+  C++20. The hardening level and the exception mode are also part of every
+  METL symbol's namespace ([`detail/abi.hpp`](include/metl/detail/abi.hpp)), so
+  a library and an application that disagree on them and share a METL type
+  fail to link instead of running each other's checks.
 - [`assert.hpp`](include/metl/assert.hpp) — `set_assert_handler`, to log or
   record a failed check before the unconditional `abort()`.
 

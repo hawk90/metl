@@ -20,6 +20,7 @@
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// Sentinel extent value denoting a span whose length is known only at runtime.
 inline constexpr std::size_t dynamic_extent = static_cast<std::size_t>(-1);
@@ -335,6 +336,7 @@ METL_NODISCARD inline span<std::byte, detail::bytes_extent<N, sizeof(T)>::value>
                                                                     s.size_bytes());
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl
 
 // A span views storage it does not own, so an iterator from a temporary span is

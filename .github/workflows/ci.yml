@@ -595,7 +595,7 @@ jobs:
         run: ${{ matrix.compile_cmd }}
 
   # ---------------------------------------------------------------------------
-  # Mixed-compiler ABI. A vendor library built with GCC and an application built
+  # Mixed-compiler and mixed-configuration ABI. A vendor library built with GCC and an application built
   # with Clang (or the reverse) share METL types across a function boundary. An
   # attribute one compiler honours and the other ignores -- trivial_abi on
   # intrusive_ptr was one -- gives the same signature two calling conventions,
@@ -635,6 +635,19 @@ jobs:
             fi
           done
           exit "${status}"
+
+      # The ABI tag (#344): a library and an application built with different
+      # METL settings, sharing a METL type, must fail to link, and two TUs at
+      # different levels that use METL only internally must each keep their
+      # own checks in either link order.
+      - name: a configuration mismatch fails to link, under GCC and Clang
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          python3 tools/check_abi_tag.py --self-test --cxx g++
+          python3 tools/check_abi_tag.py --cxx g++
+          python3 tools/check_abi_tag.py --cxx clang++
+          python3 tools/check_abi_tag.py --cxx clang++ --std c++20
 
   # ---------------------------------------------------------------------------
   # ARM hint instructions across architecture versions.

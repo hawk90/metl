@@ -27,6 +27,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// Double-ended queue with a compile-time FIXED capacity, backed by a ring.
 ///
@@ -162,4 +163,5 @@ inline void swap(fixed_deque<T, N>& a, fixed_deque<T, N>& b) noexcept(noexcept(a
   a.swap(b);
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

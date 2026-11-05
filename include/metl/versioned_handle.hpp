@@ -9,6 +9,7 @@
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @file
 /// @brief Generation-tagged index handle: a pointer replacement for
@@ -198,4 +199,5 @@ class versioned_handle {
   packed_type value_;
 };
 
+METL_DETAIL_ABI_END
 }  // namespace metl

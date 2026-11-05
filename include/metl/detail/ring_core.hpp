@@ -32,6 +32,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 /// Random-access iterator over a ring's LOGICAL order (front first).
@@ -465,4 +466,5 @@ class ring_core : no_implicit_copy_move<ring_core<T, Capacity>> {
 };
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

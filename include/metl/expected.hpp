@@ -29,6 +29,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 // =============================================================================
 // unexpected<E>
@@ -1912,4 +1913,5 @@ constexpr auto operator!=(const unexpected<E2>& lhs, const expected<T, E>& rhs)
   return rhs.has_value() || (lhs.error() != rhs.error());
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

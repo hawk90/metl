@@ -9,6 +9,8 @@
 // clang-format: the repository formats as C++17, which splits `<=>` into
 // `<= >` and mangles requires-clauses.
 
+#include "metl/detail/abi.hpp"
+
 #if defined(__cpp_impl_three_way_comparison) && __cpp_impl_three_way_comparison >= 201907L && \
     defined(__has_include)
 #if __has_include(<compare>)
@@ -27,6 +29,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 // clang-format off
@@ -60,6 +63,7 @@ template <typename T, typename U = T>
 using synth_three_way_result = decltype(synth_three_way(std::declval<const T&>(), std::declval<const U&>()));
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl
 
 #else

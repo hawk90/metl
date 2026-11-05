@@ -36,6 +36,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Lock-free single-producer / single-consumer bounded ring buffer.
 ///
@@ -207,4 +208,5 @@ class spsc_queue {
 };
 METL_CACHELINE_PADDED_END
 
+METL_DETAIL_ABI_END
 }  // namespace metl

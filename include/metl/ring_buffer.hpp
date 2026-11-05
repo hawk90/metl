@@ -27,6 +27,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// Circular FIFO buffer with a compile-time FIXED capacity.
 ///
@@ -122,4 +123,5 @@ inline void swap(ring_buffer<T, N>& a, ring_buffer<T, N>& b) noexcept(noexcept(a
   a.swap(b);
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

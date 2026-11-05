@@ -56,11 +56,11 @@ void on_panic(const char*, const char*, int) noexcept {}
 void null_handler_restores_the_default() {
   const metl::assert_handler_t original_assert = metl::set_assert_handler(&on_assert);
   CHECK(metl::set_assert_handler(nullptr) == &on_assert);
-  CHECK(metl::set_assert_handler(original_assert) == &metl::detail::default_assert_handler);
+  CHECK(metl::set_assert_handler(original_assert) == &metl::handler_detail::default_assert_handler);
 
   const metl::panic_handler_t original_panic = metl::set_panic_handler(&on_panic);
   CHECK(metl::set_panic_handler(nullptr) == &on_panic);
-  CHECK(metl::set_panic_handler(original_panic) == &metl::detail::default_panic_handler);
+  CHECK(metl::set_panic_handler(original_panic) == &metl::handler_detail::default_panic_handler);
 }
 
 }  // namespace

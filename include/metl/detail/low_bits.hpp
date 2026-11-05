@@ -1,8 +1,11 @@
 #pragma once
 
+#include "metl/detail/abi.hpp"
+
 #include <cstddef>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 /// @brief `U` with its low `count` bits set; all ones when `count` is the full
@@ -21,4 +24,5 @@ constexpr U low_bits(std::size_t count) noexcept {
 }
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

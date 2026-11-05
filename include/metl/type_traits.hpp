@@ -1,5 +1,7 @@
 #pragma once
 
+#include "metl/detail/abi.hpp"
+
 #include <cstddef>
 #include <new>
 #include <type_traits>
@@ -10,6 +12,7 @@
 ///        `detail::` entries are internal.
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Correctly aligned raw byte buffer for one `T`; a replacement for the deprecated
 ///        `std::aligned_storage`.
@@ -263,4 +266,5 @@ struct is_detected : detail::is_detected_impl<void, Operation, Args...> {};
 template <template <typename...> class Operation, typename... Args>
 inline constexpr bool is_detected_v = is_detected<Operation, Args...>::value;
 
+METL_DETAIL_ABI_END
 }  // namespace metl

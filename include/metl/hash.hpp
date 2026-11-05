@@ -20,6 +20,7 @@
 /// be bounded by something you control.
 
 #include "metl/compiler.hpp"
+#include "metl/detail/abi.hpp"
 #include "metl/detail/addressof.hpp"
 
 #include <cstddef>
@@ -29,6 +30,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 namespace detail {
 
@@ -339,4 +341,5 @@ struct fnv1a_hash {
   }
 };
 
+METL_DETAIL_ABI_END
 }  // namespace metl

@@ -13,6 +13,7 @@
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 template <typename T, typename Tag>
 class intrusive_forward_list;
@@ -291,4 +292,5 @@ class intrusive_forward_list {
   size_type size_ = 0;
 };
 
+METL_DETAIL_ABI_END
 }  // namespace metl

@@ -103,6 +103,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Fixed-capacity set of unique keys using open addressing with linear probing.
 ///
@@ -957,4 +958,5 @@ typename static_unordered_set<Key, Capacity, Hash, KeyEqual>::size_type erase_if
   return erased;
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl
