@@ -55,11 +55,20 @@ namespace coro {
 /// @brief Type-erased poll function. @return true if the task still wants to run.
 using poll_fn = bool (*)(void* task) noexcept;
 
-/// @brief One attached task: a type-erased pointer and its poll trampoline.
+}  // namespace coro
+
+namespace detail {
+
+// One attached task: a type-erased pointer and its poll trampoline. The
+// scheduler's own record, so it is not part of the public API.
 struct task_slot {
-  void* task;    ///< Non-owning pointer to the task object.
-  poll_fn poll;  ///< Trampoline that drives one step of the task.
+  void* task;          // Non-owning pointer to the task object.
+  coro::poll_fn poll;  // Trampoline that drives one step of the task.
 };
+
+}  // namespace detail
+
+namespace coro {
 
 /// @brief Fixed-capacity, single-threaded cooperative round-robin scheduler.
 ///
@@ -200,14 +209,14 @@ class scheduler {
     if (tasks_.full() || !try_take_attachment(attachment)) {
       return false;
     }
-    return tasks_.try_push_back(entry{task_slot{task, fn}, attachment});
+    return tasks_.try_push_back(entry{detail::task_slot{task, fn}, attachment});
   }
 
   // One attachment. The number tells attachments apart where the task address
   // and poll function cannot: a task detached and attached again, even with
   // the same poll function, is a new entry.
   struct entry {
-    task_slot slot;
+    detail::task_slot slot;
     size_type attachment;
   };
 

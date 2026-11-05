@@ -62,7 +62,7 @@ class task_node : public metl::list_hook<> {
 
  private:
   friend class intrusive_scheduler;
-  metl::coro::task_slot slot_{nullptr, nullptr};  // poll == nullptr: a round's marker
+  metl::detail::task_slot slot_{nullptr, nullptr};  // poll == nullptr: a round's marker
 };
 
 class intrusive_scheduler {
@@ -94,7 +94,7 @@ class intrusive_scheduler {
     // Before the slot is written: it belongs to the attachment still live.
     METL_HARDEN(!node.is_linked());
     METL_HARDEN(fn != nullptr);  // a null poll would read as a marker
-    node.slot_ = metl::coro::task_slot{task, fn};
+    node.slot_ = metl::detail::task_slot{task, fn};
     tasks_.push_back(node);
   }
 
@@ -163,7 +163,7 @@ inline intrusive_scheduler::size_type intrusive_scheduler::run_once() noexcept {
     auto after = next;
     ++after;
     tasks_.splice(after, tasks_, at);
-    const metl::coro::task_slot slot = node.slot_;
+    const metl::detail::task_slot slot = node.slot_;
     if (slot.poll == nullptr) {
       continue;  // an outer round's marker
     }

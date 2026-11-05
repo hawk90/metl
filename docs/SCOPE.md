@@ -550,14 +550,14 @@ forms:
 | `X(...)` | Treats it as a precondition violation: asserts and aborts. |
 | `try_X(...)` | Reports it by return value and leaves the container **unchanged**. |
 
-**Known exceptions.** Three plain names are older than this rule and report
-"full" instead of asserting; they are R2's exceptions below.
+**Known exception.** One plain name is older than this rule and reports
+"full" instead of asserting; it is R2's exception below.
 `event_dispatcher::subscribe` returns an empty `optional`; `try_subscribe` is the
 same operation under the right name, and `subscribe` becomes the asserting form
 in 2.0.0 ([#155](https://github.com/hawk90/metl/issues/155)), because that
 changes its return type. `arena_allocator::allocate` and
-`monotonic_buffer::allocate` return null and have no asserting form yet
-([#165](https://github.com/hawk90/metl/issues/165)).
+`monotonic_buffer::allocate` were the other two; in 2.0 they assert, and
+`try_allocate` returns null ([#165](https://github.com/hawk90/metl/issues/165)).
 
 One `try_` form does not keep the "unchanged" half:
 `mpmc_queue::try_emplace` with exceptions enabled and a `T`
@@ -590,9 +590,7 @@ because that state is normal: an interrupt that preempts the initializer reaches
 it, and waiting there, as `std::call_once` does, would never return: the
 initializer cannot resume until the interrupt does (`once_flag.hpp`).
 
-Three known exceptions break user code to change, so they wait for 2.0.0:
-`arena_allocator::allocate` and `monotonic_buffer::allocate` return null when full
-([#165](https://github.com/hawk90/metl/issues/165)), and
+One known exception breaks user code to change, so it waits for 2.0.0:
 `event_dispatcher::subscribe` returns an empty `optional`
 ([#155](https://github.com/hawk90/metl/issues/155)).
 
@@ -647,6 +645,28 @@ accessors and a hook's `is_linked()` do nothing but return, so each is
 noticed: adding it after a type is frozen warns at existing call sites, so it is
 checked before then. `span`'s `begin`/`end`/`cbegin`/`cend` are the one
 exemption, for that reason, until 2.0.0 (#545).
+
+### R7 — what a `try_` form returns
+
+A `try_` form returns what the operation produces, and on failure that
+product's natural empty value. It uses `expected` only when the caller needs to
+know *why* it failed:
+
+| The operation produces | `try_` returns | On failure |
+|---|---|---|
+| nothing (a push, an assign, a resize) | `bool` | `false` |
+| an object in storage METL hands out | `T*` | `nullptr` |
+| a slot in a `handle_pool` | the handle | an invalid handle |
+| text it wrote (`try_format_*`) | `span<char>` | an empty span |
+| a value from input that can be wrong in several ways (`try_parse_*`) | `expected<parsed<T>, parse_error>` | the reason |
+
+Sequence and concurrent containers return `bool`. Associative containers
+return `pair<iterator, bool>`, as `std::map::try_emplace` does, so "already
+present" and "full" stay apart. Two groups do not follow this yet, and 2.0.0
+changes them: `fixed_vector::try_insert` and positional `try_emplace` return an
+iterator, `end()` on failure (#161), and the associative `try_emplace` and
+`try_insert_or_assign` return `bool` (#162). A new `try_` form picks its row
+from this table; a shape not in it needs a reason recorded here.
 
 ### How it is enforced
 

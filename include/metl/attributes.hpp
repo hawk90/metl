@@ -25,15 +25,6 @@
 #define METL_NODISCARD
 #endif
 
-/// @brief Maps to `[[deprecated(msg)]]`: mark an entity deprecated with a message.
-#ifndef METL_DEPRECATED
-#if METL_HAS_CPP_ATTRIBUTE(deprecated) >= 201309L
-#define METL_DEPRECATED(msg) [[deprecated(msg)]]
-#else
-#define METL_DEPRECATED(msg)
-#endif
-#endif
-
 /// @brief Maps to `[[clang::lifetimebound]]`: flags a reference/pointer parameter
 ///        whose referent must outlive the result, enabling dangling diagnostics.
 // Empty everywhere the attribute is unavailable, so it never breaks a build.
