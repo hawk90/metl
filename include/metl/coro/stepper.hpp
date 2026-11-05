@@ -24,6 +24,8 @@
 
 #include "metl/compiler.hpp"
 
+#include <cstddef>
+
 namespace metl {
 namespace coro {
 
@@ -42,13 +44,18 @@ enum class step_result : unsigned char {
 /// Intended for a single-threaded cooperative run loop; `step()` must be
 /// non-blocking. noexcept, no heap, no exceptions, no RTTI.
 ///
-/// @warning The virtual destructor links the global `operator delete`, and on
-///          newlib `malloc`, once the vtable is used (#548). In an image that must
-///          have no heap, define `static void operator delete(void*) noexcept {}`
-///          in the derived class. Do not `delete` such an object.
+/// A stepper lives in static or automatic storage, in a METL pool or arena, or
+/// in storage the caller manages with `::new (p) T`. It is never deleted
+/// through a pointer and never made by a plain `new`: neither `delete p` on a
+/// `stepper*` or a derived pointer nor `new T` compiles (GCC also rejects an
+/// unqualified placement `new (p) T`; write `::new`). That keeps the global
+/// `operator delete` (and on newlib, `malloc`) out of the image, which the virtual destructor's deleting form
+/// would otherwise link once the vtable is used.
 class stepper {
  public:
   stepper() noexcept = default;
+  // Never on the heap: see the class comment and the operator delete below.
+  static void* operator new(std::size_t) = delete;
   stepper(const stepper&) = delete;
   stepper& operator=(const stepper&) = delete;
   stepper(stepper&&) noexcept = default;
@@ -91,6 +98,13 @@ class stepper {
   }
 
  protected:
+  // The deleting destructor that the virtual destructor emits calls this, not
+  // the global operator delete, so no heap is linked (#548). It never runs:
+  // being protected, it rejects `delete` outside the class. clang-tidy's
+  // cert-dcl54-cpp does not count the deleted operator new above as its pair.
+  // NOLINTNEXTLINE(cert-dcl54-cpp,misc-new-delete-overloads)
+  static void operator delete(void*) noexcept {}
+
   /// @brief Hook to reset derived state on `reset()`. Default is a no-op.
   virtual void on_reset() noexcept {}
 
