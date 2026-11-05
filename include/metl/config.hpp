@@ -130,7 +130,10 @@
 // METL_PREDICT_FALSE so the success path stays straight-line. This is the right
 // macro for essentially every runtime precondition — reserve METL_DASSERT for
 // checks too expensive to keep in a shipping build.
-#ifndef METL_ASSERT
+#ifdef METL_ASSERT
+#error \
+    "METL_ASSERT must not be predefined: it is METL's precondition check. Use METL_HARDENING to choose the level and metl::set_assert_handler to act on a failure"
+#endif
 #if METL_HARDENING >= METL_HARDENING_FAST
 #define METL_ASSERT(expr)                                                        \
   do {                                                                           \
@@ -144,7 +147,6 @@
 // unevaluated operand, where C++17 forbids a lambda, so an assertion that
 // compiled in a checked build failed to compile in the stripped one.
 #define METL_ASSERT(expr) (false ? static_cast<void>(!(expr)) : static_cast<void>(0))
-#endif
 #endif
 
 // METL_HARDEN — an ALWAYS-ON guard, independent of METL_HARDENING (it is NOT
@@ -165,7 +167,10 @@
 // value(), get<>() -- which at NONE behaves like the unchecked std accessor it
 // mirrors, and for asserting forms whose stripped result stays in bounds.
 // tools/check_source_rules.py (S2) holds the line between the two.
-#ifndef METL_HARDEN
+#ifdef METL_HARDEN
+#error \
+    "METL_HARDEN must not be predefined: it is METL's always-on security floor. Use metl::set_assert_handler to act on a failure"
+#endif
 #define METL_HARDEN(expr)                                                        \
   do {                                                                           \
     if (METL_PREDICT_FALSE(!(expr))) {                                           \
@@ -173,7 +178,6 @@
           METL_DETAIL_CHECK_EXPRESSION(expr), METL_DETAIL_CHECK_FILE, __LINE__); \
     }                                                                            \
   } while (false)
-#endif
 
 // METL_DASSERT — debug-only assertion (a DCHECK). Active only at
 // METL_HARDENING_DEBUG; at FAST and NONE it compiles to nothing — `expr` is
@@ -185,13 +189,15 @@
 // preconditions — including cheap hot-path bounds/non-empty checks on accessors
 // like operator[]/front/back — should use METL_ASSERT so they stay on in release
 // (metl is checked-by-default). METL_DASSERT is deliberately rare.
-#ifndef METL_DASSERT
+#ifdef METL_DASSERT
+#error \
+    "METL_DASSERT must not be predefined: it is METL's debug check. Use METL_HARDENING to choose the level and metl::set_assert_handler to act on a failure"
+#endif
 #if METL_HARDENING >= METL_HARDENING_DEBUG
 #define METL_DASSERT(expr) METL_ASSERT(expr)
 #else
 // As the stripped METL_ASSERT: `expr` is checked, never run.
 #define METL_DASSERT(expr) (false ? static_cast<void>(!(expr)) : static_cast<void>(0))
-#endif
 #endif
 
 #ifndef METL_PANIC
