@@ -109,7 +109,7 @@ LAYOUT(20, 4, metl::fsm<layout_state, layout_event, 1>);
 LAYOUT(12, 4, metl::fsm_transition<layout_state, layout_event>);
 LAYOUT(8, 4, metl::function_ref<std::uint32_t(std::uint32_t)>);
 LAYOUT(4, 4, metl::guarded<std::uint32_t, metl::null_lock>);
-LAYOUT(32, 4, metl::handle_pool<std::uint32_t, 4>);
+LAYOUT(36, 4, metl::handle_pool<std::uint32_t, 4>);
 LAYOUT(4, 4, metl::intrusive_ptr<layout_node>);
 LAYOUT(16, 4, metl::lookup_table<std::uint32_t, std::uint32_t, 2>);
 LAYOUT(8, 4, metl::lookup_entry<std::uint32_t, std::uint32_t>);
