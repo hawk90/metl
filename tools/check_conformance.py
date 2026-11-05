@@ -56,7 +56,6 @@ EXEMPT = {
     "metl.hpp": "umbrella header; its types are registered under their own headers",
     "optimization.hpp": "hint macros",
     "type_traits.hpp": "compile-time traits",
-    "version.hpp": "version constants",
     "bit.hpp": "functions on integers",
     "bitfield.hpp": "functions on integers",
     "crc8.hpp": "functions on bytes",

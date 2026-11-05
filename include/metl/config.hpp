@@ -203,13 +203,20 @@
   } while (false)
 #endif
 
+// The library version, written once here. The macros are for the
+// preprocessor (`#if METL_VERSION_MAJOR >= 2`); the constants below carry the
+// same values for C++ code. A release changes the three numbers on these lines.
+#define METL_VERSION_MAJOR 1
+#define METL_VERSION_MINOR 15
+#define METL_VERSION_PATCH 0
+
 namespace metl {
 
-/// Major version component of the library.
-inline constexpr int version_major = 1;
-/// Minor version component of the library.
-inline constexpr int version_minor = 15;
-/// Patch version component of the library.
-inline constexpr int version_patch = 0;
+/// Major version component of the library, as `METL_VERSION_MAJOR`.
+inline constexpr int version_major = METL_VERSION_MAJOR;
+/// Minor version component of the library, as `METL_VERSION_MINOR`.
+inline constexpr int version_minor = METL_VERSION_MINOR;
+/// Patch version component of the library, as `METL_VERSION_PATCH`.
+inline constexpr int version_patch = METL_VERSION_PATCH;
 
 }  // namespace metl

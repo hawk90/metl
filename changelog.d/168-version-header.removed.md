@@ -1,0 +1,1 @@
+- **Breaking:** `<metl/version.hpp>` and `struct metl::version` are removed (#168). They spelled the version a second time; use `metl::version_major`, `version_minor` and `version_patch`, or the new `METL_VERSION_*` macros, all from `<metl/config.hpp>`, which every METL header includes. These were not deprecated in 1.15.0; the include or the name stops compiling.

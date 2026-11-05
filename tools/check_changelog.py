@@ -22,8 +22,8 @@ Checks (the default):
       shared list this replaces.
   C3  with --base: a branch that changes code under include/ adds a fragment.
       Lines that are only comments do not count, so a documentation fix in a
-      header does not need one. Nor does the release's bump of the version
-      constants in include/metl/config.hpp, when the same branch adds the
+      header does not need one. Nor does the release's bump of the
+      METL_VERSION_* macros in include/metl/config.hpp, when the same branch adds the
       CHANGELOG section of that version (#401).
 
 At release, `--assemble X.Y.Z` writes the fragments under `## [X.Y.Z] - <date>`
@@ -58,7 +58,7 @@ FRAGMENT_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*\.(" + "|".join(TYPES + [INTERNA
 UNRELEASED = "## [Unreleased]"
 # The release bumps these; see C3.
 VERSION_FILE = "include/metl/config.hpp"
-VERSION_LINE = re.compile(r"^inline constexpr int version_(major|minor|patch) = (\d+);$")
+VERSION_LINE = re.compile(r"^#define METL_VERSION_(MAJOR|MINOR|PATCH) (\d+)$")
 
 
 def git(root, *args):
@@ -100,8 +100,9 @@ def releases(root, merge_base):
     path = root / VERSION_FILE
     if not path.is_file():
         return False
-    parts = dict(match.groups() for match in map(VERSION_LINE.match, path.read_text(encoding="utf-8").splitlines())
-                 if match)
+    parts = {name.lower(): number
+             for name, number in (match.groups() for match in
+                                  map(VERSION_LINE.match, path.read_text(encoding="utf-8").splitlines()) if match)}
     if set(parts) != {"major", "minor", "patch"}:
         return False
     heading = f"+## [{parts['major']}.{parts['minor']}.{parts['patch']}]"
@@ -285,7 +286,7 @@ def self_test():
         if check(root):
             failures.append(f"the assembled changelog should pass: {check(root)}")
 
-    # C3 and a release (#401): the release PR bumps the version constants and
+    # C3 and a release (#401): the release PR bumps the version macros and
     # deletes the fragments. The bump needs no fragment when the same branch
     # adds the section of the version it names; other code still does.
     with tempfile.TemporaryDirectory() as tmp:
@@ -293,8 +294,8 @@ def self_test():
         (root / FRAGMENTS).mkdir()
         (root / "include" / "metl").mkdir(parents=True)
         config = root / VERSION_FILE
-        version = "inline constexpr int version_major = 1;\ninline constexpr int version_minor = {};\n" \
-                  "inline constexpr int version_patch = 0;\n"
+        version = "#define METL_VERSION_MAJOR 1\n#define METL_VERSION_MINOR {}\n" \
+                  "#define METL_VERSION_PATCH 0\n"
         config.write_text(version.format(0))
         (root / CHANGELOG).write_text(f"# Changelog\n\n{UNRELEASED}\n\n## [1.0.0] - 2026-01-01\n\n- old\n")
         (root / FRAGMENTS / "1-g.fixed.md").write_text("- `g` no longer crashes.\n")
