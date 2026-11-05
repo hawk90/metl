@@ -100,6 +100,14 @@ import tempfile
 # 132,472 / 169,757 at N = 4 / 64 / 1024; get() 50,636 -> 40,950). Only a note
 # asked for it then. A count under the budget by more than the tolerance now
 # fails, so the change that makes a benchmark cheaper records the new budget.
+#
+# Raised by #642 (PR #668), which makes handle_pool's free list FIFO: each free
+# now ends the list at the freed slot, links the old tail to it and moves the
+# tail, where LIFO wrote one link. alloc+free went 115,292 / 132,472 / 169,757
+# -> 195,315 / 192,571 / 231,798 at N = 4 / 64 / 1024, that is +16 / +12 / +12.4
+# instructions per destroy+emplace cycle: the same at every capacity, so O(1)
+# extra work, not a change of complexity class. It buys a stale handle needing
+# Capacity times as many cycles to alias.
 BUDGETS = {
     "metl_bench_containers::crc32 over 1 KiB": 58_915_533,
     "metl_bench_containers::fixed_vector<64> fill + clear": 1_150_301,
@@ -111,9 +119,9 @@ BUDGETS = {
     "metl_bench_containers::static_unordered_map<256> find (miss)": 282_659,
     "metl_bench_mpmc::mpmc_queue push + pop": 163_039,
     "metl_bench_mpmc::spsc_queue push + pop": 129_247,
-    "metl_bench_pools::handle_pool<1024> alloc+free": 169_757,
-    "metl_bench_pools::handle_pool<4>  alloc+free": 115_292,
-    "metl_bench_pools::handle_pool<64> alloc+free": 132_472,
+    "metl_bench_pools::handle_pool<1024> alloc+free": 231_798,
+    "metl_bench_pools::handle_pool<4>  alloc+free": 195_315,
+    "metl_bench_pools::handle_pool<64> alloc+free": 192_571,
     "metl_bench_pools::handle_pool<64> get()": 40_950,
     "metl_bench_pools::object_pool<1024> alloc+free": 268_212,
     "metl_bench_pools::object_pool<4>  alloc+free": 195_274,

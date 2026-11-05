@@ -355,6 +355,48 @@ void a_throwing_constructor_releases_the_claim() {
   CHECK(handles.try_emplace().valid());
   CHECK(handles.try_emplace().valid());
 }
+
+// handle_pool's free list has a tail (#642). A claim that empties the list,
+// then a constructor that frees another slot and takes it back, leaves the
+// tail on that live slot; when the constructor throws, the unwind must move
+// the tail to the slot it returns, or the next free links the live slot in.
+struct frees_then_throws {
+  frees_then_throws() = default;
+  explicit frees_then_throws(bool reenter);
+};
+using reentrant_pool = metl::handle_pool<frees_then_throws, 2>;
+reentrant_pool* g_reentrant = nullptr;
+reentrant_pool::handle_type g_other{};
+
+frees_then_throws::frees_then_throws(bool reenter) {
+  if (reenter) {
+    CHECK(g_reentrant->destroy(g_other));  // the list holds only that slot
+    g_other = g_reentrant->try_emplace();  // and takes it back: empty again
+    CHECK(g_other.valid());
+    throw 2;
+  }
+}
+
+void a_throwing_reentrant_constructor_moves_the_tail() {
+  static reentrant_pool pool;
+  g_reentrant = &pool;
+  g_other = pool.try_emplace();  // slot 0; the list holds slot 1
+  bool threw = false;
+  try {
+    (void)pool.try_emplace(true);  // claims slot 1, the last free one
+  } catch (int) {
+    threw = true;
+  }
+  CHECK(threw);
+  CHECK_EQ(pool.size(), 1u);
+  CHECK(pool.destroy(g_other));  // both slots free again, in a proper list
+  const auto a = pool.try_emplace();
+  const auto b = pool.try_emplace();
+  CHECK(a.valid());
+  CHECK(b.valid());
+  CHECK(a.index() != b.index());
+  CHECK(!pool.try_emplace().valid());
+}
 #endif
 
 }  // namespace
@@ -370,6 +412,7 @@ int main() {
   handle_pool_destructor_reenters();
 #if !METL_NO_EXCEPTIONS
   a_throwing_constructor_releases_the_claim();
+  a_throwing_reentrant_constructor_moves_the_tail();
 #endif
   return metl_test::exit_code();
 }

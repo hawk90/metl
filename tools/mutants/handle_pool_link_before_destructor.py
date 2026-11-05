@@ -8,8 +8,8 @@ MUTANT = {
     "kills": "ctest:handle_pool_test",
     "old": """    slot_ptr(index)->~T();
 
-    set_link(index, free_head_);""",
-    "new": """    set_link(index, free_head_);
+    append_free(index);""",
+    "new": """    append_free(index);
 
     slot_ptr(index)->~T();
 """,

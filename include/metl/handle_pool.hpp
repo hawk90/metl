@@ -72,7 +72,9 @@ namespace metl {
 ///          alias a new object. With the default 16-bit counter that is 32768
 ///          cycles per slot. This is inherent to generation tagging; use a
 ///          wider `GenT` when handles are held for unbounded periods. A 32-bit
-///          counter gives 2^31 cycles per slot.
+///          counter gives 2^31 cycles per slot. Freed slots are reused oldest
+///          first, so steady churn of one object walks every slot in turn and
+///          a slot wraps only after all of them have taken as many cycles (#642).
 ///
 /// @warning **A handle names a slot, not a pool.** A handle from one
 ///          `handle_pool<T, N>` is also accepted by every other pool of the same
@@ -316,8 +318,21 @@ class handle_pool {
 
     slot_ptr(index)->~T();
 
-    set_link(index, free_head_);
-    free_head_ = index;
+    append_free(index);
+  }
+
+  // The free list is FIFO: a freed slot goes to the back, so the slot reused
+  // next is the one freed longest ago, and churn spreads its generation bumps
+  // over the pool instead of wrapping one slot (#642). A link of `Capacity`
+  // ends the list; `free_tail_` is valid while the list is not empty.
+  void append_free(size_type index) noexcept {
+    set_link(index, Capacity);
+    if (free_head_ >= Capacity) {
+      free_head_ = index;
+    } else {
+      set_link(free_tail_, index);
+    }
+    free_tail_ = index;
   }
 
   // Puts a claimed slot back on the free list if T's constructor exits by an
@@ -335,6 +350,10 @@ class handle_pool {
         pool_->generation_[index_] =
             static_cast<generation_type>(pool_->generation_[index_] - generation_type{1});
         --pool_->size_;
+        // To the FRONT: the slot is reused next, as if never claimed.
+        if (pool_->free_head_ >= Capacity) {
+          pool_->free_tail_ = index_;
+        }
         pool_->set_link(index_, pool_->free_head_);
         pool_->free_head_ = index_;
       }
@@ -356,7 +375,10 @@ class handle_pool {
   // liveness flag, so a slot needs no flag of its own.
   generation_type generation_[Capacity == 0 ? 1 : Capacity];
   size_type free_head_;
+  // The last free slot; the constructors link 0 .. Capacity-1 in order.
+  size_type free_tail_ = last_slot;
   size_type size_;
+  static constexpr size_type last_slot = Capacity == 0 ? 0 : Capacity - 1;
 };
 
 }  // namespace metl

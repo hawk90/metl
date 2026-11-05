@@ -31,6 +31,7 @@ ALLOWED_CHANGES: dict[str, dict[str, str]] = {
         "metl::static_allocator<std::uint32_t, 4>": "removed by #662, deprecated in 1.15.0",
         "metl::static_message_queue<std::uint32_t, 4>": "removed by #662, deprecated in 1.15.0",
         "metl::variant<std::uint32_t, std::uint8_t>": "removed by #635, deprecated in 1.15.0",
+        "metl::handle_pool<std::uint32_t, 4>": "#642's FIFO free list keeps a tail index: +4 B",
     },
 }
 

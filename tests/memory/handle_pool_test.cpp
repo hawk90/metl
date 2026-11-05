@@ -249,7 +249,13 @@ int main() {
     }
     CHECK_EQ(pool.size(), std::size_t{0});
     // The generation reported for the free slot is the one it issues next.
-    CHECK_EQ(pool.try_emplace(2).generation(), next);
+    // The three slots never used are ahead of it in the free list (#642).
+    for (int i = 0; i < 3; ++i) {
+      CHECK(pool.try_emplace(i).index() != handle.index());
+    }
+    const auto reused = pool.try_emplace(2);
+    CHECK_EQ(reused.index(), handle.index());
+    CHECK_EQ(reused.generation(), next);
   }
 
   // --- An object is intact when its destructor runs ---------------------------
@@ -278,6 +284,38 @@ int main() {
       CHECK(pool.destroy(handle));
     }
     CHECK(pool.generation_of(0) != 0);
+  }
+
+  // --- Reuse is spread over the slots (#642) ---------------------------------
+  // Freed slots are reused oldest first. Steady churn of one object therefore
+  // walks every slot in turn: no slot's generation runs ahead of the others,
+  // so a stale handle aliases only after the whole pool has wrapped, not one
+  // slot. LIFO reuse put the whole churn on one slot.
+  {
+    constexpr std::size_t slots = 8;
+    metl::handle_pool<int, slots> pool;
+    for (std::size_t cycle = 0; cycle < slots * 5; ++cycle) {
+      const auto handle = pool.try_emplace(static_cast<int>(cycle));
+      CHECK_EQ(static_cast<std::size_t>(handle.index()), cycle % slots);
+      CHECK(pool.destroy(handle));
+    }
+    for (std::size_t i = 0; i < slots; ++i) {
+      // 5 uses each: generation 1 + 2 * 5 for the next handle.
+      CHECK_EQ(pool.generation_of(static_cast<metl::handle_pool<int, slots>::index_type>(i)), 11);
+    }
+
+    // Freed out of order, reused in the order freed, after the never-used one.
+    metl::handle_pool<int, 4> mixed;
+    const auto a = mixed.try_emplace(0);
+    const auto b = mixed.try_emplace(1);
+    const auto c = mixed.try_emplace(2);
+    CHECK(mixed.destroy(c));
+    CHECK(mixed.destroy(a));
+    CHECK_EQ(mixed.try_emplace(3).index(), 3);  // never used
+    CHECK_EQ(mixed.try_emplace(4).index(), 2);  // freed first
+    CHECK_EQ(mixed.try_emplace(5).index(), 0);  // freed second
+    CHECK(!mixed.try_emplace(6));               // full
+    CHECK(mixed.contains(b));
   }
 
   return metl_test::exit_code();
