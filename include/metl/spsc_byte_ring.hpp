@@ -17,6 +17,17 @@
 // cache honest is the driver's job, and the type is deliberately named for its
 // concurrency contract rather than for DMA so that no one reads a guarantee into
 // it that is not here.
+//
+// CACHE MAINTENANCE WORKS BY LINE, and so does the hazard. Invalidating the
+// storage discards every line it touches. A line that also holds head_ or
+// tail_ loses the other side's latest index, and a clean writes a stale one
+// back. On Cortex-M METL_CACHELINE_SIZE is 8 (no M-profile part has a coherent
+// multi-core cache, so there is no false sharing to pad against), but a
+// Cortex-M7's data cache has 32-byte lines. For DMA through a cache, pass the
+// data cache's line size as StorageAlignment, `spsc_byte_ring<512, 32>`. The
+// storage then starts on a line boundary after both indices, and, as the last
+// member of a type aligned to that line, its last line holds only padding: no
+// line it covers holds an index.
 
 #include "metl/config.hpp"
 #include "metl/detail/index_distance.hpp"
@@ -63,11 +74,17 @@ namespace metl {
 ///
 /// @tparam Capacity Ring size in bytes. Power of two, at least 2, so the index
 ///         wrap is a mask rather than a division.
+/// @tparam StorageAlignment The storage's alignment in bytes, a power of two.
+///         The storage is aligned to this or to `METL_CACHELINE_SIZE`,
+///         whichever is larger. For DMA through a data cache, pass the cache's
+///         line size (32 on Cortex-M7); see the note at the top of this header.
 METL_CACHELINE_PADDED_BEGIN
-template <std::size_t Capacity>
+template <std::size_t Capacity, std::size_t StorageAlignment = METL_CACHELINE_SIZE>
 class spsc_byte_ring {
   static_assert(Capacity >= 2, "spsc_byte_ring Capacity must be at least 2");
   static_assert((Capacity & (Capacity - 1)) == 0, "spsc_byte_ring Capacity must be a power of two");
+  static_assert(StorageAlignment != 0 && (StorageAlignment & (StorageAlignment - 1)) == 0,
+                "spsc_byte_ring StorageAlignment must be a power of two");
 
  public:
   using value_type = std::byte;
@@ -289,7 +306,8 @@ class spsc_byte_ring {
   // unmeasured complication.
   METL_CACHELINE_ALIGNED detail::word_atomic<size_type> head_;  ///< Consumer position (monotonic).
   METL_CACHELINE_ALIGNED detail::word_atomic<size_type> tail_;  ///< Producer position (monotonic).
-  METL_CACHELINE_ALIGNED std::byte storage_[Capacity] = {};
+  alignas(StorageAlignment > METL_CACHELINE_SIZE ? StorageAlignment
+                                                 : METL_CACHELINE_SIZE) std::byte storage_[Capacity] = {};
 };
 METL_CACHELINE_PADDED_END
 

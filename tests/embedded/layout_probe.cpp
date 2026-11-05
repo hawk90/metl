@@ -124,6 +124,7 @@ LAYOUT(8, 4, layout_scope_exit);
 LAYOUT(8, 4, metl::span<std::uint32_t>);
 LAYOUT(4, 4, metl::span<std::uint32_t, 4>);
 LAYOUT(32, 8, metl::spsc_byte_ring<16>);
+LAYOUT(64, 32, metl::spsc_byte_ring<16, 32>);
 LAYOUT(32, 8, metl::spsc_queue<std::uint32_t, 4>);
 LAYOUT(148, 4, metl::static_unordered_map<std::uint32_t, std::uint32_t, 8>);
 LAYOUT(84, 4, metl::static_unordered_set<std::uint32_t, 8>);

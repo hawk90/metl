@@ -300,5 +300,42 @@ int main() {
     drain_and_check(ring, 40, 8);
   }
 
+  // ---------------------------------------------------------------------
+  // StorageAlignment (#562): the storage starts on a boundary of the larger of
+  // it and METL_CACHELINE_SIZE, after both indices, and the type is aligned to
+  // that boundary too, so the storage's last line holds only padding. Cache
+  // maintenance by line over the storage then never covers an index.
+  // ---------------------------------------------------------------------
+  {
+    constexpr std::size_t line = 256;  // above every METL_CACHELINE_SIZE
+    using dma_ring = metl::spsc_byte_ring<16, line>;
+    // CHECK, not static_assert, so a mutant that drops the alignment fails the
+    // test rather than the build.
+    CHECK_EQ(alignof(dma_ring), line);      // the ring is aligned to the storage's boundary
+    CHECK_EQ(sizeof(dma_ring) % line, 0u);  // the storage's last line belongs to the ring
+    dma_ring ring;
+    const auto base = reinterpret_cast<std::uintptr_t>(&ring);
+    const auto storage = reinterpret_cast<std::uintptr_t>(ring.writable_span().data());
+    CHECK_EQ(storage % line, 0u);
+    CHECK(storage >= base + line);  // both indices sit in lines before it
+    CHECK(storage + ring.capacity() <= base + sizeof(dma_ring));
+    const metl::span<std::byte> out = ring.writable_span();
+    CHECK_EQ(out.size(), 16u);
+    for (std::size_t i = 0; i < out.size(); ++i) {
+      out[i] = b(static_cast<int>(i) + 1);
+    }
+    ring.commit_write(out.size());
+    const metl::span<const std::byte> in = ring.readable_span();
+    CHECK_EQ(in.size(), 16u);
+    CHECK_EQ(value_of(in[15]), 16);
+    ring.consume(in.size());
+    CHECK(ring.empty());
+
+    // A smaller StorageAlignment keeps the cache-line one.
+    using small = metl::spsc_byte_ring<16, 1>;
+    CHECK_EQ(alignof(small), alignof(metl::spsc_byte_ring<16>));  // never below METL_CACHELINE_SIZE
+    CHECK_EQ(sizeof(small), sizeof(metl::spsc_byte_ring<16>));
+  }
+
   return metl_test::exit_code();
 }
