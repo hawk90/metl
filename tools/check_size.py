@@ -182,11 +182,15 @@ import tempfile
 #
 # Moved by #642 (PR #668), whose FIFO free list gives handle_pool a tail index:
 # M0 +40, M3 0, M4 -4, M7 +8 on CI's GCC 14 linked image.
+#
+# Lowered by #168 (PR #672, run 41983220910): the probe builds without NDEBUG, and
+# the default hardening level is now FAST rather than DEBUG there, so its
+# METL_DASSERT checks compile out: M0 -32, M3 -16, M4 -12, M7 -16.
 BUDGETS = {
-    "cortex-m0": 4304,
-    "cortex-m3": 4300,
-    "cortex-m4": 4292,
-    "cortex-m7": 4300,
+    "cortex-m0": 4272,
+    "cortex-m3": 4284,
+    "cortex-m4": 4280,
+    "cortex-m7": 4284,
 }
 
 # No tolerance on any of the three sizes (#587). The toolchain does not move them
@@ -216,11 +220,15 @@ TOLERANCE_BYTES = 0
 #
 # Lowered to 616 by #474 (run 41733121080, all four targets), by the same
 # change: 8 bytes fewer constants on every core.
+#
+# Lowered to 564 by #168 (PR #672, run 41983220910, all four targets): at the new
+# FAST default the METL_DASSERT checks, and the file names and expression text
+# they store, are gone.
 RODATA_BUDGETS = {
-    "cortex-m0": 616,
-    "cortex-m3": 616,
-    "cortex-m4": 616,
-    "cortex-m7": 616,
+    "cortex-m0": 564,
+    "cortex-m3": 564,
+    "cortex-m4": 564,
+    "cortex-m7": 564,
 }
 RODATA_TOLERANCE_BYTES = 0
 

@@ -27,14 +27,14 @@
 //        For code proven correct that cannot afford the branch.
 //   METL_HARDENING_FAST  (1) — all preconditions (METL_ASSERT) on, including
 //        bounds/accessor checks; only the (rare) expensive debug DCHECKs
-//        (METL_DASSERT) are stripped. Shipping default — safe, low overhead.
-//   METL_HARDENING_DEBUG (2) — everything on, including METL_DASSERT.
-//        Development default.
+//        (METL_DASSERT) are stripped. The default — safe, low overhead.
+//   METL_HARDENING_DEBUG (2) — everything on, including METL_DASSERT. Opt in
+//        with -DMETL_HARDENING=2 for development builds.
 //
-// Consumer-controllable via -DMETL_HARDENING=<0|1|2>, independently of the
-// consumer's own NDEBUG. If unset it defaults to DEBUG for debug builds
-// (METL_DEBUG or !NDEBUG) and FAST for release builds — so debug/release check
-// separation applies to consuming code too, not just to metl's own build.
+// Consumer-controllable via -DMETL_HARDENING=<0|1|2>. If unset it is FAST,
+// whatever NDEBUG says, as libc++'s hardening mode ignores NDEBUG: a level
+// that followed NDEBUG would differ between a Debug application and a Release
+// SDK built from the same headers, which is the ODR violation described below.
 //
 // ODR WARNING: METL_HARDENING changes the bodies of inline/template functions in
 // these headers (which checks compile in). It MUST be uniform across every
@@ -102,11 +102,7 @@
 #define METL_HARDENING_DEBUG 2
 
 #ifndef METL_HARDENING
-#if defined(METL_DEBUG) || !defined(NDEBUG)
-#define METL_HARDENING METL_HARDENING_DEBUG
-#else
 #define METL_HARDENING METL_HARDENING_FAST
-#endif
 #endif
 
 // Validated by token pasting, not by range. The preprocessor reads an unknown

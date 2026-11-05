@@ -6,6 +6,12 @@
 // A real interrupt is in once_flag_irq_test.cpp, threads in
 // once_flag_threaded_test.cpp.
 
+// The default level is FAST, which compiles METL_DASSERT out; this test checks
+// a METL_DASSERT, so it runs at DEBUG unless the build chose a level.
+#ifndef METL_HARDENING
+#define METL_HARDENING 2
+#endif
+
 #include "assert_trip.hpp"
 #include "metl_check.hpp"
 

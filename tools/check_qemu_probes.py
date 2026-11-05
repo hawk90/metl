@@ -124,7 +124,9 @@ CANARY_BYTES = 1024
 # #290's use-before-construction check: this probe builds without NDEBUG, so at
 # METL_HARDENING_DEBUG every push and pop calls it (one relaxed load and a
 # compare, ~6 instructions over 128 operations); with NDEBUG the region's code
-# is byte-identical to before (172 B on cortex-m4, ARM GCC).
+# is byte-identical to before (172 B on cortex-m4, ARM GCC). Back to 3914 with
+# #168 (PR #672, run 42013825474, M3/M4/M7): the default level is FAST whether
+# or not NDEBUG is defined, so the probe no longer runs that METL_DASSERT.
 _V7M_COUNTS = {
     "fixed_queue_push_pop": 2632,
     "fixed_vector_fill_clear": 1620,
@@ -133,7 +135,7 @@ _V7M_COUNTS = {
     "intrusive_scheduler_attach_detach_4": 18823,
     "intrusive_scheduler_run_once_16": 59466,
     "intrusive_scheduler_run_once_4": 29418,
-    "mpmc_queue_push_pop": 4681,
+    "mpmc_queue_push_pop": 3914,
     "ring_buffer_push_overwrite": 1288,
     "scheduler_attach_detach_16": 303495,
     "scheduler_attach_detach_4": 39303,
