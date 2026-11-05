@@ -327,7 +327,7 @@ Configuration
 
   ```sh
   cmake -B build -S .
-  cmake --build build --target docs   # requires doxygen; output in build/docs/html
+  cmake --build build --target metl_docs   # requires doxygen; output in build/docs/html
   ```
 
 - **Non-standard contracts** — a few types deliberately diverge from `std::`
