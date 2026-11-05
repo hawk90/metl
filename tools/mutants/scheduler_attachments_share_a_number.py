@@ -7,6 +7,6 @@ MUTANT = {
            "passes for the snapshot's entry and is polled in the round it was "
            "attached.",
     "kills": "ctest:coro_scheduler_reentrancy",
-    "old": "entry{task_slot{task, fn}, attachment}",
-    "new": "entry{task_slot{task, fn}, size_type{0}}",
+    "old": "entry{detail::task_slot{task, fn}, attachment}",
+    "new": "entry{detail::task_slot{task, fn}, size_type{0}}",
 }

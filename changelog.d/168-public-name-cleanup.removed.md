@@ -1,0 +1,2 @@
+- **Breaking:** `METL_DEPRECATED` is removed (#168). METL no longer deprecates anything with it; write `[[deprecated("...")]]`.
+- **Breaking:** `coro::task_slot`, the scheduler's record of an attached task, moves to `metl::detail` (#168). No public function takes or returns it.
