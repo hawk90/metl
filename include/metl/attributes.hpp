@@ -16,12 +16,13 @@
 
 /// @brief Maps to `[[nodiscard]]` where supported: warn when a return value is
 ///        discarded. Empty on compilers without the attribute.
-#ifndef METL_NODISCARD
+#ifdef METL_NODISCARD
+#error "METL_NODISCARD must not be predefined: a discarded try_ result is how a failure goes unseen"
+#endif
 #if METL_HAS_CPP_ATTRIBUTE(nodiscard) >= 201603L
 #define METL_NODISCARD [[nodiscard]]
 #else
 #define METL_NODISCARD
-#endif
 #endif
 
 /// @brief Maps to `[[deprecated(msg)]]`: mark an entity deprecated with a message.

@@ -272,7 +272,8 @@ Configuration
   `METL_CRC_TABLE` (nibble-table or bit-at-a-time CRC), `METL_ASSERT_STRINGS`
   (keep or drop the text of a failed check), plus the check macros
   it defines — `METL_ASSERT` / `METL_DASSERT`, which the hardening level
-  controls, and `METL_HARDEN`, which is always on. Set them identically in
+  controls, and `METL_HARDEN`, which is always on (these cannot be predefined:
+  doing so is an `#error`). Set them identically in
   every translation unit, and compile every translation unit with the same C++
   standard (`-std`): some types change their members or inline functions under
   C++20.
