@@ -33,6 +33,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// Slot-based object pool with a compile-time FIXED number of slots.
 ///
@@ -245,4 +246,5 @@ class object_pool {
   size_type size_ = 0;
 };
 
+METL_DETAIL_ABI_END
 }  // namespace metl

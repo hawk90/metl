@@ -19,6 +19,7 @@
 #include <cstdint>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 /// @brief Nibble lookup table for a CRC register, built at compile time.
@@ -140,4 +141,5 @@ constexpr Crc crc_fold(const char* text, Crc initial, Crc final_xor, Update upda
 }
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

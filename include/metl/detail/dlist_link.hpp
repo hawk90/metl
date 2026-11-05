@@ -1,6 +1,9 @@
 #pragma once
 
+#include "metl/detail/abi.hpp"
+
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 /// @brief One link of a circular doubly linked list: both neighbours, and the
@@ -37,4 +40,5 @@ inline void dlist_unlink(dlist_link& node) noexcept {
 }
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

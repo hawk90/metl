@@ -1,8 +1,10 @@
 #pragma once
 
 #include "metl/compiler.hpp"
+#include "metl/detail/abi.hpp"
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 /// @brief `std::addressof` without pulling in all of `<memory>`.
@@ -27,4 +29,5 @@ template <typename T>
 const T* addressof(const T&&) = delete;
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

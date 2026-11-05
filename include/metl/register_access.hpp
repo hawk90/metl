@@ -13,11 +13,13 @@
 /// bound. What it guarantees is a fixed, data-independent number of accesses.
 
 #include "metl/compiler.hpp"
+#include "metl/detail/abi.hpp"
 
 #include <atomic>
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Volatile MMIO read that the optimizer may not fold or elide.
 ///
@@ -142,4 +144,5 @@ METL_FORCE_INLINE void compiler_barrier() noexcept {
   std::atomic_signal_fence(std::memory_order_seq_cst);
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

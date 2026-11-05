@@ -32,6 +32,7 @@
 #include <cstdint>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace coro {
 
 /// @brief Type-erased deadline poll function.
@@ -213,4 +214,5 @@ class deadline_scheduler {
 };
 
 }  // namespace coro
+METL_DETAIL_ABI_END
 }  // namespace metl

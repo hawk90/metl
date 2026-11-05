@@ -44,6 +44,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Fixed-capacity set of unique keys kept sorted in a flat array.
 ///
@@ -868,4 +869,5 @@ typename flat_set<Key, Capacity, Compare>::size_type erase_if(flat_set<Key, Capa
   return erased;
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

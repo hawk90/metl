@@ -29,6 +29,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Fixed-capacity monotonic (bump-pointer) allocator with no per-object free.
 ///
@@ -168,4 +169,5 @@ class monotonic_buffer {
 #endif
 };
 
+METL_DETAIL_ABI_END
 }  // namespace metl

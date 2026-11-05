@@ -23,9 +23,12 @@
 /// allowed operation (the same declaration as before).
 ///
 /// Progress guarantee: wait-free, bounded (no code at run time).
+#include "metl/detail/abi.hpp"
+
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 /// @brief A parameter type no caller can produce: it has no constructor.
@@ -57,4 +60,5 @@ struct no_implicit_copy_move {
 };
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

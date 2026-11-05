@@ -19,6 +19,7 @@
 /// in `metl::guarded` with `irq_lock`.
 
 #include "metl/compiler.hpp"
+#include "metl/detail/abi.hpp"
 #include "metl/ring_buffer.hpp"
 
 #include <cstddef>
@@ -26,6 +27,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// FIFO queue with a compile-time FIXED capacity, backed by a ring buffer.
 ///
@@ -130,4 +132,5 @@ inline void swap(fixed_queue<T, N>& a, fixed_queue<T, N>& b) noexcept(noexcept(a
   a.swap(b);
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

@@ -3,11 +3,13 @@
 /// @file
 /// @brief `metl::bitset<N>`: N bits packed into 32-bit words.
 
+#include "metl/detail/abi.hpp"
 #include "metl/detail/bitset.hpp"
 
 #include <cstddef>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief A fixed-size set of N bits, packed 32 to a word.
 ///
@@ -62,4 +64,5 @@ namespace metl {
 template <std::size_t N>
 using bitset = metl::detail::bitset<N>;
 
+METL_DETAIL_ABI_END
 }  // namespace metl

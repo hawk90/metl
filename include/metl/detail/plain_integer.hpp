@@ -19,6 +19,7 @@
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 /// True for the integer types these conversions accept: every integral type
@@ -32,4 +33,5 @@ constexpr bool is_plain_integer_v =
     !std::is_same_v<std::remove_cv_t<T>, char32_t> && !std::is_same_v<std::remove_cv_t<T>, wchar_t>;
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

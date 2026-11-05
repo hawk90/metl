@@ -21,11 +21,13 @@
 /// Progress guarantee: wait-free, bounded (no code at run time).
 
 #include "metl/compiler.hpp"
+#include "metl/detail/abi.hpp"
 
 #include <cstddef>
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 /// @brief True while the call is being constant-evaluated. False where the
@@ -105,4 +107,5 @@ constexpr void zero_for_constant_init(unsigned char (&bytes)[N]) noexcept {
 }
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

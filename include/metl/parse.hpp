@@ -69,6 +69,7 @@
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Why a parse did not produce a number.
 enum class parse_error : unsigned char {
@@ -405,4 +406,5 @@ METL_NODISCARD constexpr parsed<T> parse_hex(span<const char> text) noexcept {
   return result.value();
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

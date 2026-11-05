@@ -22,7 +22,9 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 PROBE = "tests/embedded/layout_probe.cpp"
-CONFIG = "include/metl/config.hpp"
+# Where the major version is written: the METL_VERSION_MAJOR macro since 2.0,
+# config.hpp's constant at a 1.x tag.
+VERSION_FILES = ("include/metl/detail/abi.hpp", "include/metl/config.hpp")
 
 _CACHELINE_8 = "#562 fixes METL_CACHELINE_SIZE at 8 on the M profile, not 64: 192 B to 32 or 48, aligned 8"
 
@@ -109,7 +111,7 @@ def major_of(config_text: str) -> int:
     match = (re.search(r"^#define METL_VERSION_MAJOR (\d+)$", config_text, re.M)
              or re.search(r"version_major = (\d+);", config_text))
     if match is None:
-        raise ValueError(f"no METL_VERSION_MAJOR in {CONFIG}")
+        raise ValueError("no METL_VERSION_MAJOR or version_major in the version header")
     return int(match.group(1))
 
 
@@ -241,11 +243,12 @@ def main() -> int:
     if old_file.returncode != 0:
         print(f"{tag} has no {PROBE}: nothing to compare with yet")
     else:
-        old_config = git("show", f"{tag}:{CONFIG}")
-        if old_config.returncode != 0:
-            print(f"error: cannot read {CONFIG} at {tag}: {old_config.stderr.strip()}", file=sys.stderr)
+        old_config = next((shown for shown in (git("show", f"{tag}:{path}") for path in VERSION_FILES)
+                           if shown.returncode == 0), None)
+        if old_config is None:
+            print(f"error: cannot read the version header at {tag}", file=sys.stderr)
             return 2
-        if major_of((REPO / CONFIG).read_text()) > major_of(old_config.stdout):
+        if major_of((REPO / VERSION_FILES[0]).read_text()) > major_of(old_config.stdout):
             print(f"a new major version since {tag}: layouts may change")
         else:
             try:

@@ -15,6 +15,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 struct once_flag_access;
 }  // namespace detail
@@ -151,4 +152,5 @@ METL_NODISCARD bool try_call_once(once_flag<Lock>& flag, Fn&& fn, Args&&... args
   return true;
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

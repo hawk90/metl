@@ -44,6 +44,7 @@
 //     the wrappers' own moves are noexcept.
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 template <typename>
 class delegate;
@@ -1123,4 +1124,5 @@ inline void swap(fixed_any_invocable<Sig, Cap>& lhs, fixed_any_invocable<Sig, Ca
   lhs.swap(rhs);
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

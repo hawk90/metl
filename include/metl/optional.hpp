@@ -30,6 +30,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 template <typename T>
 class optional;
@@ -777,9 +778,11 @@ constexpr auto operator>=(const U& lhs, const optional<T>& rhs) -> decltype(lhs 
   return rhs.has_value() ? (lhs >= *rhs) : true;
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 // std::hash<optional<T>> is enabled exactly when std::hash<remove_const_t<T>>
@@ -807,6 +810,7 @@ struct optional_hash<T,
 };
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl
 
 namespace std {

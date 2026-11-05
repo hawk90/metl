@@ -1,10 +1,12 @@
 #pragma once
 
 #include "metl/compiler.hpp"
+#include "metl/detail/abi.hpp"
 
 #include <cstdlib>
 
 namespace metl {
+METL_DETAIL_ABI_VERSION_BEGIN
 
 /// @brief User assert-handler callback type.
 ///
@@ -19,7 +21,13 @@ using assert_handler_t = void (*)(const char* expression, const char* file, int 
 /// returning handler does not resume control flow: `std::abort()` follows.
 using panic_handler_t = void (*)(const char* message, const char* file, int line) noexcept;
 
-namespace detail {
+// The handler slots and their defaults. They are in metl::v<major> only, not
+// in the configuration's namespace (<metl/detail/abi.hpp>), so one slot serves
+// every configuration linked into a program, and set_assert_handler reaches a
+// check that fails under any of them. Not `detail`: that name is the
+// configuration's, and two inline namespaces holding a `detail` would make
+// `metl::detail` ambiguous.
+namespace handler_detail {
 
 [[noreturn]] inline void default_assert_handler(const char*, const char*, int) noexcept {
   std::abort();
@@ -43,22 +51,7 @@ inline panic_handler_t& panic_handler_storage() noexcept {
   return handler;
 }
 
-[[noreturn]] inline void assertion_failed(const char* expression, const char* file, int line) noexcept {
-  assert_handler_storage()(expression, file, line);
-  // The customization point allows a user-installed handler that (incorrectly)
-  // returns. Guarantee that control never continues past a failed assertion:
-  // otherwise every checked precondition in the library would fall through into
-  // undefined behavior. std::abort() makes the assert path provably [[noreturn]].
-  std::abort();
-}
-
-[[noreturn]] inline void panic_failed(const char* message, const char* file, int line) noexcept {
-  panic_handler_storage()(message, file, line);
-  // As above: a returning panic handler must not resume normal control flow.
-  std::abort();
-}
-
-}  // namespace detail
+}  // namespace handler_detail
 
 /// @brief Install a custom assert handler, returning the previous one.
 /// @param handler New handler; if null, the default (`std::abort`) is restored.
@@ -75,8 +68,9 @@ inline panic_handler_t& panic_handler_storage() noexcept {
 ///      assert; replacing it while another context may read it is a data
 ///      race.
 inline assert_handler_t set_assert_handler(assert_handler_t handler) noexcept {
-  assert_handler_t previous = detail::assert_handler_storage();
-  detail::assert_handler_storage() = handler != nullptr ? handler : &detail::default_assert_handler;
+  assert_handler_t previous = handler_detail::assert_handler_storage();
+  handler_detail::assert_handler_storage() =
+      handler != nullptr ? handler : &handler_detail::default_assert_handler;
   return previous;
 }
 
@@ -87,10 +81,32 @@ inline assert_handler_t set_assert_handler(assert_handler_t handler) noexcept {
 ///          does not resume control flow.
 /// @pre As for `set_assert_handler`: called while nothing else can panic.
 inline panic_handler_t set_panic_handler(panic_handler_t handler) noexcept {
-  panic_handler_t previous = detail::panic_handler_storage();
-  detail::panic_handler_storage() = handler != nullptr ? handler : &detail::default_panic_handler;
+  panic_handler_t previous = handler_detail::panic_handler_storage();
+  handler_detail::panic_handler_storage() =
+      handler != nullptr ? handler : &handler_detail::default_panic_handler;
   return previous;
 }
+
+METL_DETAIL_ABI_VERSION_END
+METL_DETAIL_ABI_BEGIN
+namespace detail {
+
+[[noreturn]] inline void assertion_failed(const char* expression, const char* file, int line) noexcept {
+  handler_detail::assert_handler_storage()(expression, file, line);
+  // The customization point allows a user-installed handler that (incorrectly)
+  // returns. Guarantee that control never continues past a failed assertion:
+  // otherwise every checked precondition in the library would fall through into
+  // undefined behavior. std::abort() makes the assert path provably [[noreturn]].
+  std::abort();
+}
+
+[[noreturn]] inline void panic_failed(const char* message, const char* file, int line) noexcept {
+  handler_detail::panic_handler_storage()(message, file, line);
+  // As above: a returning panic handler must not resume normal control flow.
+  std::abort();
+}
+
+}  // namespace detail
 
 /// @brief Abort the program with a message, invoking any installed panic handler.
 /// @param message Human-readable failure description.
@@ -102,4 +118,5 @@ inline panic_handler_t set_panic_handler(panic_handler_t handler) noexcept {
   detail::panic_failed(message, file, line);
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

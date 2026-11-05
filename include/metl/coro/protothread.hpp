@@ -46,6 +46,7 @@
 #include "metl/config.hpp"
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace coro {
 
 /// @brief Stackless cooperative task (C++17, no `<coroutine>`).
@@ -79,6 +80,7 @@ class protothread {
 };
 
 }  // namespace coro
+METL_DETAIL_ABI_END
 }  // namespace metl
 
 // ---------------------------------------------------------------------------

@@ -35,6 +35,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Tag type selecting the adopt-reference intrusive_ptr constructor.
 struct adopt_ref_t {
@@ -175,10 +176,10 @@ class intrusive_ref_counter {
 //
 // Turn it on only when every object that passes an intrusive_ptr is built by
 // Clang, and uniformly: like METL_HARDENING it must match across a program.
-#ifndef METL_INTRUSIVE_PTR_TRIVIAL_ABI
-#define METL_INTRUSIVE_PTR_TRIVIAL_ABI 0
-#endif
-#if METL_INTRUSIVE_PTR_TRIVIAL_ABI
+//
+// The default is in <metl/detail/abi.hpp>, and the ABI tag records whether the
+// attribute is in effect.
+#if METL_DETAIL_INTRUSIVE_PTR_TRIVIAL_ABI_EFFECTIVE
 #define METL_DETAIL_INTRUSIVE_PTR_ABI METL_ATTRIBUTE_TRIVIAL_ABI
 #else
 #define METL_DETAIL_INTRUSIVE_PTR_ABI
@@ -499,6 +500,7 @@ inline void swap(intrusive_ptr<T>& lhs, intrusive_ptr<T>& rhs) noexcept {
   lhs.swap(rhs);
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl
 
 // ---------------------------------------------------------------------------

@@ -1,8 +1,11 @@
 #pragma once
 
+#include "metl/detail/abi.hpp"
+
 #include <cstddef>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Tag type selecting in-place construction of a contained value.
 ///
@@ -79,4 +82,5 @@ constexpr bool operator>=(monostate, monostate) noexcept {
   return true;
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

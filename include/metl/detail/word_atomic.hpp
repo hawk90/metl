@@ -1,9 +1,12 @@
 #pragma once
 
+#include "metl/detail/abi.hpp"
+
 #include <atomic>
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 // ARMv6-M (Cortex-M0, M0+, M1) has no exclusive loads or stores, so Clang
@@ -96,4 +99,5 @@ class word_atomic {
 };
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

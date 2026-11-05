@@ -44,6 +44,7 @@
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 namespace detail {
 
@@ -453,4 +454,5 @@ class atomic_ref {
   T* ptr_;
 };
 
+METL_DETAIL_ABI_END
 }  // namespace metl

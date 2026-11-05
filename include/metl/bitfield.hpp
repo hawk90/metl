@@ -12,6 +12,7 @@
 /// written.
 
 #include "metl/compiler.hpp"
+#include "metl/detail/abi.hpp"
 #include "metl/detail/low_bits.hpp"
 
 #include <cstddef>
@@ -19,6 +20,7 @@
 #include <type_traits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Compile-time bitfield packed into an unsigned integer for register-style access.
 /// @tparam Lsb Bit position of the field's least significant bit within the storage word.
@@ -107,4 +109,5 @@ using bitfield_u32 = bitfield<Lsb, Width, std::uint32_t>;
 template <std::size_t Lsb, std::size_t Width>
 using bitfield_u64 = bitfield<Lsb, Width, std::uint64_t>;
 
+METL_DETAIL_ABI_END
 }  // namespace metl

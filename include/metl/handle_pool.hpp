@@ -17,6 +17,7 @@
 #endif
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Slot-based object pool addressed by generation-tagged handles.
 ///
@@ -381,4 +382,5 @@ class handle_pool {
   static constexpr size_type last_slot = Capacity == 0 ? 0 : Capacity - 1;
 };
 
+METL_DETAIL_ABI_END
 }  // namespace metl

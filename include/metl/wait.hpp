@@ -1,6 +1,7 @@
 #pragma once
 
 #include "metl/compiler.hpp"
+#include "metl/detail/abi.hpp"
 
 #include <atomic>
 
@@ -29,6 +30,7 @@
 #endif
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @file
 /// @brief Primitives for waiting: spin hints and the event-based idle idiom.
@@ -151,4 +153,5 @@ METL_FORCE_INLINE void wait_for_event() noexcept {
 #endif
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

@@ -39,6 +39,7 @@
 #include <cstddef>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Lock-free single-producer / single-consumer byte ring with contiguous
 ///        span access.
@@ -311,4 +312,5 @@ class spsc_byte_ring {
 };
 METL_CACHELINE_PADDED_END
 
+METL_DETAIL_ABI_END
 }  // namespace metl

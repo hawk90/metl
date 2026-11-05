@@ -30,6 +30,7 @@
 #include <cstdint>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Tunable parameters for the CRC-32 computation.
 ///
@@ -97,4 +98,5 @@ METL_NODISCARD constexpr std::uint32_t crc32(const char* text, crc32_params para
   return detail::crc_fold(text, params.initial, params.final_xor, detail::crc32_update_byte);
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

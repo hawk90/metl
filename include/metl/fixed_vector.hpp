@@ -56,6 +56,7 @@
 #endif
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 namespace detail {
 
@@ -912,4 +913,5 @@ typename fixed_vector<T, N>::size_type erase_if(fixed_vector<T, N>& v, Pred pred
   return removed;
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

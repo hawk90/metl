@@ -16,6 +16,7 @@
 #include <cstdint>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 template <std::size_t N>
@@ -187,4 +188,5 @@ class bitset {
 };
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

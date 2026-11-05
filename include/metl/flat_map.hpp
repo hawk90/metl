@@ -51,6 +51,7 @@
 #include <utility>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// @brief Fixed-capacity associative map kept sorted by key in a flat array.
 ///
@@ -957,4 +958,5 @@ typename flat_map<Key, T, Capacity, Compare>::size_type erase_if(flat_map<Key, T
   return erased;
 }
 
+METL_DETAIL_ABI_END
 }  // namespace metl

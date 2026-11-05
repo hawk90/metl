@@ -23,7 +23,7 @@ Checks (the default):
   C3  with --base: a branch that changes code under include/ adds a fragment.
       Lines that are only comments do not count, so a documentation fix in a
       header does not need one. Nor does the release's bump of the
-      METL_VERSION_* macros in include/metl/config.hpp, when the same branch adds the
+      METL_VERSION_* macros in include/metl/detail/abi.hpp, when the same branch adds the
       CHANGELOG section of that version (#401).
 
 At release, `--assemble X.Y.Z` writes the fragments under `## [X.Y.Z] - <date>`
@@ -57,7 +57,7 @@ INTERNAL = "internal"
 FRAGMENT_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*\.(" + "|".join(TYPES + [INTERNAL]) + r")\.md$")
 UNRELEASED = "## [Unreleased]"
 # The release bumps these; see C3.
-VERSION_FILE = "include/metl/config.hpp"
+VERSION_FILE = "include/metl/detail/abi.hpp"
 VERSION_LINE = re.compile(r"^#define METL_VERSION_(MAJOR|MINOR|PATCH) (\d+)$")
 
 
@@ -292,8 +292,8 @@ def self_test():
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
         (root / FRAGMENTS).mkdir()
-        (root / "include" / "metl").mkdir(parents=True)
         config = root / VERSION_FILE
+        config.parent.mkdir(parents=True)
         version = "#define METL_VERSION_MAJOR 1\n#define METL_VERSION_MINOR {}\n" \
                   "#define METL_VERSION_PATCH 0\n"
         config.write_text(version.format(0))

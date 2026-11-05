@@ -1,9 +1,12 @@
 #pragma once
 
+#include "metl/detail/abi.hpp"
+
 #include <cstddef>
 #include <limits>
 
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 namespace detail {
 
 /// @brief How many elements lie between two free-running ring indices, as seen
@@ -55,4 +58,5 @@ constexpr int compare_tickets(std::size_t sequence, std::size_t pos) noexcept {
 }
 
 }  // namespace detail
+METL_DETAIL_ABI_END
 }  // namespace metl

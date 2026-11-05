@@ -2,15 +2,12 @@
 
 #include "metl/assert.hpp"
 #include "metl/compiler.hpp"
+#include "metl/detail/abi.hpp"
 #include "metl/optimization.hpp"
 
-#ifndef METL_NO_EXCEPTIONS
-#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
-#define METL_NO_EXCEPTIONS 0
-#else
-#define METL_NO_EXCEPTIONS 1
-#endif
-#endif
+// METL_NO_EXCEPTIONS (detected from the compiler's exception mode), the
+// hardening levels, their default and the version macros are defined in
+// <metl/detail/abi.hpp>, because the ABI tag encodes them.
 
 // ── Hardening levels ────────────────────────────────────────────────────────
 // METL_HARDENING selects how much runtime precondition checking is compiled in,
@@ -36,11 +33,14 @@
 // that followed NDEBUG would differ between a Debug application and a Release
 // SDK built from the same headers, which is the ODR violation described below.
 //
-// ODR WARNING: METL_HARDENING changes the bodies of inline/template functions in
-// these headers (which checks compile in). It MUST be uniform across every
-// translation unit linked into a program — mixing levels (e.g. a Debug TU with a
-// Release TU) is an ODR violation (UB). This is the same constraint as NDEBUG and
-// libc++'s _LIBCPP_HARDENING_MODE; set it once, project-wide.
+// ODR: METL_HARDENING and METL_NO_EXCEPTIONS change the bodies of inline and
+// template functions (which checks compile in; 35 sites differ with and without
+// exceptions). Since 2.0 the ABI tag (<metl/detail/abi.hpp>, #344) puts each
+// configuration's code under its own namespace, so translation units built at
+// different levels keep their own checks, and a function that passes a METL
+// type between two of them fails to link instead of running the other's code.
+// Set the level once, project-wide, all the same: a program that links two
+// configurations carries two copies of what both use.
 //
 // The C++ standard is part of the same constraint. Every translation unit must
 // be compiled with the same -std: under C++20 some headers change the bodies of
@@ -95,28 +95,6 @@
 #else
 #define METL_DETAIL_CHECK_EXPRESSION(expr) ""
 #define METL_DETAIL_CHECK_FILE ""
-#endif
-
-#define METL_HARDENING_NONE 0
-#define METL_HARDENING_FAST 1
-#define METL_HARDENING_DEBUG 2
-
-#ifndef METL_HARDENING
-#define METL_HARDENING METL_HARDENING_FAST
-#endif
-
-// Validated by token pasting, not by range. The preprocessor reads an unknown
-// identifier as 0, so a range check let -DMETL_HARDENING=DEBUG (the level's
-// name, not its macro) through as NONE -- every precondition check gone, and no
-// diagnostic. Pasting accepts exactly 0, 1 and 2, after METL_HARDENING_* has
-// expanded to one of them.
-#define METL_DETAIL_HARDENING_VALID_0 1
-#define METL_DETAIL_HARDENING_VALID_1 1
-#define METL_DETAIL_HARDENING_VALID_2 1
-#define METL_DETAIL_HARDENING_PASTE(level) METL_DETAIL_HARDENING_VALID_##level
-#define METL_DETAIL_HARDENING_VALID(level) METL_DETAIL_HARDENING_PASTE(level)
-#if METL_DETAIL_HARDENING_VALID(METL_HARDENING) != 1
-#error "METL_HARDENING must be 0 (NONE), 1 (FAST), or 2 (DEBUG), or METL_HARDENING_NONE / _FAST / _DEBUG"
 #endif
 
 // METL_ASSERT — the default precondition check (bounds, non-empty, capacity,
@@ -203,14 +181,11 @@
   } while (false)
 #endif
 
-// The library version, written once here. The macros are for the
-// preprocessor (`#if METL_VERSION_MAJOR >= 2`); the constants below carry the
-// same values for C++ code. A release changes the three numbers on these lines.
-#define METL_VERSION_MAJOR 1
-#define METL_VERSION_MINOR 15
-#define METL_VERSION_PATCH 0
-
+// The library version: METL_VERSION_MAJOR, _MINOR and _PATCH are defined in
+// <metl/detail/abi.hpp>, where a release changes them, and the constants below
+// carry the same values for C++ code.
 namespace metl {
+METL_DETAIL_ABI_BEGIN
 
 /// Major version component of the library, as `METL_VERSION_MAJOR`.
 inline constexpr int version_major = METL_VERSION_MAJOR;
@@ -219,4 +194,5 @@ inline constexpr int version_minor = METL_VERSION_MINOR;
 /// Patch version component of the library, as `METL_VERSION_PATCH`.
 inline constexpr int version_patch = METL_VERSION_PATCH;
 
+METL_DETAIL_ABI_END
 }  // namespace metl
