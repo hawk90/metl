@@ -45,7 +45,8 @@ import re
 import sys
 import tempfile
 
-UNQUALIFIED_PLACEMENT_NEW = re.compile(r"(?<![:\w])new\s*\(")
+# Not after `operator `: declaring `operator new(std::size_t)` is not a new-expression.
+UNQUALIFIED_PLACEMENT_NEW = re.compile(r"(?<![:\w])(?<!operator )new\s*\(")
 
 # The shapes of a memory-safety guard (config.hpp, "The rule").
 GUARD_SHAPE = re.compile(r"!= *nullptr|\bpos\b|\bfirst\b|\blast\b|Extent|\b[Cc]ount\b|"
@@ -310,6 +311,7 @@ constexpr unsigned long bytes(const T* data, int seed = {}) noexcept {
 """
 
 CANARY_CLEAN = """
+struct no_heap { static void* operator new(std::size_t) = delete; };
 template <typename T> void make(void* p) { ::new (static_cast<void*>(p)) T(); }
 // new (p) T() in a comment is fine
 void at(int* first, int* pos, int* last) { METL_HARDEN(pos >= first && pos <= last); }
