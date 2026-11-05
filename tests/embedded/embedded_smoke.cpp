@@ -52,7 +52,6 @@
 #include "metl/static_unordered_map.hpp"
 #include "metl/static_unordered_set.hpp"
 #include "metl/type_traits.hpp"
-#include "metl/version.hpp"
 #include "metl/versioned_handle.hpp"
 #include "metl/wait.hpp"
 
@@ -121,7 +120,7 @@ static_assert(smoke_bitfield::width == 4, "bitfield width");
 static_assert(METL_CXX_STANDARD >= 201703L, "compiler.hpp METL_CXX_STANDARD");
 
 // config.hpp -- inline constexpr.
-static_assert(metl::version_major >= 1, "config.hpp version_major");
+static_assert(metl::version_major == METL_VERSION_MAJOR, "config.hpp version_major");
 
 // crc8/16/32.hpp -- exercise template instantiation; bind results to ODR-used
 // inline constexprs so the compiler emits the functions and walks the body.
@@ -282,9 +281,6 @@ static_assert(sizeof(metl::storage_for<int>) >= sizeof(int), "type_traits.hpp st
 [[maybe_unused]] const auto _cpu_relax_ptr = &metl::cpu_relax;
 [[maybe_unused]] const auto _wait_for_event_ptr = &metl::wait_for_event;
 [[maybe_unused]] const auto _send_event_ptr = &metl::send_event;
-
-// version.hpp
-static_assert(metl::version::major == metl::version_major, "version.hpp major");
 
 }  // namespace
 

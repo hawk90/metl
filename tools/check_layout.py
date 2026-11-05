@@ -61,7 +61,6 @@ NOT_RECORDED = {
     "optimization.hpp": "macros only",
     "register_access.hpp": "functions only",
     "type_traits.hpp": "traits, and storage_for, whose size is its T's",
-    "version.hpp": "constants only",
     "wait.hpp": "functions only",
 }
 
@@ -101,9 +100,11 @@ def rows(text: str) -> dict[str, str]:
 
 
 def major_of(config_text: str) -> int:
-    match = re.search(r"version_major = (\d+);", config_text)
+    # The macro since 2.0; a release tag before it has only the constant.
+    match = (re.search(r"^#define METL_VERSION_MAJOR (\d+)$", config_text, re.M)
+             or re.search(r"version_major = (\d+);", config_text))
     if match is None:
-        raise ValueError(f"no version_major in {CONFIG}")
+        raise ValueError(f"no METL_VERSION_MAJOR in {CONFIG}")
     return int(match.group(1))
 
 
@@ -201,7 +202,9 @@ def self_test() -> int:
         got = coverage(["a.hpp"], probe, {}, {})
         if len(got) != 1:
             failures.append(f"{name} must not count as a row, got {got}")
-    if major_of("inline constexpr int version_major = 2;") != 2:
+    if major_of("inline constexpr int version_major = 1;") != 1:
+        failures.append("a 1.x tag's version_major parsed wrongly")
+    if major_of("#define METL_VERSION_MAJOR 2\n") != 2:
         failures.append("version_major parsed wrongly")
     for failure in failures:
         print(f"self-test: {failure}", file=sys.stderr)

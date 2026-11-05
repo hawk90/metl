@@ -53,7 +53,6 @@ EXEMPT = {
     "metl.hpp": "umbrella header; every operation belongs to an included header",
     "optimization.hpp": "branch/inline hint macros, no operations",
     "type_traits.hpp": "compile-time traits, and storage_for's addr(), which only returns an address",
-    "version.hpp": "version macros and constants, no operations",
 }
 
 # Headers that predate the gate. MAY ONLY SHRINK -- see the module docstring.

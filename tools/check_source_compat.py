@@ -45,6 +45,8 @@ _REMOVED_TYPE = ("it includes or uses static_message_queue or metl::variant, dep
                  "and removed by #662 (conformance.hpp registers both for every conformance test)")
 
 # {tag: {old test source or ctest name: "why it may break (#issue)"}}
+_VERSION_HEADER = ("it uses metl::version from <metl/version.hpp>, which #168 removes: the version is "
+                   "spelled once, as metl::version_* and METL_VERSION_* in config.hpp")
 EXPECTED_BREAKS = {
     "v1.3.0": {
         "metl_umbrella_complete": "it requires the umbrella to include every header under metl/, but "
@@ -120,6 +122,8 @@ EXPECTED_BREAKS = {
                                  "the slot freed longest ago, a reuse order 1.x never documented",
         "metl_example_handles_and_pools": "it showed a freed slot reused at once in a two-slot pool; "
                                           "#642's oldest-first reuse hands out the unused slot first",
+        "tests/core/smoke_test.cpp": _VERSION_HEADER,
+        "tests/core/version_test.cpp": _VERSION_HEADER,
     },
 }
 

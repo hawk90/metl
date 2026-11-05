@@ -47,7 +47,6 @@ NOT_LINKED = {
     "metl.hpp": "the umbrella: it only includes the others",
     "optimization.hpp": "optimization hint macros: no heap or exception path to find",
     "type_traits.hpp": "compile-time traits and storage_for, used by the containers in the probes",
-    "version.hpp": "version constants: no code of its own",
 }
 
 
