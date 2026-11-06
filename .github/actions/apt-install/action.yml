@@ -153,6 +153,10 @@ runs:
           -o Acquire::ftp::Timeout=30
         )
 
+        # Where this step's entries in dpkg's log begin (see the cache staging
+        # below). A failed attempt's partial unpacks are this step's too.
+        dpkg_mark=$(wc -l < /var/log/dpkg.log 2>/dev/null || echo 0)
+
         deadline=$(( SECONDS + APT_TOTAL_TIMEOUT ))
         attempt=0
         while (( SECONDS < deadline )); do
@@ -170,12 +174,40 @@ runs:
              (( deadline - SECONDS > 0 )) && \
              timeout $(( deadline - SECONDS )) \
                sudo apt-get "${APT_OPTS[@]}" install -y ${APT_PACKAGES}; then
-            # Drop the .debs the index no longer offers (the versions an update
-            # replaced), or the cache would carry every old version forever.
-            sudo apt-get autoclean -y > /dev/null
-            names="$(find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -printf '%f\n' | LC_ALL=C sort)"
+            # Cache what THIS install unpacked -- dpkg's own record of it -- not
+            # whatever sits in the archive directory. An earlier step's apt run
+            # leaves its .debs there too (ccache-action's ccache, libfmt10 and
+            # libhiredis1.1.0), so hashing the directory gave one package set a
+            # different key per job, and each run would save it again. Taking
+            # the installed versions also leaves out the ones an update
+            # replaced, so old versions do not pile up in the cache.
+            # dpkg.log: "<date> <time> install|upgrade <pkg>:<arch> <old> <new>";
+            # the .deb is <pkg>_<new, ':' as %3a>_<arch>.deb -- but match any
+            # arch: the runner fetches from the amd64v3 archive, so dpkg's
+            # `amd64` is `qemu-system-arm_1%3a10.2.1+ds-1ubuntu3.3_amd64v3.deb`.
+            wanted="$(tail -n +$(( dpkg_mark + 1 )) /var/log/dpkg.log \
+              | awk '$3 == "install" || $3 == "upgrade" {
+                       split($4, p, ":"); v = $6; gsub(":", "%3a", v)
+                       print p[1] "_" v "_" }' \
+              | LC_ALL=C sort -u)"
+            names=""
+            missing=""
+            for stem in ${wanted}; do
+              found="$(find /var/cache/apt/archives -maxdepth 1 -name "${stem}*.deb" -printf '%f\n')"
+              if [[ -n "${found}" ]]; then
+                names+="${found}"$'\n'
+              else
+                missing+=" ${stem}"
+              fi
+            done
+            names="$( (grep . <<< "${names}" || true) | LC_ALL=C sort -u)"
+            if [[ -n "${missing}" ]]; then
+              # Not fatal -- the install worked -- but the next run downloads
+              # these again, so say which.
+              echo "::warning::installed but no .deb in the apt archive to cache:${missing}"
+            fi
             if [[ -z "${names}" ]]; then
-              echo "apt cache: nothing to save (no .deb files held)"
+              echo "apt cache: nothing to save (this install unpacked no .deb)"
               exit 0
             fi
             key="${APT_KEY_PREFIX}$(sha256sum <<< "${names}" | cut -c1-16)"
@@ -186,9 +218,11 @@ runs:
             # Stage exactly this set somewhere the save step can read: `sudo cp`
             # lands the files root-owned, so chown before leaving.
             find "${CACHE_DIR}" -maxdepth 1 -name '*.deb' -delete
-            sudo cp /var/cache/apt/archives/*.deb "${CACHE_DIR}/"
+            while read -r deb; do
+              [[ -n "${deb}" ]] && sudo cp "/var/cache/apt/archives/${deb}" "${CACHE_DIR}/"
+            done <<< "${names}"
             sudo chown -R "$(id -u):$(id -g)" "${CACHE_DIR}"
-            echo "apt cache: staged $(wc -l <<< "${names}" | tr -d ' ') package(s) as ${key}" \
+            echo "apt cache: staged $(grep -c . <<< "${names}") package(s) as ${key}" \
                  "(restored: ${APT_CACHE_MATCHED:-nothing})"
             echo "key=${key}" >> "$GITHUB_OUTPUT"
             exit 0
