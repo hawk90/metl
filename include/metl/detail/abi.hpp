@@ -54,8 +54,8 @@
 // preprocessor (`#if METL_VERSION_MAJOR >= 2`); <metl/config.hpp> defines
 // metl::version_major and the rest from them. A release changes the three
 // numbers on these lines.
-#define METL_VERSION_MAJOR 1
-#define METL_VERSION_MINOR 15
+#define METL_VERSION_MAJOR 2
+#define METL_VERSION_MINOR 0
 #define METL_VERSION_PATCH 0
 
 // ── Exceptions ─────────────────────────────────────────────────────────────
