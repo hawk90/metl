@@ -78,22 +78,38 @@ runs:
       shell: bash
       run: echo "os=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
 
-    - name: Cache apt archives
+    # The key names the CONTENTS, not just the package set. A fixed key
+    # (`apt-<os>-<arch>-<set>`) is a hit forever, and actions/cache never saves
+    # on a hit, so the cache stayed exactly as first saved: every one was dated
+    # 2026-10-05 or 2026-10-18 a month later. Each package Ubuntu updated since
+    # was downloaded again in every job -- 18.3 MB of qemu 1:10.2.1+ds-1ubuntu3.3
+    # in each of the 12 qemu jobs -- and on the nightly of 2026-11-05 the mirror
+    # served that at 41.6 kB/s, 7 min 19 s, past the 480 s budget.
+    #
+    # So restore by prefix (the newest cache of this set), and after the install
+    # name the .debs apt actually holds; when that name differs from what was
+    # restored, save under it. `@` ends the prefix because set names are
+    # prefixes of one another (build-essential, build-essential-clang, ...).
+    #
+    # Must be >= v4.2.0: GitHub closed down the cache service API that
+    # actions/cache v4.1.x and earlier used, and hard-fails any job that calls
+    # it. A SHA that resolves to a real tag is not enough here.
+    - name: Restore apt archives
       id: apt-cache
-      # Must be >= v4.2.0: GitHub closed down the cache service API that
-      # actions/cache v4.1.x and earlier used, and hard-fails any job that
-      # calls it. A SHA that resolves to a real tag is not enough here.
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
       with:
         path: ~/.cache/metl-apt
-        key: apt-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ inputs.cache-key }}
+        key: apt-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ inputs.cache-key }}@
+        restore-keys: apt-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ inputs.cache-key }}@
 
     - name: Install apt packages (bounded retry)
+      id: install
       shell: bash
       env:
         APT_PACKAGES: ${{ inputs.packages }}
         APT_TOTAL_TIMEOUT: ${{ inputs.total-timeout }}
-        APT_CACHE_HIT: ${{ steps.apt-cache.outputs.cache-hit }}
+        APT_CACHE_MATCHED: ${{ steps.apt-cache.outputs.cache-matched-key }}
+        APT_KEY_PREFIX: apt-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ inputs.cache-key }}@
       run: |
         set -euo pipefail
 
@@ -117,7 +133,7 @@ runs:
         if compgen -G "${CACHE_DIR}/*.deb" > /dev/null; then
           sudo cp "${CACHE_DIR}"/*.deb /var/cache/apt/archives/
           echo "apt cache: seeded $(find "${CACHE_DIR}" -name '*.deb' | wc -l | tr -d ' ') package(s)"
-        elif [[ "${APT_CACHE_HIT}" == "true" ]]; then
+        elif [[ -n "${APT_CACHE_MATCHED}" ]]; then
           # A hit that restores nothing is how this broke the first time, and it
           # was invisible for months because it was only a warning. Make it a
           # failure so it cannot be silent twice.
@@ -137,6 +153,10 @@ runs:
           -o Acquire::ftp::Timeout=30
         )
 
+        # Where this step's entries in dpkg's log begin (see the cache staging
+        # below). A failed attempt's partial unpacks are this step's too.
+        dpkg_mark=$(wc -l < /var/log/dpkg.log 2>/dev/null || echo 0)
+
         deadline=$(( SECONDS + APT_TOTAL_TIMEOUT ))
         attempt=0
         while (( SECONDS < deadline )); do
@@ -154,13 +174,57 @@ runs:
              (( deadline - SECONDS > 0 )) && \
              timeout $(( deadline - SECONDS )) \
                sudo apt-get "${APT_OPTS[@]}" install -y ${APT_PACKAGES}; then
-            # Copy the archives somewhere the post-step cache save can actually
-            # read. `sudo cp` lands them root-owned, so chown before leaving.
-            if compgen -G "/var/cache/apt/archives/*.deb" > /dev/null; then
-              sudo cp /var/cache/apt/archives/*.deb "${CACHE_DIR}/"
-              sudo chown -R "$(id -u):$(id -g)" "${CACHE_DIR}"
-              echo "apt cache: staged $(find "${CACHE_DIR}" -name '*.deb' | wc -l | tr -d ' ') package(s) for save"
+            # Cache what THIS install unpacked -- dpkg's own record of it -- not
+            # whatever sits in the archive directory. An earlier step's apt run
+            # leaves its .debs there too (ccache-action's ccache, libfmt10 and
+            # libhiredis1.1.0), so hashing the directory gave one package set a
+            # different key per job, and each run would save it again. Taking
+            # the installed versions also leaves out the ones an update
+            # replaced, so old versions do not pile up in the cache.
+            # dpkg.log: "<date> <time> install|upgrade <pkg>:<arch> <old> <new>";
+            # the .deb is <pkg>_<new, ':' as %3a>_<arch>.deb -- but match any
+            # arch: the runner fetches from the amd64v3 archive, so dpkg's
+            # `amd64` is `qemu-system-arm_1%3a10.2.1+ds-1ubuntu3.3_amd64v3.deb`.
+            wanted="$(tail -n +$(( dpkg_mark + 1 )) /var/log/dpkg.log \
+              | awk '$3 == "install" || $3 == "upgrade" {
+                       split($4, p, ":"); v = $6; gsub(":", "%3a", v)
+                       print p[1] "_" v "_" }' \
+              | LC_ALL=C sort -u)"
+            names=""
+            missing=""
+            for stem in ${wanted}; do
+              found="$(find /var/cache/apt/archives -maxdepth 1 -name "${stem}*.deb" -printf '%f\n')"
+              if [[ -n "${found}" ]]; then
+                names+="${found}"$'\n'
+              else
+                missing+=" ${stem}"
+              fi
+            done
+            names="$( (grep . <<< "${names}" || true) | LC_ALL=C sort -u)"
+            if [[ -n "${missing}" ]]; then
+              # Not fatal -- the install worked -- but the next run downloads
+              # these again, so say which.
+              echo "::warning::installed but no .deb in the apt archive to cache:${missing}"
             fi
+            if [[ -z "${names}" ]]; then
+              echo "apt cache: nothing to save (this install unpacked no .deb)"
+              exit 0
+            fi
+            key="${APT_KEY_PREFIX}$(sha256sum <<< "${names}" | cut -c1-16)"
+            if [[ "${key}" == "${APT_CACHE_MATCHED}" ]]; then
+              echo "apt cache: up to date (${key})"
+              exit 0
+            fi
+            # Stage exactly this set somewhere the save step can read: `sudo cp`
+            # lands the files root-owned, so chown before leaving.
+            find "${CACHE_DIR}" -maxdepth 1 -name '*.deb' -delete
+            while read -r deb; do
+              [[ -n "${deb}" ]] && sudo cp "/var/cache/apt/archives/${deb}" "${CACHE_DIR}/"
+            done <<< "${names}"
+            sudo chown -R "$(id -u):$(id -g)" "${CACHE_DIR}"
+            echo "apt cache: staged $(grep -c . <<< "${names}") package(s) as ${key}" \
+                 "(restored: ${APT_CACHE_MATCHED:-nothing})"
+            echo "key=${key}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -190,3 +254,14 @@ runs:
         echo "apt did not succeed within ${APT_TOTAL_TIMEOUT}s (${attempt} attempts)." >&2
         echo "If only the cross-toolchain jobs are affected, suspect the Ubuntu mirror." >&2
         exit 1
+
+    # Not on pull requests: a cache saved there is visible only to that pull
+    # request, so it would spend the repository's 10 GB on a set nothing else
+    # restores. Runs on main (push, nightly, dispatch) refresh it for everyone.
+    # Jobs that share a set race to save the same key; the losers only warn.
+    - name: Save apt archives
+      if: steps.install.outputs.key != '' && github.event_name != 'pull_request'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      with:
+        path: ~/.cache/metl-apt
+        key: ${{ steps.install.outputs.key }}
