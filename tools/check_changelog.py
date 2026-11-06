@@ -105,9 +105,12 @@ def releases(root, merge_base):
                                   map(VERSION_LINE.match, path.read_text(encoding="utf-8").splitlines()) if match)}
     if set(parts) != {"major", "minor", "patch"}:
         return False
-    heading = f"+## [{parts['major']}.{parts['minor']}.{parts['patch']}]"
+    # A pre-release such as `## [2.0.0-alpha.1]` names the same version: the
+    # macros carry no pre-release part.
+    heading = re.compile(rf"^\+## \[{parts['major']}\.{parts['minor']}\.{parts['patch']}"
+                         r"(-[0-9A-Za-z.-]+)?\]")
     diff = git(root, "diff", "-U0", merge_base, "--", CHANGELOG)
-    return any(line.startswith(heading) for line in diff.splitlines())
+    return any(heading.match(line) for line in diff.splitlines())
 
 
 def code_lines_changed(root, base):
@@ -313,6 +316,15 @@ def self_test():
         (root / CHANGELOG).write_text((root / CHANGELOG).read_text().replace("## [1.0.1]", "## [1.1.0]"))
         if check(root, base="main"):
             failures.append(f"a version bump with its section should need no fragment: {check(root, base='main')}")
+        (root / CHANGELOG).write_text((root / CHANGELOG).read_text().replace("## [1.1.0]", "## [1.1.0-alpha.1]"))
+        if check(root, base="main"):
+            failures.append(f"a pre-release section of the bumped version should need no fragment: "
+                            f"{check(root, base='main')}")
+        (root / CHANGELOG).write_text((root / CHANGELOG).read_text().replace("## [1.1.0-alpha.1]", "## [1.1.01]"))
+        if [rule for rule, _ in check(root, base="main")] != ["C3"]:
+            failures.append(f"a section whose version only starts with the bumped one should not excuse it: "
+                            f"{check(root, base='main')}")
+        (root / CHANGELOG).write_text((root / CHANGELOG).read_text().replace("## [1.1.01]", "## [1.1.0]"))
         config.write_text(version.format(1) + "int f();\n")
         if [rule for rule, _ in check(root, base="main")] != ["C3"]:
             failures.append(f"a release should still need a fragment for other code: {check(root, base='main')}")

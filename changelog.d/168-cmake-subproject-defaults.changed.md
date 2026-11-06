@@ -1,2 +1,0 @@
-- `METL_BUILD_TESTS` and `METL_BUILD_DOCS` default to ON only when METL is the top-level CMake project (#168). Under `add_subdirectory` or `FetchContent` they are now OFF, so a consumer's build no longer compiles METL's tests or needs `Threads`. Pass `-DMETL_BUILD_TESTS=ON` to build them anyway.
-- **Breaking:** the Doxygen target is renamed from `docs` to `metl_docs`, so it cannot collide with a consumer's own `docs` target (#168).

@@ -1,5 +1,0 @@
-- **Breaking:** removed the names 1.15.0 deprecated (#662), each of which now fails to compile:
-  - `fixed_string::try_pop_back`: write `if (!s.empty()) s.pop_back();`.
-  - `static_unordered_map::find_iter` and `static_unordered_set::find_iter`: use `find_iterator`.
-  - The positional `operator[]` and `at` of `flat_map`, `flat_set` and `lookup_table`: use `nth(i)`. `m[k]` on a `flat_map` no longer compiles, so it can no longer be read as a key lookup.
-  - `scheduler::task_count` and `deadline_scheduler::task_count`: use `size()`.

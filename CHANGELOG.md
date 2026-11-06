@@ -7,6 +7,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-alpha.1] - 2026-11-06
+
+**Highlights.** The first 2.0 pre-release: removals and the ABI. Everything
+1.15.0 deprecated is gone. Every METL symbol now sits in an inline namespace
+that names the version and the settings that change code, so mixing them across
+a binary boundary fails to link instead of running the wrong checks. The
+cache-line size is fixed per target, 8 on Cortex-M, which shrinks the lock-free
+queues. 2.0 is not final: alpha.2 changes triviality and layout, alpha.3 the API
+vocabulary, and either can break what alpha.1 ships.
+
+**Upgrading from 1.15.0.** Build without deprecation warnings on 1.15.0 first:
+every name 1.15.0 deprecated is removed here, and its replacement is in the
+1.15.0 "Upgrading to 2.0.0" table. Then, loud changes first:
+
+- Compile errors: the removed names and headers (below); defining
+  `METL_ASSERT`, `METL_DASSERT`, `METL_HARDEN`, `METL_NODISCARD`,
+  `METL_CACHELINE_SIZE` or `METL_CACHELINE_ALIGNED` yourself (`#error`);
+  `<metl/version.hpp>` and `struct metl::version` (not deprecated in 1.15.0);
+  forward declarations of METL types in `namespace metl`; `delete` or plain
+  `new` of a `coro::stepper` subclass; `METL_DEPRECATED`; the CMake target
+  `docs`, now `metl_docs`.
+- Link errors: a prebuilt library and an application that share a METL type
+  must agree on `METL_HARDENING` and on exceptions. Build both with the same
+  settings.
+- Asserts: `arena_allocator::allocate` and `monotonic_buffer::allocate` assert
+  where they returned null. Use `try_allocate` to test for failure.
+
+Silent changes, which compile and run differently:
+
+- A build that does not set `METL_HARDENING` is FAST even without `NDEBUG`, so a
+  Debug build loses the few `METL_DASSERT` checks. Pass `-DMETL_HARDENING=2` to
+  keep them.
+- `handle_pool` reuses freed slots oldest first. Code that expected the slot just
+  freed back gets a different index.
+- On Cortex-M, `spsc_queue`, `spsc_byte_ring` and `mpmc_queue` are smaller and
+  aligned to 8, not 64. A ring that feeds DMA on a Cortex-M7 should name its
+  line size: `spsc_byte_ring<N, 32>`.
+- Under `add_subdirectory` or `FetchContent`, METL's tests and docs are no longer
+  built.
+
+### Added
+
+- `METL_VERSION_MAJOR`, `METL_VERSION_MINOR` and `METL_VERSION_PATCH` in `<metl/config.hpp>`, for preprocessor tests such as `#if METL_VERSION_MAJOR >= 2` (#168). `metl::version_major`, `version_minor` and `version_patch` are defined from them.
+- `spsc_byte_ring<Capacity, StorageAlignment>`: the second argument aligns the storage, to it or to `METL_CACHELINE_SIZE`, whichever is larger (#562). Cache maintenance for DMA works by line, and with `METL_CACHELINE_SIZE` now 8 on Cortex-M a Cortex-M7's 32-byte line could cover both the storage and an index. `spsc_byte_ring<512, 32>` keeps every line the storage covers free of the indices. The default lays the ring out as `METL_CACHELINE_SIZE` does.
+
+### Changed
+
+- `METL_BUILD_TESTS` and `METL_BUILD_DOCS` default to ON only when METL is the top-level CMake project (#168). Under `add_subdirectory` or `FetchContent` they are now OFF, so a consumer's build no longer compiles METL's tests or needs `Threads`. Pass `-DMETL_BUILD_TESTS=ON` to build them anyway.
+- **Breaking:** the Doxygen target is renamed from `docs` to `metl_docs`, so it cannot collide with a consumer's own `docs` target (#168).
+- **Breaking:** `METL_ASSERT`, `METL_DASSERT`, `METL_HARDEN` and `METL_NODISCARD` can no longer be predefined; a build that defines one before including METL stops with `#error` (#168). Predefined to a no-op, they removed METL's checks without a diagnostic: with `METL_ASSERT` and `METL_HARDEN` defined away, an over-capacity `push_back` on `fixed_vector<int, 1>` was silently dropped. Choose the check level with `METL_HARDENING`, and act on a failure with `metl::set_assert_handler`.
+- **Breaking, silent:** the default `METL_HARDENING` level is FAST whether or not `NDEBUG` is defined (#168). It used to be DEBUG when `NDEBUG` was unset or `METL_DEBUG` was defined, so a Debug application and a Release SDK built from the same headers disagreed on the level, an ODR violation, by default alone. A build without an explicit level loses only the `METL_DASSERT` checks, in `versioned_handle`, `irq_lock`, `mpmc_queue` and `once_flag`; pass `-DMETL_HARDENING=2` (`METL_HARDENING_DEBUG`) to keep them. `METL_DEBUG` no longer has any effect.
+- **Breaking (ABI):** every METL declaration now lives in `metl::v<major>::h<level>_noexc<0|1>_tabi<0|1>`, two inline namespaces whose names spell out the settings that change the code of an inline function: `METL_HARDENING`, `METL_NO_EXCEPTIONS` and whether `METL_INTRUSIVE_PTR_TRIVIAL_ABI` is in effect (#344). Code still writes `metl::fixed_vector`. Two translation units built with different settings now keep their own code instead of sharing whichever copy the linker saw first, which measured as a FAST check running without its check, or a NONE one aborting, depending on link order. A function that takes or returns a METL type across them, such as a prebuilt SDK built at another level, now fails to link, naming both configurations. The assert and panic handler slots stay outside the configuration's namespace, so one `set_assert_handler` call serves every configuration in a program. Code that forward-declares a METL type in `namespace metl` stops compiling; include the header instead.
+- **Breaking:** `coro::stepper` declares a protected class-scope `operator delete`, so a class derived from it no longer links the global `operator delete`, and on newlib `malloc`, once its vtable is used (#548). `delete` through a `stepper*` or a derived pointer, and a plain `new` of a derived type (its `operator new` is deleted), no longer compile: keep steppers in static or automatic storage, a METL pool or arena, or storage you manage with `::new (p) T` (GCC rejects an unqualified placement `new (p) T` here). A derived class that defined its own `static void operator delete(void*) noexcept {}`, as 1.x documented, can drop it.
+- **Breaking:** `METL_CACHELINE_SIZE` is a fixed value per target and can no longer be predefined; neither can `METL_CACHELINE_ALIGNED` (#562). Defining either before including METL is an `#error`, because it changed the layout of `spsc_queue`, `spsc_byte_ring` and `mpmc_queue` per translation unit. The value is now 8 on Cortex-M, which has no coherent multi-core cache to pad against, instead of 64, so `spsc_queue<std::uint32_t, 4>` and `spsc_byte_ring<16>` shrink from 192 B to 32 B and `mpmc_queue<std::uint32_t, 4>` from 192 B to 48 B, aligned to 8. On Apple arm64 it is 128, the line size Apple silicon reports, instead of 64. Other targets are unchanged.
+- **Breaking, silent:** `handle_pool` reuses freed slots oldest first instead of last-freed first (#642). Steady churn of one object used to land every cycle on one slot, so a stale handle could alias a new object after 32768 cycles whatever the capacity; now the cycles walk every slot in turn, which takes `Capacity` times longer. Which slot `try_emplace` picks was never documented, but 1.x always gave back the slot just freed: code that relies on that, such as an index used as a table key that is expected to repeat, gets a different index now. Treat the index as opaque and keep the handle. Costs about 40-48 B of code on Cortex-M.
+- **Breaking, same signature:** `arena_allocator::allocate` and `monotonic_buffer::allocate` now assert when the request does not fit, or is 0 bytes, as every other asserting form does (#662). They returned null before, so `if (!a.allocate(n))` no longer sees the failure: use `try_allocate`, which keeps returning null. 1.15.0 deprecated `allocate` so that every such call already warned.
+
+### Removed
+
+- **Breaking:** `METL_DEPRECATED` is removed (#168). METL no longer deprecates anything with it; write `[[deprecated("...")]]`.
+- **Breaking:** `coro::task_slot`, the scheduler's record of an attached task, moves to `metl::detail` (#168). No public function takes or returns it.
+- **Breaking:** `<metl/version.hpp>` and `struct metl::version` are removed (#168). They spelled the version a second time; use `metl::version_major`, `version_minor` and `version_patch`, from `<metl/config.hpp>`, or the new `METL_VERSION_*` macros, which every METL header defines. These were not deprecated in 1.15.0; the include or the name stops compiling.
+- **Breaking:** `metl::variant` and `<metl/variant.hpp>` are removed (#635, #662), with `visit`, `get`, `get_if`, `holds_alternative`, `variant_size(_v)`, `variant_alternative(_t)` and `variant_npos`. Use `std::variant`, which every C++17 standard library METL supports provides. Under `-fno-exceptions`, `std::get` on the wrong alternative aborts without reaching METL's handlers: check `std::holds_alternative` or use `std::get_if` first (docs/CHOOSING.md). `in_place_type`, `in_place_index` and `monostate` stay in `<metl/in_place.hpp>`.
+- **Breaking:** `static_allocator` is removed (#662). Use `monotonic_buffer` with `try_allocate_n<T>(count)` for typed, overflow-checked arrays, and `try_emplace` / `emplace` for single objects.
+- **Breaking:** the `metl/exp/` forwarding headers are removed (#662, #520, #524, #527), and with them every `metl::exp` name. Use the promoted names and their own headers:
+  - `<metl/exp/bitset.hpp>`, `metl::exp::bitset`: `metl::bitset` from `<metl/bitset.hpp>`.
+  - `<metl/exp/intrusive_list.hpp>`, `metl::exp::intrusive_list` and `metl::exp::list_hook`: `metl::intrusive_list` and `metl::list_hook` from `<metl/intrusive_list.hpp>`.
+  - `<metl/exp/intrusive_forward_list.hpp>`, `metl::exp::intrusive_forward_list` and `metl::exp::forward_list_hook`: `metl::intrusive_forward_list` and `metl::forward_list_hook` from `<metl/intrusive_forward_list.hpp>`.
+  - `<metl/exp/once_flag.hpp>`, `metl::exp::once_flag` and `metl::exp::try_call_once`: `metl::once_flag` and `metl::try_call_once` from `<metl/once_flag.hpp>`.
+- **Breaking:** the `<metl/compiler.hpp>` inline variables 1.15.0 deprecated are removed (#662, #168), since their initializers differ by compiler or standard, an ODR violation as soon as two translation units disagree. Test the macros instead:
+  - `metl::compiler_id` and `metl::active_compiler`: `METL_COMPILER_CLANG`, `METL_COMPILER_GCC` or `METL_COMPILER_MSVC`.
+  - `metl::cxx_standard`: `METL_CXX_STANDARD`.
+  - `metl::is_clang`, `metl::is_gcc`, `metl::is_msvc`: `METL_COMPILER_CLANG`, `METL_COMPILER_GCC`, `METL_COMPILER_MSVC`.
+  - `metl::has_nodiscard`, `metl::has_fallthrough`: `METL_HAS_CPP_ATTRIBUTE(nodiscard)`, `METL_HAS_CPP_ATTRIBUTE(fallthrough)`.
+- **Breaking:** the unused or duplicate macros 1.15.0 deprecated are removed (#662, #168). A use now fails to compile, or, inside `#if`, reads as 0:
+  - `METL_ALWAYS_INLINE`: `METL_FORCE_INLINE`.
+  - `METL_LIKELY`, `METL_UNLIKELY`: `METL_PREDICT_TRUE`, `METL_PREDICT_FALSE`.
+  - `METL_LIKELY_ATTR`, `METL_UNLIKELY_ATTR`: `[[likely]]`, `[[unlikely]]` where the standard has them.
+  - `METL_NORETURN`, `METL_MAYBE_UNUSED`, `METL_FALLTHROUGH`: `[[noreturn]]`, `[[maybe_unused]]`, `[[fallthrough]]`.
+  - `METL_ISR_SAFE`: write `noexcept`.
+  - `METL_HAVE_INCLUDE`: `__has_include`.
+  - `METL_COMPILER_CLANG_VERSION_{MAJOR,MINOR,PATCH}`: `__clang_major__`, `__clang_minor__`, `__clang_patchlevel__`.
+  - `METL_COMPILER_GCC_VERSION_{MAJOR,MINOR,PATCH}`: `__GNUC__`, `__GNUC_MINOR__`, `__GNUC_PATCHLEVEL__`.
+  - `METL_PREFETCH`: `__builtin_prefetch`.
+  - `METL_ASSUME`: no replacement; nothing in METL used it.
+- **Breaking:** the old spellings of the internal helper macros are removed (#662, #168): `METL_CONSTEXPR20` (write `constexpr` in C++20, or nothing), `METL_FORCE_INLINE_ATTR` (use `METL_FORCE_INLINE`), and `METL_FIXED_VECTOR_ASAN`, `METL_SCOPE_EXIT_CONCAT` and `METL_SCOPE_EXIT_CONCAT_INNER` (no replacement). They were never meant for user code; METL's own `METL_DETAIL_*` spellings are internal.
+- **Breaking:** `static_message_queue` is removed (#662, #166). It was a single-threaded FIFO whose name promised RTOS IPC. Use `fixed_queue<T, N>`, or `guarded<fixed_queue<T, N>, irq_lock>` where an ISR shares it; that pair is constant-initialized in C++20. `try_pop(T& out)` becomes `if (!q.empty()) { out = std::move(q.front()); q.pop(); }`.
+- **Breaking:** removed the names 1.15.0 deprecated (#662), each of which now fails to compile:
+  - `fixed_string::try_pop_back`: write `if (!s.empty()) s.pop_back();`.
+  - `static_unordered_map::find_iter` and `static_unordered_set::find_iter`: use `find_iterator`.
+  - The positional `operator[]` and `at` of `flat_map`, `flat_set` and `lookup_table`: use `nth(i)`. `m[k]` on a `flat_map` no longer compiles, so it can no longer be read as a key lookup.
+  - `scheduler::task_count` and `deadline_scheduler::task_count`: use `size()`.
+
 ## [1.15.0] - 2026-11-04
 
 **Highlights.** The deprecation release before 2.0. Every name that 2.0 removes,
@@ -54,7 +147,6 @@ its spelling:
 - `handle_pool` hands out freed slots oldest first instead of last-freed first.
   Code that expects to get back the index it just freed gets a different one
   (#642).
-
 
 ### Added
 

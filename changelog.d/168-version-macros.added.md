@@ -1,1 +1,0 @@
-- `METL_VERSION_MAJOR`, `METL_VERSION_MINOR` and `METL_VERSION_PATCH` in `<metl/config.hpp>`, for preprocessor tests such as `#if METL_VERSION_MAJOR >= 2` (#168). `metl::version_major`, `version_minor` and `version_patch` are defined from them.

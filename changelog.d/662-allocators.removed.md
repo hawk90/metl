@@ -1,1 +1,0 @@
-- **Breaking:** `static_allocator` is removed (#662). Use `monotonic_buffer` with `try_allocate_n<T>(count)` for typed, overflow-checked arrays, and `try_emplace` / `emplace` for single objects.
