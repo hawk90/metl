@@ -359,9 +359,9 @@ class expected_core {
   expected_core(expected_move_tag /*unused*/, expected_core&& other) noexcept(nothrow_move_construct)
       : storage_(), state_(settled_state(other.state_)) {
     if (holds_value()) {
-      construct_value(static_cast<T&&>(other.value_unchecked()));
+      construct_value(static_cast<T&&>(std::move(other).value_unchecked()));
     } else {
-      construct_error(static_cast<E&&>(other.error_unchecked()));
+      construct_error(static_cast<E&&>(std::move(other).error_unchecked()));
     }
   }
   expected_core(const expected_core&) = default;
@@ -390,13 +390,9 @@ class expected_core {
     }
   }
 
+  // The assignments' work. The layers check first that both sides are settled
+  // and then that they are distinct objects.
   void copy_assign(const expected_core& other) {
-    require_settled();
-    other.require_settled();
-    if (this == &other) {
-      return;
-    }
-
     if (other.holds_value()) {
       assign_value_or_rebind(other.value_unchecked());
     } else {
@@ -405,16 +401,10 @@ class expected_core {
   }
 
   void move_assign(expected_core&& other) noexcept(nothrow_move_assign) {
-    require_settled();
-    other.require_settled();
-    if (this == &other) {
-      return;
-    }
-
     if (other.holds_value()) {
-      assign_value_or_rebind(static_cast<T&&>(other.value_unchecked()));
+      assign_value_or_rebind(static_cast<T&&>(std::move(other).value_unchecked()));
     } else {
-      assign_error_or_rebind(static_cast<E&&>(other.error_unchecked()));
+      assign_error_or_rebind(static_cast<E&&>(std::move(other).error_unchecked()));
     }
   }
 
@@ -642,7 +632,7 @@ class expected_void_core {
                      expected_void_core&& other) noexcept(nothrow_move_construct)
       : storage_(), state_(settled_state(other.state_)) {
     if (!holds_value()) {
-      construct_error(static_cast<E&&>(*other.error_ptr()));
+      construct_error(static_cast<E&&>(*std::move(other).error_ptr()));
     }
   }
   expected_void_core(const expected_void_core&) = default;
@@ -664,13 +654,8 @@ class expected_void_core {
     }
   }
 
+  // As in expected_core: the layers check both sides and self-assignment.
   void copy_assign(const expected_void_core& other) {
-    require_settled();
-    other.require_settled();
-    if (this == &other) {
-      return;
-    }
-
     if (other.holds_value()) {
       if (!holds_value()) {
         state_ = expected_state::switching;
@@ -688,12 +673,6 @@ class expected_void_core {
   }
 
   void move_assign(expected_void_core&& other) noexcept(nothrow_move_assign) {
-    require_settled();
-    other.require_settled();
-    if (this == &other) {
-      return;
-    }
-
     if (other.holds_value()) {
       if (!holds_value()) {
         state_ = expected_state::switching;
@@ -702,10 +681,10 @@ class expected_void_core {
       }
     } else {
       if (holds_value()) {
-        construct_error(static_cast<E&&>(*other.error_ptr()));
+        construct_error(static_cast<E&&>(*std::move(other).error_ptr()));
         state_ = expected_state::error;
       } else {
-        *error_ptr() = static_cast<E&&>(*other.error_ptr());
+        *error_ptr() = static_cast<E&&>(*std::move(other).error_ptr());
       }
     }
   }
@@ -789,7 +768,7 @@ struct expected_move_layer<Base, false> : Base {
   using Base::Base;
   expected_move_layer(const expected_move_layer&) = default;
   expected_move_layer(expected_move_layer&& other) noexcept(Base::nothrow_move_construct)
-      : Base(expected_move_tag{}, static_cast<Base&&>(other)) {}
+      : Base(expected_move_tag{}, std::move(other)) {}
   expected_move_layer& operator=(const expected_move_layer&) = default;
   expected_move_layer& operator=(expected_move_layer&&) = default;
   ~expected_move_layer() = default;
@@ -808,6 +787,11 @@ struct expected_copy_assign_layer<Base, false> : Base {
   expected_copy_assign_layer(const expected_copy_assign_layer&) = default;
   expected_copy_assign_layer(expected_copy_assign_layer&&) = default;
   expected_copy_assign_layer& operator=(const expected_copy_assign_layer& other) {
+    this->require_settled();
+    other.require_settled();
+    if (this == &other) {
+      return *this;
+    }
     this->copy_assign(other);
     return *this;
   }
@@ -830,7 +814,12 @@ struct expected_move_assign_layer<Base, false> : Base {
   expected_move_assign_layer& operator=(const expected_move_assign_layer&) = default;
   expected_move_assign_layer& operator=(expected_move_assign_layer&& other) noexcept(
       Base::nothrow_move_assign) {
-    this->move_assign(static_cast<Base&&>(other));
+    this->require_settled();
+    other.require_settled();
+    if (this == &other) {
+      return *this;
+    }
+    this->move_assign(std::move(other));
     return *this;
   }
   ~expected_move_assign_layer() = default;

@@ -4,15 +4,16 @@
 MUTANT = {
     "name": "expected_void_copy_assign_self_check_inverted",
     "file": "include/metl/expected.hpp",
-    "why": "expected<void, E> copy assignment becomes a no-op for every "
-           "other object; the state and the error are never copied.",
+    "why": "copy assignment becomes a no-op for every other object, in "
+           "expected<void, E> and expected<T, E> alike (one layer serves both): "
+           "the state and the error are never copied.",
     "kills": "ctest:expected_test",
-    "old": """  void copy_assign(const expected_void_core& other) {
-    require_settled();
-    other.require_settled();
-    if (this == &other) {""",
-    "new": """  void copy_assign(const expected_void_core& other) {
-    require_settled();
-    other.require_settled();
-    if (this != &other) {""",
+    "old": """    if (this == &other) {
+      return *this;
+    }
+    this->copy_assign(""",
+    "new": """    if (this != &other) {
+      return *this;
+    }
+    this->copy_assign(""",
 }

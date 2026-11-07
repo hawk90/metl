@@ -8,12 +8,12 @@ MUTANT = {
            "a no-op. Live-object counts stay balanced; only the value is "
            "wrong, and only the fuzz harness's value oracle reads it.",
     "kills": "ctest:replay_fuzz_vocab",
-    "old": """  void move_assign(expected_core&& other) noexcept(nothrow_move_assign) {
-    require_settled();
-    other.require_settled();
-    if (this == &other) {""",
-    "new": """  void move_assign(expected_core&& other) noexcept(nothrow_move_assign) {
-    require_settled();
-    other.require_settled();
-    if (this != &other) {""",
+    "old": """    if (this == &other) {
+      return *this;
+    }
+    this->move_assign(""",
+    "new": """    if (this != &other) {
+      return *this;
+    }
+    this->move_assign(""",
 }
