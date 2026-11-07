@@ -239,6 +239,16 @@ struct optional_move_assign<T, false> : optional_copy_assign<T> {
   ~optional_move_assign() = default;
 };
 
+// The layers above, with the operations T does not allow deleted
+// (detail/enable_copy_move.hpp). Copy assignment needs only a copy constructor:
+// a const T is replaced instead of assigned.
+template <typename T>
+using optional_base = enable_copy_move<optional_move_assign<T>,
+                                       std::is_copy_constructible_v<T>,
+                                       std::is_copy_constructible_v<T>,
+                                       std::is_move_constructible_v<T>,
+                                       std::is_move_constructible_v<T>>;
+
 }  // namespace detail
 
 /// @brief A fixed-storage nullable value wrapper (in-place, no heap).
@@ -263,15 +273,10 @@ struct optional_move_assign<T, false> : optional_copy_assign<T> {
 /// by default) rather than throwing when the optional is empty. Use `value_or`
 /// for a safe alternative that never asserts.
 template <typename T>
-class optional : detail::optional_move_assign<T>,
-                 detail::enable_copy_move<std::is_copy_constructible_v<T>,
-                                          std::is_copy_constructible_v<T>,
-                                          std::is_move_constructible_v<T>,
-                                          std::is_move_constructible_v<T>,
-                                          optional<T>> {
+class optional : detail::optional_base<T> {
   static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
 
-  using base = detail::optional_move_assign<T>;
+  using base = detail::optional_base<T>;
   using base::assign_or_construct;
   using base::construct;
   using base::data;
