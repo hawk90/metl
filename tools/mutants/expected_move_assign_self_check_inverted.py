@@ -8,11 +8,11 @@ MUTANT = {
            "a no-op. Live-object counts stay balanced; only the value is "
            "wrong, and only the fuzz harness's value oracle reads it.",
     "kills": "ctest:replay_fuzz_vocab",
-    "old": """                                                 std::is_nothrow_move_constructible_v<E>) {
+    "old": """  void move_assign(expected_core&& other) noexcept(nothrow_move_assign) {
     require_settled();
     other.require_settled();
     if (this == &other) {""",
-    "new": """                                                 std::is_nothrow_move_constructible_v<E>) {
+    "new": """  void move_assign(expected_core&& other) noexcept(nothrow_move_assign) {
     require_settled();
     other.require_settled();
     if (this != &other) {""",

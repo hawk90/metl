@@ -4,8 +4,8 @@
 // nothing can see or interrupt the switching state. Without a destructor of
 // its own, expected is a literal type in C++17 as well, so a constexpr
 // function can return one: twice() and try_parse_* are constant-evaluated
-// below in every standard. The copy constructor stays user-provided, so the type is still not
-// trivially copyable and is passed the way it was, by hidden pointer.
+// below in every standard. Since #163 the copy and move are trivial too when T's and E's
+// are (expected_triviality_test.cpp).
 
 #include "metl_check.hpp"
 
@@ -31,9 +31,6 @@ static_assert(!std::is_trivially_destructible_v<metl::expected<counted, int>>);
 static_assert(!std::is_trivially_destructible_v<metl::expected<int, counted>>);
 static_assert(!std::is_trivially_destructible_v<metl::expected<void, counted>>);
 
-// Still passed as before: not trivially copyable.
-static_assert(!std::is_trivially_copyable_v<metl::expected<int, int>>);
-static_assert(!std::is_trivially_copyable_v<metl::expected<void, int>>);
 
 // A literal type in C++17: a constexpr function can build and return one.
 constexpr metl::expected<int, int> twice(int x) {

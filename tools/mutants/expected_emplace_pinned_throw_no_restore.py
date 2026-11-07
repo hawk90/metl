@@ -8,5 +8,5 @@ MUTANT = {
            "previous error is destroyed and never restored.",
     "kills": "ctest:expected_regression",
     "old": """        construct_error(static_cast<E&&>(backup));  // restore the previous state""",
-    "new": """        // restore the previous state""",
+    "new": """        static_cast<void>(backup);  // restore the previous state""",
 }

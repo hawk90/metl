@@ -20,7 +20,7 @@
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
 #include "metl/detail/construct.hpp"
-#include "metl/detail/copy_move_gate.hpp"
+#include "metl/detail/enable_copy_move.hpp"
 #include "metl/in_place.hpp"
 #include "metl/type_traits.hpp"
 
@@ -171,11 +171,28 @@ inline METL_DETAIL_CONSTEXPR20 void require_settled(expected_state state) noexce
 
 struct expected_empty {};
 
+// Tags for the storage constructors that copy or move another expected's
+// active member.
+struct expected_copy_tag {};
+struct expected_move_tag {};
+
+// The state of an expected being copied or moved from, after the check that it
+// has a live member. While it is switching neither member is live, and a copy
+// would read a dead object (#374).
+inline METL_DETAIL_CONSTEXPR20 expected_state settled_state(expected_state state) noexcept {
+  require_settled(state);
+  return state;
+}
+
 // The storage of expected<T, E>: a union, so a constructor builds the value or
 // the error in a member initializer. A constant expression allows that, and
 // never allows placement new, so a namespace-scope expected is
 // constant-initialized. Members are unqualified, as in optional: a const one is
 // built through a non-const pointer and handed out as const.
+//
+// The copy and move are defaulted: trivial when T's and E's are, and deleted
+// otherwise, since a union's copy is deleted when a member's is non-trivial.
+// expected_core builds a member itself in the other cases.
 template <typename T, typename E>
 inline constexpr bool expected_trivially_destructible_v =
     std::is_trivially_destructible_v<T> && std::is_trivially_destructible_v<E>;
@@ -191,11 +208,30 @@ union expected_union {
   constexpr explicit expected_union(in_place_t, Args&&... args) : value(std::forward<Args>(args)...) {}
   template <typename... Args>
   constexpr explicit expected_union(unexpect_t, Args&&... args) : error(std::forward<Args>(args)...) {}
-  // expected copies, moves and ends the active member itself.
-  expected_union(const expected_union&) = delete;
-  expected_union(expected_union&&) = delete;
-  expected_union& operator=(const expected_union&) = delete;
-  expected_union& operator=(expected_union&&) = delete;
+  expected_union(expected_state state, const expected_union& other) : empty{} {
+    if (state == expected_state::value) {
+      detail::construct_at(detail::addressof(value), *std::launder(detail::addressof(other.value)));
+    } else {
+      detail::construct_at(detail::addressof(error), *std::launder(detail::addressof(other.error)));
+    }
+  }
+  expected_union(expected_state state,
+                 expected_union&& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
+                                                  std::is_nothrow_move_constructible_v<E>)
+      : empty{} {
+    if (state == expected_state::value) {
+      detail::construct_at(detail::addressof(value),
+                           static_cast<std::remove_cv_t<T>&&>(*std::launder(detail::addressof(other.value))));
+    } else {
+      detail::construct_at(detail::addressof(error),
+                           static_cast<std::remove_cv_t<E>&&>(*std::launder(detail::addressof(other.error))));
+    }
+  }
+  expected_union(const expected_union&) = default;
+  expected_union(expected_union&&) = default;
+  expected_union& operator=(const expected_union&) = default;
+  expected_union& operator=(expected_union&&) = default;
+  // expected ends the active member itself.
   METL_DETAIL_CONSTEXPR20 ~expected_union() {}
 };
 
@@ -212,10 +248,29 @@ union expected_union<T, E, true> {
   constexpr explicit expected_union(in_place_t, Args&&... args) : value(std::forward<Args>(args)...) {}
   template <typename... Args>
   constexpr explicit expected_union(unexpect_t, Args&&... args) : error(std::forward<Args>(args)...) {}
-  expected_union(const expected_union&) = delete;
-  expected_union(expected_union&&) = delete;
-  expected_union& operator=(const expected_union&) = delete;
-  expected_union& operator=(expected_union&&) = delete;
+  expected_union(expected_state state, const expected_union& other) : empty{} {
+    if (state == expected_state::value) {
+      detail::construct_at(detail::addressof(value), *std::launder(detail::addressof(other.value)));
+    } else {
+      detail::construct_at(detail::addressof(error), *std::launder(detail::addressof(other.error)));
+    }
+  }
+  expected_union(expected_state state,
+                 expected_union&& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
+                                                  std::is_nothrow_move_constructible_v<E>)
+      : empty{} {
+    if (state == expected_state::value) {
+      detail::construct_at(detail::addressof(value),
+                           static_cast<std::remove_cv_t<T>&&>(*std::launder(detail::addressof(other.value))));
+    } else {
+      detail::construct_at(detail::addressof(error),
+                           static_cast<std::remove_cv_t<E>&&>(*std::launder(detail::addressof(other.error))));
+    }
+  }
+  expected_union(const expected_union&) = default;
+  expected_union(expected_union&&) = default;
+  expected_union& operator=(const expected_union&) = default;
+  expected_union& operator=(expected_union&&) = default;
   ~expected_union() = default;  // trivial: T and E are
 };
 
@@ -228,10 +283,23 @@ union expected_error_union {
   constexpr expected_error_union() noexcept : empty{} {}
   template <typename... Args>
   constexpr explicit expected_error_union(unexpect_t, Args&&... args) : error(std::forward<Args>(args)...) {}
-  expected_error_union(const expected_error_union&) = delete;
-  expected_error_union(expected_error_union&&) = delete;
-  expected_error_union& operator=(const expected_error_union&) = delete;
-  expected_error_union& operator=(expected_error_union&&) = delete;
+  expected_error_union(expected_state state, const expected_error_union& other) : empty{} {
+    if (state != expected_state::value) {
+      detail::construct_at(detail::addressof(error), *std::launder(detail::addressof(other.error)));
+    }
+  }
+  expected_error_union(expected_state state,
+                       expected_error_union&& other) noexcept(std::is_nothrow_move_constructible_v<E>)
+      : empty{} {
+    if (state != expected_state::value) {
+      detail::construct_at(detail::addressof(error),
+                           static_cast<std::remove_cv_t<E>&&>(*std::launder(detail::addressof(other.error))));
+    }
+  }
+  expected_error_union(const expected_error_union&) = default;
+  expected_error_union(expected_error_union&&) = default;
+  expected_error_union& operator=(const expected_error_union&) = default;
+  expected_error_union& operator=(expected_error_union&&) = default;
   METL_DETAIL_CONSTEXPR20 ~expected_error_union() {}
 };
 
@@ -243,42 +311,306 @@ union expected_error_union<E, true> {
   constexpr expected_error_union() noexcept : empty{} {}
   template <typename... Args>
   constexpr explicit expected_error_union(unexpect_t, Args&&... args) : error(std::forward<Args>(args)...) {}
-  expected_error_union(const expected_error_union&) = delete;
-  expected_error_union(expected_error_union&&) = delete;
-  expected_error_union& operator=(const expected_error_union&) = delete;
-  expected_error_union& operator=(expected_error_union&&) = delete;
-  ~expected_error_union() = default;  // trivial: T and E are
+  expected_error_union(expected_state state, const expected_error_union& other) : empty{} {
+    if (state != expected_state::value) {
+      detail::construct_at(detail::addressof(error), *std::launder(detail::addressof(other.error)));
+    }
+  }
+  expected_error_union(expected_state state,
+                       expected_error_union&& other) noexcept(std::is_nothrow_move_constructible_v<E>)
+      : empty{} {
+    if (state != expected_state::value) {
+      detail::construct_at(detail::addressof(error),
+                           static_cast<std::remove_cv_t<E>&&>(*std::launder(detail::addressof(other.error))));
+    }
+  }
+  expected_error_union(const expected_error_union&) = default;
+  expected_error_union(expected_error_union&&) = default;
+  expected_error_union& operator=(const expected_error_union&) = default;
+  expected_error_union& operator=(expected_error_union&&) = default;
+  ~expected_error_union() = default;  // trivial: E is
 };
 
-// The members of expected<T, E>, and its destructor. Their deleted copy and
-// move operations do no_implicit_copy_move's job (detail/copy_move_gate.hpp):
-// a gated operation that is not allowed leaves expected's implicit one, and
-// this base deletes it. A second, empty base would cost MSVC a padded byte or
-// more, since it applies the empty-base optimization to a single base only.
-// The destructor is here rather than in expected so that, when T and E are
-// trivially destructible, expected has none of its own and is trivially
-// destructible, a literal type in C++17 too (#474). Its checks cannot fire then: no member destructor runs,
-// so nothing can observe or interrupt the switching state.
-template <typename T, typename E, bool Trivial = expected_trivially_destructible_v<T, E>>
-struct expected_members {
+// The members of expected<T, E> and the operations on them. The special
+// members are layered on top, one per operation (expected_members and the
+// expected_*_layer templates below), so each is trivial exactly when T's and
+// E's are (#163). Only expected reads the data members; the layers use the
+// constructors and the copy_assign / move_assign helpers.
+template <typename T, typename E>
+class expected_core {
+ public:
   template <typename Tag, typename... Args>
-  constexpr expected_members(expected_state state, Tag tag, Args&&... args)
+  constexpr expected_core(expected_state state, Tag tag, Args&&... args)
       : storage_(tag, std::forward<Args>(args)...), state_(state) {}
-  constexpr explicit expected_members(expected_state state) noexcept : storage_(), state_(state) {}
-  expected_members(const expected_members&) = delete;
-  expected_members(expected_members&&) = delete;
-  expected_members& operator=(const expected_members&) = delete;
-  expected_members& operator=(expected_members&&) = delete;
+  constexpr explicit expected_core(expected_state state) noexcept : storage_(), state_(state) {}
+  // The copy and move that are not trivial build the member here, in the
+  // core's own constructor. If that throws, the core is not complete and the
+  // destructor layer above it has not been entered, so no destructor ends a
+  // member that was never built (#685). The union's destructor runs, and it
+  // does nothing.
+  expected_core(expected_copy_tag /*unused*/, const expected_core& other)
+      : storage_(), state_(settled_state(other.state_)) {
+    if (holds_value()) {
+      construct_value(other.value_unchecked());
+    } else {
+      construct_error(other.error_unchecked());
+    }
+  }
+  expected_core(expected_move_tag /*unused*/, expected_core&& other) noexcept(nothrow_move_construct)
+      : storage_(), state_(settled_state(other.state_)) {
+    if (holds_value()) {
+      construct_value(static_cast<T&&>(other.value_unchecked()));
+    } else {
+      construct_error(static_cast<E&&>(other.error_unchecked()));
+    }
+  }
+  expected_core(const expected_core&) = default;
+  expected_core(expected_core&&) = default;
+  expected_core& operator=(const expected_core&) = default;
+  expected_core& operator=(expected_core&&) = default;
+  ~expected_core() = default;
+
+  static constexpr bool nothrow_move_construct =
+      std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_constructible_v<E>;
+  static constexpr bool nothrow_move_assign =
+      std::is_nothrow_move_assignable_v<T> && std::is_nothrow_move_constructible_v<T> &&
+      std::is_nothrow_move_assignable_v<E> && std::is_nothrow_move_constructible_v<E>;
+
+ protected:
   // A member destructor that reaches back into the expected finds it
   // switching: has_value() is false, and a change fails METL_HARDEN (#374).
-  METL_DETAIL_CONSTEXPR20 ~expected_members() {
-    require_settled(state_);
+  METL_DETAIL_CONSTEXPR20 void destroy_active() noexcept {
+    detail::require_settled(state_);
     const bool had_value = state_ == expected_state::value;
     state_ = expected_state::switching;
     if (had_value) {
       std::launder(detail::addressof(storage_.value))->~T();
     } else {
       std::launder(detail::addressof(storage_.error))->~E();
+    }
+  }
+
+  void copy_assign(const expected_core& other) {
+    require_settled();
+    other.require_settled();
+    if (this == &other) {
+      return;
+    }
+
+    if (other.holds_value()) {
+      assign_value_or_rebind(other.value_unchecked());
+    } else {
+      assign_error_or_rebind(other.error_unchecked());
+    }
+  }
+
+  void move_assign(expected_core&& other) noexcept(nothrow_move_assign) {
+    require_settled();
+    other.require_settled();
+    if (this == &other) {
+      return;
+    }
+
+    if (other.holds_value()) {
+      assign_value_or_rebind(static_cast<T&&>(other.value_unchecked()));
+    } else {
+      assign_error_or_rebind(static_cast<E&&>(other.error_unchecked()));
+    }
+  }
+
+  // Laundered: emplace and assignment can end a member and build a new one in
+  // its place, which C++17 [basic.life]/8 does not let the member's name reach
+  // when T or E has a const or reference member.
+  METL_DETAIL_CONSTEXPR20 T* value_ptr() noexcept { return std::launder(detail::addressof(storage_.value)); }
+  METL_DETAIL_CONSTEXPR20 const T* value_ptr() const noexcept {
+    return std::launder(detail::addressof(storage_.value));
+  }
+
+  METL_DETAIL_CONSTEXPR20 E* error_ptr() noexcept { return std::launder(detail::addressof(storage_.error)); }
+  METL_DETAIL_CONSTEXPR20 const E* error_ptr() const noexcept {
+    return std::launder(detail::addressof(storage_.error));
+  }
+
+  // Unchecked accessors used internally where active-member state is known.
+  T& value_unchecked() noexcept { return *value_ptr(); }
+  const T& value_unchecked() const noexcept { return *value_ptr(); }
+  E& error_unchecked() noexcept { return *error_ptr(); }
+  const E& error_unchecked() const noexcept { return *error_ptr(); }
+
+  METL_NODISCARD constexpr bool holds_value() const noexcept {
+    return state_ == detail::expected_state::value;
+  }
+  METL_NODISCARD constexpr bool holds_error() const noexcept {
+    return state_ == detail::expected_state::error;
+  }
+  // A change while the old member is being destroyed would destroy it again.
+  // The condition is a call so that the expression text METL_HARDEN stores in
+  // every binary stays short.
+  METL_NODISCARD constexpr bool settled() const noexcept {
+    return state_ != detail::expected_state::switching;
+  }
+  METL_DETAIL_CONSTEXPR20 void require_settled() const noexcept { detail::require_settled(state_); }
+
+  template <typename... Args>
+  void construct_value(Args&&... args) {
+    detail::construct_at(detail::addressof(storage_.value), std::forward<Args>(args)...);
+  }
+
+  template <typename... Args>
+  void construct_error(Args&&... args) {
+    detail::construct_at(detail::addressof(storage_.error), std::forward<Args>(args)...);
+  }
+
+  template <typename U>
+  void assign_value_or_rebind(U&& value) {
+    require_settled();
+    if (holds_value()) {
+      *value_ptr() = std::forward<U>(value);
+      return;
+    }
+    // Currently holds an error; switch to the value state exception-safely.
+    reinit_as_value(std::forward<U>(value));
+  }
+
+  template <typename G>
+  void assign_error_or_rebind(G&& error) {
+    require_settled();
+    if (!holds_value()) {
+      *error_ptr() = std::forward<G>(error);
+      return;
+    }
+    // Currently holds a value; switch to the error state exception-safely.
+    reinit_as_error(std::forward<G>(error));
+  }
+
+  // Cross-state reinitialization (std::expected's "reinit-expected" pattern).
+  // reinit_as_value: precondition, currently in the error state; switch to the
+  // value state (reinit_as_error is the mirror image). A throwing constructor
+  // never destroys the old member while leaving the discriminant unchanged (which
+  // would double-destroy it on ~expected).
+  template <typename... Args>
+  void reinit_as_value(Args&&... args) {
+    if constexpr (std::is_move_constructible_v<T>) {
+      // Build the new value BEFORE touching the old member: `args` may refer
+      // into it (`e = e.error().fallback`), and destroying first would read a
+      // dead object.
+      // A throw here leaves the state untouched.
+      T incoming(std::forward<Args>(args)...);
+      commit_value(static_cast<T&&>(incoming));
+    } else if constexpr (std::is_nothrow_constructible_v<T, Args&&...>) {
+      // A non-movable T cannot be built aside; aliasing the old member is a
+      // precondition violation here, as it is for std::expected.
+      state_ = detail::expected_state::switching;
+      error_ptr()->~E();
+      construct_value(std::forward<Args>(args)...);
+    } else {
+#if METL_NO_EXCEPTIONS
+      state_ = detail::expected_state::switching;
+      error_ptr()->~E();
+      construct_value(std::forward<Args>(args)...);
+#else
+      E backup(static_cast<E&&>(*error_ptr()));
+      state_ = detail::expected_state::switching;
+      error_ptr()->~E();
+      try {
+        construct_value(std::forward<Args>(args)...);
+      } catch (...) {
+        construct_error(static_cast<E&&>(backup));  // restore the previous state
+        state_ = detail::expected_state::error;
+        throw;
+      }
+#endif
+    }
+    state_ = detail::expected_state::value;
+  }
+
+  // Replaces the old member with an already-built `incoming`. Only the move
+  // can throw now; if it does, the old member is restored from a backup.
+  void commit_value(T&& incoming) {
+    if constexpr (std::is_nothrow_move_constructible_v<T>) {
+      state_ = detail::expected_state::switching;
+      error_ptr()->~E();
+      construct_value(std::move(incoming));
+    } else {
+#if METL_NO_EXCEPTIONS
+      state_ = detail::expected_state::switching;
+      error_ptr()->~E();
+      construct_value(std::move(incoming));
+#else
+      E backup(static_cast<E&&>(*error_ptr()));
+      state_ = detail::expected_state::switching;
+      error_ptr()->~E();
+      try {
+        construct_value(std::move(incoming));
+      } catch (...) {
+        construct_error(static_cast<E&&>(backup));
+        state_ = detail::expected_state::error;
+        throw;
+      }
+#endif
+    }
+  }
+
+  template <typename... Args>
+  void reinit_as_error(Args&&... args) {
+    if constexpr (std::is_move_constructible_v<E>) {
+      // Build the new error BEFORE touching the old member: `args` may refer
+      // into it (`e = e.value().code`), and destroying first would read a dead
+      // object.
+      // A throw here leaves the state untouched.
+      E incoming(std::forward<Args>(args)...);
+      commit_error(static_cast<E&&>(incoming));
+    } else if constexpr (std::is_nothrow_constructible_v<E, Args&&...>) {
+      // A non-movable E cannot be built aside; aliasing the old member is a
+      // precondition violation here, as it is for std::expected.
+      state_ = detail::expected_state::switching;
+      value_ptr()->~T();
+      construct_error(std::forward<Args>(args)...);
+    } else {
+#if METL_NO_EXCEPTIONS
+      state_ = detail::expected_state::switching;
+      value_ptr()->~T();
+      construct_error(std::forward<Args>(args)...);
+#else
+      T backup(static_cast<T&&>(*value_ptr()));
+      state_ = detail::expected_state::switching;
+      value_ptr()->~T();
+      try {
+        construct_error(std::forward<Args>(args)...);
+      } catch (...) {
+        construct_value(static_cast<T&&>(backup));  // restore the previous state
+        state_ = detail::expected_state::value;
+        throw;
+      }
+#endif
+    }
+    state_ = detail::expected_state::error;
+  }
+
+  // Replaces the old member with an already-built `incoming`. Only the move
+  // can throw now; if it does, the old member is restored from a backup.
+  void commit_error(E&& incoming) {
+    if constexpr (std::is_nothrow_move_constructible_v<E>) {
+      state_ = detail::expected_state::switching;
+      value_ptr()->~T();
+      construct_error(std::move(incoming));
+    } else {
+#if METL_NO_EXCEPTIONS
+      state_ = detail::expected_state::switching;
+      value_ptr()->~T();
+      construct_error(std::move(incoming));
+#else
+      T backup(static_cast<T&&>(*value_ptr()));
+      state_ = detail::expected_state::switching;
+      value_ptr()->~T();
+      try {
+        construct_error(std::move(incoming));
+      } catch (...) {
+        construct_value(static_cast<T&&>(backup));
+        state_ = detail::expected_state::value;
+        throw;
+      }
+#endif
     }
   }
 
@@ -291,43 +623,113 @@ struct expected_members {
   expected_state state_;
 };
 
-template <typename T, typename E>
-struct expected_members<T, E, true> {
-  template <typename Tag, typename... Args>
-  constexpr expected_members(expected_state state, Tag tag, Args&&... args)
-      : storage_(tag, std::forward<Args>(args)...), state_(state) {}
-  constexpr explicit expected_members(expected_state state) noexcept : storage_(), state_(state) {}
-  expected_members(const expected_members&) = delete;
-  expected_members(expected_members&&) = delete;
-  expected_members& operator=(const expected_members&) = delete;
-  expected_members& operator=(expected_members&&) = delete;
-  ~expected_members() = default;  // trivial: T and E are
-
- private:
-  // Only expected reads them; it names them with using-declarations.
-  friend class expected<T, E>;
-
-  expected_union<T, E> storage_;
-  expected_state state_;
-};
-
-// The members of expected<void, E>, and its destructor; as above.
-template <typename E, bool Trivial = std::is_trivially_destructible_v<E>>
-struct expected_void_members {
+// The members of expected<void, E> and the operations on them; as above.
+template <typename E>
+class expected_void_core {
+ public:
   template <typename... Args>
-  constexpr expected_void_members(expected_state state, unexpect_t tag, Args&&... args)
+  constexpr expected_void_core(expected_state state, unexpect_t tag, Args&&... args)
       : storage_(tag, std::forward<Args>(args)...), state_(state) {}
-  constexpr explicit expected_void_members(expected_state state) noexcept : storage_(), state_(state) {}
-  expected_void_members(const expected_void_members&) = delete;
-  expected_void_members(expected_void_members&&) = delete;
-  expected_void_members& operator=(const expected_void_members&) = delete;
-  expected_void_members& operator=(expected_void_members&&) = delete;
-  METL_DETAIL_CONSTEXPR20 ~expected_void_members() {
-    require_settled(state_);
+  constexpr explicit expected_void_core(expected_state state) noexcept : storage_(), state_(state) {}
+  // As in expected_core: built in the constructor body (#685).
+  expected_void_core(expected_copy_tag /*unused*/, const expected_void_core& other)
+      : storage_(), state_(settled_state(other.state_)) {
+    if (!holds_value()) {
+      construct_error(*other.error_ptr());
+    }
+  }
+  expected_void_core(expected_move_tag /*unused*/,
+                     expected_void_core&& other) noexcept(nothrow_move_construct)
+      : storage_(), state_(settled_state(other.state_)) {
+    if (!holds_value()) {
+      construct_error(static_cast<E&&>(*other.error_ptr()));
+    }
+  }
+  expected_void_core(const expected_void_core&) = default;
+  expected_void_core(expected_void_core&&) = default;
+  expected_void_core& operator=(const expected_void_core&) = default;
+  expected_void_core& operator=(expected_void_core&&) = default;
+  ~expected_void_core() = default;
+
+  static constexpr bool nothrow_move_construct = std::is_nothrow_move_constructible_v<E>;
+  static constexpr bool nothrow_move_assign =
+      std::is_nothrow_move_constructible_v<E> && std::is_nothrow_move_assignable_v<E>;
+
+ protected:
+  METL_DETAIL_CONSTEXPR20 void destroy_active() noexcept {
+    detail::require_settled(state_);
     if (state_ != expected_state::value) {
       state_ = expected_state::switching;
       std::launder(detail::addressof(storage_.error))->~E();
     }
+  }
+
+  void copy_assign(const expected_void_core& other) {
+    require_settled();
+    other.require_settled();
+    if (this == &other) {
+      return;
+    }
+
+    if (other.holds_value()) {
+      if (!holds_value()) {
+        state_ = expected_state::switching;
+        error_ptr()->~E();
+        state_ = expected_state::value;
+      }
+    } else {
+      if (holds_value()) {
+        construct_error(*other.error_ptr());
+        state_ = expected_state::error;
+      } else {
+        *error_ptr() = *other.error_ptr();
+      }
+    }
+  }
+
+  void move_assign(expected_void_core&& other) noexcept(nothrow_move_assign) {
+    require_settled();
+    other.require_settled();
+    if (this == &other) {
+      return;
+    }
+
+    if (other.holds_value()) {
+      if (!holds_value()) {
+        state_ = expected_state::switching;
+        error_ptr()->~E();
+        state_ = expected_state::value;
+      }
+    } else {
+      if (holds_value()) {
+        construct_error(static_cast<E&&>(*other.error_ptr()));
+        state_ = expected_state::error;
+      } else {
+        *error_ptr() = static_cast<E&&>(*other.error_ptr());
+      }
+    }
+  }
+
+  METL_DETAIL_CONSTEXPR20 E* error_ptr() noexcept { return std::launder(detail::addressof(storage_.error)); }
+  METL_DETAIL_CONSTEXPR20 const E* error_ptr() const noexcept {
+    return std::launder(detail::addressof(storage_.error));
+  }
+
+  METL_NODISCARD constexpr bool holds_value() const noexcept {
+    return state_ == detail::expected_state::value;
+  }
+  METL_NODISCARD constexpr bool holds_error() const noexcept {
+    return state_ == detail::expected_state::error;
+  }
+  // A change while the error is being destroyed would destroy it again.
+  METL_NODISCARD constexpr bool settled() const noexcept {
+    return state_ != detail::expected_state::switching;
+  }
+  METL_DETAIL_CONSTEXPR20 void require_settled() const noexcept { detail::require_settled(state_); }
+
+  template <typename... Args>
+  void construct_error(Args&&... args) {
+    detail::construct_at(detail::addressof(storage_.error), std::forward<Args>(args)...);
   }
 
  private:
@@ -339,24 +741,161 @@ struct expected_void_members {
   expected_state state_;
 };
 
-template <typename E>
-struct expected_void_members<E, true> {
-  template <typename... Args>
-  constexpr expected_void_members(expected_state state, unexpect_t tag, Args&&... args)
-      : storage_(tag, std::forward<Args>(args)...), state_(state) {}
-  constexpr explicit expected_void_members(expected_state state) noexcept : storage_(), state_(state) {}
-  expected_void_members(const expected_void_members&) = delete;
-  expected_void_members(expected_void_members&&) = delete;
-  expected_void_members& operator=(const expected_void_members&) = delete;
-  expected_void_members& operator=(expected_void_members&&) = delete;
-  ~expected_void_members() = default;  // trivial: T and E are
-
- private:
-  friend class expected<void, E>;
-
-  expected_error_union<E> storage_;
-  expected_state state_;
+// Destructor: trivial when the members' destructors are, so that expected has
+// none of its own and is trivially destructible, a literal type in C++17 too
+// (#474). Its checks cannot fire then: no member destructor runs, so nothing
+// can observe or interrupt the switching state.
+template <typename Core, bool Trivial>
+struct expected_destroy_layer : Core {
+  using Core::Core;
 };
+
+template <typename Core>
+struct expected_destroy_layer<Core, false> : Core {
+  using Core::Core;
+  expected_destroy_layer(const expected_destroy_layer&) = default;
+  expected_destroy_layer(expected_destroy_layer&&) = default;
+  expected_destroy_layer& operator=(const expected_destroy_layer&) = default;
+  expected_destroy_layer& operator=(expected_destroy_layer&&) = default;
+  METL_DETAIL_CONSTEXPR20 ~expected_destroy_layer() { this->destroy_active(); }
+};
+
+// Copy constructor: trivial when T's and E's are. For trivially copyable
+// members the source's switching check is dropped with it: that state is
+// visible only to a member destructor, and trivial members have none.
+template <typename Base, bool Trivial>
+struct expected_copy_layer : Base {
+  using Base::Base;
+};
+
+template <typename Base>
+struct expected_copy_layer<Base, false> : Base {
+  using Base::Base;
+  expected_copy_layer(const expected_copy_layer& other) : Base(expected_copy_tag{}, other) {}
+  expected_copy_layer(expected_copy_layer&&) = default;
+  expected_copy_layer& operator=(const expected_copy_layer&) = default;
+  expected_copy_layer& operator=(expected_copy_layer&&) = default;
+  ~expected_copy_layer() = default;
+};
+
+// Move constructor: trivial when T's and E's are.
+template <typename Base, bool Trivial>
+struct expected_move_layer : Base {
+  using Base::Base;
+};
+
+template <typename Base>
+struct expected_move_layer<Base, false> : Base {
+  using Base::Base;
+  expected_move_layer(const expected_move_layer&) = default;
+  expected_move_layer(expected_move_layer&& other) noexcept(Base::nothrow_move_construct)
+      : Base(expected_move_tag{}, static_cast<Base&&>(other)) {}
+  expected_move_layer& operator=(const expected_move_layer&) = default;
+  expected_move_layer& operator=(expected_move_layer&&) = default;
+  ~expected_move_layer() = default;
+};
+
+// Copy assignment: trivial when T's and E's copy constructors, copy
+// assignments and destructors all are.
+template <typename Base, bool Trivial>
+struct expected_copy_assign_layer : Base {
+  using Base::Base;
+};
+
+template <typename Base>
+struct expected_copy_assign_layer<Base, false> : Base {
+  using Base::Base;
+  expected_copy_assign_layer(const expected_copy_assign_layer&) = default;
+  expected_copy_assign_layer(expected_copy_assign_layer&&) = default;
+  expected_copy_assign_layer& operator=(const expected_copy_assign_layer& other) {
+    this->copy_assign(other);
+    return *this;
+  }
+  expected_copy_assign_layer& operator=(expected_copy_assign_layer&&) = default;
+  ~expected_copy_assign_layer() = default;
+};
+
+// Move assignment: trivial when T's and E's move constructors, move
+// assignments and destructors all are.
+template <typename Base, bool Trivial>
+struct expected_move_assign_layer : Base {
+  using Base::Base;
+};
+
+template <typename Base>
+struct expected_move_assign_layer<Base, false> : Base {
+  using Base::Base;
+  expected_move_assign_layer(const expected_move_assign_layer&) = default;
+  expected_move_assign_layer(expected_move_assign_layer&&) = default;
+  expected_move_assign_layer& operator=(const expected_move_assign_layer&) = default;
+  expected_move_assign_layer& operator=(expected_move_assign_layer&& other) noexcept(
+      Base::nothrow_move_assign) {
+    this->move_assign(static_cast<Base&&>(other));
+    return *this;
+  }
+  ~expected_move_assign_layer() = default;
+};
+
+// The four layers over a core, with the operations its members do not allow
+// deleted (detail/enable_copy_move.hpp).
+template <typename Core,
+          bool TrivialDtor,
+          bool TrivialCopy,
+          bool TrivialMove,
+          bool TrivialCopyAssign,
+          bool TrivialMoveAssign,
+          bool Copy,
+          bool CopyAssign,
+          bool Move,
+          bool MoveAssign>
+using expected_layers = enable_copy_move<
+    expected_move_assign_layer<
+        expected_copy_assign_layer<
+            expected_move_layer<expected_copy_layer<expected_destroy_layer<Core, TrivialDtor>, TrivialCopy>,
+                                TrivialMove>,
+            TrivialCopyAssign>,
+        TrivialMoveAssign>,
+    Copy,
+    CopyAssign,
+    Move,
+    MoveAssign>;
+
+template <typename U>
+inline constexpr bool expected_trivial_copy_assign_v =
+    std::is_trivially_copy_constructible_v<U> && std::is_trivially_copy_assignable_v<U> &&
+    std::is_trivially_destructible_v<U>;
+
+template <typename U>
+inline constexpr bool expected_trivial_move_assign_v =
+    std::is_trivially_move_constructible_v<U> && std::is_trivially_move_assignable_v<U> &&
+    std::is_trivially_destructible_v<U>;
+
+template <typename T, typename E>
+using expected_base =
+    expected_layers<expected_core<T, E>,
+                    expected_trivially_destructible_v<T, E>,
+                    std::is_trivially_copy_constructible_v<T> && std::is_trivially_copy_constructible_v<E>,
+                    std::is_trivially_move_constructible_v<T> && std::is_trivially_move_constructible_v<E>,
+                    expected_trivial_copy_assign_v<T> && expected_trivial_copy_assign_v<E>,
+                    expected_trivial_move_assign_v<T> && expected_trivial_move_assign_v<E>,
+                    std::is_copy_constructible_v<T> && std::is_copy_constructible_v<E>,
+                    std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T> &&
+                        std::is_copy_constructible_v<E> && std::is_copy_assignable_v<E>,
+                    std::is_move_constructible_v<T> && std::is_move_constructible_v<E>,
+                    std::is_move_constructible_v<T> && std::is_move_assignable_v<T> &&
+                        std::is_move_constructible_v<E> && std::is_move_assignable_v<E>>;
+
+template <typename E>
+using expected_void_base = expected_layers<expected_void_core<E>,
+                                           std::is_trivially_destructible_v<E>,
+                                           std::is_trivially_copy_constructible_v<E>,
+                                           std::is_trivially_move_constructible_v<E>,
+                                           expected_trivial_copy_assign_v<E>,
+                                           expected_trivial_move_assign_v<E>,
+                                           std::is_copy_constructible_v<E>,
+                                           std::is_copy_constructible_v<E> && std::is_copy_assignable_v<E>,
+                                           std::is_move_constructible_v<E>,
+                                           std::is_move_constructible_v<E> && std::is_move_assignable_v<E>>;
 
 // Replaces the live `U` at `slot` with one built from `args`. `args` may refer
 // into `*slot` (`e.emplace(e.value())`), so a movable `U` is always built
@@ -442,13 +981,26 @@ void replace_live(U* slot, expected_state& state, expected_state settled, Args&&
 ///      move of it fails METL_HARDEN, never stripped, instead of destroying the
 ///      old member twice (#374). std::expected leaves the same case undefined.
 template <typename T, typename E>
-// The copy and move operations are the gated ones below, which clang-tidy does not
-// recognize as such (detail/copy_move_gate.hpp).
-// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
-class expected : detail::expected_members<T, E> {
-  using members = detail::expected_members<T, E>;
+class expected : detail::expected_base<T, E> {
+  using members = detail::expected_base<T, E>;
+  using members::assign_error_or_rebind;
+  using members::assign_value_or_rebind;
+  using members::commit_error;
+  using members::commit_value;
+  using members::construct_error;
+  using members::construct_value;
+  using members::error_ptr;
+  using members::error_unchecked;
+  using members::holds_error;
+  using members::holds_value;
+  using members::reinit_as_error;
+  using members::reinit_as_value;
+  using members::require_settled;
+  using members::settled;
   using members::state_;
   using members::storage_;
+  using members::value_ptr;
+  using members::value_unchecked;
 
   static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
   static_assert(std::is_object_v<E> && !std::is_array_v<E>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
@@ -498,82 +1050,22 @@ class expected : detail::expected_members<T, E> {
       : members(detail::expected_state::error, unexpect, std::forward<Args>(args)...) {}
 
   /// @brief Copy constructor; copies the active value or error.
-  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
-  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
-  expected(detail::gated_param<std::is_copy_constructible_v<T> && std::is_copy_constructible_v<E>,
-                               const expected&,
-                               0> other)
-      : members(other.state_) {
-    other.require_settled();
-    if (holds_value()) {
-      construct_value(other.value_unchecked());
-    } else {
-      construct_error(other.error_unchecked());
-    }
-  }
+  expected(const expected&) = default;
 
   /// @brief Move constructor; moves the active value or error.
-  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
-  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
-  expected(
-      detail::gated_param<std::is_move_constructible_v<T> && std::is_move_constructible_v<E>, expected&&, 1>
-          other) noexcept(std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_constructible_v<E>)
-      : members(other.state_) {
-    other.require_settled();
-    if (holds_value()) {
-      construct_value(static_cast<T&&>(other.value_unchecked()));
-    } else {
-      construct_error(static_cast<E&&>(other.error_unchecked()));
-    }
-  }
+  expected(expected&&) = default;
 
-  // The destructor is detail::expected_members': trivial when T and E are
-  // trivially destructible (#474).
+  /// @brief Destroys the active value or error. Trivial when T and E are
+  ///        trivially destructible (#474).
+  ~expected() = default;
 
   // ---- Assignment ----------------------------------------------------------
 
   /// @brief Copy-assigns, switching state if needed (exception-safe).
-  expected& operator=(detail::gated_param<std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T> &&
-                                              std::is_copy_constructible_v<E> && std::is_copy_assignable_v<E>,
-                                          const expected&,
-                                          2> other) {
-    require_settled();
-    other.require_settled();
-    if (this == &other) {
-      return *this;
-    }
-
-    if (other.holds_value()) {
-      assign_value_or_rebind(other.value_unchecked());
-    } else {
-      assign_error_or_rebind(other.error_unchecked());
-    }
-
-    return *this;
-  }
+  expected& operator=(const expected&) = default;
 
   /// @brief Move-assigns, switching state if needed (exception-safe).
-  expected& operator=(detail::gated_param<std::is_move_constructible_v<T> && std::is_move_assignable_v<T> &&
-                                              std::is_move_constructible_v<E> && std::is_move_assignable_v<E>,
-                                          expected&&,
-                                          3> other) noexcept(std::is_nothrow_move_assignable_v<T> &&
-                                                             std::is_nothrow_move_constructible_v<T> &&
-                                                             std::is_nothrow_move_assignable_v<E> &&
-                                                             std::is_nothrow_move_constructible_v<E>) {
-    require_settled();
-    other.require_settled();
-    if (this == &other) {
-      return *this;
-    }
-
-    if (other.holds_value()) {
-      assign_value_or_rebind(static_cast<T&&>(other.value_unchecked()));
-    } else {
-      assign_error_or_rebind(static_cast<E&&>(other.error_unchecked()));
-    }
-
-    return *this;
-  }
+  expected& operator=(expected&&) = default;
 
   /// @brief Assigns a value, switching to the value state if needed.
   /// @param value The value forwarded into the contained `T`.
@@ -1012,202 +1504,6 @@ class expected : detail::expected_members<T, E> {
   }
 
  private:
-  // Laundered: emplace and assignment can end a member and build a new one in
-  // its place, which C++17 [basic.life]/8 does not let the member's name reach
-  // when T or E has a const or reference member.
-  METL_DETAIL_CONSTEXPR20 T* value_ptr() noexcept { return std::launder(detail::addressof(storage_.value)); }
-  METL_DETAIL_CONSTEXPR20 const T* value_ptr() const noexcept {
-    return std::launder(detail::addressof(storage_.value));
-  }
-
-  METL_DETAIL_CONSTEXPR20 E* error_ptr() noexcept { return std::launder(detail::addressof(storage_.error)); }
-  METL_DETAIL_CONSTEXPR20 const E* error_ptr() const noexcept {
-    return std::launder(detail::addressof(storage_.error));
-  }
-
-  // Unchecked accessors used internally where active-member state is known.
-  T& value_unchecked() noexcept { return *value_ptr(); }
-  const T& value_unchecked() const noexcept { return *value_ptr(); }
-  E& error_unchecked() noexcept { return *error_ptr(); }
-  const E& error_unchecked() const noexcept { return *error_ptr(); }
-
-  METL_NODISCARD constexpr bool holds_value() const noexcept {
-    return state_ == detail::expected_state::value;
-  }
-  METL_NODISCARD constexpr bool holds_error() const noexcept {
-    return state_ == detail::expected_state::error;
-  }
-  // A change while the old member is being destroyed would destroy it again.
-  // The condition is a call so that the expression text METL_HARDEN stores in
-  // every binary stays short.
-  METL_NODISCARD constexpr bool settled() const noexcept {
-    return state_ != detail::expected_state::switching;
-  }
-  METL_DETAIL_CONSTEXPR20 void require_settled() const noexcept { detail::require_settled(state_); }
-
-  template <typename... Args>
-  void construct_value(Args&&... args) {
-    detail::construct_at(detail::addressof(storage_.value), std::forward<Args>(args)...);
-  }
-
-  template <typename... Args>
-  void construct_error(Args&&... args) {
-    detail::construct_at(detail::addressof(storage_.error), std::forward<Args>(args)...);
-  }
-
-  template <typename U>
-  void assign_value_or_rebind(U&& value) {
-    require_settled();
-    if (holds_value()) {
-      *value_ptr() = std::forward<U>(value);
-      return;
-    }
-    // Currently holds an error; switch to the value state exception-safely.
-    reinit_as_value(std::forward<U>(value));
-  }
-
-  template <typename G>
-  void assign_error_or_rebind(G&& error) {
-    require_settled();
-    if (!holds_value()) {
-      *error_ptr() = std::forward<G>(error);
-      return;
-    }
-    // Currently holds a value; switch to the error state exception-safely.
-    reinit_as_error(std::forward<G>(error));
-  }
-
-  // Cross-state reinitialization (std::expected's "reinit-expected" pattern).
-  // reinit_as_value: precondition, currently in the error state; switch to the
-  // value state (reinit_as_error is the mirror image). A throwing constructor
-  // never destroys the old member while leaving the discriminant unchanged (which
-  // would double-destroy it on ~expected).
-  template <typename... Args>
-  void reinit_as_value(Args&&... args) {
-    if constexpr (std::is_move_constructible_v<T>) {
-      // Build the new value BEFORE touching the old member: `args` may refer
-      // into it (`e = e.error().fallback`), and destroying first would read a
-      // dead object.
-      // A throw here leaves the state untouched.
-      T incoming(std::forward<Args>(args)...);
-      commit_value(static_cast<T&&>(incoming));
-    } else if constexpr (std::is_nothrow_constructible_v<T, Args&&...>) {
-      // A non-movable T cannot be built aside; aliasing the old member is a
-      // precondition violation here, as it is for std::expected.
-      state_ = detail::expected_state::switching;
-      error_ptr()->~E();
-      construct_value(std::forward<Args>(args)...);
-    } else {
-#if METL_NO_EXCEPTIONS
-      state_ = detail::expected_state::switching;
-      error_ptr()->~E();
-      construct_value(std::forward<Args>(args)...);
-#else
-      E backup(static_cast<E&&>(*error_ptr()));
-      state_ = detail::expected_state::switching;
-      error_ptr()->~E();
-      try {
-        construct_value(std::forward<Args>(args)...);
-      } catch (...) {
-        construct_error(static_cast<E&&>(backup));  // restore the previous state
-        state_ = detail::expected_state::error;
-        throw;
-      }
-#endif
-    }
-    state_ = detail::expected_state::value;
-  }
-
-  // Replaces the old member with an already-built `incoming`. Only the move
-  // can throw now; if it does, the old member is restored from a backup.
-  void commit_value(T&& incoming) {
-    if constexpr (std::is_nothrow_move_constructible_v<T>) {
-      state_ = detail::expected_state::switching;
-      error_ptr()->~E();
-      construct_value(std::move(incoming));
-    } else {
-#if METL_NO_EXCEPTIONS
-      state_ = detail::expected_state::switching;
-      error_ptr()->~E();
-      construct_value(std::move(incoming));
-#else
-      E backup(static_cast<E&&>(*error_ptr()));
-      state_ = detail::expected_state::switching;
-      error_ptr()->~E();
-      try {
-        construct_value(std::move(incoming));
-      } catch (...) {
-        construct_error(static_cast<E&&>(backup));
-        state_ = detail::expected_state::error;
-        throw;
-      }
-#endif
-    }
-  }
-
-  template <typename... Args>
-  void reinit_as_error(Args&&... args) {
-    if constexpr (std::is_move_constructible_v<E>) {
-      // Build the new error BEFORE touching the old member: `args` may refer
-      // into it (`e = e.value().code`), and destroying first would read a dead
-      // object.
-      // A throw here leaves the state untouched.
-      E incoming(std::forward<Args>(args)...);
-      commit_error(static_cast<E&&>(incoming));
-    } else if constexpr (std::is_nothrow_constructible_v<E, Args&&...>) {
-      // A non-movable E cannot be built aside; aliasing the old member is a
-      // precondition violation here, as it is for std::expected.
-      state_ = detail::expected_state::switching;
-      value_ptr()->~T();
-      construct_error(std::forward<Args>(args)...);
-    } else {
-#if METL_NO_EXCEPTIONS
-      state_ = detail::expected_state::switching;
-      value_ptr()->~T();
-      construct_error(std::forward<Args>(args)...);
-#else
-      T backup(static_cast<T&&>(*value_ptr()));
-      state_ = detail::expected_state::switching;
-      value_ptr()->~T();
-      try {
-        construct_error(std::forward<Args>(args)...);
-      } catch (...) {
-        construct_value(static_cast<T&&>(backup));  // restore the previous state
-        state_ = detail::expected_state::value;
-        throw;
-      }
-#endif
-    }
-    state_ = detail::expected_state::error;
-  }
-
-  // Replaces the old member with an already-built `incoming`. Only the move
-  // can throw now; if it does, the old member is restored from a backup.
-  void commit_error(E&& incoming) {
-    if constexpr (std::is_nothrow_move_constructible_v<E>) {
-      state_ = detail::expected_state::switching;
-      value_ptr()->~T();
-      construct_error(std::move(incoming));
-    } else {
-#if METL_NO_EXCEPTIONS
-      state_ = detail::expected_state::switching;
-      value_ptr()->~T();
-      construct_error(std::move(incoming));
-#else
-      T backup(static_cast<T&&>(*value_ptr()));
-      state_ = detail::expected_state::switching;
-      value_ptr()->~T();
-      try {
-        construct_error(std::move(incoming));
-      } catch (...) {
-        construct_value(static_cast<T&&>(backup));
-        state_ = detail::expected_state::value;
-        throw;
-      }
-#endif
-    }
-  }
-
   // Exception-safe cross-state swap: `v` holds a value, `e` holds an error.
   // On return `v` holds the error and `e` holds the value. If a move-construct
   // throws, both operands are rolled back to their original active member so
@@ -1287,11 +1583,14 @@ class expected : detail::expected_members<T, E> {
 /// @pre `E`'s destructor does not change the expected that holds it; see the
 ///      primary template (#374).
 template <typename E>
-// The copy and move operations are the gated ones below, which clang-tidy does not
-// recognize as such (detail/copy_move_gate.hpp).
-// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
-class expected<void, E> : detail::expected_void_members<E> {
-  using members = detail::expected_void_members<E>;
+class expected<void, E> : detail::expected_void_base<E> {
+  using members = detail::expected_void_base<E>;
+  using members::construct_error;
+  using members::error_ptr;
+  using members::holds_error;
+  using members::holds_value;
+  using members::require_settled;
+  using members::settled;
   using members::state_;
   using members::storage_;
 
@@ -1330,86 +1629,22 @@ class expected<void, E> : detail::expected_void_members<E> {
       : members(detail::expected_state::error, unexpect, static_cast<G&&>(u.error())) {}
 
   /// @brief Copy constructor; copies the error if in the error state.
-  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
-  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
-  expected(detail::gated_param<std::is_copy_constructible_v<E>, const expected&, 0> other)
-      : members(other.state_) {
-    other.require_settled();
-    if (!holds_value()) {
-      construct_error(*other.error_ptr());
-    }
-  }
+  expected(const expected&) = default;
 
   /// @brief Move constructor; moves the error if in the error state.
-  // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
-  // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
-  expected(detail::gated_param<std::is_move_constructible_v<E>, expected&&, 1> other) noexcept(
-      std::is_nothrow_move_constructible_v<E>)
-      : members(other.state_) {
-    other.require_settled();
-    if (!holds_value()) {
-      construct_error(static_cast<E&&>(*other.error_ptr()));
-    }
-  }
+  expected(expected&&) = default;
 
-  // The destructor is detail::expected_void_members': trivial when E is
-  // trivially destructible (#474).
+  /// @brief Destroys the error, if any. Trivial when E is trivially
+  ///        destructible (#474).
+  ~expected() = default;
 
   // ---- Assignment ----------------------------------------------------------
 
   /// @brief Copy-assigns, switching between success and error as needed.
-  expected& operator=(
-      detail::gated_param<std::is_copy_constructible_v<E> && std::is_copy_assignable_v<E>, const expected&, 2>
-          other) {
-    require_settled();
-    other.require_settled();
-    if (this == &other) {
-      return *this;
-    }
-
-    if (other.holds_value()) {
-      if (!holds_value()) {
-        state_ = detail::expected_state::switching;
-        error_ptr()->~E();
-        state_ = detail::expected_state::value;
-      }
-    } else {
-      if (holds_value()) {
-        construct_error(*other.error_ptr());
-        state_ = detail::expected_state::error;
-      } else {
-        *error_ptr() = *other.error_ptr();
-      }
-    }
-    return *this;
-  }
+  expected& operator=(const expected&) = default;
 
   /// @brief Move-assigns, switching between success and error as needed.
-  expected& operator=(
-      detail::gated_param<std::is_move_constructible_v<E> && std::is_move_assignable_v<E>, expected&&, 3>
-          other) noexcept(std::is_nothrow_move_constructible_v<E> && std::is_nothrow_move_assignable_v<E>) {
-    require_settled();
-    other.require_settled();
-    if (this == &other) {
-      return *this;
-    }
-
-    if (other.holds_value()) {
-      if (!holds_value()) {
-        state_ = detail::expected_state::switching;
-        error_ptr()->~E();
-        state_ = detail::expected_state::value;
-      }
-    } else {
-      if (holds_value()) {
-        construct_error(static_cast<E&&>(*other.error_ptr()));
-        state_ = detail::expected_state::error;
-      } else {
-        *error_ptr() = static_cast<E&&>(*other.error_ptr());
-      }
-    }
-    return *this;
-  }
+  expected& operator=(expected&&) = default;
 
   /// @brief Assigns an error, switching to the error state if needed.
   template <
@@ -1788,29 +2023,6 @@ class expected<void, E> : detail::expected_void_members<E> {
     }
     METL_ASSERT(holds_error());
     return expected<void, result_error_t>(unexpect, std::forward<F>(f)(static_cast<const E&&>(*error_ptr())));
-  }
-
- private:
-  METL_DETAIL_CONSTEXPR20 E* error_ptr() noexcept { return std::launder(detail::addressof(storage_.error)); }
-  METL_DETAIL_CONSTEXPR20 const E* error_ptr() const noexcept {
-    return std::launder(detail::addressof(storage_.error));
-  }
-
-  METL_NODISCARD constexpr bool holds_value() const noexcept {
-    return state_ == detail::expected_state::value;
-  }
-  METL_NODISCARD constexpr bool holds_error() const noexcept {
-    return state_ == detail::expected_state::error;
-  }
-  // A change while the error is being destroyed would destroy it again.
-  METL_NODISCARD constexpr bool settled() const noexcept {
-    return state_ != detail::expected_state::switching;
-  }
-  METL_DETAIL_CONSTEXPR20 void require_settled() const noexcept { detail::require_settled(state_); }
-
-  template <typename... Args>
-  void construct_error(Args&&... args) {
-    detail::construct_at(detail::addressof(storage_.error), std::forward<Args>(args)...);
   }
 };
 

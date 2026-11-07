@@ -7,26 +7,12 @@ MUTANT = {
     "why": "expected<void, E> copy assignment becomes a no-op for every "
            "other object; the state and the error are never copied.",
     "kills": "ctest:expected_test",
-    "old": """  expected& operator=(
-      detail::gated_param<std::is_copy_constructible_v<E> && std::is_copy_assignable_v<E>, const expected&, 2>
-          other) {
+    "old": """  void copy_assign(const expected_void_core& other) {
     require_settled();
     other.require_settled();
-    if (this == &other) {
-      return *this;
-    }
-
-    if (other.holds_value()) {
-      if (!holds_value()) {""",
-    "new": """  expected& operator=(
-      detail::gated_param<std::is_copy_constructible_v<E> && std::is_copy_assignable_v<E>, const expected&, 2>
-          other) {
+    if (this == &other) {""",
+    "new": """  void copy_assign(const expected_void_core& other) {
     require_settled();
     other.require_settled();
-    if (this != &other) {
-      return *this;
-    }
-
-    if (other.holds_value()) {
-      if (!holds_value()) {""",
+    if (this != &other) {""",
 }
