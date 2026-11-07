@@ -208,25 +208,6 @@ union expected_union {
   constexpr explicit expected_union(in_place_t, Args&&... args) : value(std::forward<Args>(args)...) {}
   template <typename... Args>
   constexpr explicit expected_union(unexpect_t, Args&&... args) : error(std::forward<Args>(args)...) {}
-  expected_union(expected_state state, const expected_union& other) : empty{} {
-    if (state == expected_state::value) {
-      detail::construct_at(detail::addressof(value), *std::launder(detail::addressof(other.value)));
-    } else {
-      detail::construct_at(detail::addressof(error), *std::launder(detail::addressof(other.error)));
-    }
-  }
-  expected_union(expected_state state,
-                 expected_union&& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
-                                                  std::is_nothrow_move_constructible_v<E>)
-      : empty{} {
-    if (state == expected_state::value) {
-      detail::construct_at(detail::addressof(value),
-                           static_cast<std::remove_cv_t<T>&&>(*std::launder(detail::addressof(other.value))));
-    } else {
-      detail::construct_at(detail::addressof(error),
-                           static_cast<std::remove_cv_t<E>&&>(*std::launder(detail::addressof(other.error))));
-    }
-  }
   expected_union(const expected_union&) = default;
   expected_union(expected_union&&) = default;
   expected_union& operator=(const expected_union&) = default;
@@ -248,25 +229,6 @@ union expected_union<T, E, true> {
   constexpr explicit expected_union(in_place_t, Args&&... args) : value(std::forward<Args>(args)...) {}
   template <typename... Args>
   constexpr explicit expected_union(unexpect_t, Args&&... args) : error(std::forward<Args>(args)...) {}
-  expected_union(expected_state state, const expected_union& other) : empty{} {
-    if (state == expected_state::value) {
-      detail::construct_at(detail::addressof(value), *std::launder(detail::addressof(other.value)));
-    } else {
-      detail::construct_at(detail::addressof(error), *std::launder(detail::addressof(other.error)));
-    }
-  }
-  expected_union(expected_state state,
-                 expected_union&& other) noexcept(std::is_nothrow_move_constructible_v<T> &&
-                                                  std::is_nothrow_move_constructible_v<E>)
-      : empty{} {
-    if (state == expected_state::value) {
-      detail::construct_at(detail::addressof(value),
-                           static_cast<std::remove_cv_t<T>&&>(*std::launder(detail::addressof(other.value))));
-    } else {
-      detail::construct_at(detail::addressof(error),
-                           static_cast<std::remove_cv_t<E>&&>(*std::launder(detail::addressof(other.error))));
-    }
-  }
   expected_union(const expected_union&) = default;
   expected_union(expected_union&&) = default;
   expected_union& operator=(const expected_union&) = default;
@@ -283,19 +245,6 @@ union expected_error_union {
   constexpr expected_error_union() noexcept : empty{} {}
   template <typename... Args>
   constexpr explicit expected_error_union(unexpect_t, Args&&... args) : error(std::forward<Args>(args)...) {}
-  expected_error_union(expected_state state, const expected_error_union& other) : empty{} {
-    if (state != expected_state::value) {
-      detail::construct_at(detail::addressof(error), *std::launder(detail::addressof(other.error)));
-    }
-  }
-  expected_error_union(expected_state state,
-                       expected_error_union&& other) noexcept(std::is_nothrow_move_constructible_v<E>)
-      : empty{} {
-    if (state != expected_state::value) {
-      detail::construct_at(detail::addressof(error),
-                           static_cast<std::remove_cv_t<E>&&>(*std::launder(detail::addressof(other.error))));
-    }
-  }
   expected_error_union(const expected_error_union&) = default;
   expected_error_union(expected_error_union&&) = default;
   expected_error_union& operator=(const expected_error_union&) = default;
@@ -311,19 +260,6 @@ union expected_error_union<E, true> {
   constexpr expected_error_union() noexcept : empty{} {}
   template <typename... Args>
   constexpr explicit expected_error_union(unexpect_t, Args&&... args) : error(std::forward<Args>(args)...) {}
-  expected_error_union(expected_state state, const expected_error_union& other) : empty{} {
-    if (state != expected_state::value) {
-      detail::construct_at(detail::addressof(error), *std::launder(detail::addressof(other.error)));
-    }
-  }
-  expected_error_union(expected_state state,
-                       expected_error_union&& other) noexcept(std::is_nothrow_move_constructible_v<E>)
-      : empty{} {
-    if (state != expected_state::value) {
-      detail::construct_at(detail::addressof(error),
-                           static_cast<std::remove_cv_t<E>&&>(*std::launder(detail::addressof(other.error))));
-    }
-  }
   expected_error_union(const expected_error_union&) = default;
   expected_error_union(expected_error_union&&) = default;
   expected_error_union& operator=(const expected_error_union&) = default;
