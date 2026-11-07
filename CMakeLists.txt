@@ -178,7 +178,7 @@ if(METL_BUILD_TESTS)
     sync/tick_extender sync/tick_extender_irq sync/index_distance sync/once_flag sync/once_flag_irq
     # vocab/
     vocab/optional vocab/optional_constexpr vocab/expected vocab/expected_regression vocab/in_place
-    vocab/expected_trivial_destructor
+    vocab/expected_trivial_destructor vocab/optional_triviality
     vocab/span vocab/function_ref
     vocab/fixed_function vocab/fixed_function_const vocab/fixed_function_null vocab/callable_reentrancy vocab/delegate
     vocab/callable_reference_return vocab/vocab_std_parity vocab/vocab_constant_init
