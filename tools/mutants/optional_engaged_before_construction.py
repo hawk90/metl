@@ -7,8 +7,8 @@ MUTANT = {
     "why": "the optional marks itself engaged before T's constructor runs, so a "
            "throwing constructor leaves it engaged over no object.",
     "kills": "ctest:conformance_throwing",
-    "old": """    detail::construct_at(detail::addressof(storage_.value_), std::forward<Args>(args)...);
-    has_value_ = true;""",
-    "new": """    has_value_ = true;
-    detail::construct_at(detail::addressof(storage_.value_), std::forward<Args>(args)...);""",
+    "old": """    detail::construct_at(detail::addressof(storage.value), std::forward<Args>(args)...);
+    engaged = true;""",
+    "new": """    engaged = true;
+    detail::construct_at(detail::addressof(storage.value), std::forward<Args>(args)...);""",
 }
