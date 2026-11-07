@@ -31,7 +31,6 @@ static_assert(!std::is_trivially_destructible_v<metl::expected<counted, int>>);
 static_assert(!std::is_trivially_destructible_v<metl::expected<int, counted>>);
 static_assert(!std::is_trivially_destructible_v<metl::expected<void, counted>>);
 
-
 // A literal type in C++17: a constexpr function can build and return one.
 constexpr metl::expected<int, int> twice(int x) {
   if (x < 0) {
