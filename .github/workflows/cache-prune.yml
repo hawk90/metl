@@ -1,0 +1,59 @@
+name: Cache prune
+
+# Deletes main's caches that a newer one of the same kind replaced, once a run
+# on main has saved its own (tools/prune_caches.py says which, and why). Every
+# run on main saves ~4 GB of new ccache entries; without this the older ones
+# stayed until GitHub evicted something -- by last access, which is how the apt
+# caches of two jobs went on 2026-11-07.
+#
+# Its own workflow, not a job in ci.yml: deleting a cache takes `actions:
+# write`, and ci.yml is also called by main.yml and release.yml, whose
+# `contents: read` a called job may not exceed -- the call would fail.
+#
+# workflow_run runs from main with write access whatever the run it follows,
+# so this checks out main (the default for workflow_run) and nothing from that
+# run.
+on:
+  workflow_run:
+    workflows: [CI, Main]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# bash -eo pipefail for every run step (tools/check_ci_gate.py G6).
+defaults:
+  run:
+    shell: bash
+
+# One at a time; a second run waiting behind it does the same work again.
+concurrency:
+  group: cache-prune
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    name: prune
+    # A pull request's run saves nothing (ci.yml), and `branches: [main]`
+    # matches a fork's branch named main too.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.event != 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          persist-credentials: false
+
+      - name: Delete the superseded caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: tools/prune_caches.py --repo "${GH_REPO}"

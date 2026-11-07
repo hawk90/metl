@@ -388,7 +388,12 @@ jobs:
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
           save: ${{ github.ref == 'refs/heads/main' }}
-          key: ${{ github.job }}-${{ runner.os }}-${{ matrix.san }}
+          # `@` ends the name. The restore matches `ccache-<key>-` and takes
+          # the newest, so `asan-ubsan` without it also matched
+          # `asan-ubsan-optimized`'s entries and started from those objects:
+          # 12 of 279 compiles hit (run 42219978331). tools/prune_caches.py
+          # fails on such a pair.
+          key: ${{ github.job }}-${{ runner.os }}-${{ matrix.san }}@
           max-size: 300M
 
       - name: Install build deps
@@ -1130,7 +1135,11 @@ jobs:
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
           save: ${{ github.ref == 'refs/heads/main' }}
-          key: ${{ github.job }}-${{ runner.os }}-${{ matrix.name }}
+          # `@` ends the name: without it `cxx20` also matched `cxx20-gcc`'s
+          # entries (the restore takes the newest under `ccache-<key>-`), and
+          # the clang build started from gcc's objects, 11 of 279 hits (run
+          # 42219978331; cxx23, cxx26 and no-exceptions the same).
+          key: ${{ github.job }}-${{ runner.os }}-${{ matrix.name }}@
           max-size: 300M
 
       - name: Install build deps
@@ -1450,6 +1459,11 @@ jobs:
       - name: The provenance check must still refuse (canary)
         run: tools/check_provenance.py --self-test
 
+      # cache-prune.yml runs this after a run on main, where a regression
+      # would delete the caches pull requests restore.
+      - name: The cache prune keeps the newest of each kind (canary)
+        run: tools/prune_caches.py --self-test
+
       - name: Every job blocks a merge, and every required check can report
         run: tools/check_ci_gate.py
 
@@ -1615,7 +1629,11 @@ jobs:
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
         with:
           save: ${{ github.ref == 'refs/heads/main' }}
-          key: ${{ github.job }}-${{ runner.os }}
+          # One cache per shard. Shared, all four restored the entry of
+          # whichever shard saved last, which holds that shard's mutants and
+          # not the others': 42-100% hits by shard (runs 42226783692,
+          # 42302771438). `@` ends the name, as in config-matrix.
+          key: ${{ github.job }}-${{ runner.os }}-${{ matrix.shard }}@
           max-size: 300M
 
       - name: Install build deps
@@ -2319,8 +2337,14 @@ jobs:
         with:
           python-version: '3.15.2'
 
-      - name: Cache Python packages
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      # This job's caches are restored everywhere and saved from main only, as
+      # the ccache-action steps elsewhere are (`save:`): an entry a pull
+      # request saves is readable by that pull request alone. PR #683's run
+      # saved 150 MB of pip packages and 3 MB of ccache that nothing else
+      # could restore, toward the 10 GB the apt and ccache caches share.
+      - name: Restore Python packages
+        id: pip-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.cache/pip
           key: pip-zephyr-${{ runner.os }}-${{ hashFiles('metl/.github/zephyr/requirements.txt') }}
@@ -2337,6 +2361,13 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends ccache
           echo "CCACHE_DIR=$HOME/.cache/ccache" >> "$GITHUB_ENV"
+
+      - name: Save Python packages
+        if: github.ref == 'refs/heads/main' && steps.pip-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/pip
+          key: ${{ steps.pip-cache.outputs.cache-primary-key }}
 
       # `west init -l` takes a manifest directory inside the workspace, so the
       # manifest is staged as zephyrproject/manifest/west.yml.
@@ -2402,9 +2433,9 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Cache the Zephyr SDK
+      - name: Restore the Zephyr SDK
         id: sdk-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: zephyrproject/zephyr-sdk
           key: zephyr-sdk-${{ steps.sdk.outputs.version }}-linux-x86_64-arm-zephyr-eabi
@@ -2453,8 +2484,17 @@ jobs:
           fi
           ./setup.sh -c
 
-      - name: Cache ccache data
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      # After setup.sh -h, so the entry holds the host tools as before.
+      - name: Save the Zephyr SDK
+        if: github.ref == 'refs/heads/main' && steps.sdk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: zephyrproject/zephyr-sdk
+          key: ${{ steps.sdk-cache.outputs.cache-primary-key }}
+
+      - name: Restore ccache data
+        id: ccache-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.cache/ccache
           key: ccache-metl-zephyr-${{ github.run_id }}-${{ github.run_attempt }}
@@ -2483,6 +2523,14 @@ jobs:
             -p qemu_cortex_m3 \
             -T "$GITHUB_WORKSPACE/metl/samples/zephyr/metl_hello" \
             -x=EXTRA_ZEPHYR_MODULES="$GITHUB_WORKSPACE/metl"
+
+      # Last, after both builds, as actions/cache's own post step saved it.
+      - name: Save ccache data
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/ccache
+          key: ${{ steps.ccache-cache.outputs.cache-primary-key }}
 
       - name: Upload Zephyr build logs on failure
         if: failure() || cancelled()
@@ -2746,9 +2794,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
+      # Saved from main only, as the zephyr job's caches are.
       - name: Restore Clang ${{ env.LLVM_VERSION }}
         id: llvm-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/llvm
           key: llvm-${{ env.LLVM_VERSION }}-${{ env.LLVM_SHA256 }}
@@ -2769,6 +2818,13 @@ jobs:
           zstd -d --long=30 -c "$archive" | tar -x -C ~/llvm --strip-components=1 \
             "$top/bin/clang-$major" "$top/bin/clang" "$top/bin/clang++" "$top/lib/clang/$major/include"
           rm "$archive"
+
+      - name: Save Clang ${{ env.LLVM_VERSION }}
+        if: github.ref == 'refs/heads/main' && steps.llvm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/llvm
+          key: ${{ steps.llvm-cache.outputs.cache-primary-key }}
 
       - name: Build and test with warnings as errors
         run: |
