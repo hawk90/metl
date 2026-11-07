@@ -10,6 +10,7 @@ MUTANT = {
     "old": """        construct_error(static_cast<E&&>(backup));
         state_ = detail::expected_state::error;
         throw;""",
-    "new": """        state_ = detail::expected_state::error;
+    "new": """        static_cast<void>(backup);
+        state_ = detail::expected_state::error;
         throw;""",
 }
