@@ -51,7 +51,19 @@ struct no_storage_base {};
 template <typename Fields, typename Base = no_storage_base, bool = std::is_empty_v<Fields>>
 class capacity_storage : Base {
  protected:
-  capacity_storage() = default;
+  // User-provided, and not `= default`: with a defaulted one, GCC 14 for
+  // Cortex-M zero-filled the whole buffer with a memset call each time a
+  // fixed_vector was constructed (+16 B of code in the invariant probe). A
+  // user-provided constructor leaves the buffer uninitialized, as the member
+  // it replaces was. Constant-initialized containers zero it themselves
+  // (zero_storage_for_constant_init).
+#if METL_DETAIL_LAZY_CONSTANT_INIT
+  // NOLINTNEXTLINE(modernize-use-equals-default,hicpp-use-equals-default)
+  constexpr capacity_storage() noexcept {}
+#else
+  // NOLINTNEXTLINE(modernize-use-equals-default,hicpp-use-equals-default)
+  capacity_storage() noexcept {}
+#endif
 
   Fields& storage() noexcept { return storage_; }
   const Fields& storage() const noexcept { return storage_; }
