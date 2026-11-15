@@ -15,8 +15,14 @@
 
 namespace {
 
+// Both benchmarks below escape the container first. Otherwise nothing outside
+// the function can read the elements, so a compiler may drop every element
+// store and time only the size bookkeeping. Apple clang 21 at -O3 dropped them
+// from both, and push_overwrite's CI count (about 6 instructions an iteration)
+// matched that store-free loop.
 void fixed_vector_fill_clear(std::uint64_t iterations) {
   metl::fixed_vector<std::uint32_t, 64> vec;
+  metl_bench::escape(&vec);
   for (std::uint64_t n = 0; n < iterations; ++n) {
     vec.clear();
     for (std::uint32_t i = 0; i < 64; ++i) {
@@ -30,6 +36,7 @@ void fixed_vector_fill_clear(std::uint64_t iterations) {
 // every push also evicts, so this measures both halves.
 void ring_buffer_push_overwrite(std::uint64_t iterations) {
   metl::ring_buffer<std::uint32_t, 64> ring;
+  metl_bench::escape(&ring);
   for (std::uint64_t n = 0; n < iterations; ++n) {
     metl_bench::do_not_optimize(ring.push_overwrite(static_cast<std::uint32_t>(n)));
   }
