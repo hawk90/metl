@@ -57,33 +57,45 @@ constexpr functor_move_assign_source_t<F> functor_move_assign_source(F& functor)
   return static_cast<functor_move_assign_source_t<F>>(functor);
 }
 
+/// @brief The functor itself, value-initialized: a default-built holder never
+///        leaves a stateful functor indeterminate (#574).
+template <typename F>
+struct functor_slot_storage {
+  F value{};
+
+  functor_slot_storage() = default;
+  explicit functor_slot_storage(const F& functor) noexcept(std::is_nothrow_copy_constructible_v<F>)
+      : value(functor) {}
+
+ protected:
+  // The move constructor's way in: a copy, or a move for a move-only F.
+  struct from_move_source {};
+  functor_slot_storage(from_move_source /*unused*/,
+                       functor_move_source_t<F> functor) noexcept(functor_nothrow_move_constructible_v<F>)
+      : value(static_cast<functor_move_source_t<F>>(functor)) {}
+};
+
 /// @brief Holds a functor whose move copies it, for a class that keeps its
 ///        copy and move operations implicit (`fixed_priority_queue`).
 ///
 /// A trivially copyable functor (an empty `std::less`, say) is copied and moved
-/// alike, so its holder's operations are all `= default` and stay trivial.
+/// alike, so its holder's operations are all implicit and stay trivial.
 template <typename F, bool = std::is_trivially_copyable_v<F>>
-struct functor_slot_core {
-  F value{};
-
-  functor_slot_core() = default;
-  explicit functor_slot_core(const F& functor) noexcept(std::is_nothrow_copy_constructible_v<F>)
-      : value(functor) {}
+struct functor_slot_core : functor_slot_storage<F> {
+  using functor_slot_storage<F>::functor_slot_storage;
 };
 
 template <typename F>
-struct functor_slot_core<F, false> {
-  F value{};
-
+struct functor_slot_core<F, false> : functor_slot_storage<F> {
+  using functor_slot_storage<F>::functor_slot_storage;
   functor_slot_core() = default;
-  explicit functor_slot_core(const F& functor) noexcept(std::is_nothrow_copy_constructible_v<F>)
-      : value(functor) {}
   functor_slot_core(const functor_slot_core&) = default;
   functor_slot_core(functor_slot_core&& other) noexcept(functor_nothrow_move_constructible_v<F>)
-      : value(functor_move_source(other.value)) {}
+      : functor_slot_storage<F>(typename functor_slot_storage<F>::from_move_source{},
+                                functor_move_source(other.value)) {}
   functor_slot_core& operator=(const functor_slot_core&) = default;
   functor_slot_core& operator=(functor_slot_core&& other) noexcept(functor_nothrow_move_assignable_v<F>) {
-    value = functor_move_assign_source(other.value);
+    this->value = functor_move_assign_source(other.value);
     return *this;
   }
   ~functor_slot_core() = default;

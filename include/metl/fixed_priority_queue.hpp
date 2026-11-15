@@ -331,7 +331,9 @@ class fixed_priority_queue {
 
   fixed_vector<T, Capacity> storage_;
   // Copied on move, so a moved-from queue keeps a working comparator (#691).
-  detail::functor_slot<Compare> comp_{};
+  // The slot value-initializes it, so a default-initialized queue holds no
+  // indeterminate state (#574).
+  detail::functor_slot<Compare> comp_;
 };
 
 /// Swaps the contents of two priority queues of the same type, capacity and
