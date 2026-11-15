@@ -30,11 +30,6 @@ namespace detail {
 // tagged with handle_pool itself.
 template <typename T, std::size_t Capacity, typename GenT>
 class handle_pool_core {
-  // Also in handle_pool itself, where it is the user-facing check; here, as the
-  // first statement of the base, it fires before any member that cannot be
-  // formed for a reference or an array.
-  static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
-
  public:
   using value_type = T;
   using size_type = std::size_t;
@@ -416,10 +411,10 @@ class handle_pool_destroy_layer<T, Capacity, GenT, false> : public handle_pool_c
 /// @see object_pool for the pointer-addressed equivalent.
 
 template <typename T, std::size_t Capacity, typename GenT>
-class handle_pool : detail::handle_pool_destroy_layer<T, Capacity, GenT> {
+class handle_pool : detail::handle_pool_destroy_layer<detail::object_or_placeholder_t<T>, Capacity, GenT> {
   static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
 
-  using base = detail::handle_pool_destroy_layer<T, Capacity, GenT>;
+  using base = detail::handle_pool_destroy_layer<detail::object_or_placeholder_t<T>, Capacity, GenT>;
 
  public:
   using base::max_capacity;

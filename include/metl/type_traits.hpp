@@ -254,6 +254,13 @@ struct is_detected_impl<void_t<Operation<Args...>>, Operation, Args...> : true_t
 template <typename...>
 inline constexpr bool dependent_true_v = true;
 
+// T, or int when T is not an object type (a reference, function, array or
+// void). A class that keeps its body in a base builds the base from this, so
+// that its own METL_DETAIL_OBJECT_TYPE_MESSAGE static_assert is the only error
+// for such a T, instead of the base failing first on a member it cannot form.
+template <typename T>
+using object_or_placeholder_t = std::conditional_t<std::is_object_v<T> && !std::is_array_v<T>, T, int>;
+
 }  // namespace detail
 
 /// @brief Detection idiom: true_type if `Operation<Args...>` is a valid type, else false_type.
