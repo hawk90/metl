@@ -6,6 +6,7 @@
 // layout the type should have, so the same test holds on 32- and 64-bit hosts
 // and on both libraries. The macOS host-test job builds it against libc++.
 
+#include "assert_trip.hpp"
 #include "metl_check.hpp"
 
 #include <array>
@@ -58,6 +59,11 @@ void count_go(st /*from*/, ev /*event*/, st /*to*/) {
   ++on_go;
 }
 
+// Kept outside the tripping callable: a trip longjmps out without running
+// destructors.
+const metl::lookup_table<std::uint32_t, std::uint32_t, 0> empty_table{};
+const void* volatile named = nullptr;
+
 }  // namespace
 
 int main() {
@@ -97,6 +103,14 @@ int main() {
     CHECK(table.find(key) == nullptr);
     CHECK(!table.contains(key));
     CHECK_EQ(table.value_or(key, 9U), 9U);
+  }
+
+  // nth() on an empty table names no entry, so its assert fires. The store
+  // after the call is caller code that follows it: an inlined __assume(0) made
+  // MSVC Release report such code unreachable (C4702) in #707, and this is
+  // the instantiation that would show it here.
+  if (metl_test::asserts_active) {
+    CHECK(metl_test::trips([] { named = &empty_table.nth(0); }));
   }
 
   return metl_test::exit_code();

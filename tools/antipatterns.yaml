@@ -1,0 +1,195 @@
+# Anti-patterns found in METL, each with the bug that taught it.
+#
+# Every entry names how it is stopped from coming back, in one or both of:
+#   check:      a regex that tools/check_antipatterns.py runs over the tree at
+#               every push. `bad` lines must match it and `good` lines must not
+#               (the self-test proves both). A hit that is right where it is
+#               goes in `allow`, with the reason. An `allow` entry that matches
+#               nothing is an error, so the list cannot outlive the code.
+#   caught_by:  the CI jobs and test files that catch it when no regex can.
+#               The checker verifies that each still exists.
+#
+# Add an entry when a bug's cause is a pattern that could be written again.
+# `refs` names the issue or PR that found it.
+
+version: 1
+
+patterns:
+  - id: spaceship-vs-literal-zero
+    title: "Comparing a `<=>` result with a literal 0"
+    symptom: >-
+      `-Wzero-as-null-pointer-constant` fails the build under clang with
+      libstdc++ (CI's consumer-warnings). macOS libc++ and g++ are silent.
+    cause: >-
+      libstdc++'s comparison categories compare against an unspecified
+      pointer-like type, so the 0 is read as a null pointer constant.
+    fix: "Use `std::is_eq`, `is_neq`, `is_lt`, `is_lteq`, `is_gt`, `is_gteq`."
+    refs: ["#334"]
+    check:
+      paths: ["include/**/*.hpp", "tests/**/*.cpp", "tests/**/*.hpp"]
+      regex: '<=>[^;]*?\)\s*(?:[<>]=?|[!=]=)\s*0\b|\b0\s*(?:[<>]=?|[!=]=)\s*\([^;]*?<=>'
+      bad:
+        - "if ((a <=> b) < 0) {"
+        - "return (lhs <=> rhs) != 0;"
+        - "EXPECT_TRUE(0 > (x <=> y));"
+      good:
+        - "if (std::is_lt(a <=> b)) {"
+        - "const auto order = a <=> b;"
+        - "return (a <=> b) == std::strong_ordering::equal;"
+    caught_by:
+      - job: consumer-warnings
+
+  - id: zero-capacity-placeholder-element
+    title: "Sizing storage `Capacity == 0 ? 1 : Capacity`"
+    symptom: >-
+      A zero-capacity container carries one element's storage it never uses:
+      `fixed_vector<int, 0>` was 16 B, not 8 B.
+    cause: >-
+      The placeholder keeps a zero-length array out of the member list, but
+      costs a whole element plus padding.
+    fix: >-
+      Hold the storage in `detail::capacity_storage`, whose zero-capacity form
+      is an empty base, and keep the zero-capacity paths under
+      `if constexpr (Capacity == 0)`.
+    refs: ["#696", "#704"]
+    check:
+      paths: ["include/**/*.hpp"]
+      regex: '\bCapacity\s*==\s*0\s*\?\s*1\s*:\s*Capacity\b'
+      bad:
+        - "detail::array_storage<T, (Capacity == 0 ? 1 : Capacity)> storage_;"
+        - "storage_type slots_[Capacity == 0 ? 1 : Capacity];"
+      good:
+        - "detail::array_storage<T, Capacity> storage_;"
+        - "static_assert(Capacity > 0, \"needs a slot\");"
+      allow:
+        - file: include/metl/flat_map.hpp
+          match: "detail::array_storage<value_type, (Capacity == 0 ? 1 : Capacity)> storage_;"
+          why: "#696's remainder, done with #318 section 1 (functor EBO), which restructures the same class."
+        - file: include/metl/flat_set.hpp
+          match: "detail::array_storage<value_type, (Capacity == 0 ? 1 : Capacity)> storage_;"
+          why: "#696's remainder, done with #318 section 1 (functor EBO), which restructures the same class."
+        - file: include/metl/fixed_function.hpp
+          match: "mutable unsigned char storage_[Capacity == 0 ? 1 : Capacity];"
+          count: 2
+          why: "The public fixed_function rejects a zero capacity, so the placeholder is never instantiated."
+        - file: include/metl/coro/scheduler.hpp
+          match: "entry snapshot[Capacity == 0 ? 1 : Capacity];"
+          why: "A local array in poll(), not a member: it costs stack for one round, not object size."
+    caught_by:
+      - file: tests/containers/zero_capacity_test.cpp
+
+  - id: unreachable-hint-inlined-on-msvc
+    title: "`METL_UNREACHABLE()` in a function MSVC inlines"
+    symptom: >-
+      MSVC Release reports the callers' code after the call as unreachable
+      (C4702), which `/WX` makes an error. MSVC Debug does not inline it, so
+      only the Release leg fails.
+    cause: "On MSVC the macro is `__assume(0)`, which inlining carries into every caller."
+    fix: >-
+      Give the hint only to the compiler that needs it. The zero-capacity slot
+      accessors use `METL_DETAIL_NO_SLOT_IS_REACHED()`, a no-op on MSVC.
+    refs: ["#707", "#704"]
+    check:
+      paths: ["include/**/*.hpp"]
+      regex: '\bMETL_UNREACHABLE\(\)'
+      bad:
+        - "    METL_UNREACHABLE();"
+      good:
+        - "    METL_DETAIL_NO_SLOT_IS_REACHED();"
+      allow:
+        - file: include/metl/lookup_table.hpp
+          match: "METL_UNREACHABLE();"
+          why: >-
+            The contract, not a warning workaround: nth() on an empty table runs it only
+            after `METL_ASSERT(index < Size)` has failed, or at METL_HARDENING_NONE, where it
+            is undefined behaviour, as `std::array<T, 0>::operator[]` is. It cannot be a
+            no-op on MSVC: nth() returns a reference. zero_length_test trips it with caller
+            code after the call, so MSVC Release compiles the path.
+    caught_by:
+      - job: host-test
+
+  - id: storage-base-with-defaulted-constructor
+    title: "Moving a buffer into a base whose default constructor is `= default`"
+    symptom: >-
+      GCC 14 for Cortex-M zero-fills the whole object with a memset call at
+      every construction (+16 B in the M0 invariant probe). GCC 16 and clang
+      do not, so no local build shows it.
+    cause: >-
+      With a defaulted base constructor GCC 14 zero-initialized the base,
+      where the buffer as a direct member had been left uninitialized.
+    fix: >-
+      Make the storage base's constructor user-provided (`{}`; `constexpr`
+      when the C++20 constant-init path is on).
+    refs: ["#705", "#704"]
+    caught_by:
+      - job: invariants
+      - file: tests/embedded/invariant_probe.cpp
+
+  - id: null-slot-address-on-a-dead-path
+    title: "An empty storage type answering `nullptr` for a slot"
+    symptom: >-
+      GCC -O2 `-Wnonnull` (in `-Wall`) and `-Wnull-dereference` fail a
+      `-Werror` build, on placement-new or dereference paths it cannot prove
+      dead, such as a push after the full check.
+    cause: "GCC does not see that a zero-capacity container never reaches a slot."
+    fix: >-
+      Open each slot accessor with
+      `if constexpr (Capacity == 0) { METL_DETAIL_NO_SLOT_IS_REACHED(); }`.
+    refs: ["#706", "#704"]
+    caught_by:
+      - job: release-werror
+      - file: tests/containers/zero_capacity_test.cpp
+
+  - id: runtime-select-over-capacity-arithmetic
+    title: "Choosing a zero-capacity branch with a runtime `?:` or `if`"
+    symptom: >-
+      MSVC C4724 (potential mod by 0) under `/WX`: the `% Capacity` in the
+      branch not taken is still compiled for `Capacity == 0`.
+    cause: "A runtime condition does not stop the other branch's arithmetic from being instantiated."
+    fix: "Choose with `if constexpr (Capacity == 0)`, so the arithmetic is never instantiated at zero."
+    refs: ["#293"]
+    caught_by:
+      - job: host-test
+
+  - id: narrowed-counter-aliases-elements
+    title: "Narrowing a container's size counter to save bytes"
+    symptom: >-
+      Fill and clear loops get slower, up to 2.53x in bench-smoke, while the
+      ARM code-size probes show no change.
+    cause: >-
+      A counter of the element's type, or an `unsigned char` one, may alias
+      the element stores under TBAA, so the compiler reloads it after every
+      store.
+    fix: "Keep the counter a `std::size_t`, or measure the instruction counts before narrowing it."
+    refs: ["#318", "#698"]
+    caught_by:
+      - job: bench-smoke
+      - file: bench/bench_containers.cpp
+
+  - id: zero-length-std-array-member
+    title: "A `std::array<T, N>` member where N can be 0"
+    symptom: >-
+      On libc++ it takes one T's room: `fsm<st, ev, 1>` was 80 B there,
+      against 40 B with libstdc++.
+    cause: "libc++ gives `std::array<T, 0>` storage for one T, so that `data()` points at something."
+    fix: >-
+      Hold it as `detail::array_or_empty_t<T, N>`, and keep the element loops
+      under `if constexpr (N > 0)`.
+    refs: ["#696", "#701"]
+    caught_by:
+      - job: host-test
+      - file: tests/containers/zero_length_test.cpp
+
+  - id: several-empty-bases-on-msvc
+    title: "Listing several empty bases side by side"
+    symptom: "On MSVC the class is larger than on GCC and clang."
+    cause: >-
+      MSVC applies the empty-base optimization to only one of several empty
+      bases, unless the class is marked `__declspec(empty_bases)`.
+    fix: >-
+      Chain the empty bases through one another, as
+      `capacity_storage<Fields, Base>` does with `no_implicit_copy_move`.
+    refs: ["#696", "#318"]
+    caught_by:
+      - job: host-test
+      - file: tests/containers/zero_capacity_test.cpp
