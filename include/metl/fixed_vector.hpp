@@ -737,9 +737,12 @@ class fixed_vector : detail::capacity_storage<detail::array_storage<T, Capacity>
       // No element is ever stored, so no slot is ever reached. Said so, GCC
       // does not report the empty storage's null address (-Wnonnull) on the
       // paths it cannot see are dead, such as a push past `size_ == Capacity`.
+      // The return is in the else branch so that MSVC does not warn it
+      // unreachable (C4702).
       METL_UNREACHABLE();
+    } else {
+      return this->storage().slot(index);
     }
-    return this->storage().slot(index);
   }
 
   // Whether [first, last) starts inside this vector's storage -- the self-range
