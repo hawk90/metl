@@ -42,6 +42,9 @@ namespace detail {
 // public part; the documentation of each operation is here.
 template <typename T, std::size_t Capacity>
 class object_pool_core {
+  // Also in object_pool itself, where it is the user-facing check; here, as the
+  // first statement of the base, it fires before any member that cannot be
+  // formed for a reference or an array.
   static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
 
  public:
@@ -272,6 +275,8 @@ class object_pool_destroy_layer<T, Capacity, false> : public object_pool_core<T,
 /// @tparam Capacity Number of slots (fixed at compile time).
 template <typename T, std::size_t Capacity>
 class object_pool : detail::object_pool_destroy_layer<T, Capacity> {
+  static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+
   using base = detail::object_pool_destroy_layer<T, Capacity>;
 
  public:

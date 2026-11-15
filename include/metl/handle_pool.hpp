@@ -30,6 +30,9 @@ namespace detail {
 // tagged with handle_pool itself.
 template <typename T, std::size_t Capacity, typename GenT>
 class handle_pool_core {
+  // Also in handle_pool itself, where it is the user-facing check; here, as the
+  // first statement of the base, it fires before any member that cannot be
+  // formed for a reference or an array.
   static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
 
  public:
@@ -48,9 +51,6 @@ class handle_pool_core {
   /// Largest `Capacity` a slot index can address, derived from the handle's own
   /// index field so the two can never drift apart.
   static constexpr size_type max_capacity = static_cast<size_type>(handle_type::max_index);
-
-  static_assert(Capacity <= max_capacity,
-                "metl::handle_pool Capacity must fit the handle's slot index field");
 
   /// Constructs an empty pool with every slot free and generation 1.
   /// @note Not constexpr: the free list is linked at run time, so a
@@ -417,10 +417,14 @@ class handle_pool_destroy_layer<T, Capacity, GenT, false> : public handle_pool_c
 
 template <typename T, std::size_t Capacity, typename GenT>
 class handle_pool : detail::handle_pool_destroy_layer<T, Capacity, GenT> {
+  static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
+
   using base = detail::handle_pool_destroy_layer<T, Capacity, GenT>;
 
  public:
   using base::max_capacity;
+  static_assert(Capacity <= base::max_capacity,
+                "metl::handle_pool Capacity must fit the handle's slot index field");
   using typename base::const_pointer;
   using typename base::generation_type;
   using typename base::handle_type;
