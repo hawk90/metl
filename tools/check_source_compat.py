@@ -132,6 +132,11 @@ EXPECTED_BREAKS = {
                                                             "expected<void, int> are not trivially "
                                                             "copyable; #163 makes them trivially copyable "
                                                             "in 2.0.0-alpha.2, as planned for 2.0",
+        "tests/core/conditional_noexcept_test.cpp": "it asserted that a Hash or KeyEqual whose move "
+                                                    "can throw makes the unordered containers' move "
+                                                    "throwing, and that the move runs it; #691 copies "
+                                                    "the functors on move instead, so the copy decides "
+                                                    "noexcept, as #317 decided for 2.0",
     },
 }
 
