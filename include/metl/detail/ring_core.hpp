@@ -460,30 +460,25 @@ class ring_core
   }
 
   // The raw slot, for placement new; fixed_deque's push_front uses it too.
-  // A zero-capacity ring stores no element, so no slot is ever reached. Said
-  // so, GCC does not report the empty storage's null address (-Wnonnull,
-  // -Wnull-dereference) on the paths it cannot see are dead. The return is in
-  // the else branch so that MSVC does not warn it unreachable (C4702).
+  // A zero-capacity ring stores no element, so no slot is ever reached
+  // (METL_DETAIL_NO_SLOT_IS_REACHED says why it is said).
   void* slot_address(size_type index) noexcept {
     if constexpr (Capacity == 0) {
-      METL_UNREACHABLE();
-    } else {
-      return this->storage().items[index].addr();
+      METL_DETAIL_NO_SLOT_IS_REACHED();
     }
+    return this->storage().items[index].addr();
   }
   T& storage_at(size_type index) noexcept {
     if constexpr (Capacity == 0) {
-      METL_UNREACHABLE();
-    } else {
-      return this->storage().items[index].ref();
+      METL_DETAIL_NO_SLOT_IS_REACHED();
     }
+    return this->storage().items[index].ref();
   }
   const T& storage_at(size_type index) const noexcept {
     if constexpr (Capacity == 0) {
-      METL_UNREACHABLE();
-    } else {
-      return this->storage().items[index].ref();
+      METL_DETAIL_NO_SLOT_IS_REACHED();
     }
+    return this->storage().items[index].ref();
   }
 
   size_type head_;

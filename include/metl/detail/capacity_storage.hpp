@@ -23,10 +23,23 @@
 /// the class is marked `__declspec(empty_bases)`, and a chain has only one
 /// empty base per class.
 
+#include "metl/compiler.hpp"
 #include "metl/detail/abi.hpp"
 #include "metl/detail/constant_init.hpp"
 
 #include <type_traits>
+
+// Opens a zero-capacity container's slot accessors, which no call reaches: the
+// container holds no element. GCC is told so; otherwise it reports the empty
+// storage's null address (-Wnonnull, -Wnull-dereference) on paths it cannot
+// see are dead. MSVC is not: its `__assume(0)`, inlined into a caller in a
+// Release build, makes it report the caller's code after the call as
+// unreachable (C4702), and it has no null-address warning to quiet.
+#if METL_COMPILER_MSVC
+#define METL_DETAIL_NO_SLOT_IS_REACHED() static_cast<void>(0)
+#else
+#define METL_DETAIL_NO_SLOT_IS_REACHED() METL_UNREACHABLE()
+#endif
 
 namespace metl {
 METL_DETAIL_ABI_BEGIN
