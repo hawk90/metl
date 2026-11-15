@@ -7,10 +7,10 @@ MUTANT = {
            "checks never call it, and the one other call reads a "
            "character entry 0 happens to share.",
     "kills": "ctest:lookup_table_test",
-    "old": """nth(size_type index) const noexcept {
-    METL_ASSERT(index < Size);
-    return entries_[index];""",
-    "new": """nth(size_type index) const noexcept {
-    METL_ASSERT(index < Size);
-    return entries_[0];""",
+    "old": """    METL_ASSERT(index < Size);
+    if constexpr (Size > 0) {
+      return entries_[index];""",
+    "new": """    METL_ASSERT(index < Size);
+    if constexpr (Size > 0) {
+      return entries_[0];""",
 }

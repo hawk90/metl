@@ -19,6 +19,7 @@
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
+#include "metl/detail/array_or_empty.hpp"
 
 #include <array>
 #include <cstddef>
@@ -37,7 +38,8 @@ struct lookup_entry {
 
 /// Immutable key/value lookup table with a compile-time FIXED size.
 ///
-/// Holds exactly `Size` entries in inline storage (a std::array); performs NO
+/// Holds exactly `Size` entries in inline storage (a std::array, or nothing at all
+/// when `Size` is 0); performs NO
 /// heap allocation. Lookups are a linear scan, so it is intended for small,
 /// often constexpr, tables. Entries are fixed at construction. Not thread-safe
 /// for concurrent mutation, but const lookups are safe to share.
@@ -82,7 +84,14 @@ class lookup_table {
   /// @pre `index < size()`; out-of-range asserts and aborts (does not throw).
   METL_NODISCARD constexpr const value_type& nth(size_type index) const noexcept {
     METL_ASSERT(index < Size);
-    return entries_[index];
+    if constexpr (Size > 0) {
+      return entries_[index];
+    } else {
+      // An empty table has no entry to name; the assert above has already
+      // failed at every hardening level but NONE, where this is undefined
+      // behaviour, as `std::array<T, 0>::operator[]` is.
+      METL_UNREACHABLE();
+    }
   }
 
   /// Returns true if any entry has a key equal to `key`.
@@ -93,11 +102,14 @@ class lookup_table {
   /// Finds the value mapped to `key` via a linear scan.
   /// @return Pointer to the mapped value, or nullptr if `key` is not present.
   METL_NODISCARD constexpr const mapped_type* find(const key_type& key) const noexcept(nothrow_compare) {
-    for (size_type i = 0; i < Size; ++i) {
-      if (entries_[i].key == key) {
-        return detail::addressof(entries_[i].value);
+    if constexpr (Size > 0) {
+      for (size_type i = 0; i < Size; ++i) {
+        if (entries_[i].key == key) {
+          return detail::addressof(entries_[i].value);
+        }
       }
     }
+    (void)key;
     return nullptr;
   }
 
@@ -109,7 +121,9 @@ class lookup_table {
   }
 
  private:
-  std::array<value_type, Size> entries_;
+  // A zero-length table is an empty type, not std::array<T, 0>, which libc++
+  // makes as big as one element (#696).
+  detail::array_or_empty_t<value_type, Size> entries_;
 };
 
 /// Creates a lookup_table from an array of entries, deducing its template args.
