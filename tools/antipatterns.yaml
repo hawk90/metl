@@ -100,8 +100,11 @@ patterns:
         - file: include/metl/lookup_table.hpp
           match: "METL_UNREACHABLE();"
           why: >-
-            nth() on an empty table, under `if constexpr (Size > 0) ... else`. No call to it
-            survives in a caller, and #701's MSVC Release leg passed.
+            The contract, not a warning workaround: nth() on an empty table runs it only
+            after `METL_ASSERT(index < Size)` has failed, or at METL_HARDENING_NONE, where it
+            is undefined behaviour, as `std::array<T, 0>::operator[]` is. It cannot be a
+            no-op on MSVC: nth() returns a reference. zero_length_test trips it with caller
+            code after the call, so MSVC Release compiles the path.
     caught_by:
       - job: host-test
 
