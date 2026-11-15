@@ -22,6 +22,7 @@
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/delegate.hpp"
+#include "metl/detail/array_or_empty.hpp"
 
 #include <array>
 #include <cstddef>
@@ -135,7 +136,9 @@ class fsm {
     const State next = transition->to;
     if (entered_) {
       exiting_ = true;
-      invoke_hook(exit_hooks_, previous);
+      if constexpr (ExitHookCount > 0) {
+        invoke_hook(exit_hooks_, previous);
+      }
       exiting_ = false;
     }
 
@@ -153,7 +156,9 @@ class fsm {
     // `next` now would run its entry hook after the machine left it.
     if (!entered_ && current_state_ == next) {
       entered_ = true;
-      invoke_hook(entry_hooks_, next);
+      if constexpr (EntryHookCount > 0) {
+        invoke_hook(entry_hooks_, next);
+      }
     }
     return true;
   }
@@ -170,11 +175,15 @@ class fsm {
   }
 
   const transition_type* find_transition(State state, Event event) const noexcept {
-    for (std::size_t i = 0; i < TransitionCount; ++i) {
-      if (transitions_[i].from == state && transitions_[i].event == event) {
-        return &transitions_[i];
+    if constexpr (TransitionCount > 0) {
+      for (std::size_t i = 0; i < TransitionCount; ++i) {
+        if (transitions_[i].from == state && transitions_[i].event == event) {
+          return &transitions_[i];
+        }
       }
     }
+    (void)state;
+    (void)event;
     return nullptr;
   }
 
@@ -185,9 +194,11 @@ class fsm {
   bool entered_ = true;
   // True while an exit hook runs; `dispatch` asserts it is false.
   bool exiting_ = false;
-  std::array<transition_type, TransitionCount> transitions_;
-  std::array<state_hook_type, EntryHookCount> entry_hooks_;
-  std::array<state_hook_type, ExitHookCount> exit_hooks_;
+  // A zero-length table is an empty type, not std::array<T, 0>, which libc++
+  // makes as big as one element (#696).
+  detail::array_or_empty_t<transition_type, TransitionCount> transitions_;
+  detail::array_or_empty_t<state_hook_type, EntryHookCount> entry_hooks_;
+  detail::array_or_empty_t<state_hook_type, ExitHookCount> exit_hooks_;
 };
 
 METL_DETAIL_ABI_END
