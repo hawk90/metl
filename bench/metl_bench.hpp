@@ -61,6 +61,21 @@ inline void do_not_optimize(const T& value) {
 #endif
 }
 
+/// Makes the object at `p` visible to code the optimizer cannot see, so every
+/// later `do_not_optimize` or `clobber_memory` may read it. Stores into the
+/// object then have to happen. Without this, a benchmark whose container never
+/// leaves the function can lose its element stores as dead (see
+/// bench_containers.cpp).
+inline void escape(void* p) {
+#if defined(_MSC_VER)
+  static void* volatile sink;
+  sink = p;
+  _ReadWriteBarrier();
+#else
+  __asm__ __volatile__("" : : "g"(p) : "memory");
+#endif
+}
+
 /// Prevents the optimizer from sinking or reordering stores across this point.
 inline void clobber_memory() {
 #if defined(_MSC_VER)
