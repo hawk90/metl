@@ -27,7 +27,8 @@
 /// with a non-empty base and an empty one is laid out by MSVC with room for
 /// the empty one, while a single chain of bases adds nothing on any compiler.
 /// The constructor half and the assignment half are two layers, the second
-/// derived from the first, rather than sixteen specializations of one.
+/// derived from the first, rather than sixteen specializations of one. Both
+/// inherit the base's constructors, so the class builds its base as before.
 ///
 /// Progress guarantee: wait-free, bounded (no code at run time).
 #include "metl/detail/abi.hpp"
@@ -38,10 +39,13 @@ namespace detail {
 
 /// @brief Copy and move constructors of `Base`: deleted where the flag is false.
 template <typename Base, bool Copy, bool Move>
-struct enable_copy_move_ctor : Base {};
+struct enable_copy_move_ctor : Base {
+  using Base::Base;
+};
 
 template <typename Base>
 struct enable_copy_move_ctor<Base, false, true> : Base {
+  using Base::Base;
   enable_copy_move_ctor() = default;
   enable_copy_move_ctor(const enable_copy_move_ctor&) = delete;
   enable_copy_move_ctor(enable_copy_move_ctor&&) = default;
@@ -52,6 +56,7 @@ struct enable_copy_move_ctor<Base, false, true> : Base {
 
 template <typename Base>
 struct enable_copy_move_ctor<Base, true, false> : Base {
+  using Base::Base;
   enable_copy_move_ctor() = default;
   enable_copy_move_ctor(const enable_copy_move_ctor&) = default;
   enable_copy_move_ctor(enable_copy_move_ctor&&) = delete;
@@ -62,6 +67,7 @@ struct enable_copy_move_ctor<Base, true, false> : Base {
 
 template <typename Base>
 struct enable_copy_move_ctor<Base, false, false> : Base {
+  using Base::Base;
   enable_copy_move_ctor() = default;
   enable_copy_move_ctor(const enable_copy_move_ctor&) = delete;
   enable_copy_move_ctor(enable_copy_move_ctor&&) = delete;
@@ -73,10 +79,13 @@ struct enable_copy_move_ctor<Base, false, false> : Base {
 /// @brief `Base` with its copy and move constructors and assignments deleted
 ///        where the flags are false, and left as they are where true.
 template <typename Base, bool Copy, bool CopyAssign, bool Move, bool MoveAssign>
-struct enable_copy_move : enable_copy_move_ctor<Base, Copy, Move> {};
+struct enable_copy_move : enable_copy_move_ctor<Base, Copy, Move> {
+  using enable_copy_move_ctor<Base, Copy, Move>::enable_copy_move_ctor;
+};
 
 template <typename Base, bool Copy, bool Move>
 struct enable_copy_move<Base, Copy, false, Move, true> : enable_copy_move_ctor<Base, Copy, Move> {
+  using enable_copy_move_ctor<Base, Copy, Move>::enable_copy_move_ctor;
   enable_copy_move() = default;
   enable_copy_move(const enable_copy_move&) = default;
   enable_copy_move(enable_copy_move&&) = default;
@@ -87,6 +96,7 @@ struct enable_copy_move<Base, Copy, false, Move, true> : enable_copy_move_ctor<B
 
 template <typename Base, bool Copy, bool Move>
 struct enable_copy_move<Base, Copy, true, Move, false> : enable_copy_move_ctor<Base, Copy, Move> {
+  using enable_copy_move_ctor<Base, Copy, Move>::enable_copy_move_ctor;
   enable_copy_move() = default;
   enable_copy_move(const enable_copy_move&) = default;
   enable_copy_move(enable_copy_move&&) = default;
@@ -97,6 +107,7 @@ struct enable_copy_move<Base, Copy, true, Move, false> : enable_copy_move_ctor<B
 
 template <typename Base, bool Copy, bool Move>
 struct enable_copy_move<Base, Copy, false, Move, false> : enable_copy_move_ctor<Base, Copy, Move> {
+  using enable_copy_move_ctor<Base, Copy, Move>::enable_copy_move_ctor;
   enable_copy_move() = default;
   enable_copy_move(const enable_copy_move&) = default;
   enable_copy_move(enable_copy_move&&) = default;

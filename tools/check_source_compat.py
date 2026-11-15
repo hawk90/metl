@@ -127,6 +127,12 @@ EXPECTED_BREAKS = {
         "tests/core/smoke_test.cpp": _VERSION_HEADER,
         "tests/core/version_test.cpp": _VERSION_HEADER,
     },
+    "v2.0.0-alpha.1": {
+        "tests/vocab/expected_trivial_destructor_test.cpp": "it asserted that expected<int, int> and "
+                                                            "expected<void, int> are not trivially "
+                                                            "copyable; #163 makes them trivially copyable "
+                                                            "in 2.0.0-alpha.2, as planned for 2.0",
+    },
 }
 
 # Where a tree states its own version: (file, pattern whose group 2 is the version).

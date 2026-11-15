@@ -9,13 +9,13 @@ MUTANT = {
            "it, so only a test that moves a NAMED expected instantiates it.",
     "kills": "ctest:expected_test",
     "old": """    if (holds_value()) {
-      construct_value(static_cast<T&&>(other.value_unchecked()));
+      construct_value(static_cast<T&&>(std::move(other).value_unchecked()));
     } else {
-      construct_error(static_cast<E&&>(other.error_unchecked()));
+      construct_error(static_cast<E&&>(std::move(other).error_unchecked()));
     }""",
     "new": """    if (!holds_value()) {
-      construct_value(static_cast<T&&>(other.value_unchecked()));
+      construct_value(static_cast<T&&>(std::move(other).value_unchecked()));
     } else {
-      construct_error(static_cast<E&&>(other.error_unchecked()));
+      construct_error(static_cast<E&&>(std::move(other).error_unchecked()));
     }""",
 }
