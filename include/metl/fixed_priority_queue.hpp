@@ -15,6 +15,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/functor_move.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/fixed_vector.hpp"
 #include "metl/span.hpp"
@@ -64,8 +65,8 @@ METL_DETAIL_ABI_BEGIN
 /// @note Moving from a container, by construction or assignment, leaves the source
 ///       empty and usable, and destroys its elements. A pointer into the source then
 ///       names a destroyed object, unlike with `std::vector`.
-///       The comparator is moved too, so a stateful one may leave the source unable
-///       to compare (#317).
+///       The comparator is copied, not moved, so the source keeps a working one
+///       (#691); a move-only comparator is moved.
 template <typename T, std::size_t Capacity, typename Compare = std::less<T>>
 class fixed_priority_queue {
   static_assert(std::is_move_constructible_v<T>,
@@ -254,7 +255,7 @@ class fixed_priority_queue {
   // The body of swap, without its clear-both-on-throw.
   void swap_contents(fixed_priority_queue& other) noexcept(swap_cannot_throw) {
     using std::swap;
-    swap(comp_, other.comp_);
+    swap(comp_.value, other.comp_.value);
     storage_.swap(other.storage_);
   }
 
@@ -280,7 +281,7 @@ class fixed_priority_queue {
   void sift_up(size_type index) {
     while (index > 0) {
       const size_type parent = (index - 1) / 2;
-      if (!comp_(storage_[parent], storage_[index])) {
+      if (!comp_.value(storage_[parent], storage_[index])) {
         return;  // parent already outranks the child: done
       }
       swap_slots(parent, index);
@@ -298,10 +299,10 @@ class fixed_priority_queue {
       }
       const size_type right = left + 1;
       size_type best = left;
-      if (right < count && comp_(storage_[left], storage_[right])) {
+      if (right < count && comp_.value(storage_[left], storage_[right])) {
         best = right;
       }
-      if (!comp_(storage_[index], storage_[best])) {
+      if (!comp_.value(storage_[index], storage_[best])) {
         return;  // already outranks the better child: done
       }
       swap_slots(index, best);
@@ -329,7 +330,10 @@ class fixed_priority_queue {
   }
 
   fixed_vector<T, Capacity> storage_;
-  Compare comp_{};
+  // Copied on move, so a moved-from queue keeps a working comparator (#691).
+  // The slot value-initializes it, so a default-initialized queue holds no
+  // indeterminate state (#574).
+  detail::functor_slot<Compare> comp_;
 };
 
 /// Swaps the contents of two priority queues of the same type, capacity and

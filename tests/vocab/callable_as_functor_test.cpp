@@ -33,19 +33,22 @@ using copyable_hash = metl::fixed_function<std::size_t(int), 16>;
 using move_only_hash = metl::fixed_any_invocable<std::size_t(int), 16>;
 
 // Asked first, before anything else instantiates these types: on GCC the
-// nothrow-move query failed only when it was the first one asked.
-static_assert(std::is_nothrow_move_constructible_v<metl::flat_map<int, int, 4, copyable_less>>);
-static_assert(std::is_nothrow_move_constructible_v<metl::flat_set<int, 4, copyable_less>>);
-static_assert(std::is_nothrow_move_constructible_v<metl::fixed_priority_queue<int, 4, copyable_less>>);
-static_assert(std::is_nothrow_move_constructible_v<metl::flat_map<int, int, 4, nothrow_less>>);
-static_assert(std::is_nothrow_move_constructible_v<metl::flat_set<int, 4, nothrow_less>>);
-static_assert(std::is_nothrow_move_constructible_v<metl::fixed_priority_queue<int, 4, nothrow_less>>);
+// nothrow-move query failed only when it was the first one asked. A move
+// copies a copyable comparator (#691), and fixed_function's copy can throw, so
+// those moves are not noexcept; fixed_any_invocable is move-only and moved.
+static_assert(!std::is_nothrow_move_constructible_v<metl::flat_map<int, int, 4, copyable_less>>);
+static_assert(!std::is_nothrow_move_constructible_v<metl::flat_set<int, 4, copyable_less>>);
+static_assert(!std::is_nothrow_move_constructible_v<metl::fixed_priority_queue<int, 4, copyable_less>>);
+static_assert(!std::is_nothrow_move_constructible_v<metl::flat_map<int, int, 4, nothrow_less>>);
+static_assert(!std::is_nothrow_move_constructible_v<metl::flat_set<int, 4, nothrow_less>>);
+static_assert(!std::is_nothrow_move_constructible_v<metl::fixed_priority_queue<int, 4, nothrow_less>>);
 static_assert(std::is_nothrow_move_constructible_v<metl::flat_map<int, int, 4, move_only_less>>);
 static_assert(std::is_nothrow_move_constructible_v<metl::flat_set<int, 4, move_only_less>>);
 static_assert(std::is_nothrow_move_constructible_v<metl::fixed_priority_queue<int, 4, move_only_less>>);
 
-// NothrowMove: the ordered containers' move never calls the comparator; the
-// unordered ones re-insert, which calls a hasher that is not noexcept.
+// NothrowMove: the move copies a copyable functor, and fixed_function's copy
+// can throw; the unordered containers also re-insert, which calls a hasher
+// that is not noexcept.
 template <typename Container, bool Copyable, bool NothrowMove = true>
 constexpr bool traits_are_values() {
   static_assert(std::is_copy_constructible_v<Container> == Copyable);
@@ -57,12 +60,12 @@ constexpr bool traits_are_values() {
   return true;
 }
 
-static_assert(traits_are_values<metl::flat_map<int, int, 4, copyable_less>, true>());
-static_assert(traits_are_values<metl::flat_set<int, 4, copyable_less>, true>());
-static_assert(traits_are_values<metl::fixed_priority_queue<int, 4, copyable_less>, true>());
-static_assert(traits_are_values<metl::flat_map<int, int, 4, nothrow_less>, true>());
-static_assert(traits_are_values<metl::flat_set<int, 4, nothrow_less>, true>());
-static_assert(traits_are_values<metl::fixed_priority_queue<int, 4, nothrow_less>, true>());
+static_assert(traits_are_values<metl::flat_map<int, int, 4, copyable_less>, true, false>());
+static_assert(traits_are_values<metl::flat_set<int, 4, copyable_less>, true, false>());
+static_assert(traits_are_values<metl::fixed_priority_queue<int, 4, copyable_less>, true, false>());
+static_assert(traits_are_values<metl::flat_map<int, int, 4, nothrow_less>, true, false>());
+static_assert(traits_are_values<metl::flat_set<int, 4, nothrow_less>, true, false>());
+static_assert(traits_are_values<metl::fixed_priority_queue<int, 4, nothrow_less>, true, false>());
 static_assert(traits_are_values<metl::flat_map<int, int, 4, move_only_less>, false>());
 static_assert(traits_are_values<metl::flat_set<int, 4, move_only_less>, false>());
 static_assert(traits_are_values<metl::fixed_priority_queue<int, 4, move_only_less>, false>());
