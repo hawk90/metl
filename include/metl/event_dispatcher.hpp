@@ -180,7 +180,41 @@ class event_dispatcher<R(Args...), Capacity> {
   };
 
   std::uint64_t next_id_;
-  slot slots_[Capacity == 0 ? 1 : Capacity];
+  // Capacity >= 1 here: a zero-capacity dispatcher is the specialisation below.
+  slot slots_[Capacity];
+};
+
+// A dispatcher with no slots (#696). It holds nothing at all, so it is an
+// empty class, where the general one above would keep a slot and the next id.
+// Every subscription fails, as it does on a full dispatcher, and so nothing is
+// ever dispatched.
+template <typename R, typename... Args>
+class event_dispatcher<R(Args...), 0> {
+  static_assert(!(std::is_rvalue_reference_v<Args> || ...),
+                "event_dispatcher cannot take an rvalue-reference parameter: one event is handed "
+                "to every listener, so none of them may move from it. Take it by value or by "
+                "const reference");
+
+ public:
+  using delegate_type = delegate<R(Args...)>;
+  using size_type = std::size_t;
+
+  struct listener_id {
+    std::uint64_t value;
+  };
+
+  constexpr event_dispatcher() noexcept = default;
+
+  METL_NODISCARD optional<listener_id> subscribe(delegate_type listener) noexcept {
+    return try_subscribe(listener);
+  }
+  METL_NODISCARD optional<listener_id> try_subscribe(delegate_type /*listener*/) noexcept { return nullopt; }
+  bool unsubscribe(listener_id /*id*/) noexcept { return false; }
+  void clear() noexcept {}
+  METL_NODISCARD constexpr size_type capacity() const noexcept { return 0; }
+  METL_NODISCARD size_type size() const noexcept { return 0; }
+  METL_NODISCARD bool empty() const noexcept { return true; }
+  void dispatch(Args... /*args*/) const {}
 };
 
 METL_DETAIL_ABI_END

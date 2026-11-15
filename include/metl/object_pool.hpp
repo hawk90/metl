@@ -230,11 +230,54 @@ class object_pool_core {
     push_free(index);
   }
 
-  detail::slot_array<storage_type, (Capacity == 0 ? 1 : Capacity)> storage_;
-  detail::bitset<Capacity == 0 ? 1 : Capacity> live_{};
+  // Capacity >= 1 here: zero is the specialisation below.
+  detail::slot_array<storage_type, Capacity> storage_;
+  detail::bitset<Capacity> live_{};
   link_type free_head_ = 0;  // freed slots, last freed first; 0 is none
   link_type unused_ = 0;     // slots at and above this were never used
   size_type size_ = 0;
+};
+
+// A pool with no slots (#696). It holds nothing at all, so it is an empty
+// class, where the general core above would keep one slot, its live bit and
+// its counters. Every operation answers as the general core does when the pool
+// is full and empty at once.
+template <typename T>
+class object_pool_core<T, 0> {
+ public:
+  using value_type = T;
+  using size_type = std::size_t;
+  using pointer = T*;
+  using const_pointer = const T*;
+
+  constexpr object_pool_core() noexcept = default;
+  ~object_pool_core() = default;
+
+  object_pool_core(const object_pool_core&) = delete;
+  object_pool_core& operator=(const object_pool_core&) = delete;
+  object_pool_core(object_pool_core&&) = delete;
+  object_pool_core& operator=(object_pool_core&&) = delete;
+
+  template <typename... Args>
+  METL_NODISCARD pointer try_emplace(Args&&... /*args*/) noexcept {
+    return nullptr;
+  }
+
+  template <typename... Args>
+  METL_NODISCARD pointer emplace(Args&&... args) {
+    pointer object = try_emplace(std::forward<Args>(args)...);
+    METL_ASSERT(object != nullptr);
+    return object;
+  }
+
+  bool destroy(pointer /*object*/) noexcept { return false; }
+  void clear() noexcept {}
+  METL_NODISCARD bool contains(const_pointer /*object*/) const noexcept { return false; }
+  METL_NODISCARD constexpr bool empty() const noexcept { return true; }
+  METL_NODISCARD constexpr bool full() const noexcept { return true; }
+  METL_NODISCARD constexpr size_type size() const noexcept { return 0; }
+  METL_NODISCARD constexpr size_type capacity() const noexcept { return 0; }
+  METL_NODISCARD constexpr size_type available() const noexcept { return 0; }
 };
 
 // The destructor: trivial when T's is, so a namespace-scope pool of such a T

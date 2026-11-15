@@ -94,6 +94,14 @@ struct slot_array {
   S items[N];
 };
 
+/// @brief No slots: a zero-capacity container holds nothing (#696). `items` is a
+///        null pointer, so `items[i]` still compiles in code that a container
+///        with no elements never runs.
+template <typename S>
+struct slot_array<S, 0> {
+  static constexpr S* items = nullptr;
+};
+
 /// @brief Zeroes `bytes` during constant evaluation; does nothing at run time.
 ///        For a bare array, which cannot be assigned: it loops, so it is for
 ///        small buffers only (`fixed_function`'s).

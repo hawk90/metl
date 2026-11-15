@@ -68,6 +68,8 @@ ASSERT_ALLOWLIST = {
         "asserting allocate: stripped, it returns the null try_allocate gave",
     ("arena_allocator.hpp", "target.offset <= offset_"):
         "rewind to a stale mark: stripped, the unwinding loop does nothing",
+    ("arena_allocator.hpp", "target.offset == 0"):
+        "rewind of a zero-byte arena to a mark it never issued: stripped, there is nothing to unwind",
     ("fixed_vector.hpp", "n <= Capacity - size_"):
         "insert(pos, n, v): every emplace it makes is position-checked by METL_HARDEN",
     ("fixed_vector.hpp", "n <= Capacity"):

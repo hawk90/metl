@@ -27,6 +27,7 @@
 #include "metl/detail/array_or_empty.hpp"
 #include "metl/detail/array_storage.hpp"
 #include "metl/detail/bitset.hpp"
+#include "metl/detail/capacity_storage.hpp"
 #include "metl/detail/constant_init.hpp"
 #include "metl/detail/construct.hpp"
 #include "metl/detail/copy_move_gate.hpp"

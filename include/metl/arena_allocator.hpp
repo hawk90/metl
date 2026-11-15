@@ -267,13 +267,6 @@ class arena_allocator {
     if (bytes == 0) {
       return nullptr;
     }
-    // A zero-byte arena holds no record. Its one-byte placeholder storage must
-    // not be reached by the code below, which GCC cannot otherwise see is dead,
-    // and reports as out of bounds at -O2.
-    if (Capacity == 0) {
-      return nullptr;
-    }
-
     const std::uintptr_t base = reinterpret_cast<std::uintptr_t>(&storage_[0]);
     const std::uintptr_t current = base + offset_;
     const std::uintptr_t aligned = align_up(current, alignment);
@@ -329,11 +322,80 @@ class arena_allocator {
 
   size_type offset_;
 #if METL_DETAIL_LAZY_CONSTANT_INIT
-  detail::max_aligned_bytes<(Capacity == 0 ? 1 : Capacity)> storage_;
+  // Capacity >= 1 here: a zero-byte arena is the specialisation below.
+  detail::max_aligned_bytes<Capacity> storage_;
 #else
-  alignas(std::max_align_t) unsigned char storage_[Capacity == 0 ? 1 : Capacity];
+  alignas(std::max_align_t) unsigned char storage_[Capacity];
 #endif
 };
+
+// An arena of no bytes (#696). It holds nothing at all, so it is an empty
+// class, where the general one above would keep one aligned byte and its
+// offset. Every allocation fails, as on a full arena; a bad alignment still
+// trips the same always-on check.
+// NOLINTBEGIN(readability-convert-member-functions-to-static)
+// Members stay non-static so this class's interface is exactly the general
+// one's: the same calls, and the same member-pointer types in generic code.
+template <>
+class arena_allocator<0> {
+ public:
+  using size_type = std::size_t;
+
+  struct mark_type {
+    size_type offset;
+  };
+
+  constexpr arena_allocator() noexcept = default;
+  ~arena_allocator() = default;
+
+  arena_allocator(const arena_allocator&) = delete;
+  arena_allocator& operator=(const arena_allocator&) = delete;
+  arena_allocator(arena_allocator&&) = delete;
+  arena_allocator& operator=(arena_allocator&&) = delete;
+
+  METL_NODISCARD mark_type mark() const noexcept { return mark_type{0}; }
+
+  METL_NODISCARD void* try_allocate(size_type /*bytes*/,
+                                    size_type alignment = alignof(std::max_align_t)) noexcept {
+    // Named first, as monotonic_buffer does: inside METL_HARDEN's `!(expr)` the
+    // conjunction is a readability-simplify-boolean-expr finding.
+    const bool power_of_two = alignment != 0 && (alignment & (alignment - 1)) == 0;
+    METL_HARDEN(power_of_two);
+    return nullptr;
+  }
+
+  METL_NODISCARD void* allocate(size_type bytes, size_type alignment = alignof(std::max_align_t)) noexcept {
+    void* memory = try_allocate(bytes, alignment);
+    METL_ASSERT(memory != nullptr);
+    return memory;
+  }
+
+  template <typename T, typename... Args>
+  METL_NODISCARD T* try_emplace(Args&&... /*args*/) noexcept {
+    static_assert(alignof(T) <= alignof(std::max_align_t),
+                  "type alignment exceeds arena_allocator maximum alignment");
+    return nullptr;
+  }
+
+  template <typename T, typename... Args>
+  METL_NODISCARD T* emplace(Args&&... args) {
+    T* object = try_emplace<T>(std::forward<Args>(args)...);
+    METL_ASSERT(object != nullptr);
+    return object;
+  }
+
+  void rewind(mark_type target) noexcept {
+    METL_ASSERT(target.offset == 0);
+    (void)target;
+  }
+  void reset() noexcept {}
+
+  METL_NODISCARD constexpr size_type capacity() const noexcept { return 0; }
+  METL_NODISCARD constexpr size_type used() const noexcept { return 0; }
+  METL_NODISCARD constexpr size_type remaining() const noexcept { return 0; }
+  METL_NODISCARD constexpr bool empty() const noexcept { return true; }
+};
+// NOLINTEND(readability-convert-member-functions-to-static)
 
 METL_DETAIL_ABI_END
 }  // namespace metl

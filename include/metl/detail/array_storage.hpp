@@ -53,15 +53,14 @@ namespace detail {
 
 /// @brief Storage for up to `N` `T`s, reached as one implicitly created `T[N]`.
 /// @tparam T Element type: a complete object type, not an array.
-/// @tparam N Number of elements; at least 1 (callers pass `Capacity == 0 ? 1 : Capacity`,
-///           because `T[0]` is ill-formed). Bounds and ASan logic keep using `Capacity`.
+/// @tparam N Number of elements. `N == 0` is the empty specialisation below, which a
+///           container holds through `capacity_storage` so that it takes no room.
 /// @note No constructor, on purpose: the buffer stays uninitialised, so a
 ///       container's default constructor does no `N * sizeof(T)` stores.
 template <typename T, std::size_t N>
 struct array_storage {
   static_assert(std::is_object_v<T> && !std::is_array_v<T>,
                 "array_storage holds objects, and not arrays of them");
-  static_assert(N >= 1, "array_storage needs at least one slot; pass Capacity == 0 ? 1 : Capacity");
 
   alignas(T) unsigned char bytes[sizeof(T) * N];
 
@@ -76,6 +75,19 @@ struct array_storage {
   ///        `data()`, so it does not depend on any element being alive.
   /// @pre `index < N`.
   void* slot(std::size_t index) noexcept { return &bytes[index * sizeof(T)]; }
+};
+
+/// @brief No storage: a zero-capacity container holds no element (#696). Every
+///        address is `nullptr`, and a container with no elements never
+///        dereferences one. `data()` of an empty range may be null, as
+///        `std::vector`'s is.
+template <typename T>
+struct array_storage<T, 0> {
+  static_assert(std::is_object_v<T> && !std::is_array_v<T>,
+                "array_storage holds objects, and not arrays of them");
+
+  METL_NODISCARD static constexpr T* data() noexcept { return nullptr; }
+  static constexpr void* slot(std::size_t /*index*/) noexcept { return nullptr; }
 };
 
 }  // namespace detail

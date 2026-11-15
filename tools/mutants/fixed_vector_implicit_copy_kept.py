@@ -7,6 +7,6 @@ MUTANT = {
            "by the implicit one, which copies the raw storage bytes of a "
            "non-copyable element (#601).",
     "kills": "tool:clang++ -std=c++17 -fsyntax-only -Iinclude -Itests tests/containers/copy_move_traits_test.cpp",
-    "old": "class fixed_vector : detail::no_implicit_copy_move<fixed_vector<T, Capacity>> {",
-    "new": "class fixed_vector {",
+    "old": "detail::no_implicit_copy_move<fixed_vector<T, Capacity>>> {",
+    "new": "detail::no_storage_base> {",
 }

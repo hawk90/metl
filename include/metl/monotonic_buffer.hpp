@@ -163,11 +163,67 @@ class monotonic_buffer {
 
   size_type offset_;
 #if METL_DETAIL_LAZY_CONSTANT_INIT
-  detail::max_aligned_bytes<(Capacity == 0 ? 1 : Capacity)> storage_;
+  // Capacity >= 1 here: a zero-byte buffer is the specialisation below.
+  detail::max_aligned_bytes<Capacity> storage_;
 #else
-  alignas(std::max_align_t) unsigned char storage_[Capacity == 0 ? 1 : Capacity];
+  alignas(std::max_align_t) unsigned char storage_[Capacity];
 #endif
 };
+
+// A buffer of no bytes (#696). It holds nothing at all, so it is an empty
+// class, where the general one above would keep one aligned byte and its
+// offset. Every allocation fails, as on a full buffer; a bad alignment still
+// trips the same always-on check.
+// NOLINTBEGIN(readability-convert-member-functions-to-static)
+// Members stay non-static so this class's interface is exactly the general
+// one's: the same calls, and the same member-pointer types in generic code.
+template <>
+class monotonic_buffer<0> {
+ public:
+  using size_type = std::size_t;
+
+  constexpr monotonic_buffer() noexcept = default;
+
+  METL_NODISCARD void* try_allocate(size_type /*bytes*/,
+                                    size_type alignment = alignof(std::max_align_t)) noexcept {
+    const bool power_of_two = alignment != 0 && (alignment & (alignment - 1)) == 0;
+    METL_HARDEN(power_of_two);
+    return nullptr;
+  }
+
+  METL_NODISCARD void* allocate(size_type bytes, size_type alignment = alignof(std::max_align_t)) noexcept {
+    void* memory = try_allocate(bytes, alignment);
+    METL_ASSERT(memory != nullptr);
+    return memory;
+  }
+
+  template <typename T>
+  METL_NODISCARD T* try_allocate_n(size_type /*count*/) noexcept {
+    return nullptr;
+  }
+
+  template <typename T, typename... Args>
+  METL_NODISCARD T* try_emplace(Args&&... /*args*/) noexcept {
+    static_assert(alignof(T) <= alignof(std::max_align_t),
+                  "type alignment exceeds monotonic_buffer maximum alignment");
+    return nullptr;
+  }
+
+  template <typename T, typename... Args>
+  METL_NODISCARD T* emplace(Args&&... args) {
+    T* object = try_emplace<T>(std::forward<Args>(args)...);
+    METL_ASSERT(object != nullptr);
+    return object;
+  }
+
+  void reset() noexcept {}
+
+  METL_NODISCARD constexpr size_type capacity() const noexcept { return 0; }
+  METL_NODISCARD constexpr size_type used() const noexcept { return 0; }
+  METL_NODISCARD constexpr size_type remaining() const noexcept { return 0; }
+  METL_NODISCARD constexpr bool empty() const noexcept { return true; }
+};
+// NOLINTEND(readability-convert-member-functions-to-static)
 
 METL_DETAIL_ABI_END
 }  // namespace metl

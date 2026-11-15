@@ -98,7 +98,7 @@ class fixed_deque : public detail::ring_core<T, Capacity> {
       this->head_ = previous_head;
       --this->size_;
     });
-    ::new (this->storage_.items[slot].addr()) T(std::forward<Args>(args)...);
+    ::new (this->slot_address(slot)) T(std::forward<Args>(args)...);
     undo.release();
     return true;
   }
