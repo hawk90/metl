@@ -108,6 +108,13 @@ import tempfile
 # instructions per destroy+emplace cycle: the same at every capacity, so O(1)
 # extra work, not a change of complexity class. It buys a stale handle needing
 # Capacity times as many cycles to alias.
+#
+# Lowered by #271 (PR #695, run 43711644545): object_pool and handle_pool are
+# trivially destructible when T is, and each benchmark's pool of std::uint32_t
+# is full when it goes out of scope, so the clear() over every slot is gone.
+# At N = 1024: object_pool 268,212 -> 248,748, handle_pool 231,798 -> 216,436
+# (about 19 and 15 instructions a slot). At N = 4 and 64 the saving is inside
+# the tolerance.
 BUDGETS = {
     "metl_bench_containers::crc32 over 1 KiB": 58_915_533,
     "metl_bench_containers::fixed_vector<64> fill + clear": 1_150_301,
@@ -119,11 +126,11 @@ BUDGETS = {
     "metl_bench_containers::static_unordered_map<256> find (miss)": 282_659,
     "metl_bench_mpmc::mpmc_queue push + pop": 163_039,
     "metl_bench_mpmc::spsc_queue push + pop": 129_247,
-    "metl_bench_pools::handle_pool<1024> alloc+free": 231_798,
+    "metl_bench_pools::handle_pool<1024> alloc+free": 216_436,
     "metl_bench_pools::handle_pool<4>  alloc+free": 195_315,
     "metl_bench_pools::handle_pool<64> alloc+free": 192_571,
     "metl_bench_pools::handle_pool<64> get()": 40_950,
-    "metl_bench_pools::object_pool<1024> alloc+free": 268_212,
+    "metl_bench_pools::object_pool<1024> alloc+free": 248_748,
     "metl_bench_pools::object_pool<4>  alloc+free": 195_274,
     "metl_bench_pools::object_pool<64> alloc+free": 223_548,
     "metl_bench_spsc::push + pop round trip": 129_156,
