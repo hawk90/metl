@@ -29,6 +29,7 @@
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/array_storage.hpp"
+#include "metl/detail/capacity_storage.hpp"
 #include "metl/detail/constant_init.hpp"
 #include "metl/detail/copy_move_gate.hpp"
 #include "metl/detail/three_way.hpp"
@@ -116,7 +117,8 @@ template <typename T, std::size_t Capacity>
 // The copy and move operations are the gated ones below, which clang-tidy does not
 // recognize as such (detail/copy_move_gate.hpp).
 // NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
-class fixed_vector : detail::no_implicit_copy_move<fixed_vector<T, Capacity>> {
+class fixed_vector : detail::capacity_storage<detail::array_storage<T, Capacity>,
+                                              detail::no_implicit_copy_move<fixed_vector<T, Capacity>>> {
   static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
 
  public:
@@ -137,7 +139,7 @@ class fixed_vector : detail::no_implicit_copy_move<fixed_vector<T, Capacity>> {
   /// detail/constant_init.hpp); a local one stores nothing to the buffer.
   constexpr fixed_vector() noexcept : size_(0) {
     if (detail::in_constant_evaluation()) {
-      detail::zero_for_constant_init(storage_);
+      this->zero_storage_for_constant_init();
     } else {
       asan_poison_tail_();
     }
@@ -240,8 +242,8 @@ class fixed_vector : detail::no_implicit_copy_move<fixed_vector<T, Capacity>> {
   /// Returns a pointer to the underlying contiguous element storage.
   /// @note A pointer into one `T[Capacity]` array object, so `data() + i` is
   ///       well-defined for every `i <= Capacity` (see detail/array_storage.hpp).
-  METL_NODISCARD pointer data() noexcept { return storage_.data(); }
-  METL_NODISCARD const_pointer data() const noexcept { return storage_.data(); }
+  METL_NODISCARD pointer data() noexcept { return this->storage().data(); }
+  METL_NODISCARD const_pointer data() const noexcept { return this->storage().data(); }
 
   /// Returns true if the vector holds no elements.
   METL_NODISCARD constexpr bool empty() const noexcept { return size_ == 0; }
@@ -730,7 +732,15 @@ class fixed_vector : detail::no_implicit_copy_move<fixed_vector<T, Capacity>> {
   span<const T> as_span() const noexcept { return span<const T>(data(), size_); }
 
  private:
-  void* slot_(size_type index) noexcept { return storage_.slot(index); }
+  void* slot_(size_type index) noexcept {
+    if constexpr (Capacity == 0) {
+      // No element is ever stored, so no slot is ever reached. Said so, GCC
+      // does not report the empty storage's null address (-Wnonnull) on the
+      // paths it cannot see are dead, such as a push past `size_ == Capacity`.
+      METL_UNREACHABLE();
+    }
+    return this->storage().slot(index);
+  }
 
   // Whether [first, last) starts inside this vector's storage -- the self-range
   // that insert and assign cannot read correctly. Only pointer iterators (this
@@ -786,13 +796,13 @@ class fixed_vector : detail::no_implicit_copy_move<fixed_vector<T, Capacity>> {
       return;
     }
     if (size_ < Capacity) {
-      ASAN_POISON_MEMORY_REGION(storage_.slot(size_), (Capacity - size_) * sizeof(T));
+      ASAN_POISON_MEMORY_REGION(this->storage().slot(size_), (Capacity - size_) * sizeof(T));
     }
   }
   // Expose the whole buffer while a mutating op rearranges elements internally.
   void asan_unpoison_all_() noexcept {
     if (Capacity != 0) {
-      ASAN_UNPOISON_MEMORY_REGION(storage_.slot(0), Capacity * sizeof(T));
+      ASAN_UNPOISON_MEMORY_REGION(this->storage().slot(0), Capacity * sizeof(T));
     }
   }
 #else
@@ -802,14 +812,14 @@ class fixed_vector : detail::no_implicit_copy_move<fixed_vector<T, Capacity>> {
   constexpr void asan_unpoison_all_() noexcept {}
 #endif
 
-  // Elements live in one aligned byte buffer reached as a single T[Capacity]
+  // Elements live in the base's storage (detail/capacity_storage.hpp, empty at
+  // Capacity 0): one aligned byte buffer reached as a single T[Capacity]
   // array object, so data() + i is in-array arithmetic (the
   // reasoning is in detail/array_storage.hpp). array_storage::data() goes
   // through a reinterpret_cast, which is never constant-evaluable, so nothing
   // that reaches it is constexpr: a constexpr function that can never be
   // constant-evaluated is ill-formed, no diagnostic required (S3 in
   // tools/check_source_rules.py, #581).
-  detail::array_storage<T, (Capacity == 0 ? 1 : Capacity)> storage_;
   size_type size_;
 };
 

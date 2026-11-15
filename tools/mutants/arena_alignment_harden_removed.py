@@ -6,6 +6,7 @@ MUTANT = {
     "why": "a non-power-of-two alignment reaches align_up's bitmask at "
            "METL_HARDENING_NONE.",
     "kills": "ctest:harden_floor_memory",
-    "old": "    METL_HARDEN(alignment != 0 && (alignment & (alignment - 1)) == 0);",
-    "new": "",
+    "old": """    // whatever the size, and an empty request must not hide it.
+    METL_HARDEN(alignment != 0 && (alignment & (alignment - 1)) == 0);""",
+    "new": """    // whatever the size, and an empty request must not hide it.""",
 }

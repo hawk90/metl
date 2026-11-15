@@ -300,20 +300,81 @@ class handle_pool_core {
     size_type index_ = 0;
   };
 
-  // `Capacity == 0 ? 1 : Capacity` throughout: a zero-capacity pool is a valid
-  // degenerate case (every other fixed-capacity METL container accepts one), and
-  // a zero-length array is not. Every operation still behaves correctly --
-  // try_emplace returns a null handle because free_head_ (0) is already >=
-  // Capacity, and nothing ever indexes the padding element.
-  storage_type storage_[Capacity == 0 ? 1 : Capacity];
+  // Capacity >= 1 here: a zero-capacity pool is the specialisation below.
+  storage_type storage_[Capacity];
   // Odd while the slot is live, even while it is free: the parity is the
   // liveness flag, so a slot needs no flag of its own.
-  generation_type generation_[Capacity == 0 ? 1 : Capacity];
+  generation_type generation_[Capacity];
   size_type free_head_;
   // The last free slot; the constructors link 0 .. Capacity-1 in order.
   size_type free_tail_ = last_slot;
   size_type size_;
   static constexpr size_type last_slot = Capacity == 0 ? 0 : Capacity - 1;
+};
+
+// A pool with no slots (#696). It holds nothing at all, so it is an empty
+// class, where the general core above would keep one slot, its generation and
+// its counters. Every operation answers as the general core does when the pool
+// is full and empty at once: no handle it is given can be live.
+template <typename T, typename GenT>
+class handle_pool_core<T, 0, GenT> {
+ public:
+  using value_type = T;
+  using size_type = std::size_t;
+  using index_type = std::uint16_t;
+  using generation_type = GenT;
+  using pointer = T*;
+  using const_pointer = const T*;
+  using handle_type = versioned_handle<handle_pool<T, 0, GenT>, index_type, GenT>;
+
+  static constexpr size_type max_capacity = static_cast<size_type>(handle_type::max_index);
+
+  handle_pool_core() noexcept = default;
+
+#if defined(__cpp_lib_bit_cast) && defined(__cpp_constexpr) && __cpp_constexpr >= 201907L
+  struct constant_init_t {
+    explicit constant_init_t() = default;
+  };
+  static constexpr constant_init_t constant_init{};
+  constexpr explicit handle_pool_core(constant_init_t /*unused*/) noexcept {}
+#endif
+
+  ~handle_pool_core() = default;
+
+  handle_pool_core(const handle_pool_core&) = delete;
+  handle_pool_core& operator=(const handle_pool_core&) = delete;
+  handle_pool_core(handle_pool_core&&) = delete;
+  handle_pool_core& operator=(handle_pool_core&&) = delete;
+
+  template <typename... Args>
+  METL_NODISCARD handle_type try_emplace(Args&&... /*args*/) noexcept {
+    return handle_type{};
+  }
+
+  template <typename... Args>
+  METL_NODISCARD handle_type emplace(Args&&... args) {
+    handle_type handle = try_emplace(std::forward<Args>(args)...);
+    METL_ASSERT(handle.valid());
+    return handle;
+  }
+
+  METL_NODISCARD pointer get(handle_type /*handle*/) noexcept { return nullptr; }
+  METL_NODISCARD const_pointer get(handle_type /*handle*/) const noexcept { return nullptr; }
+  METL_NODISCARD bool contains(handle_type /*handle*/) const noexcept { return false; }
+  bool destroy(handle_type /*handle*/) noexcept { return false; }
+  void clear() noexcept {}
+  METL_NODISCARD bool empty() const noexcept { return true; }
+  METL_NODISCARD bool full() const noexcept { return true; }
+  METL_NODISCARD size_type size() const noexcept { return 0; }
+  METL_NODISCARD constexpr size_type capacity() const noexcept { return 0; }
+  METL_NODISCARD size_type available() const noexcept { return 0; }
+
+  /// @pre `index < capacity()`, which no index meets: it asserts.
+  METL_NODISCARD generation_type generation_of(index_type index) const noexcept {
+    METL_ASSERT(index < capacity());
+    (void)index;
+    return generation_type{1};
+  }
 };
 
 // The destructor: trivial when T's is, so a namespace-scope pool of such a T

@@ -88,7 +88,7 @@ include/metl/detail/ring_core.hpp
         return lhs.index_ == rhs.index_ && lhs.container_ == rhs.container_;
     compile-time: zeroes storage only during constant evaluation
         if (in_constant_evaluation()) {
-        zero_for_constant_init(storage_);
+        this->zero_storage_for_constant_init();
     compile-time: Clang folds the constexpr capacity() call; the tests check the value
         METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
     unreachable: advance at Capacity 0: its only caller, pop_front, HARDENs `size_ > 0` first, which a zero-capacity ring never satisfies
@@ -139,7 +139,7 @@ include/metl/fixed_stack.hpp
 include/metl/fixed_vector.hpp
     compile-time: zeroes storage only during constant evaluation
         if (detail::in_constant_evaluation()) {
-        detail::zero_for_constant_init(storage_);
+        this->zero_storage_for_constant_init();
 
 include/metl/in_place.hpp
     compile-time: only the inline constexpr `nullopt` object calls it
@@ -235,3 +235,40 @@ include/metl/static_unordered_set.hpp
     unreachable: rehash_in_place at Capacity 0: a zero-capacity table never has a tombstone
         if (Capacity == 0) {
         return;
+
+include/metl/arena_allocator.hpp
+    unreachable: the zero-byte arena's try_allocate and try_emplace always fail, so its asserting forms never pass their check (#696)
+        METL_ASSERT(memory != nullptr);
+        METL_ASSERT(object != nullptr);
+
+include/metl/monotonic_buffer.hpp
+    unreachable: the zero-byte buffer's try_allocate and try_emplace always fail, so its asserting forms never pass their check (#696)
+        METL_ASSERT(memory != nullptr);
+        METL_ASSERT(object != nullptr);
+
+include/metl/object_pool.hpp
+    unreachable: the zero-capacity pool's try_emplace always fails, so its emplace never passes its check (#696)
+        METL_ASSERT(object != nullptr);
+
+include/metl/handle_pool.hpp
+    unreachable: the zero-capacity pool issues no handle and has no index, so these checks never pass (#696)
+        METL_ASSERT(handle.valid());
+        METL_ASSERT(index < capacity());
+
+include/metl/detail/array_storage.hpp
+    unreachable: a zero-capacity fixed_vector stores no element, so it never asks for a slot's address (#696)
+        static constexpr void* slot(std::size_t /*index*/) noexcept { return nullptr; }
+
+include/metl/detail/capacity_storage.hpp
+    compile-time: zeroes storage only during constant evaluation
+        constexpr void zero_storage_for_constant_init() noexcept { zero_for_constant_init(storage_); }
+        static constexpr void zero_storage_for_constant_init() noexcept {}
+
+include/metl/detail/ring_core.hpp
+    unreachable: a zero-capacity ring stores no element, so no element is ever reached (#696)
+        METL_UNREACHABLE();
+        METL_UNREACHABLE();
+
+include/metl/fixed_vector.hpp
+    unreachable: a zero-capacity vector stores no element, so no slot is ever reached (#696)
+        METL_UNREACHABLE();

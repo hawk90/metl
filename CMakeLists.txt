@@ -160,7 +160,7 @@ if(METL_BUILD_TESTS)
     containers/contract_edges containers/associative_erase_iterator containers/container_edges
     containers/container_assert_trips containers/container_swap containers/moved_from_contract
     containers/intrusive_forward_list containers/intrusive_list containers/copy_move_traits
-    containers/constinit_size
+    containers/constinit_size containers/zero_capacity
     # conformance/  (one property, every registered type -- #320)
     conformance/conformance_removal conformance/conformance_capacity conformance/conformance_move
     conformance/conformance_self conformance/conformance_copy conformance/conformance_throwing
