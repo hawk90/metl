@@ -80,6 +80,20 @@ release by its `vX.Y.Z` tag and fails without one, so keep tags fetched
 (`git fetch --tags`). `git push --no-verify` skips the hook; CI still runs
 everything.
 
+The hook's Python tools use only the standard library, except one:
+`tools/check_antipatterns.py` reads YAML, so it needs PyYAML
+(`python3 -m pip install pyyaml`, or your system's `python3-yaml` package).
+
+## Anti-patterns
+
+[`tools/antipatterns.yaml`](tools/antipatterns.yaml) lists the patterns that
+caused METL bugs: the symptom, the cause, the fix, and the issue that found
+each one. Read it before you change storage layout, zero-capacity paths or
+compiler hints. When a bug's cause is a pattern that could be written again,
+add an entry in the same PR. Give it a `check` regex if the text shows it, or
+a `caught_by` naming the CI job or test that does. `tools/check_antipatterns.py`
+runs every check at each push.
+
 ## Gates
 
 Beyond build and tests, CI runs scripts that each hold one claim of the
