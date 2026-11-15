@@ -275,6 +275,13 @@ union expected_error_union<E, true> {
 template <typename T, typename E>
 class expected_core {
  public:
+  // Declared before the constructors: GCC 9 does not look ahead to later
+  // members from a noexcept-specifier.
+  static constexpr bool nothrow_move_construct =
+      std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_constructible_v<E>;
+  static constexpr bool nothrow_move_assign =
+      std::is_nothrow_move_assignable_v<T> && std::is_nothrow_move_constructible_v<T> &&
+      std::is_nothrow_move_assignable_v<E> && std::is_nothrow_move_constructible_v<E>;
   template <typename Tag, typename... Args>
   constexpr expected_core(expected_state state, Tag tag, Args&&... args)
       : storage_(tag, std::forward<Args>(args)...), state_(state) {}
@@ -305,12 +312,6 @@ class expected_core {
   expected_core& operator=(const expected_core&) = default;
   expected_core& operator=(expected_core&&) = default;
   ~expected_core() = default;
-
-  static constexpr bool nothrow_move_construct =
-      std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_constructible_v<E>;
-  static constexpr bool nothrow_move_assign =
-      std::is_nothrow_move_assignable_v<T> && std::is_nothrow_move_constructible_v<T> &&
-      std::is_nothrow_move_assignable_v<E> && std::is_nothrow_move_constructible_v<E>;
 
  protected:
   // A member destructor that reaches back into the expected finds it
@@ -553,6 +554,11 @@ class expected_core {
 template <typename E>
 class expected_void_core {
  public:
+  // Declared before the constructors: GCC 9 does not look ahead to later
+  // members from a noexcept-specifier.
+  static constexpr bool nothrow_move_construct = std::is_nothrow_move_constructible_v<E>;
+  static constexpr bool nothrow_move_assign =
+      std::is_nothrow_move_constructible_v<E> && std::is_nothrow_move_assignable_v<E>;
   template <typename... Args>
   constexpr expected_void_core(expected_state state, unexpect_t tag, Args&&... args)
       : storage_(tag, std::forward<Args>(args)...), state_(state) {}
@@ -576,10 +582,6 @@ class expected_void_core {
   expected_void_core& operator=(const expected_void_core&) = default;
   expected_void_core& operator=(expected_void_core&&) = default;
   ~expected_void_core() = default;
-
-  static constexpr bool nothrow_move_construct = std::is_nothrow_move_constructible_v<E>;
-  static constexpr bool nothrow_move_assign =
-      std::is_nothrow_move_constructible_v<E> && std::is_nothrow_move_assignable_v<E>;
 
  protected:
   METL_DETAIL_CONSTEXPR20 void destroy_active() noexcept {
