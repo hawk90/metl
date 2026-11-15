@@ -115,13 +115,20 @@ import tempfile
 # At N = 1024: object_pool 268,212 -> 248,748, handle_pool 231,798 -> 216,436
 # (about 19 and 15 instructions a slot). At N = 4 and 64 the saving is inside
 # the tolerance.
+#
+# Raised by PR #700 (its bench-smoke run): fill + clear and push_overwrite now
+# escape their container first, so the compiler can no longer drop the element
+# stores as dead. fill + clear went 1,150,301 -> 3,250,299 (230 -> 650 an
+# iteration, about 10 a push_back), push_overwrite 30,298 -> 70,237 (6 -> 14).
+# The old counts were bookkeeping with some or all of the element stores
+# removed; the library code did not change.
 BUDGETS = {
     "metl_bench_containers::crc32 over 1 KiB": 58_915_533,
-    "metl_bench_containers::fixed_vector<64> fill + clear": 1_150_301,
+    "metl_bench_containers::fixed_vector<64> fill + clear": 3_250_299,
     "metl_bench_containers::flat_map<256> find (hit)": 503_612,
     "metl_bench_containers::flat_map<256> find (miss)": 649_597,
     "metl_bench_containers::ring_buffer<64> push + pop": 100_661,
-    "metl_bench_containers::ring_buffer<64> push_overwrite": 30_298,
+    "metl_bench_containers::ring_buffer<64> push_overwrite": 70_237,
     "metl_bench_containers::static_unordered_map<256> find (hit)": 241_142,
     "metl_bench_containers::static_unordered_map<256> find (miss)": 282_659,
     "metl_bench_mpmc::mpmc_queue push + pop": 163_039,
