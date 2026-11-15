@@ -186,11 +186,16 @@ import tempfile
 # Lowered by #168 (PR #672, run 41983220910): the probe builds without NDEBUG, and
 # the default hardening level is now FAST rather than DEBUG there, so its
 # METL_DASSERT checks compile out: M0 -32, M3 -16, M4 -12, M7 -16.
+#
+# Lowered by #271 (PR #695, run 43711644545): object_pool and handle_pool are
+# trivially destructible when T is, so the probe's two function-local pools of
+# std::uint32_t no longer run clear() at scope exit: M0 -128, M3 -120, M4 -120,
+# M7 -120.
 BUDGETS = {
-    "cortex-m0": 4256,
-    "cortex-m3": 4272,
-    "cortex-m4": 4272,
-    "cortex-m7": 4272,
+    "cortex-m0": 4128,
+    "cortex-m3": 4152,
+    "cortex-m4": 4152,
+    "cortex-m7": 4152,
 }
 
 # No tolerance on any of the three sizes (#587). The toolchain does not move them

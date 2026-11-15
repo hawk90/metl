@@ -68,6 +68,9 @@ class arena_allocator {
   /// @brief Destroys every object still in the arena (`reset()`), newest first,
   ///        so an owning `T` created by `try_emplace` does not leak when the
   ///        caller never resets.
+  /// @note Never trivial, unlike `object_pool` and `handle_pool`: the arena's
+  ///       type does not say what it holds, only its records do, so a
+  ///       namespace-scope arena always registers this destructor (#271).
   ~arena_allocator() { reset(); }
 
   // Not copyable or movable. The destroy records point into this object's own
