@@ -33,21 +33,23 @@ void maybe_throw() {
 }
 
 // Default construction is fine; only the move can throw (#275).
-struct move_throwing_hash {
-  move_throwing_hash() = default;
-  move_throwing_hash(const move_throwing_hash&) = default;
-  move_throwing_hash(move_throwing_hash&&) { maybe_throw(); }
-  move_throwing_hash& operator=(const move_throwing_hash&) = default;
-  move_throwing_hash& operator=(move_throwing_hash&&) = default;
+// The containers' moves copy the Hash and KeyEqual (#691), so it is their copy
+// that can throw.
+struct copy_throwing_hash {
+  copy_throwing_hash() = default;
+  copy_throwing_hash(const copy_throwing_hash& /*unused*/) { maybe_throw(); }
+  copy_throwing_hash(copy_throwing_hash&&) noexcept = default;
+  copy_throwing_hash& operator=(const copy_throwing_hash&) = default;
+  copy_throwing_hash& operator=(copy_throwing_hash&&) = default;
   std::size_t operator()(int key) const noexcept { return static_cast<std::size_t>(key); }
 };
 
-struct move_throwing_equal {
-  move_throwing_equal() = default;
-  move_throwing_equal(const move_throwing_equal&) = default;
-  move_throwing_equal(move_throwing_equal&&) { maybe_throw(); }
-  move_throwing_equal& operator=(const move_throwing_equal&) = default;
-  move_throwing_equal& operator=(move_throwing_equal&&) = default;
+struct copy_throwing_equal {
+  copy_throwing_equal() = default;
+  copy_throwing_equal(const copy_throwing_equal& /*unused*/) { maybe_throw(); }
+  copy_throwing_equal(copy_throwing_equal&&) noexcept = default;
+  copy_throwing_equal& operator=(const copy_throwing_equal&) = default;
+  copy_throwing_equal& operator=(copy_throwing_equal&&) = default;
   bool operator()(int lhs, int rhs) const noexcept { return lhs == rhs; }
 };
 
@@ -104,15 +106,15 @@ static_assert(std::is_nothrow_default_constructible_v<map_plain>, "and the ordin
 static_assert(!std::is_nothrow_default_constructible_v<set_hash>, "set: throwing Hash");
 static_assert(!std::is_nothrow_default_constructible_v<set_equal>, "set: throwing KeyEqual");
 static_assert(std::is_nothrow_default_constructible_v<set_plain>, "set: ordinary");
-// The move constructors move the Hash and KeyEqual too (#275).
-using map_move_hash = metl::static_unordered_map<int, int, 4, move_throwing_hash>;
-using map_move_equal = metl::static_unordered_map<int, int, 4, std::hash<int>, move_throwing_equal>;
-using set_move_hash = metl::static_unordered_set<int, 4, move_throwing_hash>;
-using set_move_equal = metl::static_unordered_set<int, 4, std::hash<int>, move_throwing_equal>;
-static_assert(!std::is_nothrow_move_constructible_v<map_move_hash>, "map: Hash whose move can throw");
-static_assert(!std::is_nothrow_move_constructible_v<map_move_equal>, "map: KeyEqual whose move can throw");
-static_assert(!std::is_nothrow_move_constructible_v<set_move_hash>, "set: Hash whose move can throw");
-static_assert(!std::is_nothrow_move_constructible_v<set_move_equal>, "set: KeyEqual whose move can throw");
+// The move constructors copy the Hash and KeyEqual (#275, #691).
+using map_move_hash = metl::static_unordered_map<int, int, 4, copy_throwing_hash>;
+using map_move_equal = metl::static_unordered_map<int, int, 4, std::hash<int>, copy_throwing_equal>;
+using set_move_hash = metl::static_unordered_set<int, 4, copy_throwing_hash>;
+using set_move_equal = metl::static_unordered_set<int, 4, std::hash<int>, copy_throwing_equal>;
+static_assert(!std::is_nothrow_move_constructible_v<map_move_hash>, "map: Hash whose copy can throw");
+static_assert(!std::is_nothrow_move_constructible_v<map_move_equal>, "map: KeyEqual whose copy can throw");
+static_assert(!std::is_nothrow_move_constructible_v<set_move_hash>, "set: Hash whose copy can throw");
+static_assert(!std::is_nothrow_move_constructible_v<set_move_equal>, "set: KeyEqual whose copy can throw");
 static_assert(std::is_nothrow_move_constructible_v<map_plain>, "the ordinary map's move stays noexcept");
 static_assert(std::is_nothrow_move_constructible_v<set_plain>, "the ordinary set's move stays noexcept");
 static_assert(!std::is_nothrow_default_constructible_v<table_throwing>,

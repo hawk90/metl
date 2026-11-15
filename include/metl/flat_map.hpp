@@ -39,6 +39,7 @@
 #include "metl/detail/array_storage.hpp"
 #include "metl/detail/constant_init.hpp"
 #include "metl/detail/copy_move_gate.hpp"
+#include "metl/detail/functor_move.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
 #include "metl/type_traits.hpp"
@@ -143,16 +144,17 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
   }
 
   /// @brief Move-construct, moving elements out of @p other and leaving it empty.
-  /// @note The comparator is moved too, so a stateful one may leave @p other unable
-  ///       to take new elements (#317). A pointer into @p other names a destroyed object.
+  /// @note The comparator is copied, not moved, so @p other keeps a working one and
+  ///       takes new elements (#691); a move-only comparator is moved. A pointer into
+  ///       @p other names a destroyed object.
   // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
   // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
-  flat_map(
-      detail::gated_param<std::is_move_constructible_v<value_type> && std::is_move_constructible_v<Compare>,
-                          flat_map&&,
-                          1> other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
-                                             std::is_nothrow_move_constructible_v<Compare>)
-      : flat_map(adopt_compare{}, static_cast<Compare&&>(other.comp_)) {
+  flat_map(detail::gated_param<std::is_move_constructible_v<value_type> &&
+                                   detail::functor_move_constructible_v<Compare>,
+                               flat_map&&,
+                               1> other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
+                                                  detail::functor_nothrow_move_constructible_v<Compare>)
+      : flat_map(adopt_compare{}, detail::functor_move_source(other.comp_)) {
     // `other` is already sorted and unique, so its elements are appended in
     // order: no comparison runs, which is what makes the noexcept above true
     // for a comparator that can throw.
@@ -180,20 +182,20 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
   }
 
   /// @brief Move-assign from @p other, leaving it empty (self-assignment safe).
-  /// @note The comparator is moved too, so a stateful one may leave @p other unable
-  ///       to take new elements (#317). A pointer into @p other names a destroyed object.
-  flat_map& operator=(
-      detail::gated_param<std::is_move_constructible_v<value_type> && std::is_move_assignable_v<Compare>,
-                          flat_map&&,
-                          3> other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
-                                             std::is_nothrow_move_assignable_v<value_type> &&
-                                             std::is_nothrow_move_assignable_v<Compare>) {
+  /// @note The comparator is copied, not moved, as in the move constructor (#691).
+  ///       A pointer into @p other names a destroyed object.
+  flat_map& operator=(detail::gated_param<
+                      std::is_move_constructible_v<value_type> && detail::functor_move_assignable_v<Compare>,
+                      flat_map&&,
+                      3> other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
+                                         std::is_nothrow_move_assignable_v<value_type> &&
+                                         detail::functor_nothrow_move_assignable_v<Compare>) {
     if (this == &other) {
       return *this;
     }
 
     clear();
-    comp_ = static_cast<Compare&&>(other.comp_);
+    comp_ = detail::functor_move_assign_source(other.comp_);
     // `other` is already sorted and unique, so its elements are appended in
     // order: no comparison runs, which is what makes the noexcept above true
     // for a comparator that can throw.
@@ -612,11 +614,12 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
       ++size_;
     }
   }
-  // Empty map that MOVES its comparator in; the move constructor delegates
-  // here (the public comparator constructor copies).
+  // Empty map built from the source's comparator as the move
+  // constructor hands it over: a copy, or a move for a move-only one (#691).
   struct adopt_compare {};
-  flat_map(adopt_compare, Compare&& comp) noexcept(std::is_nothrow_move_constructible_v<Compare>)
-      : comp_(static_cast<Compare&&>(comp)), size_(0) {}
+  flat_map(adopt_compare, detail::functor_move_source_t<Compare> comp) noexcept(
+      detail::functor_nothrow_move_constructible_v<Compare>)
+      : comp_(static_cast<detail::functor_move_source_t<Compare>>(comp)), size_(0) {}
 
   METL_NODISCARD value_type* data() noexcept { return storage_.data(); }
   METL_NODISCARD const value_type* data() const noexcept { return storage_.data(); }

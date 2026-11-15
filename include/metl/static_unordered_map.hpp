@@ -97,6 +97,7 @@
 #include "metl/detail/bitset.hpp"
 #include "metl/detail/constant_init.hpp"
 #include "metl/detail/copy_move_gate.hpp"
+#include "metl/detail/functor_move.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
 #include "metl/hash.hpp"
@@ -318,24 +319,27 @@ class static_unordered_map
   }
 
   /// @brief Move-construct, moving elements out of @p other and leaving it empty.
-  /// @note The hasher and key-equal are moved too, so a stateful one may leave @p other unable
-  ///       to take new elements (#317). A pointer into @p other names a destroyed object.
+  /// @note The hasher and key-equal are copied, not moved, so @p other keeps working ones
+  ///       and takes new elements (#691); a move-only one is moved. A pointer into @p other
+  ///       names a destroyed object.
   //
   // The elements are re-inserted, which runs the hasher and key comparison, and
-  // the Hash and KeyEqual are moved first, so the move is noexcept only when all
+  // the Hash and KeyEqual are copied first, so the move is noexcept only when all
   // of those are (a throw from one used to end in std::terminate).
   // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
   // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
   static_unordered_map(
-      detail::gated_param<std::is_move_constructible_v<value_type> && std::is_move_constructible_v<Hash> &&
-                              std::is_move_constructible_v<KeyEqual>,
+      detail::gated_param<std::is_move_constructible_v<value_type> &&
+                              detail::functor_move_constructible_v<Hash> &&
+                              detail::functor_move_constructible_v<KeyEqual>,
                           static_unordered_map&&,
                           1> other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
                                              lookup_cannot_throw<key_type> &&
-                                             std::is_nothrow_move_constructible_v<Hash> &&
-                                             std::is_nothrow_move_constructible_v<KeyEqual>)
-      : static_unordered_map(
-            empty_with{}, static_cast<Hash&&>(other.hasher_), static_cast<KeyEqual&&>(other.key_equal_)) {
+                                             detail::functor_nothrow_move_constructible_v<Hash> &&
+                                             detail::functor_nothrow_move_constructible_v<KeyEqual>)
+      : static_unordered_map(empty_with{},
+                             detail::functor_move_source(other.hasher_),
+                             detail::functor_move_source(other.key_equal_)) {
     for (auto& item : other) {
       emplace(static_cast<Key&&>(item.key), static_cast<T&&>(item.value));
     }
@@ -365,23 +369,24 @@ class static_unordered_map
   }
 
   /// @brief Move-assign from @p other, leaving it empty (self-assignment safe).
-  /// @note The hasher and key-equal are moved too, so a stateful one may leave @p other unable
-  ///       to take new elements (#317). A pointer into @p other names a destroyed object.
+  /// @note The hasher and key-equal are copied, not moved, as in the move constructor
+  ///       (#691). A pointer into @p other names a destroyed object.
   static_unordered_map& operator=(
-      detail::gated_param<std::is_move_constructible_v<value_type> && std::is_move_assignable_v<Hash> &&
-                              std::is_move_assignable_v<KeyEqual>,
+      detail::gated_param<std::is_move_constructible_v<value_type> &&
+                              detail::functor_move_assignable_v<Hash> &&
+                              detail::functor_move_assignable_v<KeyEqual>,
                           static_unordered_map&&,
                           3> other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
-                                             std::is_nothrow_move_assignable_v<Hash> &&
-                                             std::is_nothrow_move_assignable_v<KeyEqual> &&
+                                             detail::functor_nothrow_move_assignable_v<Hash> &&
+                                             detail::functor_nothrow_move_assignable_v<KeyEqual> &&
                                              lookup_cannot_throw<key_type>) {
     if (this == &other) {
       return *this;
     }
 
     clear();
-    hasher_ = static_cast<Hash&&>(other.hasher_);
-    key_equal_ = static_cast<KeyEqual&&>(other.key_equal_);
+    hasher_ = detail::functor_move_assign_source(other.hasher_);
+    key_equal_ = detail::functor_move_assign_source(other.key_equal_);
     for (auto& item : other) {
       emplace(static_cast<Key&&>(item.key), static_cast<T&&>(item.value));
     }
