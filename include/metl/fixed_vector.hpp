@@ -573,7 +573,7 @@ class fixed_vector : detail::no_implicit_copy_move<fixed_vector<T, Capacity>> {
       data()[i - erase_count] = static_cast<T&&>(data()[i]);
     }
     const size_type old_size = size_;
-    size_ -= erase_count;  // shrink first, as in pop_back
+    size_ = static_cast<decltype(size_)>(size_ - erase_count);  // shrink first, as in pop_back
     for (size_type i = size_; i < old_size; ++i) {
       destroy_element(i);
     }
@@ -718,7 +718,7 @@ class fixed_vector : detail::no_implicit_copy_move<fixed_vector<T, Capacity>> {
       for (size_type i = longer.size_; i > old_shorter; --i) {
         longer.destroy_element(i - 1);
       }
-      longer.size_ = old_shorter;
+      longer.size_ = static_cast<decltype(longer.size_)>(old_shorter);
     }
     asan_poison_tail_();
     other.asan_poison_tail_();
@@ -810,7 +810,7 @@ class fixed_vector : detail::no_implicit_copy_move<fixed_vector<T, Capacity>> {
   // constant-evaluated is ill-formed, no diagnostic required (S3 in
   // tools/check_source_rules.py, #581).
   detail::array_storage<T, (Capacity == 0 ? 1 : Capacity)> storage_;
-  size_type size_;
+  detail::stored_size_t<Capacity, T> size_;
 };
 
 /// Returns true if both vectors have the same size and equal elements.

@@ -369,7 +369,7 @@ class ring_core : no_implicit_copy_move<ring_core<T, Capacity>> {
     // Unlink first, then destroy: a destructor that calls back into the ring
     // must see the element gone, not destroy it a second time.
     T& leaving = storage_at(head_);
-    head_ = advance(head_);
+    head_ = static_cast<decltype(head_)>(advance(head_));
     --size_;
     leaving.~T();
   }
@@ -461,8 +461,8 @@ class ring_core : no_implicit_copy_move<ring_core<T, Capacity>> {
   const T& storage_at(size_type index) const noexcept { return storage_.items[index].ref(); }
 
   slot_array<storage_type, (Capacity == 0 ? 1 : Capacity)> storage_;
-  size_type head_;
-  size_type size_;
+  stored_size_t<Capacity, T> head_;
+  stored_size_t<Capacity, T> size_;
 };
 
 }  // namespace detail

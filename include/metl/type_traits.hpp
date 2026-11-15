@@ -3,6 +3,7 @@
 #include "metl/detail/abi.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <new>
 #include <type_traits>
 
@@ -260,6 +261,53 @@ inline constexpr bool dependent_true_v = true;
 // for such a T, instead of the base failing first on a member it cannot form.
 template <typename T>
 using object_or_placeholder_t = std::conditional_t<std::is_object_v<T> && !std::is_array_v<T>, T, int>;
+
+// The unsigned type of exactly Bytes bytes (1, 2, 4 or 8).
+template <std::size_t Bytes>
+using unsigned_of_size_t =
+    std::conditional_t<Bytes == 1,
+                       std::uint8_t,
+                       std::conditional_t<Bytes == 2,
+                                          std::uint16_t,
+                                          std::conditional_t<Bytes == 4, std::uint32_t, std::uint64_t>>>;
+
+// How many bytes a count up to n needs. Compared as 64-bit, so a 32-bit
+// size_t does not make the last test a tautology.
+constexpr std::size_t count_bytes(std::size_t n) noexcept {
+  const auto wide = static_cast<std::uint64_t>(n);
+  if (wide <= 0xFFU) {
+    return 1;
+  }
+  if (wide <= 0xFFFFU) {
+    return 2;
+  }
+  if (wide <= 0xFFFFFFFFU) {
+    return 4;
+  }
+  return 8;
+}
+template <std::size_t N>
+inline constexpr std::size_t count_bytes_v = count_bytes(N);
+
+// How wide a fixed-capacity container's stored size is, in bytes: enough for
+// Capacity, but not narrower than T's alignment (capped at size_t's width).
+// Narrower than that would only turn into padding.
+constexpr std::size_t stored_size_bytes(std::size_t count_bytes, std::size_t align) noexcept {
+  const std::size_t floor = align < sizeof(std::size_t) ? align : sizeof(std::size_t);
+  return count_bytes > floor ? count_bytes : floor;
+}
+template <std::size_t Capacity, typename T>
+inline constexpr std::size_t stored_size_bytes_v = stored_size_bytes(count_bytes_v<Capacity>, alignof(T));
+
+// The type a fixed-capacity container stores its size in, and a ring its head
+// (#318 section 3). It narrows only where that makes the container smaller: a
+// container of std::uint8_t stores a byte, one of int keeps a size_t. At
+// size_t's width it is size_t itself, so those containers' code does not change.
+// The interface still speaks size_type.
+template <std::size_t Capacity, typename T>
+using stored_size_t = std::conditional_t<stored_size_bytes_v<Capacity, T> == sizeof(std::size_t),
+                                         std::size_t,
+                                         unsigned_of_size_t<stored_size_bytes_v<Capacity, T>>>;
 
 }  // namespace detail
 

@@ -606,13 +606,23 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
 
   template <typename K>
   METL_NODISCARD bool try_insert_at(size_type index, K&& key) {
-    if (full()) {
+    // A zero-capacity set never takes an element. Said here rather than
+    // found by full() at run time: the shifting insert would otherwise be
+    // compiled for a buffer with no slot, which GCC reports as out of bounds
+    // (-Warray-bounds) although it never runs, as in arena_allocator.
+    if constexpr (Capacity == 0) {
+      (void)index;
+      (void)key;
       return false;
-    }
+    } else {
+      if (full()) {
+        return false;
+      }
 
-    value_type entry(std::forward<K>(key));
-    insert_shifting(index, static_cast<value_type&&>(entry));
-    return true;
+      value_type entry(std::forward<K>(key));
+      insert_shifting(index, static_cast<value_type&&>(entry));
+      return true;
+    }
   }
 
   // Inserts `entry` at `index`, shifting [index, size_) right by one, the way
@@ -769,7 +779,7 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
   // constant-evaluable, so nothing that reaches it is constexpr. The constructor
   // is, and it does not touch the storage.
   detail::array_storage<value_type, (Capacity == 0 ? 1 : Capacity)> storage_;
-  size_type size_;
+  detail::stored_size_t<Capacity, value_type> size_;
 };
 
 /// @brief Swaps the contents of two flat_sets of the same type, capacity and comparator.

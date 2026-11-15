@@ -91,7 +91,7 @@ class fixed_deque : public detail::ring_core<T, Capacity> {
     // unconstructed slot, which cannot be undone without moving it (#638).
     const auto previous_head = this->head_;
     const auto slot = this->retreat(this->head_);
-    this->head_ = slot;
+    this->head_ = static_cast<decltype(this->head_)>(slot);
     const auto claimed = ++this->size_;
     auto undo = make_scope_exit([this, previous_head, slot, claimed]() noexcept {
       METL_HARDEN(this->head_ == slot && this->size_ == claimed);
