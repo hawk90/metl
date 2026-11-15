@@ -181,6 +181,7 @@ if(METL_BUILD_TESTS)
     vocab/expected_trivial_destructor vocab/optional_triviality vocab/expected_triviality
     vocab/span vocab/function_ref
     vocab/fixed_function vocab/fixed_function_const vocab/fixed_function_null vocab/callable_reentrancy vocab/delegate
+    vocab/callable_as_functor
     vocab/callable_reference_return vocab/vocab_std_parity vocab/vocab_constant_init
     vocab/intrusive_ptr vocab/intrusive_ptr_atomic vocab/intrusive_ptr_contract vocab/intrusive_ptr_alias vocab/scope_exit vocab/type_traits
     vocab/emplace_self_alias vocab/vocab_assignment vocab/versioned_handle vocab/expected_reentrancy
