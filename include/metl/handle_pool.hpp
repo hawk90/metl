@@ -19,79 +19,17 @@
 namespace metl {
 METL_DETAIL_ABI_BEGIN
 
-/// @brief Slot-based object pool addressed by generation-tagged handles.
-///
-/// Same fixed-capacity, zero-heap model as `object_pool`, with one difference
-/// that follows from replacing the raw pointer with a `versioned_handle`:
-/// **use-after-free is detected, not undefined.** Every slot carries a
-/// generation counter that is bumped on destroy, so a handle to a destroyed
-/// object no longer matches its slot and `get()` returns `nullptr` instead of a
-/// dangling pointer into a recycled slot. This also gives a weak reference for
-/// free: hold the handle, check on each use.
-///
-/// Both pools allocate in O(1) from an intrusive free list, so capacity does
-/// not decide between them. Measured with `bench/bench_pools.cpp` on an arm64
-/// host (Apple clang, -O2), allocate-and-free churn at the tail:
-///
-///   | Capacity | `object_pool` | `handle_pool` |
-///   |----------|---------------|---------------|
-///   | 4        | 2.7 ns        | 1.8 ns        |
-///   | 64       | 4.0 ns        | 2.5 ns        |
-///   | 1024     | 4.0 ns        | 2.5 ns        |
-///
-/// A `get()` that checks the generation costs about 0.4 ns. Pick on the
-/// property you need: a raw pointer, or a handle that detects reuse.
-///
-/// The handle is 32 bits by default (16-bit index + 16-bit generation) and
-/// makes no assumption whatsoever about pointer representation, which is what
-/// makes it portable to targets where the spare bits of a pointer belong to the
-/// hardware (AArch64 PAC/MTE, x86-64 LA57/LAM). See versioned_handle.hpp.
-///
-/// Progress guarantees:
-///
-///   | Operation                   | Guarantee            |
-///   |-----------------------------|----------------------|
-///   | `try_emplace` / `destroy`   | wait-free, bounded, **plus `T`'s constructor / `~T()`** |
-///   | `get` / `contains`          | wait-free, bounded   |
-///   | constructor / `clear`       | bounded, O(Capacity), **plus `~T()` for each live object in `clear`** |
-///
-/// @par Reference invalidation
-/// Objects never move: `try_emplace`/`emplace` invalidate nothing, and
-/// `destroy` ends only the object its handle names. That handle stops resolving
-/// (its slot's generation changes); other handles, and pointers to other
-/// objects, stay valid. `clear` ends them all.
-///
-/// @tparam T Pooled object type.
-/// @tparam Capacity Number of slots (fixed at compile time).
-/// @tparam GenT Unsigned generation counter type. Widening it to `std::uint32_t`
-///         costs 2 bytes per slot and pushes the handle to 64 bits.
-///
-/// @warning **Generation wraparound.** Issued generations are the odd values
-///          of `GenT` (an even one marks the slot free), so after
-///          `2^(8*sizeof(GenT) - 1)` destroy cycles on the *same slot*,
-///          generations repeat and a handle retained across all of them can
-///          alias a new object. With the default 16-bit counter that is 32768
-///          cycles per slot. This is inherent to generation tagging; use a
-///          wider `GenT` when handles are held for unbounded periods. A 32-bit
-///          counter gives 2^31 cycles per slot. Freed slots are reused oldest
-///          first, so steady churn of one object walks every slot in turn and
-///          a slot wraps only after all of them have taken as many cycles (#642).
-///
-/// @warning **A handle names a slot, not a pool.** A handle from one
-///          `handle_pool<T, N>` is also accepted by every other pool of the same
-///          type, and resolves to whatever that pool holds in the same slot with
-///          the same generation (#316). Two pools of one type that hand out
-///          handles to the same code need a wrapper type, or a pool id kept
-///          beside the handle.
-///
-/// @note Not thread-safe. Concurrent use needs external synchronisation. No
-///       lock-free variant is planned; `metl::atomic_handle` (atomic_handle.hpp)
-///       is the capability-gated building block for one (it needs a single-word
-///       CAS, which Cortex-M0 lacks).
-///
-/// @see object_pool for the pointer-addressed equivalent.
 template <typename T, std::size_t Capacity, typename GenT = std::uint16_t>
-class handle_pool {
+class handle_pool;
+
+namespace detail {
+
+// The whole pool except its destructor, so that the destructor can be trivial
+// when T's is (handle_pool_destroy_layer below, #271). handle_pool exposes the
+// public part; the documentation of each operation is here. Handles stay
+// tagged with handle_pool itself.
+template <typename T, std::size_t Capacity, typename GenT>
+class handle_pool_core {
   static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
 
  public:
@@ -105,7 +43,7 @@ class handle_pool {
   /// Handle type issued by this pool. Tagged with the pool type, so a handle
   /// from a differently-parameterised pool is a compile error rather than a
   /// silent index mix-up.
-  using handle_type = versioned_handle<handle_pool, index_type, GenT>;
+  using handle_type = versioned_handle<handle_pool<T, Capacity, GenT>, index_type, GenT>;
 
   /// Largest `Capacity` a slot index can address, derived from the handle's own
   /// index field so the two can never drift apart.
@@ -119,7 +57,7 @@ class handle_pool {
   ///       namespace-scope pool is initialized at run time, in link order.
   ///       Construct it before anything that runs earlier can reach it, or,
   ///       since C++20, use the `constant_init` constructor below.
-  handle_pool() noexcept : free_head_(0), size_(0) {
+  handle_pool_core() noexcept : free_head_(0), size_(0) {
     for (size_type i = 0; i < Capacity; ++i) {
       set_link(i, i + 1);                   // last one points at `Capacity` == end
       generation_[i] = generation_type{0};  // even: free (see generation_)
@@ -145,7 +83,7 @@ class handle_pool {
   /// something can reach before `main()`; elsewhere the default constructor
   /// costs no flash. Construction and every operation behave as for a
   /// default-constructed pool.
-  constexpr explicit handle_pool(constant_init_t) noexcept
+  constexpr explicit handle_pool_core(constant_init_t /*unused*/) noexcept
       : storage_{}, generation_{}, free_head_(0), size_(0) {
     for (size_type i = 0; i < Capacity; ++i) {
       // The bytes `set_link(i, i + 1)` would write, in this target's byte order.
@@ -160,12 +98,13 @@ class handle_pool {
   }
 #endif
 
-  ~handle_pool() { clear(); }
+  // Trivial: ending the live objects is the destroy layer's job.
+  ~handle_pool_core() = default;
 
-  handle_pool(const handle_pool&) = delete;
-  handle_pool& operator=(const handle_pool&) = delete;
-  handle_pool(handle_pool&&) = delete;
-  handle_pool& operator=(handle_pool&&) = delete;
+  handle_pool_core(const handle_pool_core&) = delete;
+  handle_pool_core& operator=(const handle_pool_core&) = delete;
+  handle_pool_core(handle_pool_core&&) = delete;
+  handle_pool_core& operator=(handle_pool_core&&) = delete;
 
   /// Constructs an object in a free slot.
   /// @return Handle to the new object, or a null handle if the pool is full
@@ -340,7 +279,7 @@ class handle_pool {
   // exception. No handle to it was handed out, so the generation goes back.
   class return_on_unwind {
    public:
-    return_on_unwind(handle_pool* pool, size_type index) noexcept : pool_(pool), index_(index) {}
+    return_on_unwind(handle_pool_core* pool, size_type index) noexcept : pool_(pool), index_(index) {}
     return_on_unwind(const return_on_unwind&) = delete;
     return_on_unwind& operator=(const return_on_unwind&) = delete;
     return_on_unwind(return_on_unwind&&) = delete;
@@ -362,7 +301,7 @@ class handle_pool {
     void dismiss() noexcept { pool_ = nullptr; }
 
    private:
-    handle_pool* pool_ = nullptr;
+    handle_pool_core* pool_ = nullptr;
     size_type index_ = 0;
   };
 
@@ -380,6 +319,145 @@ class handle_pool {
   size_type free_tail_ = last_slot;
   size_type size_;
   static constexpr size_type last_slot = Capacity == 0 ? 0 : Capacity - 1;
+};
+
+// The destructor: trivial when T's is, so a namespace-scope pool of such a T
+// registers nothing through __cxa_atexit; otherwise it ends the live objects.
+template <typename T, std::size_t Capacity, typename GenT, bool = std::is_trivially_destructible_v<T>>
+class handle_pool_destroy_layer : public handle_pool_core<T, Capacity, GenT> {
+ public:
+  using handle_pool_core<T, Capacity, GenT>::handle_pool_core;
+};
+
+template <typename T, std::size_t Capacity, typename GenT>
+class handle_pool_destroy_layer<T, Capacity, GenT, false> : public handle_pool_core<T, Capacity, GenT> {
+ public:
+  using handle_pool_core<T, Capacity, GenT>::handle_pool_core;
+  handle_pool_destroy_layer() noexcept = default;
+  ~handle_pool_destroy_layer() { this->clear(); }
+  handle_pool_destroy_layer(const handle_pool_destroy_layer&) = delete;
+  handle_pool_destroy_layer& operator=(const handle_pool_destroy_layer&) = delete;
+  handle_pool_destroy_layer(handle_pool_destroy_layer&&) = delete;
+  handle_pool_destroy_layer& operator=(handle_pool_destroy_layer&&) = delete;
+};
+
+}  // namespace detail
+
+/// @brief Slot-based object pool addressed by generation-tagged handles.
+///
+/// Same fixed-capacity, zero-heap model as `object_pool`, with one difference
+/// that follows from replacing the raw pointer with a `versioned_handle`:
+/// **use-after-free is detected, not undefined.** Every slot carries a
+/// generation counter that is bumped on destroy, so a handle to a destroyed
+/// object no longer matches its slot and `get()` returns `nullptr` instead of a
+/// dangling pointer into a recycled slot. This also gives a weak reference for
+/// free: hold the handle, check on each use.
+///
+/// Both pools allocate in O(1) from an intrusive free list, so capacity does
+/// not decide between them. Measured with `bench/bench_pools.cpp` on an arm64
+/// host (Apple clang, -O2), allocate-and-free churn at the tail:
+///
+///   | Capacity | `object_pool` | `handle_pool` |
+///   |----------|---------------|---------------|
+///   | 4        | 2.7 ns        | 1.8 ns        |
+///   | 64       | 4.0 ns        | 2.5 ns        |
+///   | 1024     | 4.0 ns        | 2.5 ns        |
+///
+/// A `get()` that checks the generation costs about 0.4 ns. Pick on the
+/// property you need: a raw pointer, or a handle that detects reuse.
+///
+/// The handle is 32 bits by default (16-bit index + 16-bit generation) and
+/// makes no assumption whatsoever about pointer representation, which is what
+/// makes it portable to targets where the spare bits of a pointer belong to the
+/// hardware (AArch64 PAC/MTE, x86-64 LA57/LAM). See versioned_handle.hpp.
+///
+/// Progress guarantees:
+///
+///   | Operation                   | Guarantee            |
+///   |-----------------------------|----------------------|
+///   | `try_emplace` / `destroy`   | wait-free, bounded, **plus `T`'s constructor / `~T()`** |
+///   | `get` / `contains`          | wait-free, bounded   |
+///   | constructor / `clear`       | bounded, O(Capacity), **plus `~T()` for each live object in `clear`** |
+///
+/// @par Reference invalidation
+/// Objects never move: `try_emplace`/`emplace` invalidate nothing, and
+/// `destroy` ends only the object its handle names. That handle stops resolving
+/// (its slot's generation changes); other handles, and pointers to other
+/// objects, stay valid. `clear` ends them all.
+///
+/// @tparam T Pooled object type.
+/// @tparam Capacity Number of slots (fixed at compile time).
+/// @tparam GenT Unsigned generation counter type. Widening it to `std::uint32_t`
+///         costs 2 bytes per slot and pushes the handle to 64 bits.
+///
+/// @warning **Generation wraparound.** Issued generations are the odd values
+///          of `GenT` (an even one marks the slot free), so after
+///          `2^(8*sizeof(GenT) - 1)` destroy cycles on the *same slot*,
+///          generations repeat and a handle retained across all of them can
+///          alias a new object. With the default 16-bit counter that is 32768
+///          cycles per slot. This is inherent to generation tagging; use a
+///          wider `GenT` when handles are held for unbounded periods. A 32-bit
+///          counter gives 2^31 cycles per slot. Freed slots are reused oldest
+///          first, so steady churn of one object walks every slot in turn and
+///          a slot wraps only after all of them have taken as many cycles (#642).
+///
+/// @warning **A handle names a slot, not a pool.** A handle from one
+///          `handle_pool<T, N>` is also accepted by every other pool of the same
+///          type, and resolves to whatever that pool holds in the same slot with
+///          the same generation (#316). Two pools of one type that hand out
+///          handles to the same code need a wrapper type, or a pool id kept
+///          beside the handle.
+///
+/// @note Not thread-safe. Concurrent use needs external synchronisation. No
+///       lock-free variant is planned; `metl::atomic_handle` (atomic_handle.hpp)
+///       is the capability-gated building block for one (it needs a single-word
+///       CAS, which Cortex-M0 lacks).
+///
+/// @see object_pool for the pointer-addressed equivalent.
+
+template <typename T, std::size_t Capacity, typename GenT>
+class handle_pool : detail::handle_pool_destroy_layer<T, Capacity, GenT> {
+  using base = detail::handle_pool_destroy_layer<T, Capacity, GenT>;
+
+ public:
+  using base::max_capacity;
+  using typename base::const_pointer;
+  using typename base::generation_type;
+  using typename base::handle_type;
+  using typename base::index_type;
+  using typename base::pointer;
+  using typename base::size_type;
+  using typename base::value_type;
+
+  /// Constructs an empty pool with every slot free and generation 1; see
+  /// detail::handle_pool_core for when it runs.
+  handle_pool() noexcept = default;
+#if defined(__cpp_lib_bit_cast) && defined(__cpp_constexpr) && __cpp_constexpr >= 201907L
+  using base::constant_init;
+  using typename base::constant_init_t;
+  /// Constructs the same empty pool during constant evaluation (C++20); see
+  /// detail::handle_pool_core.
+  constexpr explicit handle_pool(constant_init_t tag) noexcept : base(tag) {}
+#endif
+  /// Destroys every live object; trivial when `T`'s destructor is (#271).
+  ~handle_pool() = default;
+  handle_pool(const handle_pool&) = delete;
+  handle_pool& operator=(const handle_pool&) = delete;
+  handle_pool(handle_pool&&) = delete;
+  handle_pool& operator=(handle_pool&&) = delete;
+
+  using base::available;
+  using base::capacity;
+  using base::clear;
+  using base::contains;
+  using base::destroy;
+  using base::emplace;
+  using base::empty;
+  using base::full;
+  using base::generation_of;
+  using base::get;
+  using base::size;
+  using base::try_emplace;
 };
 
 METL_DETAIL_ABI_END

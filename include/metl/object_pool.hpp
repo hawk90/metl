@@ -35,21 +35,13 @@
 namespace metl {
 METL_DETAIL_ABI_BEGIN
 
-/// Slot-based object pool with a compile-time FIXED number of slots.
-///
-/// Manages up to `Capacity` objects in inline storage; performs NO heap
-/// allocation. Objects are constructed in place and referred to by raw pointer;
-/// pointers remain stable for the object's lifetime. Non-copyable and
-/// non-movable. Not thread-safe.
-///
-/// @par Reference invalidation
-/// Objects never move: `try_emplace`/`emplace` invalidate nothing, and
-/// `destroy` ends only the object it is given. `clear` ends them all.
-///
-/// @tparam T Pooled object type.
-/// @tparam Capacity Number of slots (fixed at compile time).
+namespace detail {
+
+// The whole pool except its destructor, so that the destructor can be trivial
+// when T's is (object_pool_destroy_layer below, #271). object_pool exposes the
+// public part; the documentation of each operation is here.
 template <typename T, std::size_t Capacity>
-class object_pool {
+class object_pool_core {
   static_assert(std::is_object_v<T> && !std::is_array_v<T>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
 
  public:
@@ -61,14 +53,15 @@ class object_pool {
   /// Constructs an empty pool with all slots free.
   /// Constant-initialized at namespace scope since C++20 (see
   /// detail/constant_init.hpp); a local one stores nothing to the slots.
-  constexpr object_pool() noexcept { detail::zero_for_constant_init(storage_); }
+  constexpr object_pool_core() noexcept { detail::zero_for_constant_init(storage_); }
 
-  ~object_pool() { clear(); }
+  // Trivial: ending the live objects is the destroy layer's job.
+  ~object_pool_core() = default;
 
-  object_pool(const object_pool&) = delete;
-  object_pool& operator=(const object_pool&) = delete;
-  object_pool(object_pool&&) = delete;
-  object_pool& operator=(object_pool&&) = delete;
+  object_pool_core(const object_pool_core&) = delete;
+  object_pool_core& operator=(const object_pool_core&) = delete;
+  object_pool_core(object_pool_core&&) = delete;
+  object_pool_core& operator=(object_pool_core&&) = delete;
 
   /// Constructs an object in a free slot: the one freed last, or, if none has
   /// been freed, the lowest one never used.
@@ -209,7 +202,7 @@ class object_pool {
   // Releases a claimed slot if T's constructor exits by an exception.
   class release_on_unwind {
    public:
-    release_on_unwind(object_pool* pool, size_type index) noexcept : pool_(pool), index_(index) {}
+    release_on_unwind(object_pool_core* pool, size_type index) noexcept : pool_(pool), index_(index) {}
     release_on_unwind(const release_on_unwind&) = delete;
     release_on_unwind& operator=(const release_on_unwind&) = delete;
     release_on_unwind(release_on_unwind&&) = delete;
@@ -224,7 +217,7 @@ class object_pool {
     void dismiss() noexcept { pool_ = nullptr; }
 
    private:
-    object_pool* pool_ = nullptr;
+    object_pool_core* pool_ = nullptr;
     size_type index_ = 0;
   };
 
@@ -244,6 +237,67 @@ class object_pool {
   link_type free_head_ = 0;  // freed slots, last freed first; 0 is none
   link_type unused_ = 0;     // slots at and above this were never used
   size_type size_ = 0;
+};
+
+// The destructor: trivial when T's is, so a namespace-scope pool of such a T
+// registers nothing through __cxa_atexit; otherwise it ends the live objects.
+template <typename T, std::size_t Capacity, bool = std::is_trivially_destructible_v<T>>
+class object_pool_destroy_layer : public object_pool_core<T, Capacity> {};
+
+template <typename T, std::size_t Capacity>
+class object_pool_destroy_layer<T, Capacity, false> : public object_pool_core<T, Capacity> {
+ public:
+  constexpr object_pool_destroy_layer() noexcept = default;
+  ~object_pool_destroy_layer() { this->clear(); }
+  object_pool_destroy_layer(const object_pool_destroy_layer&) = delete;
+  object_pool_destroy_layer& operator=(const object_pool_destroy_layer&) = delete;
+  object_pool_destroy_layer(object_pool_destroy_layer&&) = delete;
+  object_pool_destroy_layer& operator=(object_pool_destroy_layer&&) = delete;
+};
+
+}  // namespace detail
+
+/// Slot-based object pool with a compile-time FIXED number of slots.
+///
+/// Manages up to `Capacity` objects in inline storage; performs NO heap
+/// allocation. Objects are constructed in place and referred to by raw pointer;
+/// pointers remain stable for the object's lifetime. Non-copyable and
+/// non-movable. Not thread-safe.
+///
+/// @par Reference invalidation
+/// Objects never move: `try_emplace`/`emplace` invalidate nothing, and
+/// `destroy` ends only the object it is given. `clear` ends them all.
+///
+/// @tparam T Pooled object type.
+/// @tparam Capacity Number of slots (fixed at compile time).
+template <typename T, std::size_t Capacity>
+class object_pool : detail::object_pool_destroy_layer<T, Capacity> {
+  using base = detail::object_pool_destroy_layer<T, Capacity>;
+
+ public:
+  using typename base::const_pointer;
+  using typename base::pointer;
+  using typename base::size_type;
+  using typename base::value_type;
+
+  constexpr object_pool() noexcept = default;
+  /// Destroys every live object; trivial when `T`'s destructor is (#271).
+  ~object_pool() = default;
+  object_pool(const object_pool&) = delete;
+  object_pool& operator=(const object_pool&) = delete;
+  object_pool(object_pool&&) = delete;
+  object_pool& operator=(object_pool&&) = delete;
+
+  using base::available;
+  using base::capacity;
+  using base::clear;
+  using base::contains;
+  using base::destroy;
+  using base::emplace;
+  using base::empty;
+  using base::full;
+  using base::size;
+  using base::try_emplace;
 };
 
 METL_DETAIL_ABI_END

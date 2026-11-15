@@ -171,6 +171,7 @@ if(METL_BUILD_TESTS)
     memory/object_pool memory/allocator_overflow
     memory/arena_throwing_ctor memory/object_pool_foreign_ptr
     memory/handle_pool memory/handle_pool_constant_init memory/pool_reentrancy
+    memory/pool_trivial_destructor
     # sync/
     sync/spsc_queue sync/atomic_ref sync/atomic_handle sync/wait
     sync/spsc_queue_cached_index sync/lock sync/mpmc_queue sync/mpmc_queue_retry sync/irq_masking sync/irq_lock_unprivileged
