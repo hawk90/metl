@@ -1,0 +1,4 @@
+- A moved-from container is now documented as valid but unspecified, as std's containers are (#317). Before, the contract was "empty and usable". It covers `fixed_vector`, `fixed_deque`, `ring_buffer`, `fixed_queue`, `fixed_stack`, `fixed_priority_queue`, `flat_map`, `flat_set`, `static_unordered_map` and `static_unordered_set`. Call `clear()` or assign to the source before relying on what it holds.
+  - The behaviour is unchanged: the source is still left empty, and its comparator, hasher and key equality still work (#691). Code that relies on the empty source should still clear it, because a later release may stop emptying it.
+  - Every pointer, reference and iterator into the source is invalidated, as before. None carries over to the destination, unlike with `std::vector`.
+  - `fixed_string` is unchanged: moving is copying, and the source keeps its contents.

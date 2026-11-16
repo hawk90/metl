@@ -42,8 +42,10 @@ METL_DETAIL_ABI_BEGIN
 /// @tparam T Element type.
 /// @tparam Capacity Maximum number of elements (fixed at compile time).
 /// @note Moving from a container, by construction or assignment, leaves the source
-///       empty and usable, and destroys its elements. A pointer into the source then
-///       names a destroyed object, unlike with `std::vector`.
+///       valid but unspecified, as std's containers do: `clear()` it or assign to it
+///       before relying on what it holds. Every pointer, reference and iterator into
+///       the source is invalidated, and none carries over to the destination, unlike
+///       with `std::vector`.
 template <typename T, std::size_t Capacity>
 class fixed_stack {
  public:

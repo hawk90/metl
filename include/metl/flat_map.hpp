@@ -146,10 +146,11 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
     append_copies_from(other);
   }
 
-  /// @brief Move-construct, moving elements out of @p other and leaving it empty.
+  /// @brief Move-construct, moving elements out of @p other and leaving it valid but
+  ///        unspecified.
   /// @note The comparator is copied, not moved, so @p other keeps a working one and
-  ///       takes new elements (#691); a move-only comparator is moved. A pointer into
-  ///       @p other names a destroyed object.
+  ///       stays usable (#691); a move-only comparator is moved. Every pointer into
+  ///       @p other is invalidated.
   // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
   // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
   flat_map(detail::gated_param<std::is_move_constructible_v<value_type> &&
@@ -184,9 +185,10 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
     return *this;
   }
 
-  /// @brief Move-assign from @p other, leaving it empty (self-assignment safe).
+  /// @brief Move-assign from @p other, leaving it valid but unspecified
+  ///        (self-assignment safe).
   /// @note The comparator is copied, not moved, as in the move constructor (#691).
-  ///       A pointer into @p other names a destroyed object.
+  ///       Every pointer into @p other is invalidated.
   flat_map& operator=(detail::gated_param<
                       std::is_move_constructible_v<value_type> && detail::functor_move_assignable_v<Compare>,
                       flat_map&&,

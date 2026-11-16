@@ -321,10 +321,11 @@ class static_unordered_map
     }
   }
 
-  /// @brief Move-construct, moving elements out of @p other and leaving it empty.
+  /// @brief Move-construct, moving elements out of @p other and leaving it valid but
+  ///        unspecified.
   /// @note The hasher and key-equal are copied, not moved, so @p other keeps working ones
-  ///       and takes new elements (#691); a move-only one is moved. A pointer into @p other
-  ///       names a destroyed object.
+  ///       and stays usable (#691); a move-only one is moved. Every pointer into @p other
+  ///       is invalidated.
   //
   // The elements are re-inserted, which runs the hasher and key comparison, and
   // the Hash and KeyEqual are copied first, so the move is noexcept only when all
@@ -371,9 +372,10 @@ class static_unordered_map
     return *this;
   }
 
-  /// @brief Move-assign from @p other, leaving it empty (self-assignment safe).
+  /// @brief Move-assign from @p other, leaving it valid but unspecified
+  ///        (self-assignment safe).
   /// @note The hasher and key-equal are copied, not moved, as in the move constructor
-  ///       (#691). A pointer into @p other names a destroyed object.
+  ///       (#691). Every pointer into @p other is invalidated.
   static_unordered_map& operator=(
       detail::gated_param<std::is_move_constructible_v<value_type> &&
                               detail::functor_move_assignable_v<Hash> &&

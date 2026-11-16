@@ -1,7 +1,12 @@
-// What a moved-from container holds (#559): the contract its header states.
-// fixed_string keeps its contents; every other fixed-capacity container is left
-// empty and usable. Usable includes its comparator, hasher and key equality,
-// which a move copies rather than moves (#691).
+// What a moved-from container holds (#559). fixed_string keeps its contents.
+// Every other fixed-capacity container is left valid but unspecified (#317), so
+// it can be cleared, assigned or given new elements, which includes calling its
+// comparator, hasher and key equality: a move copies them rather than moves them
+// (#691).
+//
+// The test also pins what this implementation leaves, an empty source, beyond
+// what the contract promises. Changing that is then a decision a test records,
+// not one that happens silently.
 
 #include "metl_check.hpp"
 

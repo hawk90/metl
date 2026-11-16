@@ -194,7 +194,8 @@ class ring_core
     }
   }
 
-  /// Move-constructs by moving each element out of `other`, leaving it empty.
+  /// Move-constructs by moving each element out of `other`, leaving it valid but
+  /// unspecified.
   // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
   // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
   ring_core(detail::gated_param<std::is_move_constructible_v<T>, ring_core&&, 1> other) noexcept(

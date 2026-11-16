@@ -159,7 +159,8 @@ class fixed_vector : detail::capacity_storage<detail::array_storage<T, Capacity>
     }
   }
 
-  /// Move-constructs by moving each element out of `other`, leaving it empty.
+  /// Move-constructs by moving each element out of `other`, leaving it valid but
+  /// unspecified.
   // The gated copy or move constructor, not a conversion (detail/copy_move_gate.hpp).
   // NOLINTNEXTLINE(cppcoreguidelines-explicit-constructor,google-explicit-constructor)
   fixed_vector(detail::gated_param<std::is_move_constructible_v<T>, fixed_vector&&, 1> other) noexcept(
@@ -201,8 +202,8 @@ class fixed_vector : detail::capacity_storage<detail::array_storage<T, Capacity>
     return *this;
   }
 
-  /// Move-assigns by moving each element out of `other`, leaving it empty. A
-  /// pointer into `other` then names a destroyed object, unlike with `std::vector`.
+  /// Move-assigns by moving each element out of `other`, leaving it valid but
+  /// unspecified. Every pointer into `other` is invalidated, unlike with `std::vector`.
   fixed_vector& operator=(detail::gated_param<std::is_move_constructible_v<T>, fixed_vector&&, 3>
                               other) noexcept(std::is_nothrow_move_constructible_v<T> &&
                                               std::is_nothrow_move_assignable_v<T>) {
