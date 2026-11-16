@@ -191,8 +191,12 @@ import tempfile
 # trivially destructible when T is, so the probe's two function-local pools of
 # std::uint32_t no longer run clear() at scope exit: M0 -128, M3 -120, M4 -120,
 # M7 -120.
+#
+# Lowered by #318 (PR #709, run 43784939235): empty comparators take no room. CI's
+# GCC 14 linked image: M0 -8, M3 0, M4 0, M7 0 (the M0 difference was not
+# disassembled).
 BUDGETS = {
-    "cortex-m0": 4128,
+    "cortex-m0": 4120,
     "cortex-m3": 4152,
     "cortex-m4": 4152,
     "cortex-m7": 4152,
@@ -255,11 +259,15 @@ RODATA_TOLERANCE_BYTES = 0
 # Raised by 8 bytes by #642 (PR #668): the probe's two handle_pools each gain
 # a 4-byte free-list tail (measured 23,048 on M3; .bss layout is the same on
 # every core).
+# Lowered by 28 bytes by #318 (PR #709, run 43784939235): the probe's flat_map,
+# flat_set, fixed_priority_queue and unordered containers no longer hold a word
+# for an empty functor (measured 22,908 on M3, M4 and M7; M0's job stopped at
+# its code budget, and .bss is a sum of sizeof, the same on every core).
 RAM_BUDGETS = {
-    "cortex-m0": 22_936,
-    "cortex-m3": 22_936,
-    "cortex-m4": 22_936,
-    "cortex-m7": 22_936,
+    "cortex-m0": 22_908,
+    "cortex-m3": 22_908,
+    "cortex-m4": 22_908,
+    "cortex-m7": 22_908,
 }
 RAM_TOLERANCE_BYTES = 0
 
