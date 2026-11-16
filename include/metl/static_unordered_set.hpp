@@ -91,6 +91,7 @@
 #include "metl/detail/bitset.hpp"
 #include "metl/detail/constant_init.hpp"
 #include "metl/detail/copy_move_gate.hpp"
+#include "metl/detail/ebo_pair.hpp"
 #include "metl/detail/functor_move.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
@@ -278,7 +279,8 @@ class static_unordered_set
   /// bitsets (`bucket_count` bits each) at run time, and nothing in the slots.
   constexpr static_unordered_set() noexcept(std::is_nothrow_default_constructible_v<Hash> &&
                                             std::is_nothrow_default_constructible_v<KeyEqual>)
-      : size_(0), hasher_(), key_equal_() {
+      : key_equal_size_(detail::value_initialized_functor_t{}, size_type{0}),
+        hash_tombstones_(detail::value_initialized_functor_t{}, size_type{0}) {
     if (detail::in_constant_evaluation()) {
       detail::zero_for_constant_init(storage_);
     }
@@ -297,7 +299,8 @@ class static_unordered_set
                               std::is_copy_constructible_v<KeyEqual>,
                           const static_unordered_set&,
                           0> other)
-      : static_unordered_set(empty_with{}, other.hasher_, other.key_equal_) {
+      : static_unordered_set(
+            empty_with{}, other.hash_tombstones_.functor(), other.key_equal_size_.functor()) {
     for (const auto& item : other) {
       emplace(item);
     }
@@ -323,8 +326,8 @@ class static_unordered_set
                                              detail::functor_nothrow_move_constructible_v<Hash> &&
                                              detail::functor_nothrow_move_constructible_v<KeyEqual>)
       : static_unordered_set(empty_with{},
-                             detail::functor_move_source(other.hasher_),
-                             detail::functor_move_source(other.key_equal_)) {
+                             detail::functor_move_source(other.hash_tombstones_.functor()),
+                             detail::functor_move_source(other.key_equal_size_.functor())) {
     for (auto& item : other) {
       emplace(static_cast<Key&&>(item));
     }
@@ -345,8 +348,8 @@ class static_unordered_set
     }
 
     clear();
-    hasher_ = other.hasher_;
-    key_equal_ = other.key_equal_;
+    hash_tombstones_.functor() = other.hash_tombstones_.functor();
+    key_equal_size_.functor() = other.key_equal_size_.functor();
     for (const auto& item : other) {
       emplace(item);
     }
@@ -370,8 +373,8 @@ class static_unordered_set
     }
 
     clear();
-    hasher_ = detail::functor_move_assign_source(other.hasher_);
-    key_equal_ = detail::functor_move_assign_source(other.key_equal_);
+    hash_tombstones_.functor() = detail::functor_move_assign_source(other.hash_tombstones_.functor());
+    key_equal_size_.functor() = detail::functor_move_assign_source(other.key_equal_size_.functor());
     for (auto& item : other) {
       emplace(static_cast<Key&&>(item));
     }
@@ -390,11 +393,11 @@ class static_unordered_set
   METL_NODISCARD const_iterator cend() const noexcept { return const_iterator(this, bucket_count); }
 
   /// @brief True if the set holds no elements.
-  METL_NODISCARD bool empty() const noexcept { return size_ == 0; }
+  METL_NODISCARD bool empty() const noexcept { return key_equal_size_.value == 0; }
   /// @brief True if the set has reached its fixed capacity.
-  METL_NODISCARD bool full() const noexcept { return size_ == Capacity; }
+  METL_NODISCARD bool full() const noexcept { return key_equal_size_.value == Capacity; }
   /// @brief Current number of elements.
-  METL_NODISCARD size_type size() const noexcept { return size_; }
+  METL_NODISCARD size_type size() const noexcept { return key_equal_size_.value; }
   /// @brief Fixed maximum number of elements (the compile-time @c Capacity).
   METL_NODISCARD size_type capacity() const noexcept { return Capacity; }
 
@@ -510,7 +513,7 @@ class static_unordered_set
 
       // Capacity is the user-requested element ceiling; bucket_count is the (larger) table size.
       // Refuse insertion past Capacity even when an empty/tombstone slot is still available.
-      if (size_ >= Capacity) {
+      if (key_equal_size_.value >= Capacity) {
         return false;
       }
 
@@ -542,7 +545,7 @@ class static_unordered_set
         return *slot_value(existing);
       }
 
-      METL_HARDEN(size_ < Capacity);
+      METL_HARDEN(key_equal_size_.value < Capacity);
       size_type index = npos;
       const bool available = locate_insert_index(key, &index);
       METL_ASSERT(available);
@@ -589,7 +592,7 @@ class static_unordered_set
         set_state(i, slot_state::empty);
       }
     }
-    tombstones_ = 0;
+    hash_tombstones_.value = 0;
   }
 
   /// @brief Swaps contents, hashers and key comparisons with @p other, slot by slot.
@@ -610,12 +613,12 @@ class static_unordered_set
       try {
         swap_contents(other);
       } catch (...) {
-        // The states say which slots hold an element, but size_ was not yet
+        // The states say which slots hold an element, but size() was not yet
         // swapped, so clear() leaves it wrong: reset it.
         clear();
-        size_ = 0;
+        key_equal_size_.value = 0;
         other.clear();
-        other.size_ = 0;
+        other.key_equal_size_.value = 0;
         throw;
       }
       return;
@@ -628,8 +631,8 @@ class static_unordered_set
   // The body of swap, without its clear-both-on-throw.
   void swap_contents(static_unordered_set& other) noexcept(swap_cannot_throw) {
     using std::swap;
-    swap(hasher_, other.hasher_);
-    swap(key_equal_, other.key_equal_);
+    swap(hash_tombstones_.functor(), other.hash_tombstones_.functor());
+    swap(key_equal_size_.functor(), other.key_equal_size_.functor());
     for (size_type i = 0; i < bucket_count; ++i) {
       const bool mine = state(i) == slot_state::occupied;
       const bool theirs = other.state(i) == slot_state::occupied;
@@ -650,8 +653,8 @@ class static_unordered_set
         other.set_state(i, held);
       }
     }
-    swap(size_, other.size_);
-    swap(tombstones_, other.tombstones_);
+    swap(key_equal_size_.value, other.key_equal_size_.value);
+    swap(hash_tombstones_.value, other.hash_tombstones_.value);
   }
 
   // The one call in rehash_in_place that can throw: element moves cannot (the
@@ -677,8 +680,8 @@ class static_unordered_set
             set_state(i, slot_state::empty);
           }
         }
-        size_ = 0;
-        tombstones_ = 0;
+        key_equal_size_.value = 0;
+        hash_tombstones_.value = 0;
         throw;
       }
 #endif
@@ -697,14 +700,15 @@ class static_unordered_set
   template <typename H, typename E>
   static_unordered_set(empty_with, H&& hasher, E&& key_equal) noexcept(
       std::is_nothrow_constructible_v<Hash, H&&> && std::is_nothrow_constructible_v<KeyEqual, E&&>)
-      : size_(0), hasher_(std::forward<H>(hasher)), key_equal_(std::forward<E>(key_equal)) {
+      : key_equal_size_(std::forward<E>(key_equal), size_type{0}),
+        hash_tombstones_(std::forward<H>(hasher), size_type{0}) {
     initialize_states();
   }
 
   constexpr void initialize_states() noexcept {
     occupied_.reset();
     tombstone_.reset();
-    tombstones_ = 0;
+    hash_tombstones_.value = 0;
   }
 
   slot_state state(size_type index) const noexcept {
@@ -733,7 +737,8 @@ class static_unordered_set
   size_type bucket_index(const K& key) const noexcept(lookup_cannot_throw<K>) {
     // Finalize/avalanche the hash so high-entropy bits reach the low bits that the mask keeps.
     // insert and lookup both route through here, so they always agree on the bucket.
-    return static_cast<size_type>(detail::hash_mix(detail::hash_key(hasher_, key))) & (bucket_count - 1);
+    return static_cast<size_type>(detail::hash_mix(detail::hash_key(hash_tombstones_.functor(), key))) &
+           (bucket_count - 1);
   }
 
   template <typename K>
@@ -748,7 +753,7 @@ class static_unordered_set
       if (state(index) == slot_state::empty) {
         return npos;
       }
-      if (state(index) == slot_state::occupied && key_equal_(*slot_value(index), key)) {
+      if (state(index) == slot_state::occupied && key_equal_size_.functor()(*slot_value(index), key)) {
         return index;
       }
     }
@@ -778,7 +783,7 @@ class static_unordered_set
         continue;
       }
 
-      if (key_equal_(*slot_value(index), key)) {
+      if (key_equal_size_.functor()(*slot_value(index), key)) {
         *index_out = index;
         return true;
       }
@@ -799,7 +804,7 @@ class static_unordered_set
   METL_NODISCARD size_type construct_at(size_type index, K&& key) {
     // Tombstones past ~1/8 of the table: rebuild before placing the new key, so
     // negative lookups keep stopping early at an empty slot.
-    if (rebuild_cannot_throw && tombstones_ > bucket_count / 8) {
+    if (rebuild_cannot_throw && hash_tombstones_.value > bucket_count / 8) {
       value_type entry(std::forward<K>(key));
       rehash_in_place();
       // The tombstones that triggered the rebuild are empty slots after it,
@@ -814,7 +819,7 @@ class static_unordered_set
       METL_HARDEN(index < bucket_count);
       ::new (storage_.items[index].addr()) value_type(static_cast<value_type&&>(entry));
       set_state(index, slot_state::occupied);
-      ++size_;
+      ++key_equal_size_.value;
       return index;
     }
     place_at(index, std::forward<K>(key));
@@ -835,10 +840,10 @@ class static_unordered_set
     // the construction succeeds -- before it, each throwing insert onto the same
     // tombstone decremented again, and the count wrapped.
     if (state(index) == slot_state::tombstone) {
-      --tombstones_;
+      --hash_tombstones_.value;
     }
     set_state(index, slot_state::occupied);
-    ++size_;
+    ++key_equal_size_.value;
   }
 
   // The slot leaves the table before its element's destructor runs, so a
@@ -846,9 +851,9 @@ class static_unordered_set
   // insert: the slot being destroyed may be the next one handed out.
   void destroy_at(size_type index, slot_state next_state) noexcept {
     set_state(index, next_state);
-    --size_;
+    --key_equal_size_.value;
     if (next_state == slot_state::tombstone) {
-      ++tombstones_;
+      ++hash_tombstones_.value;
     }
     slot_value(index)->~value_type();
   }
@@ -859,7 +864,7 @@ class static_unordered_set
   /// Under sustained insert/erase churn these accumulate; once no @c empty slot remains, a
   /// missing-key lookup degrades to a full-table O(bucket_count) scan. This compacts every live
   /// element back to a gap-free probe run and marks all other slots empty, in place and heap-free
-  /// (only two @c value_type temporaries on the stack), without changing @c size_.
+  /// (only two @c value_type temporaries on the stack), without changing @c size().
   ///
   /// Live keys are re-placed through the SAME @c bucket_index() (identical avalanche mix), so the
   /// distribution is unchanged. Because the load factor is <= 50% (bucket_count >= 2*Capacity) an
@@ -874,7 +879,7 @@ class static_unordered_set
     // the rebuild no genuine tombstones exist, so this reuse is unambiguous.
     tombstone_ = occupied_;
     occupied_.reset();
-    tombstones_ = 0;
+    hash_tombstones_.value = 0;
 
     // Phase 2: place each unplaced element at the first slot in its probe run
     // that is not already occupied, cascading through any element it displaces.
@@ -923,10 +928,12 @@ class static_unordered_set
   // neither (empty). Both zero is empty, so the constant image stays zeros.
   detail::bitset<bucket_count> occupied_{};
   detail::bitset<bucket_count> tombstone_{};
-  size_type size_;
-  size_type tombstones_;
-  Hash hasher_;
-  KeyEqual key_equal_;
+  // Each functor shares a member with a count, so an empty one takes no room
+  // (detail/ebo_pair.hpp, #318). Two pairs rather than one class with both
+  // functors as bases: MSVC lays out only the first of several empty bases
+  // without room.
+  detail::ebo_pair<KeyEqual, size_type> key_equal_size_;
+  detail::ebo_pair<Hash, size_type> hash_tombstones_;
 };
 
 /// @brief Swaps the contents of two static_unordered_sets of the same type and capacity.

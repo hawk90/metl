@@ -200,6 +200,7 @@ VALUE_ALLOWLIST = {
     "next_deadline": "an empty result answers 'is anything scheduled'",
     "ptr": _PRIVATE_VALUE,
     "slot_": _PRIVATE_VALUE,
+    "slot_address": _PRIVATE_VALUE,
     "slot_ptr": _PRIVATE_VALUE,
     "slot_value": _PRIVATE_VALUE,
     "storage_ptr": _PRIVATE_VALUE,

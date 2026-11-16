@@ -33,6 +33,7 @@
 #include "metl/detail/copy_move_gate.hpp"
 #include "metl/detail/crc.hpp"
 #include "metl/detail/dlist_link.hpp"
+#include "metl/detail/ebo_pair.hpp"
 #include "metl/detail/enable_copy_move.hpp"
 #include "metl/detail/functor_move.hpp"
 #include "metl/detail/index_distance.hpp"

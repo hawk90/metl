@@ -6,11 +6,11 @@ MUTANT = {
     "why": "clear() moves each element into a temporary before destroying it: "
            "N needless moves, and std::terminate when the move throws.",
     "kills": "ctest:throwing_element",
-    "old": """    while (size_ > 0) {
-      --size_;
-      data()[size_].~value_type();
+    "old": """    while (comp_size_.value > 0) {
+      --comp_size_.value;
+      data()[comp_size_.value].~value_type();
     }""",
-    "new": """    while (size_ > 0) {
-      erase_at(size_ - 1);
+    "new": """    while (comp_size_.value > 0) {
+      erase_at(comp_size_.value - 1);
     }""",
 }

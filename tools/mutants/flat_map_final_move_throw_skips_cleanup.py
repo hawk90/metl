@@ -10,10 +10,10 @@ MUTANT = {
         for (size_type j = 0; j < index; ++j) {
           data()[j].~value_type();
         }
-        for (size_type j = index + 1; j <= size_; ++j) {
+        for (size_type j = index + 1; j <= comp_size_.value; ++j) {
           data()[j].~value_type();
         }
-        size_ = 0;
+        comp_size_.value = 0;
         throw;
       }""",
     "new": """      } catch (...) {

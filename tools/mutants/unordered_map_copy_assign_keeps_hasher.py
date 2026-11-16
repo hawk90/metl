@@ -7,7 +7,7 @@ MUTANT = {
            "source's, unlike the copy constructor.",
     "kills": "ctest:static_unordered_map_test",
     "old": """    clear();
-    hasher_ = other.hasher_;
+    hash_tombstones_.functor() = other.hash_tombstones_.functor();
 """,
     "new": """    clear();
 """,

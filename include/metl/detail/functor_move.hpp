@@ -59,20 +59,43 @@ constexpr functor_move_assign_source_t<F> functor_move_assign_source(F& functor)
 
 /// @brief The functor itself, value-initialized: a default-built holder never
 ///        leaves a stateful functor indeterminate (#574).
-template <typename F>
+///
+/// An empty functor that is not `final` is a base instead, so the slot is an
+/// empty class and the holder can pair it with a member that has room
+/// (detail/ebo_pair.hpp, #318).
+template <typename F, bool = std::is_empty_v<F> && !std::is_final_v<F>>
 struct functor_slot_storage {
-  F value{};
+  F held{};
 
   functor_slot_storage() = default;
   explicit functor_slot_storage(const F& functor) noexcept(std::is_nothrow_copy_constructible_v<F>)
-      : value(functor) {}
+      : held(functor) {}
+
+  constexpr F& get() noexcept { return held; }
+  constexpr const F& get() const noexcept { return held; }
 
  protected:
   // The move constructor's way in: a copy, or a move for a move-only F.
   struct from_move_source {};
   functor_slot_storage(from_move_source /*unused*/,
                        functor_move_source_t<F> functor) noexcept(functor_nothrow_move_constructible_v<F>)
-      : value(static_cast<functor_move_source_t<F>>(functor)) {}
+      : held(static_cast<functor_move_source_t<F>>(functor)) {}
+};
+
+template <typename F>
+struct functor_slot_storage<F, true> : private F {
+  constexpr functor_slot_storage() noexcept(std::is_nothrow_default_constructible_v<F>) : F() {}
+  constexpr explicit functor_slot_storage(const F& functor) noexcept(std::is_nothrow_copy_constructible_v<F>)
+      : F(functor) {}
+
+  constexpr F& get() noexcept { return *this; }
+  constexpr const F& get() const noexcept { return *this; }
+
+ protected:
+  struct from_move_source {};
+  functor_slot_storage(from_move_source /*unused*/,
+                       functor_move_source_t<F> functor) noexcept(functor_nothrow_move_constructible_v<F>)
+      : F(static_cast<functor_move_source_t<F>>(functor)) {}
 };
 
 /// @brief Holds a functor whose move copies it, for a class that keeps its
@@ -92,10 +115,10 @@ struct functor_slot_core<F, false> : functor_slot_storage<F> {
   functor_slot_core(const functor_slot_core&) = default;
   functor_slot_core(functor_slot_core&& other) noexcept(functor_nothrow_move_constructible_v<F>)
       : functor_slot_storage<F>(typename functor_slot_storage<F>::from_move_source{},
-                                functor_move_source(other.value)) {}
+                                functor_move_source(other.get())) {}
   functor_slot_core& operator=(const functor_slot_core&) = default;
   functor_slot_core& operator=(functor_slot_core&& other) noexcept(functor_nothrow_move_assignable_v<F>) {
-    this->value = functor_move_assign_source(other.value);
+    this->get() = functor_move_assign_source(other.get());
     return *this;
   }
   ~functor_slot_core() = default;

@@ -130,10 +130,14 @@ CANARY_BYTES = 1024
 # Cortex-M0 spsc_byte_ring_write_read fell 8566 -> 8054 with #562 (PR #676,
 # run of 0cc5178b8): the ring's storage is now aligned to 8, not 64, on M
 # profile, and the M3, M4 and M7 counts did not move.
+# flat_map_insert_find fell on every core with #318 (PR #709, run
+# 43784939235), whose empty comparator no longer takes a member of its own:
+# about 6.5% on Cortex-M0 and 1% on the others. The table below holds the
+# measurements. The code was not disassembled.
 _V7M_COUNTS = {
     "fixed_queue_push_pop": 2632,
     "fixed_vector_fill_clear": 1620,
-    "flat_map_insert_find": 32240,
+    "flat_map_insert_find": 31918,
     "intrusive_scheduler_attach_detach_16": 74119,
     "intrusive_scheduler_attach_detach_4": 18823,
     "intrusive_scheduler_run_once_16": 59466,
@@ -151,7 +155,7 @@ INSTRUCTION_BUDGETS = {
     "cortex-m0": {
         "fixed_queue_push_pop": 3399,
         "fixed_vector_fill_clear": 1749,
-        "flat_map_insert_find": 37788,
+        "flat_map_insert_find": 35326,
         "intrusive_scheduler_attach_detach_16": 89415,
         "intrusive_scheduler_attach_detach_4": 22599,
         "intrusive_scheduler_run_once_16": 69225,

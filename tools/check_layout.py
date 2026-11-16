@@ -28,6 +28,8 @@ VERSION_FILES = ("include/metl/detail/abi.hpp", "include/metl/config.hpp")
 
 _CACHELINE_8 = "#562 fixes METL_CACHELINE_SIZE at 8 on the M profile, not 64: 192 B to 32 or 48, aligned 8"
 
+_EMPTY_FUNCTOR = ("#318: an empty comparator, hasher or key equality takes no room: -4 B, or -8 B "
+                  "in deadline_scheduler, whose alignment of 8 padded the slot")
 # {previous release tag: {row key: "why it may change (#issue)"}}
 ALLOWED_CHANGES: dict[str, dict[str, str]] = {
     # 2.0 removes what 1.15.0 deprecated (#662).
@@ -39,6 +41,15 @@ ALLOWED_CHANGES: dict[str, dict[str, str]] = {
         "metl::spsc_byte_ring<16>": _CACHELINE_8,
         "metl::spsc_queue<std::uint32_t, 4>": _CACHELINE_8,
         "metl::mpmc_queue<std::uint32_t, 4>": _CACHELINE_8,
+    },
+    # alpha.2 is the layout break: empty functors take no room (#318).
+    "v2.0.0-alpha.1": {
+        "metl::coro::deadline_scheduler<4, std::uint32_t>": _EMPTY_FUNCTOR,
+        "metl::fixed_priority_queue<std::uint32_t, 4>": _EMPTY_FUNCTOR,
+        "metl::flat_map<std::uint32_t, std::uint32_t, 4>": _EMPTY_FUNCTOR,
+        "metl::flat_set<std::uint32_t, 4>": _EMPTY_FUNCTOR,
+        "metl::static_unordered_map<std::uint32_t, std::uint32_t, 8>": _EMPTY_FUNCTOR,
+        "metl::static_unordered_set<std::uint32_t, 8>": _EMPTY_FUNCTOR,
     },
 }
 

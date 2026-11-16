@@ -15,6 +15,7 @@
 
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
+#include "metl/detail/ebo_pair.hpp"
 #include "metl/detail/functor_move.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/fixed_vector.hpp"
@@ -107,14 +108,14 @@ class fixed_priority_queue {
   constexpr fixed_priority_queue() noexcept(std::is_nothrow_default_constructible_v<Compare>) = default;
 
   /// Constructs an empty queue with an explicit comparator (for stateful ones).
-  explicit fixed_priority_queue(const Compare& comp) : storage_(), comp_(comp) {}
+  explicit fixed_priority_queue(const Compare& comp) : comp_storage_(comp) {}
 
   /// Returns true if the queue holds no elements.
-  METL_NODISCARD constexpr bool empty() const noexcept { return storage_.empty(); }
+  METL_NODISCARD constexpr bool empty() const noexcept { return elements().empty(); }
   /// Returns true if the queue has reached its fixed capacity.
-  METL_NODISCARD constexpr bool full() const noexcept { return storage_.full(); }
+  METL_NODISCARD constexpr bool full() const noexcept { return elements().full(); }
   /// Returns the number of elements currently queued.
-  METL_NODISCARD constexpr size_type size() const noexcept { return storage_.size(); }
+  METL_NODISCARD constexpr size_type size() const noexcept { return elements().size(); }
   /// Returns the fixed capacity (`Capacity`).
   METL_NODISCARD constexpr size_type capacity() const noexcept { return Capacity; }
 
@@ -125,16 +126,16 @@ class fixed_priority_queue {
   ///       by, silently breaking the invariant for every later operation with no
   ///       diagnostic. `std::priority_queue::top()` is const for the same reason.
   ///       To change the top element's priority: `pop()`, adjust, `push()`.
-  METL_NODISCARD const_reference top() const noexcept { return storage_.front(); }
+  METL_NODISCARD const_reference top() const noexcept { return elements().front(); }
 
   /// @brief Constructs an element in place if there is room.
   /// @return true on success; false if the queue is full (contents unchanged).
   template <typename... Args>
   METL_NODISCARD bool try_emplace(Args&&... args) {
-    if (!storage_.try_emplace_back(std::forward<Args>(args)...)) {
+    if (!elements().try_emplace_back(std::forward<Args>(args)...)) {
       return false;
     }
-    keep_heap_or_clear([this] { sift_up(storage_.size() - 1); });
+    keep_heap_or_clear([this] { sift_up(elements().size() - 1); });
     return true;
   }
 
@@ -145,8 +146,8 @@ class fixed_priority_queue {
   ///       in — a returned reference would point at whatever the sift moved there.
   template <typename... Args>
   void emplace(Args&&... args) {
-    storage_.emplace_back(std::forward<Args>(args)...);
-    keep_heap_or_clear([this] { sift_up(storage_.size() - 1); });
+    elements().emplace_back(std::forward<Args>(args)...);
+    keep_heap_or_clear([this] { sift_up(elements().size() - 1); });
   }
 
   /// Pushes a copy of `value` if there is room; false when full (contents unchanged).
@@ -175,21 +176,21 @@ class fixed_priority_queue {
                       comparator_cannot_throw) {
     // Never stripped: the index arithmetic below underflows on an empty queue and
     // METL_ASSERT is removed at low hardening levels.
-    METL_HARDEN(!storage_.empty());
+    METL_HARDEN(!elements().empty());
     keep_heap_or_clear([this] {
-      const size_type last = storage_.size() - 1;
+      const size_type last = elements().size() - 1;
       if (last != 0) {
-        storage_[0] = std::move(storage_[last]);
+        elements()[0] = std::move(elements()[last]);
       }
-      storage_.pop_back();
-      if (!storage_.empty()) {
+      elements().pop_back();
+      if (!elements().empty()) {
         sift_down(0);
       }
     });
   }
 
   /// Removes all elements.
-  void clear() noexcept { storage_.clear(); }
+  void clear() noexcept { elements().clear(); }
 
   /// @brief Swaps contents and comparators with @p other, element by element (see
   ///        `fixed_vector::swap`).
@@ -226,19 +227,19 @@ class fixed_priority_queue {
   /// @warning @p pred must not modify the queue.
   template <typename Pred>
   size_type erase_if(Pred pred) {
-    const size_type before = storage_.size();
+    const size_type before = elements().size();
     size_type write = 0;
     keep_heap_or_clear([&] {
       for (size_type read = 0; read < before; ++read) {
-        if (!pred(static_cast<const T&>(storage_[read]))) {
+        if (!pred(static_cast<const T&>(elements()[read]))) {
           if (write != read) {
-            storage_[write] = std::move(storage_[read]);
+            elements()[write] = std::move(elements()[read]);
           }
           ++write;
         }
       }
-      while (storage_.size() > write) {
-        storage_.pop_back();
+      while (elements().size() > write) {
+        elements().pop_back();
       }
       heapify();
     });
@@ -249,14 +250,14 @@ class fixed_priority_queue {
   /// @note Heap order is **not** sorted order — only `as_span()[0]` is meaningful as
   ///       "the greatest". Exposed for tests, invariant checks and serialisation,
   ///       not as an iteration order.
-  METL_NODISCARD span<const T> as_span() const noexcept { return storage_.as_span(); }
+  METL_NODISCARD span<const T> as_span() const noexcept { return elements().as_span(); }
 
  private:
   // The body of swap, without its clear-both-on-throw.
   void swap_contents(fixed_priority_queue& other) noexcept(swap_cannot_throw) {
     using std::swap;
-    swap(comp_.value, other.comp_.value);
-    storage_.swap(other.storage_);
+    swap(compare(), other.compare());
+    elements().swap(other.elements());
   }
 
   /// Runs a step that reorders the heap. If an element move or the comparator
@@ -281,7 +282,7 @@ class fixed_priority_queue {
   void sift_up(size_type index) {
     while (index > 0) {
       const size_type parent = (index - 1) / 2;
-      if (!comp_.value(storage_[parent], storage_[index])) {
+      if (!compare()(elements()[parent], elements()[index])) {
         return;  // parent already outranks the child: done
       }
       swap_slots(parent, index);
@@ -291,7 +292,7 @@ class fixed_priority_queue {
 
   /// Move the element at `index` toward the leaves until both children are outranked.
   void sift_down(size_type index) {
-    const size_type count = storage_.size();
+    const size_type count = elements().size();
     for (;;) {
       const size_type left = (2 * index) + 1;
       if (left >= count) {
@@ -299,10 +300,10 @@ class fixed_priority_queue {
       }
       const size_type right = left + 1;
       size_type best = left;
-      if (right < count && comp_.value(storage_[left], storage_[right])) {
+      if (right < count && compare()(elements()[left], elements()[right])) {
         best = right;
       }
-      if (!comp_.value(storage_[index], storage_[best])) {
+      if (!compare()(elements()[index], elements()[best])) {
         return;  // already outranks the better child: done
       }
       swap_slots(index, best);
@@ -313,7 +314,7 @@ class fixed_priority_queue {
   /// Floyd's build-heap: sift down every internal node, deepest first. O(n), where
   /// n sift-downs from the top would be O(n log n).
   void heapify() {
-    size_type index = storage_.size() / 2;
+    size_type index = elements().size() / 2;
     while (index > 0) {
       --index;
       sift_down(index);
@@ -324,16 +325,21 @@ class fixed_priority_queue {
   /// so the depth is a handful of levels; the extra moves cost less than the
   /// subtlety of a hole-based implementation would.
   void swap_slots(size_type a, size_type b) {
-    T temporary = std::move(storage_[a]);
-    storage_[a] = std::move(storage_[b]);
-    storage_[b] = std::move(temporary);
+    T temporary = std::move(elements()[a]);
+    elements()[a] = std::move(elements()[b]);
+    elements()[b] = std::move(temporary);
   }
 
-  fixed_vector<T, Capacity> storage_;
-  // Copied on move, so a moved-from queue keeps a working comparator (#691).
-  // The slot value-initializes it, so a default-initialized queue holds no
-  // indeterminate state (#574).
-  detail::functor_slot<Compare> comp_;
+  constexpr fixed_vector<T, Capacity>& elements() noexcept { return comp_storage_.value; }
+  constexpr const fixed_vector<T, Capacity>& elements() const noexcept { return comp_storage_.value; }
+  constexpr Compare& compare() noexcept { return comp_storage_.functor().get(); }
+  constexpr const Compare& compare() const noexcept { return comp_storage_.functor().get(); }
+
+  // The comparator's slot is copied on move, so a moved-from queue keeps a
+  // working comparator (#691), and value-initializes it, so a
+  // default-initialized queue holds no indeterminate state (#574). An empty
+  // comparator takes no room beside the elements (detail/ebo_pair.hpp, #318).
+  detail::ebo_pair<detail::functor_slot<Compare>, fixed_vector<T, Capacity>> comp_storage_;
 };
 
 /// Swaps the contents of two priority queues of the same type, capacity and

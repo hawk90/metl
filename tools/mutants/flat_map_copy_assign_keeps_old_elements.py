@@ -8,10 +8,10 @@ MUTANT = {
            "stay alongside the copied ones.",
     "kills": "ctest:conformance_copy",
     "old": """    clear();
-    comp_ = other.comp_;
+    comp_size_.functor() = other.comp_size_.functor();
     // `other` is sorted and unique: append, comparing nothing (#644).
     append_copies_from(other);""",
-    "new": """    comp_ = other.comp_;
+    "new": """    comp_size_.functor() = other.comp_size_.functor();
     // `other` is sorted and unique: append, comparing nothing (#644).
     append_copies_from(other);""",
 }

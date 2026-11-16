@@ -66,25 +66,14 @@ constexpr std::size_t align_slack() {
   return alignof(C) - 1;
 }
 
-/// C++17 has no `[[no_unique_address]]`, so an EMPTY comparator or hasher held
-/// as a member still needs a distinct address -- and next to an eight-byte
-/// aligned storage array that costs a whole alignment unit, not a byte.
-/// `flat_map<u32, u64, 256>` pays 8 bytes for a `std::less` with no members.
-///
-/// Charged as one unit however many functors there are, because they pack: two
-/// empty types are two bytes, and two bytes still round to the same unit.
-///
-/// This term is not decoration. Leaving it out is what made the first version
-/// of this file pass on the host and fail on all four Cortex-M targets: with
-/// `size_type` at 4 bytes instead of 8 the slack that had been absorbing the
-/// comparator disappeared, and `flat_map` missed its budget by ONE byte.
-template <typename C>
-constexpr std::size_t functor_slot(std::size_t functors) {
-  return functors == 0 ? std::size_t{0} : alignof(C);
-}
+/// An EMPTY comparator, hasher or key equality takes no room: each shares a
+/// member with a count through detail/ebo_pair.hpp (#318). Before that, a
+/// `std::less` with no members cost a whole alignment unit, 8 bytes in
+/// `flat_map<u32, u64, 256>`, and this file charged a slot for it. That slot
+/// is gone, so a functor that takes room again fails these budgets.
 
-/// `sizeof(C)` is at most the payload, plus a slot for any empty functor
-/// members, plus `words` bookkeeping words, plus what alignment can add.
+/// `sizeof(C)` is at most the payload, plus `words` bookkeeping words, plus
+/// what alignment can add. Empty functors are charged nothing.
 ///
 /// Deliberately `<=`: a container that gets SMALLER is not a regression, and
 /// this must not be the reason somebody cannot shrink one. The cost of `<=` is
@@ -93,8 +82,8 @@ constexpr std::size_t functor_slot(std::size_t functors) {
 /// breaks the build on both. That is the regression this is here to catch, and
 /// it is verified by mutation rather than assumed: see the commit message.
 template <typename C>
-constexpr bool fits(std::size_t payload, std::size_t words, std::size_t functors = 0) {
-  return sizeof(C) <= payload + functor_slot<C>(functors) + (words * kWord) + align_slack<C>();
+constexpr bool fits(std::size_t payload, std::size_t words) {
+  return sizeof(C) <= payload + (words * kWord) + align_slack<C>();
 }
 
 // ---------------------------------------------------------------------------
@@ -143,12 +132,11 @@ static_assert(fits<metl::ring_buffer<u32, 256>>(256 * sizeof(u32), 2),
               "ring_buffer should cost its elements plus head and size");
 static_assert(fits<metl::fixed_queue<u32, 256>>(256 * sizeof(u32), 2),
               "fixed_queue should cost its elements plus head and size");
-// These two carry a `Compare` member, so they pay the empty-functor slot too.
-static_assert(fits<metl::fixed_priority_queue<u32, 256>>(256 * sizeof(u32), 2, 1),
-              "fixed_priority_queue should cost its elements, a comparator slot "
-              "and bookkeeping");
-static_assert(fits<metl::flat_set<u32, 256>>(256 * sizeof(u32), 1, 1),
-              "flat_set should cost its elements, a comparator slot and a size");
+// These two carry an empty `Compare`, which costs nothing (#318).
+static_assert(fits<metl::fixed_priority_queue<u32, 256>>(256 * sizeof(u32), 1),
+              "fixed_priority_queue should cost its elements and a size");
+static_assert(fits<metl::flat_set<u32, 256>>(256 * sizeof(u32), 1),
+              "flat_set should cost its elements and a size");
 
 // ---------------------------------------------------------------------------
 // flat_map: the payload is NOT key bytes plus value bytes.
@@ -159,12 +147,11 @@ static_assert(fits<metl::flat_set<u32, 256>>(256 * sizeof(u32), 1, 1),
 // of the layout, not of METL's bookkeeping, which is why the assertion is
 // written against `value_type` and the arithmetic is spelled out.
 // ---------------------------------------------------------------------------
-// Members, in order: `Compare comp_`, the storage array, `size_type size_`.
-// One functor slot, one bookkeeping word -- NOT two, which is the mistake that
-// hid the comparator's cost until ARM32 exposed it.
+// Members, in order: the storage array, then the size with the empty
+// comparator folded into it (#318). One bookkeeping word.
 using flat_map_type = metl::flat_map<u32, u64, 256>;
-static_assert(fits<flat_map_type>(256 * sizeof(flat_map_type::value_type), 1, 1),
-              "flat_map should cost 256 pairs, a comparator slot and a size");
+static_assert(fits<flat_map_type>(256 * sizeof(flat_map_type::value_type), 1),
+              "flat_map should cost 256 pairs and a size");
 static_assert(sizeof(flat_map_type::value_type) > sizeof(u32) + sizeof(u64) || alignof(u64) <= sizeof(u32),
               "if the pair ever stops being padded, the comment above is stale");
 
@@ -191,8 +178,8 @@ static_assert(map_type::bucket_count == 512, "the memory documented in docs/CHOO
 static_assert(set_type::bucket_count == 512, "the memory documented in docs/CHOOSING.md assumes 2x buckets");
 
 // Two state bits per bucket on top of the slot itself (an `occupied` and a
-// `tombstone` bitset, #504), then `size_`, then `tombstones_`, then the two
-// empty functors (`Hash` and `KeyEqual`) that share a single slot at the tail.
+// `tombstone` bitset, #504), then the size and the tombstone count, each with
+// an empty functor (`KeyEqual`, `Hash`) folded into it at no cost (#318).
 // The state is charged at two bits, not a byte: a byte per bucket left 384
 // bytes of slack at 512 buckets, and a 320-byte member passed (#582).
 constexpr std::size_t state_bytes(std::size_t buckets) {
@@ -200,16 +187,14 @@ constexpr std::size_t state_bytes(std::size_t buckets) {
 }
 static_assert(fits<map_type>(map_type::bucket_count * sizeof(map_type::value_type) +
                                  state_bytes(map_type::bucket_count),
-                             2,
                              2),
               "static_unordered_map should cost bucket_count slots, two state "
-              "bits each, two words and a functor slot");
+              "bits each and two words");
 static_assert(fits<set_type>(set_type::bucket_count * sizeof(set_type::value_type) +
                                  state_bytes(set_type::bucket_count),
-                             2,
                              2),
               "static_unordered_set should cost bucket_count slots, two state "
-              "bits each, two words and a functor slot");
+              "bits each and two words");
 
 // ---------------------------------------------------------------------------
 // THE CLIFF. `bit_ceil(Capacity * 2)` means asking for one more element can
