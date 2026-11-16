@@ -134,6 +134,10 @@ CANARY_BYTES = 1024
 # 43784939235), whose empty comparator no longer takes a member of its own:
 # about 6.5% on Cortex-M0 and 1% on the others. The table below holds the
 # measurements. The code was not disassembled.
+# The scheduler_* regions rose with #593 (merged 2026-11-02, bisected over
+# main's runs: 44,842 at d57b075c4 and the same count as now at 950f8b819 on
+# Cortex-M0's attach_detach_4), whose null-poll METL_HARDEN runs on every
+# attach. They are recorded here at main's count from run 43776531930.
 _V7M_COUNTS = {
     "fixed_queue_push_pop": 2632,
     "fixed_vector_fill_clear": 1620,
@@ -144,10 +148,10 @@ _V7M_COUNTS = {
     "intrusive_scheduler_run_once_4": 29418,
     "mpmc_queue_push_pop": 3914,
     "ring_buffer_push_overwrite": 1288,
-    "scheduler_attach_detach_16": 303495,
-    "scheduler_attach_detach_4": 39303,
-    "scheduler_run_once_16": 119562,
-    "scheduler_run_once_4": 18666,
+    "scheduler_attach_detach_16": 304519,
+    "scheduler_attach_detach_4": 39559,
+    "scheduler_run_once_16": 119578,
+    "scheduler_run_once_4": 18670,
     "spsc_byte_ring_write_read": 6540,
     "spsc_queue_push_pop": 2697,
 }
@@ -161,10 +165,10 @@ INSTRUCTION_BUDGETS = {
         "intrusive_scheduler_run_once_16": 69225,
         "intrusive_scheduler_run_once_4": 34401,
         "ring_buffer_push_overwrite": 1479,
-        "scheduler_attach_detach_16": 392487,
-        "scheduler_attach_detach_4": 44842,
-        "scheduler_run_once_16": 159671,
-        "scheduler_run_once_4": 24511,
+        "scheduler_attach_detach_16": 395559,
+        "scheduler_attach_detach_4": 45610,
+        "scheduler_run_once_16": 159719,
+        "scheduler_run_once_4": 24523,
         "spsc_byte_ring_write_read": 8054,
         "spsc_queue_push_pop": 2952,
     },
@@ -173,9 +177,14 @@ INSTRUCTION_BUDGETS = {
     "cortex-m7": dict(_V7M_COUNTS),
 }
 
-# QEMU's count is exact for a given binary; the tolerance is room for a
-# toolchain that schedules a little differently, as in check_instructions.py.
-INSTRUCTION_TOLERANCE_FRACTION = 0.05
+# QEMU's count is exact for a given binary, so a budget is the count itself, in
+# both directions, as check_size.py's are (#587). A 5% band let #593's null
+# check (one METL_HARDEN in each scheduler's attach) raise the scheduler regions
+# by up to 1.7% on 2026-11-02 with no failure; every main run since measured
+# the same counts, and the budgets stayed at the old ones until PR #710. A
+# toolchain update that moves a count now fails, and the commit that takes the
+# update records the new counts.
+INSTRUCTION_TOLERANCE_FRACTION = 0.0
 
 # Regions a core cannot build, and why. Anything else missing is a failure.
 ABSENT_REGIONS = {
@@ -583,19 +592,17 @@ def self_test():
         if grade_instructions("m", counts, report=False)[0] == 0:
             failures.append("a region with no instruction budget passed")
         INSTRUCTION_BUDGETS["m"] = {"r": 1000}
-        if grade_instructions("m", {"r": 1050}, report=False)[0] != 0:
-            failures.append("a count at budget + 5% failed")
-        if grade_instructions("m", {"r": 1051}, report=False)[0] == 0:
-            failures.append("a count over budget + 5% passed")
-        if grade_instructions("m", {"r": 950}, report=False)[0] != 0:
-            failures.append("a count at budget - 5% failed")
-        code, lines = grade_instructions("m", {"r": 949}, report=False)
+        if grade_instructions("m", {"r": 1000}, report=False)[0] != 0:
+            failures.append("a count at its budget failed")
+        if grade_instructions("m", {"r": 1001}, report=False)[0] == 0:
+            failures.append("a count one over its budget passed: growth hides in a band again")
+        code, lines = grade_instructions("m", {"r": 999}, report=False)
         if code == 0:
-            failures.append("a count under budget - 5% passed")
-        if not any("to 949 " in line for line in lines):
+            failures.append("a count one under its budget passed")
+        if not any("to 999 " in line for line in lines):
             failures.append("an under-budget count did not name the number to record")
-        if grade_instructions("m", {"r": 949}, report=True)[0] != 0:
-            failures.append("--report refused a count under budget - 5%")
+        if grade_instructions("m", {"r": 999}, report=True)[0] != 0:
+            failures.append("--report refused a count under its budget")
         INSTRUCTION_BUDGETS["m"]["gone"] = 10
         if grade_instructions("m", counts, report=False)[0] == 0:
             failures.append("a budget for a region nothing measures passed")
