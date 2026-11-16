@@ -27,6 +27,8 @@
 #include <metl/fixed_queue.hpp>
 #include <metl/fixed_stack.hpp>
 #include <metl/fixed_vector.hpp>
+#include <metl/flat_map.hpp>
+#include <metl/flat_set.hpp>
 #include <metl/handle_pool.hpp>
 #include <metl/monotonic_buffer.hpp>
 #include <metl/object_pool.hpp>
@@ -41,6 +43,13 @@ static_assert(sizeof(metl::fixed_stack<int, 0>) == sizeof(std::size_t), "only th
 static_assert(sizeof(metl::ring_buffer<int, 0>) == 2 * sizeof(std::size_t), "only head and size");
 static_assert(sizeof(metl::fixed_deque<int, 0>) == 2 * sizeof(std::size_t), "only head and size");
 static_assert(sizeof(metl::fixed_queue<int, 0>) == 2 * sizeof(std::size_t), "only head and size");
+// flat_set holds its storage as a base too. flat_map cannot: its value_type is
+// nested in the class, so the empty storage is a member and costs a byte plus
+// padding (measured and decided on #696). The empty comparator costs nothing
+// in either (#318).
+static_assert(sizeof(metl::flat_set<int, 0>) == sizeof(std::size_t), "only the size");
+static_assert(sizeof(metl::flat_map<int, int, 0>) == 2 * sizeof(std::size_t),
+              "the size, and the empty storage member's byte padded to a word");
 
 static_assert(std::is_empty_v<metl::object_pool<int, 0>>, "a pool of no slots holds nothing");
 static_assert(std::is_empty_v<metl::handle_pool<int, 0>>, "a pool of no slots holds nothing");

@@ -30,8 +30,10 @@
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
 #include "metl/detail/array_storage.hpp"
+#include "metl/detail/capacity_storage.hpp"
 #include "metl/detail/constant_init.hpp"
 #include "metl/detail/copy_move_gate.hpp"
+#include "metl/detail/ebo_pair.hpp"
 #include "metl/detail/functor_move.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
@@ -69,7 +71,8 @@ template <typename Key, std::size_t Capacity, typename Compare = std::less<Key>>
 // The copy and move operations are the gated ones below, which clang-tidy does not
 // recognize as such (detail/copy_move_gate.hpp).
 // NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
-class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>> {
+class flat_set : detail::capacity_storage<detail::array_storage<Key, Capacity>,
+                                          detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>> {
   static_assert(std::is_object_v<Key> && !std::is_array_v<Key>, METL_DETAIL_OBJECT_TYPE_MESSAGE);
 
  public:
@@ -105,13 +108,14 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
   /// @brief Construct an empty set with a default-constructed comparator.
   /// Constant-initialized at namespace scope since C++20 (see
   /// detail/constant_init.hpp); a local one stores nothing to the buffer.
-  constexpr flat_set() noexcept(std::is_nothrow_default_constructible_v<Compare>) : comp_(), size_(0) {
-    detail::zero_for_constant_init(storage_);
+  constexpr flat_set() noexcept(std::is_nothrow_default_constructible_v<Compare>)
+      : comp_size_(detail::value_initialized_functor_t{}, size_type{0}) {
+    this->zero_storage_for_constant_init();
   }
 
   /// @brief Construct an empty set using the given comparator.
   explicit flat_set(const Compare& comp) noexcept(std::is_nothrow_copy_constructible_v<Compare>)
-      : comp_(comp), size_(0) {}
+      : comp_size_(comp, size_type{0}) {}
 
   /// @brief Copy-construct, copying every element from @p other.
   // Element-inserting constructors delegate to the empty constructor first.
@@ -124,7 +128,7 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
       detail::gated_param<std::is_copy_constructible_v<value_type> && std::is_copy_constructible_v<Compare>,
                           const flat_set&,
                           0> other)
-      : flat_set(other.comp_) {
+      : flat_set(other.comp_size_.functor()) {
     // `other` is sorted and unique: append, comparing nothing (#644).
     append_copies_from(other);
   }
@@ -140,7 +144,7 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
                                flat_set&&,
                                1> other) noexcept(std::is_nothrow_move_constructible_v<value_type> &&
                                                   detail::functor_nothrow_move_constructible_v<Compare>)
-      : flat_set(adopt_compare{}, detail::functor_move_source(other.comp_)) {
+      : flat_set(adopt_compare{}, detail::functor_move_source(other.comp_size_.functor())) {
     // `other` is already sorted and unique, so its elements are appended in
     // order: no comparison runs, which is what makes the noexcept above true
     // for a comparator that can throw.
@@ -161,7 +165,7 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
     }
 
     clear();
-    comp_ = other.comp_;
+    comp_size_.functor() = other.comp_size_.functor();
     // `other` is sorted and unique: append, comparing nothing (#644).
     append_copies_from(other);
     return *this;
@@ -181,7 +185,7 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
     }
 
     clear();
-    comp_ = detail::functor_move_assign_source(other.comp_);
+    comp_size_.functor() = detail::functor_move_assign_source(other.comp_size_.functor());
     // `other` is already sorted and unique, so its elements are appended in
     // order: no comparison runs, which is what makes the noexcept above true
     // for a comparator that can throw.
@@ -196,27 +200,27 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
   METL_NODISCARD const_iterator cbegin() const noexcept { return data(); }
 
   /// @brief Iterator one past the last element.
-  METL_NODISCARD iterator end() noexcept { return data() + size_; }
-  METL_NODISCARD const_iterator end() const noexcept { return data() + size_; }
-  METL_NODISCARD const_iterator cend() const noexcept { return data() + size_; }
+  METL_NODISCARD iterator end() noexcept { return data() + comp_size_.value; }
+  METL_NODISCARD const_iterator end() const noexcept { return data() + comp_size_.value; }
+  METL_NODISCARD const_iterator cend() const noexcept { return data() + comp_size_.value; }
 
   /// @brief True if the set holds no elements.
-  METL_NODISCARD bool empty() const noexcept { return size_ == 0; }
+  METL_NODISCARD bool empty() const noexcept { return comp_size_.value == 0; }
   /// @brief True if the set has reached its fixed capacity.
-  METL_NODISCARD bool full() const noexcept { return size_ == Capacity; }
+  METL_NODISCARD bool full() const noexcept { return comp_size_.value == Capacity; }
   /// @brief Current number of elements.
-  METL_NODISCARD size_type size() const noexcept { return size_; }
+  METL_NODISCARD size_type size() const noexcept { return comp_size_.value; }
   /// @brief Fixed maximum number of elements (the compile-time @c Capacity).
   METL_NODISCARD size_type capacity() const noexcept { return Capacity; }
 
   /// @brief Copy of the key comparator.
   METL_NODISCARD Compare key_comp() const noexcept(std::is_nothrow_copy_constructible_v<Compare>) {
-    return comp_;
+    return comp_size_.functor();
   }
 
   /// @brief Copy of the value comparator (same as the key comparator for a set).
   METL_NODISCARD Compare value_comp() const noexcept(std::is_nothrow_copy_constructible_v<Compare>) {
-    return comp_;
+    return comp_size_.functor();
   }
 
   /// @brief Explicit positional accessor: the element at 0-based @p index in sorted order.
@@ -224,12 +228,12 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
   ///       subscript cannot be mistaken for a key lookup.
   /// @pre @p index < size(); a violation asserts.
   METL_NODISCARD reference nth(size_type index) noexcept {
-    METL_ASSERT(index < size_);
+    METL_ASSERT(index < comp_size_.value);
     return data()[index];
   }
 
   METL_NODISCARD const_reference nth(size_type index) const noexcept {
-    METL_ASSERT(index < size_);
+    METL_ASSERT(index < comp_size_.value);
     return data()[index];
   }
 
@@ -277,7 +281,7 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
   /// @return Pointer to the element, or @c nullptr when the key is not found.
   METL_NODISCARD value_type* find(const key_type& key) noexcept(compare_cannot_throw<key_type>) {
     const size_type index = lower_bound_index(key);
-    if (index < size_ && !comp_(key, data()[index])) {
+    if (index < comp_size_.value && !comp_size_.functor()(key, data()[index])) {
       return detail::addressof(data()[index]);
     }
     return nullptr;
@@ -285,7 +289,7 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
 
   METL_NODISCARD const value_type* find(const key_type& key) const noexcept(compare_cannot_throw<key_type>) {
     const size_type index = lower_bound_index(key);
-    if (index < size_ && !comp_(key, data()[index])) {
+    if (index < comp_size_.value && !comp_size_.functor()(key, data()[index])) {
       return detail::addressof(data()[index]);
     }
     return nullptr;
@@ -351,7 +355,7 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD value_type* find(const K& key) noexcept(compare_cannot_throw<K>) {
     const size_type index = lower_bound_index(key);
-    if (index < size_ && !comp_(key, data()[index])) {
+    if (index < comp_size_.value && !comp_size_.functor()(key, data()[index])) {
       return detail::addressof(data()[index]);
     }
     return nullptr;
@@ -362,7 +366,7 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD const value_type* find(const K& key) const noexcept(compare_cannot_throw<K>) {
     const size_type index = lower_bound_index(key);
-    if (index < size_ && !comp_(key, data()[index])) {
+    if (index < comp_size_.value && !comp_size_.functor()(key, data()[index])) {
       return detail::addressof(data()[index]);
     }
     return nullptr;
@@ -374,7 +378,7 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
                                      std::is_convertible_v<const K&, const_iterator>)>>
   bool erase(const K& key) noexcept(compare_cannot_throw<K> && relocate_cannot_throw) {
     const size_type index = lower_bound_index(key);
-    if (index >= size_ || comp_(key, data()[index])) {
+    if (index >= comp_size_.value || comp_size_.functor()(key, data()[index])) {
       return false;
     }
 
@@ -398,7 +402,7 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
       return try_emplace(static_cast<key_type&&>(converted));
     } else {
       const size_type index = lower_bound_index(key);
-      if (index < size_ && !comp_(key, data()[index])) {
+      if (index < comp_size_.value && !comp_size_.functor()(key, data()[index])) {
         return false;
       }
 
@@ -422,7 +426,7 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
       return emplace(static_cast<key_type&&>(converted));
     } else {
       const size_type index = lower_bound_index(key);
-      METL_HARDEN(!(index < size_ && !comp_(key, data()[index])));
+      METL_HARDEN(!(index < comp_size_.value && !comp_size_.functor()(key, data()[index])));
       const bool inserted = try_insert_at(index, std::forward<K>(key));
       // Hard guard on the full-set path; see the twin on flat_map::emplace.
       METL_HARDEN(inserted);
@@ -434,7 +438,7 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
   /// @return @c true if an element was erased; @c false if the key was not found.
   bool erase(const key_type& key) noexcept(compare_cannot_throw<key_type> && relocate_cannot_throw) {
     const size_type index = lower_bound_index(key);
-    if (index >= size_ || comp_(key, data()[index])) {
+    if (index >= comp_size_.value || comp_size_.functor()(key, data()[index])) {
       return false;
     }
 
@@ -453,7 +457,7 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
     const size_type index = position_index(pos);
     erase_at(index);
     // A destructor run by the erase may have erased more; never past the end.
-    return data() + (index < size_ ? index : size_);
+    return data() + (index < comp_size_.value ? index : comp_size_.value);
   }
 
   /// @copydoc erase(const_iterator)
@@ -466,12 +470,12 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
   ///       `erase` does allow it (see erase_at).
   void clear() noexcept {
     // From the back, in place, as fixed_vector::pop_back: the last element never
-    // needs relocating, so nothing is moved and nothing here can throw. size_
+    // needs relocating, so nothing is moved and nothing here can throw. size()
     // drops before each destructor runs, so a destructor that erases its own
     // element from this container finds it already gone.
-    while (size_ > 0) {
-      --size_;
-      data()[size_].~value_type();
+    while (comp_size_.value > 0) {
+      --comp_size_.value;
+      data()[comp_size_.value].~value_type();
     }
   }
 
@@ -505,42 +509,43 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
   // The body of swap, without its clear-both-on-throw.
   void swap_contents(flat_set& other) noexcept(swap_cannot_throw) {
     using std::swap;
-    swap(comp_, other.comp_);
-    const size_type common = (size_ < other.size_) ? size_ : other.size_;
+    swap(comp_size_.functor(), other.comp_size_.functor());
+    const size_type common =
+        (comp_size_.value < other.comp_size_.value) ? comp_size_.value : other.comp_size_.value;
     for (size_type i = 0; i < common; ++i) {
       swap(data()[i], other.data()[i]);
     }
-    if (size_ != other.size_) {
-      flat_set& shorter = (size_ < other.size_) ? *this : other;
-      flat_set& longer = (size_ < other.size_) ? other : *this;
+    if (comp_size_.value != other.comp_size_.value) {
+      flat_set& shorter = (comp_size_.value < other.comp_size_.value) ? *this : other;
+      flat_set& longer = (comp_size_.value < other.comp_size_.value) ? other : *this;
       // Counted into `shorter` as each one exists, so a throw leaves each
       // owning exactly the elements it holds for the clear below.
-      for (size_type i = common; i < longer.size_; ++i) {
-        ::new (shorter.storage_.slot(i)) value_type(static_cast<value_type&&>(longer.data()[i]));
-        ++shorter.size_;
+      for (size_type i = common; i < longer.comp_size_.value; ++i) {
+        ::new (shorter.slot_address(i)) value_type(static_cast<value_type&&>(longer.data()[i]));
+        ++shorter.comp_size_.value;
       }
-      while (longer.size_ > common) {
-        --longer.size_;
-        longer.data()[longer.size_].~value_type();
+      while (longer.comp_size_.value > common) {
+        --longer.comp_size_.value;
+        longer.data()[longer.comp_size_.value].~value_type();
       }
     }
   }
 
   // Moves every element of `other` (sorted, unique) onto the end of this empty
   // container, in order.
-  // Copies a sorted, unique set's elements in order. `size_` counts each one
+  // Copies a sorted, unique set's elements in order. `size()` counts each one
   // as it is built, so a throwing copy leaves the ones before it to the
   // destructor.
   void append_copies_from(const flat_set& other) {
     for (const auto& item : other) {
-      ::new (storage_.slot(size_)) value_type(item);
-      ++size_;
+      ::new (slot_address(comp_size_.value)) value_type(item);
+      ++comp_size_.value;
     }
   }
   void append_sorted_from(flat_set& other) noexcept(std::is_nothrow_move_constructible_v<value_type>) {
     for (auto& item : other) {
-      ::new (storage_.slot(size_)) value_type(static_cast<value_type&&>(item));
-      ++size_;
+      ::new (slot_address(comp_size_.value)) value_type(static_cast<value_type&&>(item));
+      ++comp_size_.value;
     }
   }
   // Empty set built from the source's comparator as the move
@@ -548,19 +553,28 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
   struct adopt_compare {};
   flat_set(adopt_compare, detail::functor_move_source_t<Compare> comp) noexcept(
       detail::functor_nothrow_move_constructible_v<Compare>)
-      : comp_(static_cast<detail::functor_move_source_t<Compare>>(comp)), size_(0) {}
+      : comp_size_(static_cast<detail::functor_move_source_t<Compare>>(comp), size_type{0}) {}
 
-  METL_NODISCARD value_type* data() noexcept { return storage_.data(); }
-  METL_NODISCARD const value_type* data() const noexcept { return storage_.data(); }
+  METL_NODISCARD value_type* data() noexcept { return this->storage().data(); }
+  METL_NODISCARD const value_type* data() const noexcept { return this->storage().data(); }
+
+  // The raw slot for placement new. A zero-capacity set holds no element, so
+  // no slot is ever reached (METL_DETAIL_NO_SLOT_IS_REACHED).
+  void* slot_address(size_type index) noexcept {
+    if constexpr (Capacity == 0) {
+      METL_DETAIL_NO_SLOT_IS_REACHED();
+    }
+    return this->storage().slot(index);
+  }
 
   template <typename K>
   size_type lower_bound_index(const K& key) const noexcept(compare_cannot_throw<K>) {
     size_type first = 0;
-    size_type count = size_;
+    size_type count = comp_size_.value;
     while (count > 0) {
       const size_type step = count / 2;
       const size_type index = first + step;
-      if (comp_(data()[index], key)) {
+      if (comp_size_.functor()(data()[index], key)) {
         first = index + 1;
         count -= step + 1;
       } else {
@@ -573,11 +587,11 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
   template <typename K>
   size_type upper_bound_index(const K& key) const noexcept(compare_cannot_throw<K>) {
     size_type first = 0;
-    size_type count = size_;
+    size_type count = comp_size_.value;
     while (count > 0) {
       const size_type step = count / 2;
       const size_type index = first + step;
-      if (!comp_(key, data()[index])) {
+      if (!comp_size_.functor()(key, data()[index])) {
         first = index + 1;
         count -= step + 1;
       } else {
@@ -590,11 +604,11 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
   template <typename K>
   size_type upper_bound_index_from(const K& key, size_type lo) const noexcept(compare_cannot_throw<K>) {
     size_type first = lo;
-    size_type count = size_ - lo;
+    size_type count = comp_size_.value - lo;
     while (count > 0) {
       const size_type step = count / 2;
       const size_type index = first + step;
-      if (!comp_(key, data()[index])) {
+      if (!comp_size_.functor()(key, data()[index])) {
         first = index + 1;
         count -= step + 1;
       } else {
@@ -615,9 +629,9 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
     return true;
   }
 
-  // Inserts `entry` at `index`, shifting [index, size_) right by one, the way
+  // Inserts `entry` at `index`, shifting [index, size()) right by one, the way
   // std::vector::insert does: move-construct the new last slot, then
-  // move-ASSIGN the rest backwards. Every slot in [0, size_) stays a live
+  // move-ASSIGN the rest backwards. Every slot in [0, size()) stays a live
   // object throughout, so a throwing move cannot leave a destroyed slot inside
   // the range for the destructor to destroy a second time (a
   // construct-then-destroy loop would). A throw part-way
@@ -625,17 +639,18 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
   // container is cleared to restore its invariant before rethrowing.
   void insert_shifting(size_type index, value_type&& entry) {
     if constexpr (std::is_move_assignable_v<value_type>) {
-      if (index == size_) {
-        ::new (storage_.slot(size_)) value_type(static_cast<value_type&&>(entry));
-        ++size_;
+      if (index == comp_size_.value) {
+        ::new (slot_address(comp_size_.value)) value_type(static_cast<value_type&&>(entry));
+        ++comp_size_.value;
         return;
       }
-      ::new (storage_.slot(size_)) value_type(static_cast<value_type&&>(data()[size_ - 1]));
-      ++size_;
+      ::new (slot_address(comp_size_.value))
+          value_type(static_cast<value_type&&>(data()[comp_size_.value - 1]));
+      ++comp_size_.value;
 #if !METL_NO_EXCEPTIONS
       try {
 #endif
-        for (size_type i = size_ - 2; i > index; --i) {
+        for (size_type i = comp_size_.value - 2; i > index; --i) {
           data()[i] = static_cast<value_type&&>(data()[i - 1]);
         }
         data()[index] = static_cast<value_type&&>(entry);
@@ -648,42 +663,42 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
     } else {
       // A non-assignable element can only be relocated by construct+destroy.
       shift_right_from(index);
-      // The shift left slot `index` dead and [0, index) and (index, size_]
+      // The shift left slot `index` dead and [0, index) and (index, size()]
       // live. If moving the entry in throws, clean up exactly those, as
-      // shift_right_from does, rather than leave a dead slot inside size_.
+      // shift_right_from does, rather than leave a dead slot inside size().
 #if !METL_NO_EXCEPTIONS
       try {
 #endif
-        ::new (storage_.slot(index)) value_type(static_cast<value_type&&>(entry));
+        ::new (slot_address(index)) value_type(static_cast<value_type&&>(entry));
 #if !METL_NO_EXCEPTIONS
       } catch (...) {
         for (size_type j = 0; j < index; ++j) {
           data()[j].~value_type();
         }
-        for (size_type j = index + 1; j <= size_; ++j) {
+        for (size_type j = index + 1; j <= comp_size_.value; ++j) {
           data()[j].~value_type();
         }
-        size_ = 0;
+        comp_size_.value = 0;
         throw;
       }
 #endif
-      ++size_;
+      ++comp_size_.value;
     }
   }
 
-  // Relocates [index, size_) one slot right by construct-then-destroy, for an
+  // Relocates [index, size()) one slot right by construct-then-destroy, for an
   // element that cannot be move-assigned. A throw while constructing slot `i`
-  // leaves [0, i) live, slot i dead and (i, size_] holding relocated elements;
+  // leaves [0, i) live, slot i dead and (i, size()] holding relocated elements;
   // the handler destroys exactly those and empties the container, the same
   // outcome as the assignable path. Slot i is skipped: it is already dead, and
   // destroying it again would be a double destroy.
   void shift_right_from(size_type index) {
-    size_type i = size_;
+    size_type i = comp_size_.value;
 #if !METL_NO_EXCEPTIONS
     try {
 #endif
       for (; i > index; --i) {
-        ::new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i - 1]));
+        ::new (slot_address(i)) value_type(static_cast<value_type&&>(data()[i - 1]));
         data()[i - 1].~value_type();
       }
 #if !METL_NO_EXCEPTIONS
@@ -691,10 +706,10 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
       for (size_type j = 0; j < i; ++j) {
         data()[j].~value_type();
       }
-      for (size_type j = i + 1; j <= size_; ++j) {
+      for (size_type j = i + 1; j <= comp_size_.value; ++j) {
         data()[j].~value_type();
       }
-      size_ = 0;
+      comp_size_.value = 0;
       throw;
     }
 #endif
@@ -702,12 +717,12 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
 
   // Closes the gap at `index` by move-constructing each later element one slot
   // down. If such a move can throw, a throw at slot i leaves [0, i) live, slot i
-  // dead and (i, size_) live; the handler destroys exactly those and empties the
+  // dead and (i, size()) live; the handler destroys exactly those and empties the
   // container -- the same outcome as a throwing insert. The noexcept is
   // conditional so that throw propagates instead of terminating.
   //
   // The element leaves the container before its destructor runs: it is moved
-  // into a local, the gap is closed and size_ updated, and only then does the
+  // into a local, the gap is closed and size() updated, and only then does the
   // local die. An element whose destructor erases itself from this container
   // (a self-unregistering handle) then finds it gone instead of erasing a
   // second time. Its moved-from shell is destroyed during the shift, as every
@@ -721,7 +736,7 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
   size_type position_index(const_iterator pos) const noexcept {
     const std::uintptr_t offset =
         reinterpret_cast<std::uintptr_t>(pos) - reinterpret_cast<std::uintptr_t>(data());
-    METL_HARDEN(offset < size_ * sizeof(value_type));
+    METL_HARDEN(offset < comp_size_.value * sizeof(value_type));
     METL_HARDEN(offset % sizeof(value_type) == 0);
     return static_cast<size_type>(offset / sizeof(value_type));
   }
@@ -730,8 +745,8 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
     value_type leaving(static_cast<value_type&&>(data()[index]));
     data()[index].~value_type();
     if constexpr (relocate_cannot_throw) {
-      for (size_type i = index; i + 1 < size_; ++i) {
-        ::new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i + 1]));
+      for (size_type i = index; i + 1 < comp_size_.value; ++i) {
+        ::new (slot_address(i)) value_type(static_cast<value_type&&>(data()[i + 1]));
         data()[i + 1].~value_type();
       }
     } else {
@@ -739,8 +754,8 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
 #if !METL_NO_EXCEPTIONS
       try {
 #endif
-        for (; i + 1 < size_; ++i) {
-          ::new (storage_.slot(i)) value_type(static_cast<value_type&&>(data()[i + 1]));
+        for (; i + 1 < comp_size_.value; ++i) {
+          ::new (slot_address(i)) value_type(static_cast<value_type&&>(data()[i + 1]));
           data()[i + 1].~value_type();
         }
 #if !METL_NO_EXCEPTIONS
@@ -748,28 +763,30 @@ class flat_set : detail::no_implicit_copy_move<flat_set<Key, Capacity, Compare>>
         for (size_type j = 0; j < i; ++j) {
           data()[j].~value_type();
         }
-        for (size_type j = i + 1; j < size_; ++j) {
+        for (size_type j = i + 1; j < comp_size_.value; ++j) {
           data()[j].~value_type();
         }
-        size_ = 0;
+        comp_size_.value = 0;
         throw;
       }
 #endif
     }
-    --size_;
+    --comp_size_.value;
     // `leaving` is destroyed here, with the container already consistent.
     static_cast<void>(leaving);
   }
 
-  Compare comp_;
-  // Entries live in one aligned byte buffer reached as a single
-  // value_type[Capacity] array object, so data() + i is in-array arithmetic
-  // (the reasoning is in detail/array_storage.hpp).
-  // array_storage::data() goes through a reinterpret_cast, which is never
-  // constant-evaluable, so nothing that reaches it is constexpr. The constructor
-  // is, and it does not touch the storage.
-  detail::array_storage<value_type, (Capacity == 0 ? 1 : Capacity)> storage_;
-  size_type size_;
+  // The entries live in the capacity_storage base: one aligned byte buffer
+  // reached as a single value_type[Capacity] array object, so data() + i is
+  // in-array arithmetic (the reasoning is in detail/array_storage.hpp), and
+  // nothing at all at Capacity 0 (#696). array_storage::data() goes through a
+  // reinterpret_cast, which is never constant-evaluable, so nothing that
+  // reaches it is constexpr. The constructor is, and it does not touch the
+  // storage.
+  //
+  // The comparator shares a member with the size, so an empty one takes no
+  // room (detail/ebo_pair.hpp, #318).
+  detail::ebo_pair<Compare, size_type> comp_size_;
 };
 
 /// @brief Swaps the contents of two flat_sets of the same type, capacity and comparator.
