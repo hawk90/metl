@@ -3,8 +3,8 @@
 /// @brief What a container's move does with its comparator, hasher or key
 ///        equality: it copies them, so the source keeps working ones.
 ///
-/// A moved-from container is empty and usable: it takes new elements. Taking
-/// one calls the functors, so a move that moved them out would leave a stateful
+/// A moved-from container is valid: it can be cleared, assigned or given new
+/// elements. Taking one calls the functors, so a move that moved them out would leave a stateful
 /// one (a `fixed_function`, say) empty, and the next insertion would call
 /// nothing (#691). libstdc++'s `std::map` copies its comparator on move for the
 /// same reason. A move-only functor cannot be copied, so it is moved, and the

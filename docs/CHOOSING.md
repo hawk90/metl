@@ -120,7 +120,7 @@ elements inline:
 | Operation | Effect on pointers, references and iterators |
 |---|---|
 | `a = b` (copy) | Everything into `a` is invalidated: its elements are destroyed and new ones built. `b` is untouched. |
-| `a = std::move(b)`, `T a(std::move(b))` | Everything into `b` is invalidated: `b` is left empty, except `fixed_string`, where moving is copying and `b` keeps its contents. Nothing carries over into `a`, unlike `std::vector`. For `a = std::move(b)`, everything into `a` is invalidated too. |
+| `a = std::move(b)`, `T a(std::move(b))` | Everything into `b` is invalidated: `b` is left valid but unspecified, so `clear()` or assign it before reading it; `fixed_string` is the exception, where moving is copying and `b` keeps its contents. Nothing carries over into `a`, unlike `std::vector`. For `a = std::move(b)`, everything into `a` is invalidated too. |
 | `a.swap(b)` | Each stays with its slot, not its value: it now reads the other container's element, or a destroyed object if that slot is past the new size. `flat_*`, `fixed_priority_queue` and the unordered containers swap their functors too. |
 
 The erase-while-iterating loop that is safe on `std::unordered_map`

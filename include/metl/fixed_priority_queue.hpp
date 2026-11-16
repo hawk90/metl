@@ -64,8 +64,10 @@ METL_DETAIL_ABI_BEGIN
 /// @tparam Compare Strict weak ordering. `comp(a, b) == true` means "a comes out
 ///                 after b".
 /// @note Moving from a container, by construction or assignment, leaves the source
-///       empty and usable, and destroys its elements. A pointer into the source then
-///       names a destroyed object, unlike with `std::vector`.
+///       valid but unspecified, as std's containers do: `clear()` it or assign to it
+///       before relying on what it holds. Every pointer, reference and iterator into
+///       the source is invalidated, and none carries over to the destination, unlike
+///       with `std::vector`.
 ///       The comparator is copied, not moved, so the source keeps a working one
 ///       (#691); a move-only comparator is moved.
 template <typename T, std::size_t Capacity, typename Compare = std::less<T>>

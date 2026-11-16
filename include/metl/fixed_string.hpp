@@ -43,8 +43,8 @@ METL_DETAIL_ABI_BEGIN
 /// try_append, try_push_back) report overflow instead. Not thread-safe.
 ///
 /// @tparam Capacity Maximum number of characters, excluding the terminator.
-/// @note Moving is copying: the source keeps its contents, unlike the other
-///       fixed-capacity containers, which are left empty.
+/// @note Moving is copying: the source keeps its contents. The other
+///       fixed-capacity containers leave a moved-from source valid but unspecified.
 template <std::size_t Capacity>
 class fixed_string {
  public:

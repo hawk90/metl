@@ -1,9 +1,9 @@
 // Property: a moved-from container is empty and can be filled again.
 //
-// Every movable container documents that moving leaves the source empty. This
-// checks the half that holds today, with stateless functors. Whether 2.0 keeps
-// "empty" or moves to std's "valid but unspecified", and what happens to a
-// stateful comparator or hasher, is #317.
+// The contract is std's "valid but unspecified" (#317): a moved-from source can
+// be cleared, assigned or filled. This pins more than that, the empty source
+// this implementation leaves, so that changing it is a decision a test records.
+// Stateful comparators and hashers are covered by moved_from_contract_test.
 
 #include "conformance.hpp"
 
