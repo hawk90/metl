@@ -8,11 +8,11 @@ MUTANT = {
            "the only thing that looks at what nth() returns.",
     "kills": "ctest:replay_fuzz_flat_set",
     "old": """  METL_NODISCARD const_reference nth(size_type index) const noexcept {
-    METL_ASSERT(index < size_);
+    METL_ASSERT(index < comp_size_.value);
     return data()[index];
   }""",
     "new": """  METL_NODISCARD const_reference nth(size_type index) const noexcept {
-    METL_ASSERT(index < size_);
-    return data()[index + 1 < size_ ? index + 1 : index];
+    METL_ASSERT(index < comp_size_.value);
+    return data()[index + 1 < comp_size_.value ? index + 1 : index];
   }""",
 }

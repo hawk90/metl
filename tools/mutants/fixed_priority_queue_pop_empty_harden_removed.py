@@ -7,6 +7,6 @@ MUTANT = {
     "why": "pop on an empty queue moves from index SIZE_MAX into slot 0 "
            "before the vector's own check fires.",
     "kills": "ctest:harden_floor_memory",
-    "old": "    METL_HARDEN(!storage_.empty());",
+    "old": "    METL_HARDEN(!elements().empty());",
     "new": "",
 }

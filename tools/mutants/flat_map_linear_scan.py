@@ -7,11 +7,11 @@ MUTANT = {
            "same sizes -- only the comparison count moves.",
     "kills": "ctest:operation_count",
     "old": """    size_type first = 0;
-    size_type count = size_;
+    size_type count = comp_size_.value;
     while (count > 0) {
       const size_type step = count / 2;
       const size_type index = first + step;
-      if (comp_(data()[index].key, key)) {
+      if (comp_size_.functor()(data()[index].key, key)) {
         first = index + 1;
         count -= step + 1;
       } else {
@@ -24,7 +24,7 @@ MUTANT = {
   template <typename K>
   size_type upper_bound_index""",
     "new": """    size_type first = 0;
-    while (first < size_ && comp_(data()[first].key, key)) {
+    while (first < comp_size_.value && comp_size_.functor()(data()[first].key, key)) {
       ++first;
     }
     return first;

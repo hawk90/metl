@@ -6,6 +6,6 @@ MUTANT = {
     "why": "erase(iterator) returns end() instead of the next element, so a loop "
            "that erases as it iterates stops after the first erase (#313).",
     "kills": "ctest:associative_erase_iterator_test",
-    "old": """    return data() + (index < size_ ? index : size_);""",
-    "new": """    return data() + size_;""",
+    "old": """    return data() + (index < comp_size_.value ? index : comp_size_.value);""",
+    "new": """    return data() + comp_size_.value;""",
 }

@@ -6,6 +6,6 @@ MUTANT = {
     "why": "a default-initialized queue leaves a stateful comparator indeterminate, "
            "so the heap order depends on whatever bytes were there (#574).",
     "kills": "ctest:fixed_priority_queue_test",
-    "old": "  F value{};\n",
-    "new": "  F value;\n",
+    "old": "  F held{};\n",
+    "new": "  F held;\n",
 }
