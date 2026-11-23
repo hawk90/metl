@@ -728,9 +728,9 @@ class fixed_vector : detail::capacity_storage<detail::array_storage<T, Capacity>
   }
 
   /// Returns a span viewing the current elements [0, size()).
-  span<T> as_span() noexcept { return span<T>(data(), size_); }
+  METL_NODISCARD span<T> as_span() noexcept { return span<T>(data(), size_); }
   /// Returns a read-only span viewing the current elements [0, size()).
-  span<const T> as_span() const noexcept { return span<const T>(data(), size_); }
+  METL_NODISCARD span<const T> as_span() const noexcept { return span<const T>(data(), size_); }
 
  private:
   void* slot_(size_type index) noexcept {

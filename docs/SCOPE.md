@@ -645,8 +645,7 @@ that is, on the concurrent queues (`spsc_queue`, `mpmc_queue`), where
 accessors and a hook's `is_linked()` do nothing but return, so each is
 `METL_NODISCARD`. The intrusive lists shipped in 1.7.0 without it and no rule
 noticed: adding it after a type is frozen warns at existing call sites, so it is
-checked before then. `span`'s `begin`/`end`/`cbegin`/`cend` are the one
-exemption, for that reason, until 2.0.0 (#545).
+checked before then.
 
 ### R7 — what a `try_` form returns
 
