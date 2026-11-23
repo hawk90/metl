@@ -88,6 +88,7 @@
 #include "metl/compiler.hpp"
 #include "metl/config.hpp"
 #include "metl/detail/addressof.hpp"
+#include "metl/detail/at_slot.hpp"
 #include "metl/detail/bitset.hpp"
 #include "metl/detail/constant_init.hpp"
 #include "metl/detail/copy_move_gate.hpp"
@@ -204,6 +205,9 @@ class static_unordered_set
     iterator(static_unordered_set* set, size_type index) noexcept : set_(set), index_(index) {
       skip_to_occupied();
     }
+    // At a slot already known to be occupied, or at the end: no scan.
+    iterator(static_unordered_set* set, size_type index, detail::at_slot_t) noexcept
+        : set_(set), index_(index) {}
 
     void skip_to_occupied() noexcept {
       if (set_ == nullptr) {
@@ -258,6 +262,9 @@ class static_unordered_set
     const_iterator(const static_unordered_set* set, size_type index) noexcept : set_(set), index_(index) {
       skip_to_occupied();
     }
+    // At a slot already known to be occupied, or at the end: no scan.
+    const_iterator(const static_unordered_set* set, size_type index, detail::at_slot_t) noexcept
+        : set_(set), index_(index) {}
 
     void skip_to_occupied() noexcept {
       if (set_ == nullptr) {
@@ -390,9 +397,13 @@ class static_unordered_set
   METL_NODISCARD const_iterator cbegin() const noexcept { return const_iterator(this, 0); }
 
   /// @brief Past-the-end iterator.
-  METL_NODISCARD iterator end() noexcept { return iterator(this, bucket_count); }
-  METL_NODISCARD const_iterator end() const noexcept { return const_iterator(this, bucket_count); }
-  METL_NODISCARD const_iterator cend() const noexcept { return const_iterator(this, bucket_count); }
+  METL_NODISCARD iterator end() noexcept { return iterator(this, bucket_count, detail::at_slot); }
+  METL_NODISCARD const_iterator end() const noexcept {
+    return const_iterator(this, bucket_count, detail::at_slot);
+  }
+  METL_NODISCARD const_iterator cend() const noexcept {
+    return const_iterator(this, bucket_count, detail::at_slot);
+  }
 
   /// @brief True if the set holds no elements.
   METL_NODISCARD bool empty() const noexcept { return key_equal_size_.value == 0; }
@@ -405,7 +416,7 @@ class static_unordered_set
 
   /// @brief True if the given key is present.
   METL_NODISCARD bool contains(const key_type& key) const noexcept(lookup_cannot_throw<key_type>) {
-    return find(key) != nullptr;
+    return find_existing_index(key) != npos;
   }
 
   /// @brief Key lookup: pointer to the stored element equal to @p key, or @c nullptr if absent.
@@ -423,13 +434,13 @@ class static_unordered_set
   /// @brief Key lookup returning an iterator, or @c end() if the key is absent.
   METL_NODISCARD iterator find_iterator(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
     const size_type index = find_existing_index(key);
-    return iterator(this, index == npos ? bucket_count : index);
+    return iterator(this, index == npos ? bucket_count : index, detail::at_slot);
   }
 
   METL_NODISCARD const_iterator find_iterator(const key_type& key) const
       noexcept(lookup_cannot_throw<key_type>) {
     const size_type index = find_existing_index(key);
-    return const_iterator(this, index == npos ? bucket_count : index);
+    return const_iterator(this, index == npos ? bucket_count : index, detail::at_slot);
   }
 
   // ---- Heterogeneous lookup overloads ----
@@ -461,7 +472,7 @@ class static_unordered_set
                                    !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD iterator find_iterator(const K& key) noexcept(lookup_cannot_throw<K>) {
     const size_type index = find_existing_index(key);
-    return iterator(this, index == npos ? bucket_count : index);
+    return iterator(this, index == npos ? bucket_count : index, detail::at_slot);
   }
 
   template <typename K,
@@ -469,7 +480,7 @@ class static_unordered_set
                                    !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD const_iterator find_iterator(const K& key) const noexcept(lookup_cannot_throw<K>) {
     const size_type index = find_existing_index(key);
-    return const_iterator(this, index == npos ? bucket_count : index);
+    return const_iterator(this, index == npos ? bucket_count : index, detail::at_slot);
   }
 
   template <typename K,

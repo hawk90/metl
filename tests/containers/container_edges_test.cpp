@@ -237,6 +237,48 @@ void unordered_set_inserts_into_a_table_of_tombstones() {
   CHECK(!s.contains(throwing_move_key(63)));
 }
 
+// find_iterator builds its iterator at the found slot without scanning for an
+// occupied one. Walking on from it must visit the same elements, in the same
+// order, as the walk from begin() does from that element, with empty slots and
+// tombstones in between.
+template <typename Container, typename KeyOf>
+void walk_from_find_matches_walk_from_begin(Container& c, KeyOf key_of) {
+  std::vector<int> order;
+  for (auto it = c.begin(); it != c.end(); ++it) {
+    order.push_back(key_of(*it));
+  }
+  CHECK_EQ(order.size(), c.size());
+  const Container& cc = c;
+  for (std::size_t i = 0; i < order.size(); ++i) {
+    std::vector<int> walked;
+    for (auto it = c.find_iterator(order[i]); it != c.end(); ++it) {
+      walked.push_back(key_of(*it));
+    }
+    std::vector<int> walked_const;
+    for (auto it = cc.find_iterator(order[i]); it != cc.end(); ++it) {
+      walked_const.push_back(key_of(*it));
+    }
+    const std::vector<int> expected(order.begin() + static_cast<std::ptrdiff_t>(i), order.end());
+    CHECK(walked == expected);
+    CHECK(walked_const == expected);
+  }
+}
+
+void unordered_walk_from_find_iterator() {
+  metl::static_unordered_map<int, int, 16> m;
+  metl::static_unordered_set<int, 16> s;
+  for (int key = 0; key < 12; ++key) {
+    CHECK(m.try_emplace(key * 7, key));
+    CHECK(s.try_emplace(key * 7));
+  }
+  for (int key = 0; key < 12; key += 3) {
+    CHECK(m.erase(key * 7));
+    CHECK(s.erase(key * 7));
+  }
+  walk_from_find_matches_walk_from_begin(m, [](const auto& e) { return e.key; });
+  walk_from_find_matches_walk_from_begin(s, [](const auto& e) { return e; });
+}
+
 // Value-initialized iterators compare equal, as for any forward iterator.
 void value_initialized_iterators_compare_equal() {
   CHECK(umap_type::iterator() == umap_type::iterator());
@@ -259,6 +301,7 @@ int main() {
   unordered_lookup_misses();
   unordered_set_reuses_a_tombstone();
   unordered_set_inserts_into_a_table_of_tombstones();
+  unordered_walk_from_find_iterator();
   value_initialized_iterators_compare_equal();
   return metl_test::exit_code();
 }

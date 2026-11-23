@@ -276,7 +276,8 @@ class flat_set : detail::capacity_storage<detail::array_storage<Key, Capacity>,
 
   /// @brief True if the given key is present.
   METL_NODISCARD bool contains(const key_type& key) const noexcept(compare_cannot_throw<key_type>) {
-    return find(key) != nullptr;
+    const size_type index = lower_bound_index(key);
+    return index < comp_size_.value && !comp_size_.functor()(key, data()[index]);
   }
 
   /// @brief Key-based lookup: pointer to the stored element equal to @p key, or @c nullptr.
@@ -349,7 +350,8 @@ class flat_set : detail::capacity_storage<detail::array_storage<Key, Capacity>,
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD bool contains(const K& key) const noexcept(compare_cannot_throw<K>) {
-    return find(key) != nullptr;
+    const size_type index = lower_bound_index(key);
+    return index < comp_size_.value && !comp_size_.functor()(key, data()[index]);
   }
 
   template <
