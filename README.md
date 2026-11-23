@@ -685,9 +685,9 @@ METL is licensed under the [Apache License, Version 2.0](LICENSE).
 
 ## Status
 
-**2.0.0-alpha.1** — pre-release of 2.0. The API and ABI may still change
-before 2.0.0; alpha.2 changes triviality and layout and alpha.3 the API
-vocabulary ([CHANGELOG.md](CHANGELOG.md)). For a stable release use **1.15.0**.
+**2.0.0-alpha.2** — pre-release of 2.0. The API and ABI may still change
+before 2.0.0; alpha.3 changes the API vocabulary
+([CHANGELOG.md](CHANGELOG.md)). For a stable release use **1.15.0**.
 METL follows [Semantic Versioning](https://semver.org/): the
 public API changes incompatibly only in a new major version. "Public" means every
 header under `include/metl/` except `detail/` and `exp/`, everything in namespace
