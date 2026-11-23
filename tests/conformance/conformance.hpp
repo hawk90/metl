@@ -735,7 +735,7 @@ struct static_unordered_map_adapter {
     (void)c.try_emplace(other, probe(other));
     (void)c.erase(blocker);
     (void)c.erase(other);
-    (void)c.try_emplace(100, *c.find(copied));
+    (void)c.try_emplace(100, c.find(copied)->value);
     return {2, copied, 2};
   }
 };

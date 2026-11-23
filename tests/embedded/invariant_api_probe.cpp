@@ -146,7 +146,7 @@ void exercise_associative() noexcept {
   sink(hashed.try_emplace(4u) ? 1u : 0u);
 
   static constexpr metl::lookup_table<std::uint32_t, std::uint32_t, 1> table{{{{5u, 6u}}}};
-  sink(table.find(5u) != nullptr ? 1u : 0u);
+  sink(table.find_value(5u) != nullptr ? 1u : 0u);
 }
 
 // ---- Vocabulary ------------------------------------------------------------

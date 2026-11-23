@@ -27,12 +27,12 @@ int main() {
     return 1;
   }
 
-  const auto* found = commands.find(2);
+  const auto* found = commands.find_value(2);
   if (found == nullptr || (*found)[0] != 's') {
     return 2;
   }
 
-  const auto* missing = commands.find(7);
+  const auto* missing = commands.find_value(7);
   if (missing != nullptr) {
     return 3;
   }
@@ -66,7 +66,7 @@ int main() {
     CHECK(runtime.contains(12));
     CHECK(!runtime.contains(13));
     CHECK(!runtime.contains(9));
-    CHECK_DEREF_EQ(runtime.find(12), 40);
+    CHECK_DEREF_EQ(runtime.find_value(12), 40);
     CHECK_EQ(runtime.value_or(99, -1), -1);
 
     const metl::lookup_table<int, int, 0> none{};

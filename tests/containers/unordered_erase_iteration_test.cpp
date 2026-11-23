@@ -114,8 +114,8 @@ int main() {
       CHECK(map.empty());
     }
     CHECK(map.try_emplace(7, 70));
-    CHECK(map.find(7) != nullptr);
-    CHECK(map.find(8) == nullptr);
+    CHECK(map.contains(7));
+    CHECK(!map.contains(8));
   }
 
   return metl_test::exit_code();

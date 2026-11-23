@@ -315,14 +315,14 @@ void associative() {
         CHECK_EQ(a.size(), right.size());
         CHECK_EQ(b.size(), left.size());
         for (const int v : left) {
-          const counted* in_b_now = b.find(v);
-          CHECK(in_b_now != nullptr);
-          if (in_b_now != nullptr) {
-            CHECK_EQ(in_b_now->value, v);
+          const auto in_b_now = b.find(v);
+          CHECK(in_b_now != b.end());
+          if (in_b_now != b.end()) {
+            CHECK_EQ(in_b_now->value.value, v);
           }
-          const counted* in_a_now = a.find(v);
-          if (in_a_now != nullptr) {
-            CHECK_EQ(in_a_now->value, v);
+          const auto in_a_now = a.find(v);
+          if (in_a_now != a.end()) {
+            CHECK_EQ(in_a_now->value.value, v);
           }
         }
         CHECK(!b.contains(99));

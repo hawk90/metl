@@ -86,7 +86,7 @@ void converting_keys() {
   {
     metl::static_unordered_map<wrapped, int, 8, overloaded_hash> map;
     map.emplace(5, 1);
-    CHECK(map.find(wrapped{5}) != nullptr);
+    CHECK(map.contains(wrapped{5}));
     CHECK(!map.try_emplace(wrapped{5}, 2));
     CHECK_EQ(map.size(), std::size_t{1});
   }

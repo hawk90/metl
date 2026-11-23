@@ -106,8 +106,8 @@ namespace {
 // null check the compiler was asking for.
 template <typename Map, typename Key>
 int value_of(Map& map, const Key& key) {
-  const auto* found = map.find(key);
-  return found != nullptr ? *found : -1;
+  const auto found = map.find(key);
+  return found != map.end() ? found->value : -1;
 }
 
 }  // namespace
@@ -126,8 +126,8 @@ int main() {
     return 3;
   }
 
-  int* found = map.find(9);
-  if (found == nullptr || *found != 90) {
+  const auto found = map.find(9);
+  if (found == map.end() || found->value != 90) {
     return 4;
   }
 
@@ -230,18 +230,18 @@ int main() {
       return 20;
     }
 
-    auto it = m.find_iterator(2);
+    auto it = m.find(2);
     if (it == m.end() || it->key != 2 || it->value != 22) {
       return 15;
     }
 
-    auto miss = m.find_iterator(99);
+    auto miss = m.find(99);
     if (miss != m.end()) {
       return 15;
     }
 
     const auto& cm = m;
-    if (cm.find_iterator(2) == cm.end() || cm.find_iterator(99) != cm.end()) {
+    if (cm.find(2) == cm.end() || cm.find(99) != cm.end()) {
       return 15;
     }
   }
@@ -258,18 +258,18 @@ int main() {
       return 16;
     }
 
-    int* found_het = m.find(lookup);
-    if (found_het == nullptr || *found_het != 1) {
+    const auto found_het = m.find(lookup);
+    if (found_het == m.end() || found_het->value != 1) {
       return 16;
     }
 
-    auto it = m.find_iterator(static_cast<const char*>("beta"));
+    auto it = m.find(static_cast<const char*>("beta"));
     if (it == m.end() || it->value != 2) {
       return 16;
     }
     const auto& cm = m;
-    if (cm.find_iterator(static_cast<const char*>("beta")) == cm.end() ||
-        cm.find_iterator(static_cast<const char*>("gamma")) != cm.end()) {
+    if (cm.find(static_cast<const char*>("beta")) == cm.end() ||
+        cm.find(static_cast<const char*>("gamma")) != cm.end()) {
       return 16;
     }
 
@@ -326,17 +326,17 @@ int main() {
       return 18;
     }
     for (int i = 0; i < 64; ++i) {
-      const int* v = m.find(i * stride);
-      if (v == nullptr || *v != i) {
+      const auto v = m.find(i * stride);
+      if (v == m.end() || v->value != i) {
         return 18;
       }
     }
     // A key that was never inserted must not be found.
-    if (m.find(64 * stride) != nullptr) {
+    if (m.contains(64 * stride)) {
       return 18;
     }
     // Erase then reinsert to exercise tombstone-aware probing on the mixed buckets.
-    if (!m.erase(10 * stride) || m.find(10 * stride) != nullptr) {
+    if (!m.erase(10 * stride) || m.contains(10 * stride)) {
       return 18;
     }
     if (!m.try_emplace(10 * stride, 999) || value_of(m, 10 * stride) != 999) {
@@ -379,15 +379,15 @@ int main() {
         return 19;
       }
       // A key never inserted must remain absent (bounded negative lookup).
-      if (m.find(base + window) != nullptr) {
+      if (m.contains(base + window)) {
         return 19;
       }
     }
 
     // Every currently-live key [base, base + window) must be findable with its value.
     for (int k = base; k < base + window; ++k) {
-      const int* v = m.find(k);
-      if (v == nullptr || *v != k * 7) {
+      const auto v = m.find(k);
+      if (v == m.end() || v->value != k * 7) {
         return 19;
       }
     }
@@ -437,7 +437,7 @@ int main() {
   {
     metl::static_unordered_map<int, int, 0> zero;
     CHECK(!zero.contains(3));
-    CHECK(zero.find(3) == nullptr);
+    CHECK(!zero.contains(3));
   }
 
   return metl_test::exit_code();

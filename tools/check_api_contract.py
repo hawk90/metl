@@ -182,7 +182,7 @@ VALUE_ALLOWLIST = {
     "emplace": _ASSERTING_VALUE,
     "error_ptr": _PRIVATE_VALUE,
     "exchange": "atomic_handle returns the previous value; nothing can fail",
-    "find": _LOOKUP_VALUE,
+    "find_value": _LOOKUP_VALUE,
     "find_transition": _LOOKUP_VALUE,
     "get": _LOOKUP_VALUE,
     "load": "atomic_handle returns the stored value; nothing can fail",
@@ -540,7 +540,7 @@ def self_test():
         if "R2" not in {r for _, _, r, _ in check_text(text, "<canary-value>")}:
             failures.append(f"R2 missed {text!r}")
     for text in ("METL_NODISCARD T* try_stash() noexcept;",
-                 "METL_NODISCARD pointer find(int key) noexcept;",
+                 "METL_NODISCARD pointer find_value(int key) noexcept;",
                  "pointer memory = try_allocate(count);",
                  "return try_allocate(count);"):
         if check_text(text, "<canary-value-clean>"):

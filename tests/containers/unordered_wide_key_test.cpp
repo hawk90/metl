@@ -76,7 +76,7 @@ void wide_on_a_64_bit_host() {
     }
     g_compares = 0;
     for (std::size_t i = 0; i < keys; ++i) {
-      CHECK(map.find(static_cast<Wide>(i) << 64) != nullptr);
+      CHECK(map.contains(static_cast<Wide>(i) << 64));
     }
     CHECK(g_compares <= keys * 4);
   }
@@ -112,8 +112,8 @@ int main() {
     }
     g_compares = 0;
     for (std::size_t i = 0; i < keys; ++i) {
-      const auto* found = map.find(static_cast<std::uint64_t>(i) << 32);
-      CHECK(found != nullptr && *found == static_cast<int>(i));
+      const auto found = map.find(static_cast<std::uint64_t>(i) << 32);
+      CHECK(found != map.end() && found->value == static_cast<int>(i));
     }
     // About 1.4 compares a hit with the high word in, 32.5 without it.
     CHECK(g_compares <= keys * 4);

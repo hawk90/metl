@@ -58,9 +58,12 @@ void flat_map_erases_while_iterating() {
   CHECK(m.contains(1));
   CHECK(m.contains(3));
   CHECK(m.contains(5));
-  // Erasing the last element returns end().
+  // Erasing the last element returns end(): the end after the erase, so it is
+  // read in a separate statement. In one expression, `m.erase(it) == m.end()`
+  // may read end() first; GCC on x86-64 does, now that == is a function call.
   auto last = m.begin() + 2;
-  CHECK(m.erase(last) == m.end());
+  const auto after_last = m.erase(last);
+  CHECK(after_last == m.end());
 
   metl::flat_map<int, int, 8> n;
   for (int k = 0; k < 6; ++k) {

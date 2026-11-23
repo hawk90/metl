@@ -5,7 +5,7 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `find`, `contains`, `find_iterator` | wait-free, bounded by `bucket_count` probes |
+///   | `find`, `contains` | wait-free, bounded by `bucket_count` probes |
 ///   | `emplace`, `try_emplace` (new key) | wait-free, `bucket_count` probes **plus, at times, a rebuild** |
 ///   | `erase` | wait-free, bounded by `bucket_count` probes; moves nothing |
 ///   | `erase(iterator)` | wait-free, bounded by `bucket_count`; moves nothing |
@@ -419,26 +419,13 @@ class static_unordered_set
     return find_existing_index(key) != npos;
   }
 
-  /// @brief Key lookup: pointer to the stored element equal to @p key, or @c nullptr if absent.
-  /// @return Pointer to the element, or @c nullptr when the key is not found.
-  METL_NODISCARD value_type* find(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
-    const size_type index = find_existing_index(key);
-    return index == npos ? nullptr : slot_value(index);
-  }
-
-  METL_NODISCARD const value_type* find(const key_type& key) const noexcept(lookup_cannot_throw<key_type>) {
-    const size_type index = find_existing_index(key);
-    return index == npos ? nullptr : slot_value(index);
-  }
-
-  /// @brief Key lookup returning an iterator, or @c end() if the key is absent.
-  METL_NODISCARD iterator find_iterator(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
+  /// @brief Iterator to the element whose key is @p key, or end().
+  METL_NODISCARD iterator find(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
     const size_type index = find_existing_index(key);
     return iterator(this, index == npos ? bucket_count : index, detail::at_slot);
   }
 
-  METL_NODISCARD const_iterator find_iterator(const key_type& key) const
-      noexcept(lookup_cannot_throw<key_type>) {
+  METL_NODISCARD const_iterator find(const key_type& key) const noexcept(lookup_cannot_throw<key_type>) {
     const size_type index = find_existing_index(key);
     return const_iterator(this, index == npos ? bucket_count : index, detail::at_slot);
   }
@@ -454,23 +441,7 @@ class static_unordered_set
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD value_type* find(const K& key) noexcept(lookup_cannot_throw<K>) {
-    const size_type index = find_existing_index(key);
-    return index == npos ? nullptr : slot_value(index);
-  }
-
-  template <typename K,
-            typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
-                                   !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD const value_type* find(const K& key) const noexcept(lookup_cannot_throw<K>) {
-    const size_type index = find_existing_index(key);
-    return index == npos ? nullptr : slot_value(index);
-  }
-
-  template <typename K,
-            typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
-                                   !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD iterator find_iterator(const K& key) noexcept(lookup_cannot_throw<K>) {
+  METL_NODISCARD iterator find(const K& key) noexcept(lookup_cannot_throw<K>) {
     const size_type index = find_existing_index(key);
     return iterator(this, index == npos ? bucket_count : index, detail::at_slot);
   }
@@ -478,7 +449,7 @@ class static_unordered_set
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD const_iterator find_iterator(const K& key) const noexcept(lookup_cannot_throw<K>) {
+  METL_NODISCARD const_iterator find(const K& key) const noexcept(lookup_cannot_throw<K>) {
     const size_type index = find_existing_index(key);
     return const_iterator(this, index == npos ? bucket_count : index, detail::at_slot);
   }

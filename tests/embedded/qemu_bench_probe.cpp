@@ -98,7 +98,7 @@ __attribute__((noinline)) void flat_map_insert_find() noexcept {
     sink(g_flat_map.try_emplace(kIterations - i, i) ? 1u : 0u);
   }
   for (u32 i = 0; i < kIterations; ++i) {
-    const u32* found = g_flat_map.find(i + 1u);
+    const u32* found = g_flat_map.find_value(i + 1u);
     sink(found != nullptr ? *found : 0u);
   }
   g_flat_map.clear();

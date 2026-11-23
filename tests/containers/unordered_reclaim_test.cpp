@@ -156,7 +156,7 @@ int main() {
 
     CHECK_EQ(map.size(), static_cast<std::size_t>(kLive));
     for (std::uint32_t k = 0; k < kLive; ++k) {
-      CHECK_DEREF_EQ(map.find(counted_key{k}), k);
+      CHECK(map.find(counted_key{k}) != map.end() && map.find(counted_key{k})->value == k);
     }
   }
 

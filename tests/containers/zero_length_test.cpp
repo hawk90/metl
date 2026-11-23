@@ -93,14 +93,14 @@ int main() {
   // An empty lookup_table, at compile time and at run time.
   {
     constexpr metl::lookup_table<std::uint32_t, std::uint32_t, 0> folded{};
-    static_assert(folded.find(1U) == nullptr, "an empty table finds nothing");
+    static_assert(folded.find_value(1U) == nullptr, "an empty table finds nothing");
     static_assert(folded.value_or(1U, 7U) == 7U, "an empty table falls back");
 
     volatile std::uint32_t seed = 3;
     const std::uint32_t key = seed;
     const auto table = metl::make_lookup_table(std::array<entry, 0>{});
     CHECK(table.empty());
-    CHECK(table.find(key) == nullptr);
+    CHECK(table.find_value(key) == nullptr);
     CHECK(!table.contains(key));
     CHECK_EQ(table.value_or(key, 9U), 9U);
   }

@@ -110,11 +110,18 @@ int main() {
     return 4;
   }
 
-  // const find, on its own: contains no longer goes through it. 9 is past every
-  // key (index == size), 0 is before the first (the comparator rejects it).
-  const int* const_hit = cmap.find(2);
-  if (const_hit == nullptr || *const_hit != 20 || cmap.find(9) != nullptr || cmap.find(0) != nullptr) {
+  // The const find and find_value, on their own: contains goes through neither.
+  // 9 is past every key (index == size), 0 is before the first (the comparator
+  // rejects it).
+  const auto const_it = cmap.find(2);
+  if (const_it == cmap.end() || const_it->value != 20 || cmap.find(9) != cmap.end() ||
+      cmap.find(0) != cmap.end()) {
     return 49;
+  }
+  const int* const_hit = cmap.find_value(2);
+  if (const_hit == nullptr || *const_hit != 20 || cmap.find_value(9) != nullptr ||
+      cmap.find_value(0) != nullptr) {
+    return 50;
   }
 
   auto lower = map.lower_bound(2);
@@ -129,8 +136,8 @@ int main() {
     return 6;
   }
 
-  int* found = map.find(3);
-  if (found == nullptr || *found != 30) {
+  const auto found = map.find(3);
+  if (found == map.end() || found->value != 30) {
     return 7;
   }
 
@@ -138,7 +145,7 @@ int main() {
     return 8;
   }
 
-  if (!map.try_insert_or_assign(2, 25) || *map.find(2) != 25) {
+  if (!map.try_insert_or_assign(2, 25) || map.find(2)->value != 25) {
     return 9;
   }
 
@@ -204,8 +211,8 @@ int main() {
       return 19;
     }
 
-    const int* p = rmap.find(2);
-    if (p == nullptr || *p != 200) {
+    const auto p = rmap.find(2);
+    if (p == rmap.end() || p->value != 200) {
       return 20;
     }
 
@@ -240,8 +247,8 @@ int main() {
 
     // Heterogeneous lookup via cstr_view (a different type than const char*).
     cstr_view vb{"banana"};
-    const int* pb = smap.find(vb);
-    if (pb == nullptr || *pb != 2) {
+    const auto pb = smap.find(vb);
+    if (pb == smap.end() || pb->value != 2) {
       return 26;
     }
 

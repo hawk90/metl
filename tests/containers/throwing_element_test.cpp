@@ -601,7 +601,7 @@ int main() {
       CHECK_EQ(most_moves_in_one_insert, 1);  // never rebuilt
       CHECK(map.empty());
       CHECK(map.try_emplace(5, armed(5)));
-      CHECK(map.find(5) != nullptr);
+      CHECK(map.contains(5));
     }
     CHECK_EQ(g_live, 0);
   }
@@ -713,7 +713,7 @@ int main() {
     CHECK(threw);
     CHECK(table.empty());
     CHECK(table.try_emplace(7, 70));  // and it is still usable
-    CHECK(table.find(7) != nullptr);
+    CHECK(table.contains(7));
   }
 
   // ---- fixed_deque::try_emplace_front: a throwing constructor gives the slot back

@@ -94,12 +94,12 @@ int main() {
     return 3;
   }
 
-  int* found = set.find(9);
-  if (found == nullptr || *found != 9) {
+  const auto found = set.find(9);
+  if (found == set.end() || *found != 9) {
     return 4;
   }
 
-  auto found_it = set.find_iterator(5);
+  auto found_it = set.find(5);
   if (found_it == set.end() || *found_it != 5) {
     return 5;
   }
@@ -168,15 +168,15 @@ int main() {
     if (!s.try_emplace(7) || !s.try_emplace(11)) {
       return 21;
     }
-    auto it = s.find_iterator(11);
+    auto it = s.find(11);
     if (it == s.end() || *it != 11) {
       return 14;
     }
-    if (s.find_iterator(99) != s.end()) {
+    if (s.find(99) != s.end()) {
       return 14;
     }
     const auto& cs = s;
-    if (cs.find_iterator(11) == cs.end() || cs.find_iterator(99) != cs.end()) {
+    if (cs.find(11) == cs.end() || cs.find(99) != cs.end()) {
       return 14;
     }
   }
@@ -192,17 +192,17 @@ int main() {
     if (!s.contains(lookup)) {
       return 15;
     }
-    if (s.find(lookup) == nullptr) {
+    if (!s.contains(lookup)) {
       return 15;
     }
 
-    auto it = s.find_iterator(static_cast<const char*>("beta"));
+    auto it = s.find(static_cast<const char*>("beta"));
     if (it == s.end() || !cstr_equal(it->c_str(), "beta")) {
       return 15;
     }
     const auto& cs = s;
-    if (cs.find_iterator(static_cast<const char*>("beta")) == cs.end() ||
-        cs.find_iterator(static_cast<const char*>("gamma")) != cs.end()) {
+    if (cs.find(static_cast<const char*>("beta")) == cs.end() ||
+        cs.find(static_cast<const char*>("gamma")) != cs.end()) {
       return 15;
     }
 
@@ -332,7 +332,7 @@ int main() {
   // A zero-capacity set finds nothing.
   {
     metl::static_unordered_set<int, 0> zero;
-    if (zero.contains(3) || zero.find(3) != nullptr) {
+    if (zero.contains(3) || zero.contains(3)) {
       return 22;
     }
   }

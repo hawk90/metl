@@ -5,7 +5,7 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `find`, `contains`, `value_or` | wait-free, bounded by `Size` comparisons |
+///   | `find_value`, `contains`, `value_or` | wait-free, bounded by `Size` comparisons |
 ///   | `at`, `size` | wait-free, bounded |
 ///
 /// The table is a flat array scanned linearly, so a lookup costs at most `Size`
@@ -47,7 +47,7 @@ struct lookup_entry {
 /// @tparam Key Key type (compared with operator==).
 /// @tparam Value Mapped value type.
 /// @tparam Size Number of entries (fixed at compile time).
-/// @note `noexcept` on the constructor, `find`, `contains` and `value_or` is
+/// @note `noexcept` on the constructor, `find_value`, `contains` and `value_or` is
 ///       conditional on `Key`/`Value` copies and `Key`'s `operator==` not
 ///       throwing, so a throwing type propagates its exception instead of
 ///       terminating.
@@ -96,12 +96,15 @@ class lookup_table {
 
   /// Returns true if any entry has a key equal to `key`.
   METL_NODISCARD constexpr bool contains(const key_type& key) const noexcept(nothrow_compare) {
-    return find(key) != nullptr;
+    return find_value(key) != nullptr;
   }
 
   /// Finds the value mapped to `key` via a linear scan.
   /// @return Pointer to the mapped value, or nullptr if `key` is not present.
-  METL_NODISCARD constexpr const mapped_type* find(const key_type& key) const noexcept(nothrow_compare) {
+  /// @note Named as on `flat_map` and `static_unordered_map`, where `find`
+  ///       returns an iterator. The table has no iterators, so it has no `find`.
+  METL_NODISCARD constexpr const mapped_type* find_value(const key_type& key) const
+      noexcept(nothrow_compare) {
     if constexpr (Size > 0) {
       for (size_type i = 0; i < Size; ++i) {
         if (entries_[i].key == key) {
@@ -116,7 +119,7 @@ class lookup_table {
   /// Returns the value mapped to `key`, or `fallback` if `key` is not present.
   METL_NODISCARD constexpr mapped_type value_or(const key_type& key, mapped_type fallback) const
       noexcept(nothrow_compare && nothrow_copy_value && std::is_nothrow_move_constructible_v<Value>) {
-    const mapped_type* value = find(key);
+    const mapped_type* value = find_value(key);
     return value != nullptr ? *value : fallback;
   }
 
