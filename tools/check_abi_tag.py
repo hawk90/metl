@@ -21,23 +21,33 @@ inline function (config.hpp, "ABI tag"). So:
                                  the application calls the h1 one
     the same settings            links and runs
 
+The pre-release is part of the name too (#717): a tree cut as 2.0.0-alpha.3
+opens `metl::v2::alpha3_<config>`, and a release opens `metl::v2::<config>`.
+Pre-releases change return types, which are not in a mangled name, so without
+the prefix an alpha.2 object and an alpha.3 object link and run each other's
+code. --release-tag checks that the prefix in <metl/detail/abi.hpp> is the one
+the tag being released calls for; release.yml runs it.
+
 This script builds those programs with the compiler it is given and fails if
 any of them behaves otherwise.
 
 Usage:
     tools/check_abi_tag.py --cxx clang++
     tools/check_abi_tag.py --cxx g++ --std c++20
+    tools/check_abi_tag.py --release-tag v2.0.0-alpha.3
     tools/check_abi_tag.py --self-test
 """
 
 import argparse
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 ABI = REPO / "tests" / "abi"
+ABI_HEADER = REPO / "include" / "metl" / "detail" / "abi.hpp"
 
 # (name, library flags, application flags, whether the program must link).
 # Each pair differs in exactly one setting the tag encodes, except the controls.
@@ -46,10 +56,48 @@ API_CASES = [
     ("METL_HARDENING 0 against 1", ["-DMETL_HARDENING=0"], ["-DMETL_HARDENING=1"], False),
     ("METL_HARDENING 1 against 2", ["-DMETL_HARDENING=1"], ["-DMETL_HARDENING=2"], False),
     ("exceptions against -fno-exceptions", [], ["-fno-exceptions"], False),
+    # Two pre-releases, and a pre-release against the release. Spelled out, so
+    # the cases do not depend on what this tree is cut as.
+    ("pre-release alpha8 against alpha9", ["-DMETL_DETAIL_ABI_PRERELEASE=alpha8_"],
+     ["-DMETL_DETAIL_ABI_PRERELEASE=alpha9_"], False),
+    ("release against pre-release alpha9", ["-DMETL_DETAIL_ABI_PRERELEASE="],
+     ["-DMETL_DETAIL_ABI_PRERELEASE=alpha9_"], False),
     # Not in the tag: METL_CRC_TABLE and METL_ASSERT_STRINGS change no result.
     ("METL_ASSERT_STRINGS 0 against 1 (not tagged)", ["-DMETL_ASSERT_STRINGS=0"],
      ["-DMETL_ASSERT_STRINGS=1"], True),
 ]
+
+
+PRERELEASE_DEFINE = re.compile(r"^#define METL_DETAIL_ABI_PRERELEASE[ \t]*(\S*)[ \t]*$", re.M)
+
+
+def prefix_for_tag(tag):
+    """The namespace prefix a release tag calls for: v2.0.0-alpha.3 -> alpha3_."""
+    match = re.fullmatch(r"v?\d+\.\d+\.\d+(?:-([0-9A-Za-z.]+))?", tag)
+    if match is None:
+        raise ValueError(f"{tag!r} is not a version tag such as v2.0.0 or v2.0.0-alpha.3")
+    if match.group(1) is None:
+        return ""
+    return match.group(1).replace(".", "").lower() + "_"
+
+
+def header_prefix(text):
+    """The prefix <metl/detail/abi.hpp> defines, or None if it defines none or several."""
+    found = PRERELEASE_DEFINE.findall(text)
+    return found[0] if len(found) == 1 else None
+
+
+def judge_release_tag(tag, text):
+    """The finding for releasing `tag` from a tree whose abi.hpp reads `text`, or None."""
+    want = prefix_for_tag(tag)
+    have = header_prefix(text)
+    if have is None:
+        return "include/metl/detail/abi.hpp must define METL_DETAIL_ABI_PRERELEASE exactly once"
+    if have == want:
+        return None
+    return (f"{tag} needs METL_DETAIL_ABI_PRERELEASE to be {want or '(empty)'}, but "
+            f"include/metl/detail/abi.hpp defines {have or '(empty)'}. Set it in the release "
+            f"commit, so this release's objects do not link with another pre-release's")
 
 
 def run(command, cwd):
@@ -145,6 +193,32 @@ def self_test(cxx):
     if len(judge_mix("o", -6, 0)) != 2:
         failures.append("a mixed program that ran the wrong copy each way was not reported twice")
 
+    for tag, want in (("v2.0.0-alpha.3", "alpha3_"), ("v2.0.0", ""), ("2.1.0-rc.1", "rc1_"),
+                      ("v3.0.0-Beta.2", "beta2_")):
+        if prefix_for_tag(tag) != want:
+            failures.append(f"{tag} gave prefix {prefix_for_tag(tag)!r}, not {want!r}")
+    for bad in ("v2.0", "2.0.0-", "v2.0.0-alpha_3", "main"):
+        try:
+            prefix_for_tag(bad)
+            failures.append(f"{bad!r} was taken for a version tag")
+        except ValueError:
+            pass
+    pre = "#ifndef METL_DETAIL_ABI_PRERELEASE\n#define METL_DETAIL_ABI_PRERELEASE {}\n#endif\n"
+    if judge_release_tag("v2.0.0-alpha.3", pre.format("alpha3_")):
+        failures.append("a matching pre-release prefix was reported")
+    if judge_release_tag("v2.0.0", pre.format("")):
+        failures.append("an empty prefix for a release was reported")
+    if not judge_release_tag("v2.0.0", pre.format("alpha3_")):
+        failures.append("a release cut with a pre-release prefix was not reported")
+    if not judge_release_tag("v2.0.0-alpha.4", pre.format("alpha3_")):
+        failures.append("alpha.4 cut with alpha.3's prefix was not reported")
+    if not judge_release_tag("v2.0.0-alpha.3", pre.format("")):
+        failures.append("a pre-release cut with the release's empty prefix was not reported")
+    if not judge_release_tag("v2.0.0", "// nothing defined here\n"):
+        failures.append("a header without the define was not reported")
+    if header_prefix(ABI_HEADER.read_text()) is None:
+        failures.append("the real abi.hpp defines METL_DETAIL_ABI_PRERELEASE other than once")
+
     # The link step must notice a real undefined symbol, or every "does not
     # link" above could be a broken command line instead.
     with tempfile.TemporaryDirectory() as tmp:
@@ -179,9 +253,22 @@ def main():
     parser.add_argument("--cxx", default="c++")
     parser.add_argument("--std", default="c++17")
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--release-tag", metavar="TAG",
+                        help="check the pre-release prefix in abi.hpp against TAG, and build nothing")
     args = parser.parse_args()
     if args.self_test:
         return self_test(args.cxx)
+    if args.release_tag:
+        try:
+            finding = judge_release_tag(args.release_tag, ABI_HEADER.read_text())
+        except ValueError as error:
+            finding = str(error)
+        if finding:
+            print(f"::error::{finding}", file=sys.stderr)
+            return 1
+        print(f"ABI prefix matches {args.release_tag}: "
+              f"{prefix_for_tag(args.release_tag) or '(empty, a release)'}")
+        return 0
     print(f"ABI tag under {args.cxx} -std={args.std}:")
     try:
         findings = check(args.cxx, args.std)
