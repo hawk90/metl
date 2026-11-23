@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-alpha.2] - 2026-11-23
+
+**Highlights.** The second 2.0 pre-release: triviality and layout. `optional`
+and `expected` are trivially copyable when what they hold is, so they return in
+registers on AAPCS. Empty comparators, hashers and key equalities take no room,
+zero-capacity containers and pools keep no element, and `fsm` and `lookup_table`
+drop libc++'s one-element padding of an empty table. A moved-from container is
+now documented as valid but unspecified. Containers do not become trivially
+copyable in 2.x: that changes how they are passed, so it waits for 3.0. 2.0 is
+not final: alpha.3 changes the API vocabulary.
+
+**Upgrading from 2.0.0-alpha.1.** Every change here is an ABI break, so rebuild
+everything that shares a METL type with code built against alpha.1. The ABI
+inline namespace does not change between pre-releases, so a mix links and then
+passes `optional` and `expected` the wrong way. Source code is unaffected
+except:
+
+- A moved-from container may no longer be relied on to be empty. alpha.2 still
+  empties it, but call `clear()` or assign to it before reading it.
+- `flat_map`, `flat_set` and `fixed_priority_queue` with a `fixed_function`
+  comparator are no longer nothrow move constructible, because the comparator
+  is now copied on move and `fixed_function`'s copy may throw (#691).
+
+### Changed
+
+- **Breaking (ABI):** `expected<T, E>` and `expected<void, E>` now have trivial copy and move constructors, copy and move assignments and destructors whenever `T`'s and `E`'s are (#163). `expected<int, int>` is trivially copyable, so it returns in registers on AAPCS instead of through a hidden pointer, can be `memcpy`'d, and copying it is a constant expression in C++17. On Cortex-M (local clang, `-Os`), a probe of eight functions dropped from 512 to 372 B on M0 and from 542 to 372 B on M4. Most of that is the copy assignment of `expected<std::uint32_t, std::uint8_t>`, which used to call two out-of-line helpers. A function that returns one by value grows by 8 to 14 B, because it packs the state and the value into `r0`. For a `T` or `E` with a user-provided copy, move or destructor the instructions are the same as before. When the members are trivially copyable, a copy no longer checks that the source is settled: that state is visible only to a member destructor, and trivial members have none. Rebuild everything that shares an `expected` with code built against alpha.1. Its copy and move operations are now ordinary `= default` members, and clang-tidy no longer needs a suppression for them (#621).
+- **Breaking (ABI):** `optional<T>`'s copy and move constructors, copy and move assignments and destructor are each trivial when `T`'s are, as for `std::optional` (#163). `optional<int>` is now trivially copyable, so it returns in `r0` on AAPCS instead of through a hidden pointer, can be `memcpy`'d, and a trivial copy is a constant expression. On Cortex-M (local clang, `-Os`) a caller of a function returning `optional<std::uint16_t>` shrinks from 32 to 20 B and copying eight `optional<std::uint32_t>` from 50 to 24 B on M0. For a `T` with a user-provided copy, move or destructor the instructions are the same. Code built against alpha.1 passes `optional<int>` the other way, so rebuild everything that shares one. `optional`'s copy and move operations are now ordinary `= default` members, and clang-tidy no longer needs a suppression for them (#621).
+- `object_pool<T, N>` and `handle_pool<T, N, G>` are trivially destructible when `T` is (#271). A namespace-scope pool of such a `T` no longer registers a destructor through `__cxa_atexit`, and the image no longer carries `~object_pool()` or `~handle_pool()`: on Cortex-M (local clang, `-Os`), a file with one global of each dropped from 1502 to 1422 B of `.text` on M0 and from 1630 to 1538 B on M4. The code of every pool operation is the same instructions as before, and `sizeof` and `alignof` are unchanged. Both pools are neither copyable nor movable, so how they are passed does not change. For any other `T` the destructor still destroys every live object. `arena_allocator` stays non-trivial: its type does not say what it holds.
+- A moved-from container is now documented as valid but unspecified, as std's containers are (#317). Before, the contract was "empty and usable". It covers `fixed_vector`, `fixed_deque`, `ring_buffer`, `fixed_queue`, `fixed_stack`, `fixed_priority_queue`, `flat_map`, `flat_set`, `static_unordered_map` and `static_unordered_set`. Call `clear()` or assign to the source before relying on what it holds.
+  - The behaviour is unchanged: the source is still left empty, and its comparator, hasher and key equality still work (#691). Code that relies on the empty source should still clear it, because a later release may stop emptying it.
+  - Every pointer, reference and iterator into the source is invalidated, as before. None carries over to the destination, unlike with `std::vector`.
+  - `fixed_string` is unchanged: moving is copying, and the source keeps its contents.
+- An empty comparator, hasher or key equality no longer takes room (#318). Each is held with a count in one member, as an empty base of that member, so it costs nothing. Before, it cost a byte plus padding. Host, 64-bit, the same with clang + libc++ and GCC 16 + libstdc++:
+  - `flat_map<u8, u8, 8>` goes from 32 to 24 B, and `flat_map<u32, u32, 8>` from 80 to 72 B;
+  - `flat_set<u8, 8>` goes from 24 to 16 B, and `flat_set<u32, 8>` from 48 to 40 B;
+  - `fixed_priority_queue<u8, 8>` goes from 24 to 16 B, and `fixed_priority_queue<u32, 8>` from 48 to 40 B;
+  - `static_unordered_map<u8, u8, 8>` goes from 64 to 56 B, and `static_unordered_set<u8, 8>` from 48 to 40 B;
+  - `coro::deadline_scheduler<4>` goes from 160 to 152 B.
+
+  A stateful or `final` functor is held as before. This changes the layout of each of these types, so it is an ABI break.
+- `flat_set<T, 0>` goes from 16 to 8 B, and `flat_map<K, T, 0>` from 24 to 16 B: neither keeps storage for an element (#696). `flat_map` keeps an empty storage member, which costs a byte plus padding, because its nested `value_type` cannot be named in a base list.
+- A zero-capacity container or allocator no longer keeps storage for one element (#696). A zero-length array is ill-formed, so these types used to allocate `Capacity == 0 ? 1 : Capacity` slots, and padding grew that further. Host, 64-bit, the same with clang + libc++ and GCC 16 + libstdc++:
+  - `fixed_vector<int, 0>` goes from 16 to 8 B;
+  - `fixed_stack<int, 0>` goes from 16 to 8 B;
+  - `ring_buffer`, `fixed_deque` and `fixed_queue` `<int, 0>` go from 24 to 16 B;
+  - `object_pool<int, 0>` goes from 24 to 1 B (an empty class);
+  - `handle_pool<int, 0>` goes from 32 to 1 B;
+  - `event_dispatcher<void(int), 0>` goes from 32 to 1 B;
+  - `arena_allocator<0>` and `monotonic_buffer<0>` go from 16 (clang) or 32 (GCC) to 1 B.
+
+  How each type gets there:
+  - `fixed_vector` and the ring family now hold their storage as an empty-at-zero base.
+  - The others have a `Capacity == 0` specialisation that behaves as the general type does when it is full and empty at once. Every allocation fails, and the same preconditions assert, including the always-on alignment check.
+
+  Every `Capacity >= 1` layout and its code are unchanged: the layout probe gives the same result on main and on this change (local clang, thumbv6m and thumbv7em). **Breaking (ABI):** the layout of the zero-capacity instantiations changes.
+
+### Fixed
+
+- `expected`'s copy and move constructors no longer destroy a member that was never built when `T`'s or `E`'s copy or move constructor throws (#685). The base holding the state was complete before the member was built, so the exception ran its destructor on empty storage: one object built, three destroyed, after a failed copy and a failed move. This affected `expected<T, E>` in both states and `expected<void, E>`. Builds with `METL_NO_EXCEPTIONS` were not affected.
+- Moving a `fixed_priority_queue`, `flat_map`, `flat_set`, `static_unordered_map` or `static_unordered_set` now copies its comparator, hasher and key equality instead of moving them, so the source stays usable (#691). With a stateful functor such as a `fixed_function`, the source's next insertion used to call the moved-from functor: `METL_ASSERT` failed, and at `METL_HARDENING_NONE` it called through a null pointer. A move-only functor is still moved. **Silently changes:** these moves are now `noexcept` exactly when the functor's copy is (its move, for a move-only one), so a functor with a throwing copy and a `noexcept` move makes the container's move throwing. That includes `fixed_function`, whose copy is not `noexcept`: a `flat_map`, `flat_set` or `fixed_priority_queue` with a `fixed_function` comparator is no longer nothrow move constructible. A `fixed_any_invocable` is move-only, so it is moved and those moves stay `noexcept`. The default functors copy without throwing, so their containers are unchanged.
+- A `flat_map`, `flat_set` or `fixed_priority_queue` whose comparator is a `fixed_function` or `fixed_any_invocable` can now be asked whether it is copy or move constructible (#692). The trait used to be a compile error instead of a value: on clang for `is_copy_constructible` and `is_nothrow_move_constructible`, on GCC 16 for `is_nothrow_move_constructible` when it was the first trait asked. On clang, `fixed_vector` of such a container did not compile. Which callables `fixed_function` and `fixed_any_invocable` accept is unchanged.
+- With libc++, a zero-length table in `fsm` or `lookup_table` no longer takes the room of one element (#696). `fsm`'s entry and exit hook tables default to zero entries, and libc++'s `std::array<T, 0>` reserves space for one `T`. So with libc++, an `fsm` without hooks carried two unused hooks. Host, clang + libc++:
+  - `fsm<st, ev, 1>` goes from 80 to 40 B;
+  - `fsm<st, ev, 0>` goes from 80 to 6 B;
+  - `lookup_table<u32, u32, 0>` goes from 8 to 1 B.
+
+  These are now the sizes libstdc++ already gave, so GCC builds and CI's ARM GCC layout probe are unchanged. Tables with entries are still `std::array`, with the same layout and code, and the constructors still take `std::array`. **Breaking (ABI, libc++ only):** the layout of these types changes there.
+
 ## [2.0.0-alpha.1] - 2026-11-06
 
 **Highlights.** The first 2.0 pre-release: removals and the ABI. Everything
