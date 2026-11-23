@@ -1,0 +1,1 @@
+- `span`'s `begin`, `end`, `cbegin`, `cend`, `rbegin`, `rend`, `crbegin` and `crend`, and `fixed_vector::as_span`, are now `METL_NODISCARD`, like every other observer (#545). Calling one as a statement does nothing, so a call that drops the result now warns; it is not an error unless you build with `-Werror`. Nothing else changes.

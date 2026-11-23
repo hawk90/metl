@@ -188,15 +188,19 @@ class span {
   span& operator=(const span&) noexcept = default;
 
   /// Returns an iterator to the first element.
-  constexpr iterator begin() const noexcept { return storage_.data; }
+  METL_NODISCARD constexpr iterator begin() const noexcept { return storage_.data; }
   /// Returns an iterator one past the last element.
-  constexpr iterator end() const noexcept { return storage_.data + size(); }
-  constexpr const_iterator cbegin() const noexcept { return storage_.data; }
-  constexpr const_iterator cend() const noexcept { return storage_.data + size(); }
-  constexpr reverse_iterator rbegin() const noexcept { return reverse_iterator(end()); }
-  constexpr reverse_iterator rend() const noexcept { return reverse_iterator(begin()); }
-  constexpr const_reverse_iterator crbegin() const noexcept { return const_reverse_iterator(cend()); }
-  constexpr const_reverse_iterator crend() const noexcept { return const_reverse_iterator(cbegin()); }
+  METL_NODISCARD constexpr iterator end() const noexcept { return storage_.data + size(); }
+  METL_NODISCARD constexpr const_iterator cbegin() const noexcept { return storage_.data; }
+  METL_NODISCARD constexpr const_iterator cend() const noexcept { return storage_.data + size(); }
+  METL_NODISCARD constexpr reverse_iterator rbegin() const noexcept { return reverse_iterator(end()); }
+  METL_NODISCARD constexpr reverse_iterator rend() const noexcept { return reverse_iterator(begin()); }
+  METL_NODISCARD constexpr const_reverse_iterator crbegin() const noexcept {
+    return const_reverse_iterator(cend());
+  }
+  METL_NODISCARD constexpr const_reverse_iterator crend() const noexcept {
+    return const_reverse_iterator(cbegin());
+  }
 
   /// Returns a reference to the first element.
   /// @pre Span is non-empty; asserts and aborts otherwise.

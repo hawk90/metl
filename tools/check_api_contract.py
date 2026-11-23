@@ -114,18 +114,8 @@ OBSERVERS = ("empty", "size", "capacity", "max_size", "front", "back", "data",
              "begin", "end", "cbegin", "cend", "rbegin", "rend", "crbegin", "crend",
              "before_begin", "cbefore_begin", "is_linked")
 
-# R6 exemptions, by (header file name, observer), each with its reason. Keyed on
-# the operation, not the header (#589): a new observer in an exempt header is
-# still checked. An entry no longer used is an error.
-_SPAN_ITERATORS = ("shipped without METL_NODISCARD in 1.0; adding it in 1.x warns at "
-                   "existing call sites, so it waits for 2.0.0")
-OBSERVER_EXEMPT = {
-    ("span.hpp", name): _SPAN_ITERATORS
-    for name in ("begin", "end", "cbegin", "cend", "rbegin", "rend", "crbegin", "crend")
-}
-
 # R6 also covers a const subscript: unlike `map[key]` it cannot insert, so its
-# result is its only effect. OBSERVER_EXEMPT does not excuse it.
+# result is its only effect.
 DECL_CONST_SUBSCRIPT = re.compile(r"\boperator\[\]\([^)]*\)\s*const\b")
 
 # Declaration specifiers, the repository's own macros among them (#589):
@@ -295,15 +285,6 @@ def check_value_return(line, path, number, used):
              f"VALUE_ALLOWLIST in {pathlib.Path(__file__).name} with its reason")]
 
 
-def observer_exempt(path, name, exempted):
-    """Whether OBSERVER_EXEMPT excuses observer `name` in `path`; records the key."""
-    key = (pathlib.Path(path).name, name)
-    if key not in OBSERVER_EXEMPT:
-        return False
-    if exempted is not None:
-        exempted.add(key)
-    return True
-
 
 def check_text(text, path="<memory>", declared=None, exempted=None, values=None):
     """Return a list of (path, line_number, rule, message). The names of the
@@ -344,8 +325,7 @@ def check_text(text, path="<memory>", declared=None, exempted=None, values=None)
 
         match = DECL_OBSERVER.match(line)
         if (match and "METL_NODISCARD" not in match.group("head").split()
-                and match.group("type").split()[0] not in NOT_A_RETURN_TYPE
-                and not observer_exempt(path, match.group("name"), exempted)):
+                and match.group("type").split()[0] not in NOT_A_RETURN_TYPE):
             violations.append((
                 path, number, "R6",
                 f"`{match.group('name')}()` is missing METL_NODISCARD -- an observer "
@@ -471,10 +451,6 @@ def check_tree(root):
             violations.append((f"{root}", 0, "R2",
                                f"{key} excuses a pointer, optional or handle return that no header "
                                f"declares. Remove the entry"))
-    for file_name, name in sorted(set(OBSERVER_EXEMPT) - exempted):
-        violations.append((f"{root}", 0, "R6",
-                           f"OBSERVER_EXEMPT excuses `{name}()` in {file_name}, but no declaration "
-                           f"there lacks METL_NODISCARD. Remove the entry"))
     for file_name, name in sorted(set(QUERY_EXEMPT) - exempted):
         violations.append((f"{root}", 0, "R4",
                            f"QUERY_EXEMPT excuses `{name}` in {file_name}, but no declaration "
@@ -521,11 +497,10 @@ def self_test():
     subscript = "constexpr reference operator[](size_type i) const noexcept { return p[i]; }"
     if "R6" not in {rule for _, _, rule, _ in check_text(subscript, "include/metl/span.hpp")}:
         failures.append("R6 canary was NOT reported -- the const operator[] check is dead")
-    if check_text("constexpr iterator begin() const noexcept { return p; }", "include/metl/span.hpp"):
-        failures.append("R6 flagged an observer OBSERVER_EXEMPT excuses")
-    # The exemption names operations, not the header (#589): span's size() is checked.
-    if "R6" not in {rule for _, _, rule, _ in check_text(CANARY_R6, "include/metl/span.hpp")}:
-        failures.append("R6 let OBSERVER_EXEMPT excuse an observer it does not name")
+    # span's iterator accessors were exempt until 2.0.0 (#545); nothing is now.
+    if "R6" not in {rule for _, _, rule, _ in check_text("constexpr iterator begin() const noexcept { return p; }",
+                                                         "include/metl/span.hpp")}:
+        failures.append("R6 let span's begin() go without METL_NODISCARD")
     # #589: the repository's macros in a declaration, and the reverse iterators.
     for text, rule in (("METL_DETAIL_CONSTEXPR20 bool stash(int value);", "R2"),
                        ("METL_FORCE_INLINE bool stash(int value);", "R2"),
@@ -611,10 +586,6 @@ def self_test():
         wanted = len(VALUE_ALLOWLIST) + len(VALUE_ALLOWLIST_BY_HEADER) + len(R2_EXEMPT)
         if len(stale) != wanted:
             failures.append(f"stale value-return entries were not each reported: {len(stale)} of {wanted}")
-        stale = [message for _, _, _, message in check_tree(tmp)[0] if "OBSERVER_EXEMPT" in message]
-        if len(stale) != len(OBSERVER_EXEMPT):
-            failures.append(f"stale OBSERVER_EXEMPT entries were not each reported: {len(stale)} of "
-                            f"{len(OBSERVER_EXEMPT)}")
         stale = [message for _, _, _, message in check_tree(tmp)[0] if "QUERY_EXEMPT" in message]
         if len(stale) != len(QUERY_EXEMPT):
             failures.append(f"stale QUERY_EXEMPT entries were not each reported: {len(stale)} of "
