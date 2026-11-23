@@ -97,7 +97,8 @@ class map_oracle {
 
   void lookup(Key key) const {
     const auto entry = model_.find(key);
-    const Value* found = map_.find(key);
+    const auto it = map_.find(key);
+    const Value* found = it == map_.end() ? nullptr : &it->value;
 
     require((found != nullptr) == (entry != model_.end()));
     require(map_.contains(key) == (entry != model_.end()));
@@ -125,7 +126,8 @@ class map_oracle {
     // Model -> container: everything that should be there is, with the right
     // value.
     for (const auto& entry : model_) {
-      const Value* found = map_.find(entry.first);
+      const auto it = map_.find(entry.first);
+      const Value* found = it == map_.end() ? nullptr : &it->value;
       // An explicit trap rather than require(): gcc's -Wnull-dereference cannot
       // see through require() when it is not inlined (MinSizeRel), and warned.
       if (found == nullptr) {

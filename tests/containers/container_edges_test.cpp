@@ -130,9 +130,9 @@ void transparent_lookup_misses() {
   CHECK(s.try_emplace(1));
   CHECK(s.try_emplace(3));
   for (const long missing : {2L, 5L}) {
-    CHECK(m.find(missing) == nullptr);
+    CHECK(!m.contains(missing));
     CHECK(!m.erase(missing));
-    CHECK(s.find(missing) == nullptr);
+    CHECK(!s.contains(missing));
     CHECK(!s.erase(missing));
   }
   CHECK_EQ(m.size(), std::size_t{2});
@@ -174,17 +174,17 @@ void unordered_lookup_misses() {
   umap_type m;
   CHECK(m.try_emplace(1, 10));
   const long missing = 7;
-  CHECK(m.find(missing) == nullptr);
-  CHECK(static_cast<const umap_type&>(m).find(missing) == nullptr);
-  CHECK(m.find_iterator(missing) == m.end());
+  CHECK(!m.contains(missing));
+  CHECK(static_cast<const umap_type&>(m).find(missing) == m.cend());
+  CHECK(m.find(missing) == m.end());
 
   const long present = 1;
-  CHECK(static_cast<const umap_type&>(m).find(present) != nullptr);
+  CHECK(static_cast<const umap_type&>(m).find(present) != m.cend());
 
   uset_type s;
   CHECK(s.try_emplace(1));
-  CHECK(s.find(missing) == nullptr);
-  CHECK(s.find_iterator(missing) == s.end());
+  CHECK(!s.contains(missing));
+  CHECK(s.find(missing) == s.end());
   CHECK(!s.erase(missing));
   CHECK_EQ(s.size(), std::size_t{1});
 }
@@ -237,7 +237,7 @@ void unordered_set_inserts_into_a_table_of_tombstones() {
   CHECK(!s.contains(throwing_move_key(63)));
 }
 
-// find_iterator builds its iterator at the found slot without scanning for an
+// find builds its iterator at the found slot without scanning for an
 // occupied one. Walking on from it must visit the same elements, in the same
 // order, as the walk from begin() does from that element, with empty slots and
 // tombstones in between.
@@ -251,11 +251,11 @@ void walk_from_find_matches_walk_from_begin(Container& c, KeyOf key_of) {
   const Container& cc = c;
   for (std::size_t i = 0; i < order.size(); ++i) {
     std::vector<int> walked;
-    for (auto it = c.find_iterator(order[i]); it != c.end(); ++it) {
+    for (auto it = c.find(order[i]); it != c.end(); ++it) {
       walked.push_back(key_of(*it));
     }
     std::vector<int> walked_const;
-    for (auto it = cc.find_iterator(order[i]); it != cc.end(); ++it) {
+    for (auto it = cc.find(order[i]); it != cc.end(); ++it) {
       walked_const.push_back(key_of(*it));
     }
     const std::vector<int> expected(order.begin() + static_cast<std::ptrdiff_t>(i), order.end());
@@ -264,7 +264,7 @@ void walk_from_find_matches_walk_from_begin(Container& c, KeyOf key_of) {
   }
 }
 
-void unordered_walk_from_find_iterator() {
+void unordered_walk_from_find() {
   metl::static_unordered_map<int, int, 16> m;
   metl::static_unordered_set<int, 16> s;
   for (int key = 0; key < 12; ++key) {
@@ -301,7 +301,7 @@ int main() {
   unordered_lookup_misses();
   unordered_set_reuses_a_tombstone();
   unordered_set_inserts_into_a_table_of_tombstones();
-  unordered_walk_from_find_iterator();
+  unordered_walk_from_find();
   value_initialized_iterators_compare_equal();
   return metl_test::exit_code();
 }

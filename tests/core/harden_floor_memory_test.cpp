@@ -409,9 +409,9 @@ int main() {
     CHECK(guarded_against([&] { (void)map.emplace(0, 30); }));
     CHECK(guarded_against([&] { (void)map.insert_or_assign(0, 30); }));
     CHECK_EQ(map.size(), 2u);
-    CHECK_DEREF_EQ(map.find(1), 10);  // the refused inserts wrote nothing
+    CHECK(map.find(1) != map.end() && map.find(1)->value == 10);  // the refused inserts wrote nothing
     CHECK(!guarded_against([&] { (void)map.insert_or_assign(2, 21); }));
-    CHECK_DEREF_EQ(map.find(2), 21);
+    CHECK(map.find(2) != map.end() && map.find(2)->value == 21);
 
     metl::flat_set<int, 2> set;
     set.emplace(1);

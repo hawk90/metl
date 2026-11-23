@@ -111,7 +111,7 @@ void exercise_unordered_map() noexcept {
     sink(map.try_emplace(i, i * 2u) ? 1u : 0u);
   }
   for (std::uint32_t i = 0; i < 8; ++i) {
-    const std::uint32_t* found = map.find(i);
+    const std::uint32_t* found = map.find_value(i);
     sink(found != nullptr ? *found : 0u);
   }
   // Overflow must fail cleanly rather than rehash onto the heap.

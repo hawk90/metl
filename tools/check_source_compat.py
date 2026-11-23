@@ -44,6 +44,12 @@ DEPRECATION_STAYS_A_WARNING = "-Wno-error=deprecated-declarations"
 _REMOVED_TYPE = ("it includes or uses static_message_queue or metl::variant, deprecated in 1.15.0 "
                  "and removed by #662 (conformance.hpp registers both for every conformance test)")
 
+# The reason shared by every old file that used the pointer-returning find.
+_FIND_ITERATOR = ("it uses find's result as a pointer (compares it with nullptr, tests it as a bool, "
+                  "or dereferences it to the mapped value), calls find_iterator, or calls "
+                  "lookup_table::find; #162 makes find return an iterator on the four associative "
+                  "containers, as std's does, and names the pointer form find_value (#641)")
+
 # {tag: {old test source or ctest name: "why it may break (#issue)"}}
 _VERSION_HEADER = ("it uses metl::version from <metl/version.hpp>, which #168 removes: the version is "
                    "spelled once, as metl::version_* and METL_VERSION_* in config.hpp")
@@ -137,6 +143,34 @@ EXPECTED_BREAKS = {
                                                     "throwing, and that the move runs it; #691 copies "
                                                     "the functors on move instead, so the copy decides "
                                                     "noexcept, as #317 decided for 2.0",
+    },
+    "v2.0.0-alpha.2": {
+        "examples/containers.cpp": _FIND_ITERATOR,
+        "fuzz/fuzz_flat_map.cpp": _FIND_ITERATOR,
+        "fuzz/fuzz_flat_set.cpp": _FIND_ITERATOR,
+        "fuzz/fuzz_static_unordered_map.cpp": _FIND_ITERATOR,
+        "fuzz/fuzz_unordered_set.cpp": _FIND_ITERATOR,
+        "tests/bits/hash_by_value_test.cpp": _FIND_ITERATOR,
+        "tests/conformance/conformance_alias_test.cpp": _FIND_ITERATOR,
+        "tests/containers/associative_conversion_test.cpp": _FIND_ITERATOR,
+        "tests/containers/container_edges_test.cpp": _FIND_ITERATOR,
+        "tests/containers/container_swap_test.cpp": _FIND_ITERATOR,
+        "tests/containers/contract_edges_test.cpp": _FIND_ITERATOR,
+        "tests/containers/flat_map_test.cpp": _FIND_ITERATOR,
+        "tests/containers/flat_set_test.cpp": _FIND_ITERATOR,
+        "tests/containers/lookup_table_test.cpp": _FIND_ITERATOR,
+        "tests/containers/recoverable_api_test.cpp": _FIND_ITERATOR,
+        "tests/containers/static_unordered_map_emplace_test.cpp": _FIND_ITERATOR,
+        "tests/containers/static_unordered_map_test.cpp": _FIND_ITERATOR,
+        "tests/containers/static_unordered_set_test.cpp": _FIND_ITERATOR,
+        "tests/containers/throwing_element_test.cpp": _FIND_ITERATOR,
+        "tests/containers/unordered_erase_iteration_test.cpp": _FIND_ITERATOR,
+        "tests/containers/unordered_reclaim_test.cpp": _FIND_ITERATOR,
+        "tests/containers/unordered_wide_key_test.cpp": _FIND_ITERATOR,
+        "tests/containers/zero_length_test.cpp": _FIND_ITERATOR,
+        "tests/core/harden_floor_memory_test.cpp": _FIND_ITERATOR,
+        "tests/core/hostile_types_test.cpp": _FIND_ITERATOR,
+        "tests/containers/container_assert_trips_test.cpp": "it forged a flat_map and a flat_set iterator one byte into an element by reinterpret_cast from a pointer; #162 makes the flat iterator a class, so that position cannot be formed, and the stride check it tripped is gone",
     },
 }
 

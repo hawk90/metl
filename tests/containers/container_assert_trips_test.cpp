@@ -132,30 +132,32 @@ void flat_trips() {
   CHECK(trips([] { (void)static_cast<const set&>(one).nth(1); }));
   CHECK(trips([] { (void)one.emplace(2); }));
 
-  // erase(pos) with a position that is not an element. Two-byte elements of
-  // alignment one, so a pointer one byte into an element is still a valid
-  // pointer value and only the stride check rejects it.
+  // erase(pos) with a position that is not one of the elements: end(), an
+  // iterator into another container of the same type, and a value-initialized
+  // iterator. The iterator is a class, so a position inside an element cannot
+  // be formed; these are the ones a program can hold, and the range check
+  // rejects each, leaving the container as it was.
   using byte_map = metl::flat_map<char, char, 2>;
   static byte_map pairs;
+  static byte_map other_pairs;
   (void)pairs.try_emplace('a', 'x');
   (void)pairs.try_emplace('b', 'y');
+  (void)other_pairs.try_emplace('a', 'x');
   CHECK(trips([] { (void)pairs.erase(pairs.end()); }));
-  CHECK(trips([] {
-    (void)pairs.erase(
-        reinterpret_cast<byte_map::const_iterator>(reinterpret_cast<const char*>(pairs.begin()) + 1));
-  }));
-  CHECK(pairs.size() == 2);
+  CHECK(trips([] { (void)pairs.erase(other_pairs.begin()); }));
+  CHECK(trips([] { (void)pairs.erase(byte_map::const_iterator()); }));
+  CHECK(pairs.size() == 2 && other_pairs.size() == 1);
 
   using byte_set = metl::flat_set<std::array<char, 2>, 2>;
   static byte_set keys;
+  static byte_set other_keys;
   (void)keys.try_emplace(std::array<char, 2>{'a', 'x'});
   (void)keys.try_emplace(std::array<char, 2>{'b', 'y'});
+  (void)other_keys.try_emplace(std::array<char, 2>{'a', 'x'});
   CHECK(trips([] { (void)keys.erase(keys.end()); }));
-  CHECK(trips([] {
-    (void)keys.erase(
-        reinterpret_cast<byte_set::const_iterator>(reinterpret_cast<const char*>(keys.begin()) + 1));
-  }));
-  CHECK(keys.size() == 2);
+  CHECK(trips([] { (void)keys.erase(other_keys.begin()); }));
+  CHECK(trips([] { (void)keys.erase(byte_set::const_iterator()); }));
+  CHECK(keys.size() == 2 && other_keys.size() == 1);
 }
 
 // ---- static_unordered_map / static_unordered_set -------------------------------------------------

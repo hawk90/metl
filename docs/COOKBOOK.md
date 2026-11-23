@@ -181,8 +181,11 @@ if (!readings.try_insert_or_assign(std::uint8_t{2}, 250)) {
     /* full: a NEW key won't fit */
 }
 
-if (const std::int32_t* r = readings.find(2)) {   // KEY lookup -> pointer or null
+if (const std::int32_t* r = readings.find_value(2)) {   // KEY lookup -> pointer or null
     use(*r);
+}
+if (auto it = readings.find(2); it != readings.end()) {  // iterator, as std::map
+    use(it->key, it->value);
 }
 if (readings.contains(5)) { /* ... */ }
 

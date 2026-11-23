@@ -592,6 +592,18 @@ because that state is normal: an interrupt that preempts the initializer reaches
 it, and waiting there, as `std::call_once` does, would never return: the
 initializer cannot resume until the interrupt does (`once_flag.hpp`).
 
+A lookup is not a `try_` form. Its empty result answers "is it there?", and it
+reports no operation that failed. The associative containers spell lookup one
+way ([#162](https://github.com/hawk90/metl/issues/162)):
+
+- `find` returns an iterator, or `end()`, as std's do.
+- `find_value` returns a pointer to the mapped value, or null, on the two maps
+  and on `lookup_table`. `lookup_table` has no iterators, so it has no `find`.
+- `contains` returns the `bool`.
+
+`find_value` and `contains` are the forms that cost nothing on Cortex-M. A
+comparison with `end()` has to load the size.
+
 One known exception breaks user code to change, so it waits for 2.0.0:
 `event_dispatcher::subscribe` returns an empty `optional`
 ([#155](https://github.com/hawk90/metl/issues/155)).

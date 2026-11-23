@@ -5,7 +5,7 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `find`, `contains`, `find_iterator` | wait-free, bounded by `bucket_count` probes |
+///   | `find`, `find_value`, `contains` | wait-free, bounded by `bucket_count` probes |
 ///   | new key, incl. `operator[]` | wait-free, `bucket_count` probes **plus, at times, a rebuild** |
 ///   | `erase` | wait-free, bounded by `bucket_count` probes; moves nothing |
 ///   | `erase(iterator)` | wait-free, bounded by `bucket_count`; moves nothing |
@@ -57,8 +57,8 @@
 /// element**, so the erase-while-iterating loop (`auto k = it->key; ++it;
 /// m.erase(k);`) visits every element. **Inserting a new key may invalidate all
 /// iterators, pointers and references**, because that is where the rebuild runs
-/// -- unlike node-based `std::unordered_map`, a pointer from `find` does not
-/// survive it.
+/// -- unlike node-based `std::unordered_map`, a pointer from `find_value` does
+/// not survive it.
 /// Assigning to an existing key and lookups invalidate nothing. The rebuild never
 /// runs inside `erase`, because there it would skip elements during iteration.
 ///
@@ -434,26 +434,29 @@ class static_unordered_map
     return find_existing_index(key) != npos;
   }
 
-  /// @brief Key lookup: pointer to the mapped value for @p key, or @c nullptr if absent.
-  /// @return Pointer to the mapped value, or @c nullptr when the key is not found.
-  METL_NODISCARD mapped_type* find(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
+  /// @brief Pointer to the mapped value for @p key, or @c nullptr if absent.
+  /// @note `find` returns an iterator, as std does; use this where only the
+  ///       value matters. Its caller compares with @c nullptr, where `find`'s
+  ///       compares with `end()` (#162). The pointer is invalidated when an
+  ///       iterator would be (see the file comment).
+  METL_NODISCARD mapped_type* find_value(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
     const size_type index = find_existing_index(key);
     return index == npos ? nullptr : detail::addressof(slot_value(index)->value);
   }
 
-  METL_NODISCARD const mapped_type* find(const key_type& key) const noexcept(lookup_cannot_throw<key_type>) {
+  METL_NODISCARD const mapped_type* find_value(const key_type& key) const
+      noexcept(lookup_cannot_throw<key_type>) {
     const size_type index = find_existing_index(key);
     return index == npos ? nullptr : detail::addressof(slot_value(index)->value);
   }
 
-  /// @brief Key lookup returning an iterator, or @c end() if the key is absent.
-  METL_NODISCARD iterator find_iterator(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
+  /// @brief Iterator to the element whose key is @p key, or end().
+  METL_NODISCARD iterator find(const key_type& key) noexcept(lookup_cannot_throw<key_type>) {
     const size_type index = find_existing_index(key);
     return iterator(this, index == npos ? bucket_count : index, detail::at_slot);
   }
 
-  METL_NODISCARD const_iterator find_iterator(const key_type& key) const
-      noexcept(lookup_cannot_throw<key_type>) {
+  METL_NODISCARD const_iterator find(const key_type& key) const noexcept(lookup_cannot_throw<key_type>) {
     const size_type index = find_existing_index(key);
     return const_iterator(this, index == npos ? bucket_count : index, detail::at_slot);
   }
@@ -469,23 +472,7 @@ class static_unordered_map
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD mapped_type* find(const K& key) noexcept(lookup_cannot_throw<K>) {
-    const size_type index = find_existing_index(key);
-    return index == npos ? nullptr : detail::addressof(slot_value(index)->value);
-  }
-
-  template <typename K,
-            typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
-                                   !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD const mapped_type* find(const K& key) const noexcept(lookup_cannot_throw<K>) {
-    const size_type index = find_existing_index(key);
-    return index == npos ? nullptr : detail::addressof(slot_value(index)->value);
-  }
-
-  template <typename K,
-            typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
-                                   !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD iterator find_iterator(const K& key) noexcept(lookup_cannot_throw<K>) {
+  METL_NODISCARD iterator find(const K& key) noexcept(lookup_cannot_throw<K>) {
     const size_type index = find_existing_index(key);
     return iterator(this, index == npos ? bucket_count : index, detail::at_slot);
   }
@@ -493,9 +480,25 @@ class static_unordered_map
   template <typename K,
             typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
                                    !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD const_iterator find_iterator(const K& key) const noexcept(lookup_cannot_throw<K>) {
+  METL_NODISCARD const_iterator find(const K& key) const noexcept(lookup_cannot_throw<K>) {
     const size_type index = find_existing_index(key);
     return const_iterator(this, index == npos ? bucket_count : index, detail::at_slot);
+  }
+
+  template <typename K,
+            typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
+                                   !std::is_same_v<decay_t<K>, key_type>>>
+  METL_NODISCARD mapped_type* find_value(const K& key) noexcept(lookup_cannot_throw<K>) {
+    const size_type index = find_existing_index(key);
+    return index == npos ? nullptr : detail::addressof(slot_value(index)->value);
+  }
+
+  template <typename K,
+            typename = enable_if_t<detail::is_transparent_v<Hash, KeyEqual> &&
+                                   !std::is_same_v<decay_t<K>, key_type>>>
+  METL_NODISCARD const mapped_type* find_value(const K& key) const noexcept(lookup_cannot_throw<K>) {
+    const size_type index = find_existing_index(key);
+    return index == npos ? nullptr : detail::addressof(slot_value(index)->value);
   }
 
   template <typename K,

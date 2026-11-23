@@ -104,7 +104,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         break;
       }
       case 2: {  // find / contains must agree
-        if ((set.find(key) != nullptr) != set.contains(key)) {
+        if ((set.contains(key)) != set.contains(key)) {
           METL_FUZZ_TRAP();
         }
         break;

@@ -50,8 +50,8 @@ int main() {
 
     metl::static_unordered_map<metl::fixed_string<7>, int, 8, metl::fnv1a_hash> map;
     map.emplace(plain, 1);
-    CHECK(map.find(shrunk) != nullptr);
-    CHECK(map.find(rebuilt) != nullptr);
+    CHECK(map.contains(shrunk));
+    CHECK(map.contains(rebuilt));
   }
 
   // Character ranges of every kind interoperate: capacity does not matter,
@@ -67,9 +67,9 @@ int main() {
 
     metl::static_unordered_map<metl::fixed_string<7>, int, 8, metl::fnv1a_hash, std::equal_to<>> map;
     map.emplace(small, 7);
-    const int* found = map.find("abc");
-    CHECK(found != nullptr);
-    CHECK(found != nullptr && *found == 7);
+    const auto found = map.find("abc");
+    CHECK(found != map.end());
+    CHECK(found != map.end() && found->value == 7);
   }
 
   // A mutable `char*` and a non-const `char[N]` hash the same characters as a
@@ -102,7 +102,7 @@ int main() {
 
     metl::static_unordered_map<metl::fixed_string<7>, int, 8, metl::fnv1a_hash, std::equal_to<>> map;
     map.emplace(metl::fixed_string<7>("abc"), 1);
-    CHECK(map.find(mutable_ptr) != nullptr);
+    CHECK(map.contains(mutable_ptr));
   }
 
   // Integers hash by value, whatever their width.
@@ -118,8 +118,7 @@ int main() {
 
     metl::static_unordered_map<long, int, 8, metl::fnv1a_hash, std::equal_to<>> map;
     map.emplace(5L, 50);
-    const int* found = map.find(5);
-    CHECK(found != nullptr);
+    CHECK(map.find(5) != map.end());
   }
 
   return metl_test::exit_code();

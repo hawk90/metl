@@ -92,8 +92,8 @@ int main() {
     return 6;
   }
 
-  int* found = set.find(3);
-  if (found == nullptr || *found != 3) {
+  const auto found = set.find(3);
+  if (found == set.end() || *found != 3) {
     return 7;
   }
 
@@ -186,8 +186,8 @@ int main() {
 
     // Heterogeneous find/contains via cstr_view.
     cstr_view vb{"banana"};
-    const char* const* pb = sset.find(vb);
-    if (pb == nullptr || std::strcmp(*pb, "banana") != 0) {
+    const auto pb = sset.find(vb);
+    if (pb == sset.end() || std::strcmp(*pb, "banana") != 0) {
       return 23;
     }
 

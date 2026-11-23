@@ -155,12 +155,12 @@ void test_map_rebuild_throw() {
     CHECK(map.begin() == map.end());
     CHECK_EQ(g_live, 0);
     // Still a working, empty table.
-    CHECK(map.find(4) == nullptr);
+    CHECK(!map.contains(4));
     CHECK(map.try_emplace(7, tracked(70)));
     CHECK_EQ(map.size(), std::size_t{1});
-    const tracked* found = map.find(7);
-    if (CHECK(found != nullptr)) {
-      CHECK_EQ(found->value, 70);
+    const auto found = map.find(7);
+    if (CHECK(found != map.end())) {
+      CHECK_EQ(found->value.value, 70);
     }
   }
   CHECK_EQ(g_live, 0);

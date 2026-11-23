@@ -109,11 +109,11 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         metl_fuzz::require(acc == expected);
         break;
       }
-      case 5: {  // find_iterator round-trip, against the model rather than
+      case 5: {  // find round-trip, against the model rather than
                  // against find() -- two broken lookups can agree with each
                  // other, which is what the old check compared.
         const auto entry = oracle.model().find(key);
-        auto it = map.find_iterator(key);
+        auto it = map.find(key);
         metl_fuzz::require((it != map.end()) == (entry != oracle.model().end()));
         if (it != map.end()) {
           metl_fuzz::require(it->key == key);

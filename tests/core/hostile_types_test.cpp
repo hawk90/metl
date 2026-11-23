@@ -106,19 +106,19 @@ void address_hijack() {
   {
     metl::flat_map<int, hijacked, 4> m;
     m.emplace(2, hijacked{20});
-    CHECK_DEREF_EQ(m.find(2), hijacked{20});
+    CHECK(m.find(2) != m.end() && m.find(2)->value == hijacked{20});
     const auto& cm = m;
-    CHECK(cm.find(2) != nullptr);
+    CHECK(cm.contains(2));
   }
   {
     metl::flat_set<hijacked, 4> s;
     s.emplace(hijacked{3});
-    CHECK(s.find(hijacked{3}) != nullptr);
+    CHECK(s.contains(hijacked{3}));
   }
   {
     metl::static_unordered_map<int, hijacked, 4> m;
     m.emplace(5, hijacked{50});
-    CHECK_DEREF_EQ(m.find(5), hijacked{50});
+    CHECK(m.find(5) != m.end() && m.find(5)->value == hijacked{50});
     CHECK_EQ(m.begin()->value.value, 50);
   }
   {
@@ -129,7 +129,7 @@ void address_hijack() {
   {
     const auto table = metl::make_lookup_table<int, hijacked, 1>(
         std::array<metl::lookup_entry<int, hijacked>, 1>{{{1, hijacked{11}}}});
-    CHECK_DEREF_EQ(table.find(1), hijacked{11});
+    CHECK_DEREF_EQ(table.find_value(1), hijacked{11});
   }
   {
     hijacked_counter counter;

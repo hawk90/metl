@@ -66,9 +66,16 @@ int demo_flat_map() {
     return 10;  // duplicate key must be rejected
   }
 
-  // Key lookup: use find() (returns mapped_type* or nullptr) or contains().
-  const std::int32_t* r2 = readings.find(std::uint8_t{2});
-  if (r2 == nullptr || *r2 != 200) {
+  // Key lookup. find() returns an iterator, or end() for an absent key, as
+  // std::map::find does. find_value() returns a pointer to the value, or
+  // nullptr, and is the smaller of the two where only the value is needed.
+  // contains() answers presence alone.
+  const auto it2 = readings.find(std::uint8_t{2});
+  if (it2 == readings.end() || it2->key != 2 || it2->value != 200) {
+    return 11;
+  }
+  const std::int32_t* r2 = readings.find_value(std::uint8_t{2});
+  if (r2 == nullptr || *r2 != 200 || readings.find(std::uint8_t{5}) != readings.end()) {
     return 11;
   }
   if (readings.contains(std::uint8_t{5})) {
@@ -77,7 +84,7 @@ int demo_flat_map() {
 
   // insert_or_assign updates an existing key in place.
   readings.insert_or_assign(std::uint8_t{2}, 250);
-  if (*readings.find(std::uint8_t{2}) != 250) {
+  if (*readings.find_value(std::uint8_t{2}) != 250) {
     return 13;
   }
 

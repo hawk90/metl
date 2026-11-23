@@ -5,7 +5,7 @@
 ///
 ///   | Operation | Guarantee |
 ///   |-----------|-----------|
-///   | `find`, `contains` | wait-free, `floor(log2(Capacity)) + 2` comparisons |
+///   | `find`, `find_value`, `contains` | wait-free, `floor(log2(Capacity)) + 2` comparisons |
 ///   | `lower_bound`, `upper_bound` | wait-free, `floor(log2(Capacity)) + 1` comparisons |
 ///   | `equal_range` | wait-free, `2 * floor(log2(Capacity)) + 2` comparisons |
 ///   | `try_emplace`, `emplace`, `insert_or_assign`, `erase` | wait-free, bounded by `Capacity` moves |
@@ -39,6 +39,7 @@
 #include "metl/detail/array_storage.hpp"
 #include "metl/detail/capacity_storage.hpp"
 #include "metl/detail/constant_init.hpp"
+#include "metl/detail/contiguous_iterator.hpp"
 #include "metl/detail/copy_move_gate.hpp"
 #include "metl/detail/ebo_pair.hpp"
 #include "metl/detail/functor_move.hpp"
@@ -97,8 +98,8 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
   using difference_type = std::ptrdiff_t;
   using reference = value_type&;
   using const_reference = const value_type&;
-  using iterator = value_type*;
-  using const_iterator = const value_type*;
+  using iterator = detail::contiguous_iterator<value_type, flat_map>;
+  using const_iterator = detail::contiguous_iterator<const value_type, flat_map>;
 
  private:
   // Declared ahead of the noexcept-specifiers that name them: GCC 10 and
@@ -210,14 +211,14 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
   }
 
   /// @brief Iterator to the first element (elements are in ascending key order).
-  METL_NODISCARD iterator begin() noexcept { return data(); }
-  METL_NODISCARD const_iterator begin() const noexcept { return data(); }
-  METL_NODISCARD const_iterator cbegin() const noexcept { return data(); }
+  METL_NODISCARD iterator begin() noexcept { return iterator(data()); }
+  METL_NODISCARD const_iterator begin() const noexcept { return const_iterator(data()); }
+  METL_NODISCARD const_iterator cbegin() const noexcept { return const_iterator(data()); }
 
   /// @brief Iterator one past the last element.
-  METL_NODISCARD iterator end() noexcept { return data() + comp_size_.value; }
-  METL_NODISCARD const_iterator end() const noexcept { return data() + comp_size_.value; }
-  METL_NODISCARD const_iterator cend() const noexcept { return data() + comp_size_.value; }
+  METL_NODISCARD iterator end() noexcept { return iterator(data() + comp_size_.value); }
+  METL_NODISCARD const_iterator end() const noexcept { return const_iterator(data() + comp_size_.value); }
+  METL_NODISCARD const_iterator cend() const noexcept { return const_iterator(data() + comp_size_.value); }
 
   /// @brief True if the map holds no elements.
   METL_NODISCARD bool empty() const noexcept { return comp_size_.value == 0; }
@@ -249,22 +250,22 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
 
   /// @brief Iterator to the first element whose key is not less than @p key.
   METL_NODISCARD iterator lower_bound(const key_type& key) noexcept(compare_cannot_throw<key_type>) {
-    return begin() + lower_bound_index(key);
+    return iterator_at(lower_bound_index(key));
   }
 
   METL_NODISCARD const_iterator lower_bound(const key_type& key) const
       noexcept(compare_cannot_throw<key_type>) {
-    return begin() + lower_bound_index(key);
+    return iterator_at(lower_bound_index(key));
   }
 
   /// @brief Iterator to the first element whose key is greater than @p key.
   METL_NODISCARD iterator upper_bound(const key_type& key) noexcept(compare_cannot_throw<key_type>) {
-    return begin() + upper_bound_index(key);
+    return iterator_at(upper_bound_index(key));
   }
 
   METL_NODISCARD const_iterator upper_bound(const key_type& key) const
       noexcept(compare_cannot_throw<key_type>) {
-    return begin() + upper_bound_index(key);
+    return iterator_at(upper_bound_index(key));
   }
 
   /// @brief Range [first, last) of elements equal to @p key (empty range if none; keys are unique).
@@ -272,14 +273,14 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
       compare_cannot_throw<key_type>) {
     const size_type lo = lower_bound_index(key);
     const size_type hi = upper_bound_index_from(key, lo);
-    return {begin() + lo, begin() + hi};
+    return {iterator_at(lo), iterator_at(hi)};
   }
 
   METL_NODISCARD std::pair<const_iterator, const_iterator> equal_range(const key_type& key) const
       noexcept(compare_cannot_throw<key_type>) {
     const size_type lo = lower_bound_index(key);
     const size_type hi = upper_bound_index_from(key, lo);
-    return {begin() + lo, begin() + hi};
+    return {iterator_at(lo), iterator_at(hi)};
   }
 
   /// @brief True if an element with the given key is present.
@@ -288,9 +289,12 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
     return index < comp_size_.value && !comp_size_.functor()(key, data()[index].key);
   }
 
-  /// @brief Key-based lookup: pointer to the mapped value for @p key, or @c nullptr if absent.
-  /// @return Pointer to the mapped value, or @c nullptr when the key is not found.
-  METL_NODISCARD mapped_type* find(const key_type& key) noexcept(compare_cannot_throw<key_type>) {
+  /// @brief Pointer to the mapped value for @p key, or @c nullptr if absent.
+  /// @note `find` returns an iterator, as std does; use this where only the
+  ///       value matters. Its caller compares with @c nullptr, where `find`'s
+  ///       compares with `end()`, which must load the size first: 4 to 14
+  ///       bytes per call site on Cortex-M (#162).
+  METL_NODISCARD mapped_type* find_value(const key_type& key) noexcept(compare_cannot_throw<key_type>) {
     const size_type index = lower_bound_index(key);
     if (index < comp_size_.value && !comp_size_.functor()(key, data()[index].key)) {
       return detail::addressof(data()[index].value);
@@ -298,12 +302,30 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
     return nullptr;
   }
 
-  METL_NODISCARD const mapped_type* find(const key_type& key) const noexcept(compare_cannot_throw<key_type>) {
+  METL_NODISCARD const mapped_type* find_value(const key_type& key) const
+      noexcept(compare_cannot_throw<key_type>) {
     const size_type index = lower_bound_index(key);
     if (index < comp_size_.value && !comp_size_.functor()(key, data()[index].key)) {
       return detail::addressof(data()[index].value);
     }
     return nullptr;
+  }
+
+  /// @brief Iterator to the element whose key is @p key, or end().
+  METL_NODISCARD iterator find(const key_type& key) noexcept(compare_cannot_throw<key_type>) {
+    const size_type index = lower_bound_index(key);
+    if (index < comp_size_.value && !comp_size_.functor()(key, data()[index].key)) {
+      return iterator_at(index);
+    }
+    return end();
+  }
+
+  METL_NODISCARD const_iterator find(const key_type& key) const noexcept(compare_cannot_throw<key_type>) {
+    const size_type index = lower_bound_index(key);
+    if (index < comp_size_.value && !comp_size_.functor()(key, data()[index].key)) {
+      return iterator_at(index);
+    }
+    return end();
   }
 
   // ---- Heterogeneous lookup overloads (enabled when Compare is transparent) ----
@@ -311,28 +333,28 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD iterator lower_bound(const K& key) noexcept(compare_cannot_throw<K>) {
-    return begin() + lower_bound_index(key);
+    return iterator_at(lower_bound_index(key));
   }
 
   template <
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD const_iterator lower_bound(const K& key) const noexcept(compare_cannot_throw<K>) {
-    return begin() + lower_bound_index(key);
+    return iterator_at(lower_bound_index(key));
   }
 
   template <
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD iterator upper_bound(const K& key) noexcept(compare_cannot_throw<K>) {
-    return begin() + upper_bound_index(key);
+    return iterator_at(upper_bound_index(key));
   }
 
   template <
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD const_iterator upper_bound(const K& key) const noexcept(compare_cannot_throw<K>) {
-    return begin() + upper_bound_index(key);
+    return iterator_at(upper_bound_index(key));
   }
 
   template <
@@ -341,7 +363,7 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
   METL_NODISCARD std::pair<iterator, iterator> equal_range(const K& key) noexcept(compare_cannot_throw<K>) {
     const size_type lo = lower_bound_index(key);
     const size_type hi = upper_bound_index_from(key, lo);
-    return {begin() + lo, begin() + hi};
+    return {iterator_at(lo), iterator_at(hi)};
   }
 
   template <
@@ -351,7 +373,7 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
       noexcept(compare_cannot_throw<K>) {
     const size_type lo = lower_bound_index(key);
     const size_type hi = upper_bound_index_from(key, lo);
-    return {begin() + lo, begin() + hi};
+    return {iterator_at(lo), iterator_at(hi)};
   }
 
   template <
@@ -365,7 +387,29 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
   template <
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD mapped_type* find(const K& key) noexcept(compare_cannot_throw<K>) {
+  METL_NODISCARD iterator find(const K& key) noexcept(compare_cannot_throw<K>) {
+    const size_type index = lower_bound_index(key);
+    if (index < comp_size_.value && !comp_size_.functor()(key, data()[index].key)) {
+      return iterator_at(index);
+    }
+    return end();
+  }
+
+  template <
+      typename K,
+      typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
+  METL_NODISCARD const_iterator find(const K& key) const noexcept(compare_cannot_throw<K>) {
+    const size_type index = lower_bound_index(key);
+    if (index < comp_size_.value && !comp_size_.functor()(key, data()[index].key)) {
+      return iterator_at(index);
+    }
+    return end();
+  }
+
+  template <
+      typename K,
+      typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
+  METL_NODISCARD mapped_type* find_value(const K& key) noexcept(compare_cannot_throw<K>) {
     const size_type index = lower_bound_index(key);
     if (index < comp_size_.value && !comp_size_.functor()(key, data()[index].key)) {
       return detail::addressof(data()[index].value);
@@ -376,7 +420,7 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
   template <
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
-  METL_NODISCARD const mapped_type* find(const K& key) const noexcept(compare_cannot_throw<K>) {
+  METL_NODISCARD const mapped_type* find_value(const K& key) const noexcept(compare_cannot_throw<K>) {
     const size_type index = lower_bound_index(key);
     if (index < comp_size_.value && !comp_size_.functor()(key, data()[index].key)) {
       return detail::addressof(data()[index].value);
@@ -527,14 +571,11 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
   ///       this overload existed, `erase(begin())` on a map whose key converts
   ///       from a pointer, such as `bool`, erased by the converted key (#313).
   iterator erase(const_iterator pos) noexcept(relocate_cannot_throw) {
-    const size_type index = position_index(pos);
-    erase_at(index);
-    // A destructor run by the erase may have erased more; never past the end.
-    return data() + (index < comp_size_.value ? index : comp_size_.value);
+    return erase_position(pos.operator->());
   }
 
   /// @copydoc erase(const_iterator)
-  iterator erase(iterator pos) noexcept(relocate_cannot_throw) { return erase(const_iterator(pos)); }
+  iterator erase(iterator pos) noexcept(relocate_cannot_throw) { return erase_position(pos.operator->()); }
 
   /// @brief Remove all elements (destroys each; size becomes 0).
   /// @note An element's destructor may erase from this container, but must not
@@ -631,6 +672,10 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
 
   METL_NODISCARD value_type* data() noexcept { return storage_.data(); }
   METL_NODISCARD const value_type* data() const noexcept { return storage_.data(); }
+  // The iterator at an element index, built from the pointer: an index is a
+  // size_type, and the iterator's arithmetic takes a difference_type.
+  iterator iterator_at(size_type index) noexcept { return iterator(data() + index); }
+  const_iterator iterator_at(size_type index) const noexcept { return const_iterator(data() + index); }
 
   // The raw slot for placement new. A zero-capacity map holds no element, so
   // no slot is ever reached (METL_DETAIL_NO_SLOT_IS_REACHED).
@@ -809,11 +854,20 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
   // container, or end(), would make erase_at move and destroy outside the
   // elements. Compared as addresses, as object_pool::index_of does, since
   // comparing unrelated pointers is unspecified.
-  size_type position_index(const_iterator pos) const noexcept {
+  iterator erase_position(const value_type* pos) noexcept(relocate_cannot_throw) {
+    const size_type index = position_index(pos);
+    erase_at(index);
+    // A destructor run by the erase may have erased more; never past the end.
+    return iterator(data() + (index < comp_size_.value ? index : comp_size_.value));
+  }
+
+  size_type position_index(const value_type* pos) const noexcept {
     const std::uintptr_t offset =
         reinterpret_cast<std::uintptr_t>(pos) - reinterpret_cast<std::uintptr_t>(data());
+    // One check covers every iterator a program can hold. Ours are whole
+    // elements apart, and another container's storage does not overlap ours,
+    // so its iterators land outside the range rather than inside it, misaligned.
     METL_HARDEN(offset < comp_size_.value * sizeof(value_type));
-    METL_HARDEN(offset % sizeof(value_type) == 0);
     return static_cast<size_type>(offset / sizeof(value_type));
   }
 
@@ -908,7 +962,8 @@ METL_NODISCARD bool operator==(const flat_map<Key, T, N1, Compare>& lhs,
     return false;
   }
   for (std::size_t i = 0; i < lhs.size(); ++i) {
-    if (!(lhs.begin()[i].key == rhs.begin()[i].key) || !(lhs.begin()[i].value == rhs.begin()[i].value)) {
+    if (!(lhs.begin().operator->()[i].key == rhs.begin().operator->()[i].key) ||
+        !(lhs.begin().operator->()[i].value == rhs.begin().operator->()[i].value)) {
       return false;
     }
   }
@@ -928,16 +983,16 @@ METL_NODISCARD bool operator<(const flat_map<Key, T, N1, Compare>& lhs,
                               const flat_map<Key, T, N2, Compare>& rhs) {
   const std::size_t common = lhs.size() < rhs.size() ? lhs.size() : rhs.size();
   for (std::size_t i = 0; i < common; ++i) {
-    if (lhs.begin()[i].key < rhs.begin()[i].key) {
+    if (lhs.begin().operator->()[i].key < rhs.begin().operator->()[i].key) {
       return true;
     }
-    if (rhs.begin()[i].key < lhs.begin()[i].key) {
+    if (rhs.begin().operator->()[i].key < lhs.begin().operator->()[i].key) {
       return false;
     }
-    if (lhs.begin()[i].value < rhs.begin()[i].value) {
+    if (lhs.begin().operator->()[i].value < rhs.begin().operator->()[i].value) {
       return true;
     }
-    if (rhs.begin()[i].value < lhs.begin()[i].value) {
+    if (rhs.begin().operator->()[i].value < lhs.begin().operator->()[i].value) {
       return false;
     }
   }

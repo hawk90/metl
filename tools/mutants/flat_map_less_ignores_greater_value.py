@@ -6,10 +6,10 @@ MUTANT = {
     "why": "operator< no longer stops at a greater lhs value, so the size "
            "decides instead.",
     "kills": "ctest:flat_map_test",
-    "old": """    if (rhs.begin()[i].value < lhs.begin()[i].value) {
+    "old": """    if (rhs.begin().operator->()[i].value < lhs.begin().operator->()[i].value) {
       return false;
     }""",
-    "new": """    if (rhs.begin()[i].value < lhs.begin()[i].value && false) {
+    "new": """    if (rhs.begin().operator->()[i].value < lhs.begin().operator->()[i].value && false) {
       return false;
     }""",
 }
