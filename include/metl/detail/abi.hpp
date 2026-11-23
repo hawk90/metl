@@ -4,7 +4,7 @@
 //
 // Every METL declaration lives in
 //
-//     metl::v<major>::h<hardening>_noexc<no-exceptions>_tabi<trivial-abi>
+//     metl::v<major>::<pre-release>h<hardening>_noexc<no-exceptions>_tabi<trivial-abi>
 //
 // through two inline namespaces, so code still names `metl::fixed_vector`. The
 // names exist for the linker. A setting that changes the code of an inline
@@ -20,6 +20,8 @@
 //
 // What the tag encodes, and what it leaves out:
 //
+//   the pre-release                 `alpha3_` in a tree that becomes
+//                                   2.0.0-alpha.3, nothing in a release
 //   METL_HARDENING                  which checks compile in
 //   METL_NO_EXCEPTIONS              35 sites differ with and without exceptions
 //   METL_INTRUSIVE_PTR_TRIVIAL_ABI  its effective value: on only where the
@@ -57,6 +59,27 @@
 #define METL_VERSION_MAJOR 2
 #define METL_VERSION_MINOR 0
 #define METL_VERSION_PATCH 0
+
+// ── Pre-release ────────────────────────────────────────────────────────────
+// The pre-release this tree is cut as, spelled as the start of the
+// configuration's namespace: `alpha3_` for 2.0.0-alpha.3, empty for a release.
+// Pre-releases change the API and the ABI under one major version, and a
+// return type is not part of a function's mangled name. Without this, an
+// object built against one pre-release links with an object built against
+// another, or against the release, and the linker keeps one copy of each
+// function (#717). With it, the mix fails to link, and the undefined symbol
+// names the pre-release.
+//
+// The release that changes the version numbers above sets this to match its
+// tag; release.yml checks it (tools/check_abi_tag.py --release-tag). 2.0.0-
+// alpha.1 and alpha.2 were cut before it existed, so their names are the
+// release's: rebuild everything built against them.
+//
+// Not a setting. The #ifndef is for tools/check_abi_tag.py, which builds two
+// pre-releases from one tree.
+#ifndef METL_DETAIL_ABI_PRERELEASE
+#define METL_DETAIL_ABI_PRERELEASE alpha3_
+#endif
 
 // ── Exceptions ─────────────────────────────────────────────────────────────
 #ifndef METL_NO_EXCEPTIONS
@@ -116,9 +139,10 @@
 #define METL_DETAIL_ABI_JOIN2(a, b) METL_DETAIL_ABI_PASTE2(a, b)
 
 #define METL_DETAIL_ABI_VERSION METL_DETAIL_ABI_JOIN2(v, METL_VERSION_MAJOR)
-#define METL_DETAIL_ABI_CONFIG \
-  METL_DETAIL_ABI_JOIN6(       \
+#define METL_DETAIL_ABI_SETTINGS \
+  METL_DETAIL_ABI_JOIN6(         \
       h, METL_HARDENING, _noexc, METL_NO_EXCEPTIONS, _tabi, METL_DETAIL_INTRUSIVE_PTR_TRIVIAL_ABI_EFFECTIVE)
+#define METL_DETAIL_ABI_CONFIG METL_DETAIL_ABI_JOIN2(METL_DETAIL_ABI_PRERELEASE, METL_DETAIL_ABI_SETTINGS)
 
 // Used just inside `namespace metl {` and just before its closing brace.
 #define METL_DETAIL_ABI_VERSION_BEGIN inline namespace METL_DETAIL_ABI_VERSION {
