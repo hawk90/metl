@@ -110,6 +110,13 @@ int main() {
     return 4;
   }
 
+  // const find, on its own: contains no longer goes through it. 9 is past every
+  // key (index == size), 0 is before the first (the comparator rejects it).
+  const int* const_hit = cmap.find(2);
+  if (const_hit == nullptr || *const_hit != 20 || cmap.find(9) != nullptr || cmap.find(0) != nullptr) {
+    return 49;
+  }
+
   auto lower = map.lower_bound(2);
   auto upper = map.upper_bound(2);
   if (lower == map.end() || lower->key != 2 || upper == map.end() || upper->key != 3) {
