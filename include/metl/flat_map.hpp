@@ -284,7 +284,8 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
 
   /// @brief True if an element with the given key is present.
   METL_NODISCARD bool contains(const key_type& key) const noexcept(compare_cannot_throw<key_type>) {
-    return find(key) != nullptr;
+    const size_type index = lower_bound_index(key);
+    return index < comp_size_.value && !comp_size_.functor()(key, data()[index].key);
   }
 
   /// @brief Key-based lookup: pointer to the mapped value for @p key, or @c nullptr if absent.
@@ -357,7 +358,8 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
       typename K,
       typename = enable_if_t<detail::has_is_transparent_v<Compare> && !std::is_same_v<decay_t<K>, key_type>>>
   METL_NODISCARD bool contains(const K& key) const noexcept(compare_cannot_throw<K>) {
-    return find(key) != nullptr;
+    const size_type index = lower_bound_index(key);
+    return index < comp_size_.value && !comp_size_.functor()(key, data()[index].key);
   }
 
   template <

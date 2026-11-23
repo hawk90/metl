@@ -26,6 +26,7 @@
 #include "metl/detail/addressof.hpp"
 #include "metl/detail/array_or_empty.hpp"
 #include "metl/detail/array_storage.hpp"
+#include "metl/detail/at_slot.hpp"
 #include "metl/detail/bitset.hpp"
 #include "metl/detail/capacity_storage.hpp"
 #include "metl/detail/constant_init.hpp"
