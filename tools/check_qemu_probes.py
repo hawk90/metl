@@ -142,11 +142,19 @@ CANARY_BYTES = 1024
 # the lookup forms that build an iterator, and a walk, which no region timed
 # before. static_unordered_map_lookup_walk is from that PR's run 45305448270,
 # flat_map_lookup_walk from run 45306859201, after it got a map type of its own.
+# #162 (PR #723, run 45345915840): flat_map::try_emplace returns
+# pair<iterator, bool>. Same code size in both flat_map regions; GCC 14 lays
+# the blocks out differently. On M3, M4 and M7 the "inserted" exit moves out of
+# the fall-through path and takes one more branch back to the loop per insert:
+# +64 in flat_map_insert_find (31918 -> 31982) and flat_map_lookup_walk
+# (17769 -> 17833), each 64 inserts. On Cortex-M0 the new layout drops a stack
+# store and reload from the insert path: flat_map_insert_find 35326 -> 35200.
+# Disassembled with ARM GCC 14.2.rel1.
 _V7M_COUNTS = {
     "fixed_queue_push_pop": 2632,
     "fixed_vector_fill_clear": 1620,
-    "flat_map_insert_find": 31918,
-    "flat_map_lookup_walk": 17769,
+    "flat_map_insert_find": 31982,
+    "flat_map_lookup_walk": 17833,
     "intrusive_scheduler_attach_detach_16": 74119,
     "intrusive_scheduler_attach_detach_4": 18823,
     "intrusive_scheduler_run_once_16": 59466,
@@ -165,7 +173,7 @@ INSTRUCTION_BUDGETS = {
     "cortex-m0": {
         "fixed_queue_push_pop": 3399,
         "fixed_vector_fill_clear": 1749,
-        "flat_map_insert_find": 35326,
+        "flat_map_insert_find": 35200,
         "flat_map_lookup_walk": 19561,
         "intrusive_scheduler_attach_detach_16": 89415,
         "intrusive_scheduler_attach_detach_4": 22599,
