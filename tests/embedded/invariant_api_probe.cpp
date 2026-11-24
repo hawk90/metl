@@ -138,12 +138,12 @@ void exercise_sequences() noexcept {
 
 void exercise_associative() noexcept {
   metl::flat_map<std::uint32_t, std::uint32_t, 4> map;
-  sink(map.try_emplace(1u, 2u) ? 1u : 0u);
+  sink(map.try_emplace(1u, 2u).second ? 1u : 0u);
   sink(map.contains(1u) ? 1u : 0u);
   metl::flat_set<std::uint32_t, 4> set;
-  sink(set.try_emplace(3u) ? 1u : 0u);
+  sink(set.try_emplace(3u).second ? 1u : 0u);
   metl::static_unordered_set<std::uint32_t, 8> hashed;
-  sink(hashed.try_emplace(4u) ? 1u : 0u);
+  sink(hashed.try_emplace(4u).second ? 1u : 0u);
 
   static constexpr metl::lookup_table<std::uint32_t, std::uint32_t, 1> table{{{{5u, 6u}}}};
   sink(table.find_value(5u) != nullptr ? 1u : 0u);

@@ -518,15 +518,14 @@ class static_unordered_map
   // ---- Modifiers ----
 
   /// @brief Insert @p key/@p value only if @p key is absent, without overflowing.
-  /// @return @c true if inserted; @c false if the key already exists OR the map is at capacity.
-  /// @note Unlike @c emplace, a full map is reported by the return value rather than an
-  ///       assertion, and so is a duplicate key, for which @c emplace returns the existing
-  ///       element.
+  /// @return @c {iterator to the new element, true}; @c {iterator to the element with
+  ///         that key, false} if the key is present; @c {end(), false} if the map holds
+  ///         @c Capacity elements. A present key is checked first, so a full map still finds it.
   template <typename K,
             typename V,
             typename = std::enable_if_t<std::is_constructible_v<key_type, K&&> &&
                                         std::is_constructible_v<mapped_type, V&&>>>
-  METL_NODISCARD bool try_emplace(K&& key, V&& value) {
+  METL_NODISCARD std::pair<iterator, bool> try_emplace(K&& key, V&& value) {
     if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
       // Convert first, so the position, the duplicate check and the stored
       // key all come from the same value; a narrowing conversion would
@@ -536,68 +535,46 @@ class static_unordered_map
       key_type converted(std::forward<K>(key));
       return try_emplace(static_cast<key_type&&>(converted), std::forward<V>(value));
     } else {
+      // locate_insert_index stops at the key when it is present, so one probe
+      // sequence answers "present", "where it goes" and, when it finds neither, "full".
       size_type index = npos;
       if (!locate_insert_index(key, &index)) {
-        return false;
+        return {end(), false};
       }
-
       if (state(index) == slot_state::occupied) {
-        return false;
+        return {iterator(this, index, detail::at_slot), false};
       }
-
-      // Capacity is the user-requested element ceiling; bucket_count is the (larger) table size.
-      // Refuse insertion past Capacity even when an empty/tombstone slot is still available.
+      // Capacity is the element ceiling; bucket_count is the (larger) table size.
+      // Refuse a new key past Capacity even when a free slot is left.
       if (key_equal_size_.value >= Capacity) {
-        return false;
+        return {end(), false};
       }
-
-      (void)construct_at(index, std::forward<K>(key), std::forward<V>(value));
-      return true;
+      // construct_at returns the slot the key ended up in, which a rebuild can move.
+      index = construct_at(index, std::forward<K>(key), std::forward<V>(value));
+      return {iterator(this, index, detail::at_slot), true};
     }
   }
 
-  /// @brief Insert @p key/@p value, or return the existing element if @p key is already present.
-  /// @return Reference to the inserted or pre-existing element (an existing value is NOT overwritten).
-  /// @pre The map is not full when the key is absent; a violation asserts. Use @c try_emplace to
-  ///      handle a full map without asserting.
+  /// @brief Insert @p key/@p value if @p key is absent.
+  /// @return @c {iterator to the new element, true}, or @c {iterator to the element with that
+  ///         key, false} if the key is present; the value is not assigned then.
+  /// @pre A new key fits; a full map asserts. Use @c try_emplace to handle a full map.
   template <typename K,
             typename V,
             typename = std::enable_if_t<std::is_constructible_v<key_type, K&&> &&
                                         std::is_constructible_v<mapped_type, V&&>>>
-  reference emplace(K&& key, V&& value) {
-    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
-      // Convert first, so the position, the duplicate check and the stored
-      // key all come from the same value; a narrowing conversion would
-      // otherwise store a key that does not belong where the argument put it.
-      // Direct-initialised, not cast, so a consumer still gets the conversion
-      // warning a narrowing key deserves.
-      key_type converted(std::forward<K>(key));
-      return emplace(static_cast<key_type&&>(converted), std::forward<V>(value));
-    } else {
-      // Find-existing first so a duplicate key never double-constructs over a
-      // live element (which would also increment size() twice).
-      const size_type existing = find_existing_index(key);
-      if (existing != npos) {
-        return *slot_value(existing);
-      }
-
-      METL_HARDEN(key_equal_size_.value < Capacity);
-      size_type index = npos;
-      const bool available = locate_insert_index(key, &index);
-      METL_ASSERT(available);
-      METL_ASSERT(state(index) != slot_state::occupied);
-      index = construct_at(index, std::forward<K>(key), std::forward<V>(value));
-      return *slot_value(index);
-    }
+  std::pair<iterator, bool> emplace(K&& key, V&& value) {
+    const std::pair<iterator, bool> result = try_emplace(std::forward<K>(key), std::forward<V>(value));
+    // Hard guard, never stripped: a full map has no element to point at.
+    METL_HARDEN(result.first != end());
+    return result;
   }
 
   /// @brief Assign @p value to an existing @p key, or insert the pair if absent.
-  /// @return @c true on assign or successful insert; @c false only if a new key cannot fit (full).
-  /// @note The boolean answers "did it fit", **not** std's "was it inserted rather than
-  ///       assigned" — hence the @c try_ prefix, which reserves the plain name for the
-  ///       asserting form below.
+  /// @return @c {iterator to the new element, true}; @c {iterator to the assigned-to element,
+  ///         false}; or @c {end(), false} if a new key does not fit, as @c try_emplace.
   template <typename K, typename V>
-  METL_NODISCARD bool try_insert_or_assign(K&& key, V&& value) {
+  METL_NODISCARD std::pair<iterator, bool> try_insert_or_assign(K&& key, V&& value) {
     if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
       // Convert first, so the position, the duplicate check and the stored
       // key all come from the same value; a narrowing conversion would
@@ -607,7 +584,24 @@ class static_unordered_map
       key_type converted(std::forward<K>(key));
       return try_insert_or_assign(static_cast<key_type&&>(converted), std::forward<V>(value));
     } else {
-      return insert_or_assign_impl(std::forward<K>(key), std::forward<V>(value)) != npos;
+      // locate_insert_index stops at the key when it is present, so one probe
+      // sequence answers "present", "where it goes" and, when it finds neither, "full".
+      size_type index = npos;
+      if (!locate_insert_index(key, &index)) {
+        return {end(), false};
+      }
+      if (state(index) == slot_state::occupied) {
+        slot_value(index)->value = std::forward<V>(value);
+        return {iterator(this, index, detail::at_slot), false};
+      }
+      // Capacity is the element ceiling; bucket_count is the (larger) table size.
+      // Refuse a new key past Capacity even when a free slot is left.
+      if (key_equal_size_.value >= Capacity) {
+        return {end(), false};
+      }
+      // construct_at returns the slot the key ended up in, which a rebuild can move.
+      index = construct_at(index, std::forward<K>(key), std::forward<V>(value));
+      return {iterator(this, index, detail::at_slot), true};
     }
   }
 
@@ -616,22 +610,11 @@ class static_unordered_map
   /// @pre A new key fits; a full map asserts. Use @c try_insert_or_assign otherwise.
   template <typename K, typename V>
   reference insert_or_assign(K&& key, V&& value) {
-    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
-      // Convert first, so the position, the duplicate check and the stored
-      // key all come from the same value; a narrowing conversion would
-      // otherwise store a key that does not belong where the argument put it.
-      // Direct-initialised, not cast, so a consumer still gets the conversion
-      // warning a narrowing key deserves.
-      key_type converted(std::forward<K>(key));
-      return insert_or_assign(static_cast<key_type&&>(converted), std::forward<V>(value));
-    } else {
-      const size_type index = insert_or_assign_impl(std::forward<K>(key), std::forward<V>(value));
-      METL_ASSERT(index != npos);
-      // A refused insert returns npos, and METL_ASSERT is stripped at low
-      // hardening levels; without this, slot_value(npos) would be a wild read.
-      METL_HARDEN(index < bucket_count);
-      return *slot_value(index);
-    }
+    const std::pair<iterator, bool> result =
+        try_insert_or_assign(std::forward<K>(key), std::forward<V>(value));
+    // A full map has no slot to read; never stripped.
+    METL_HARDEN(result.first != end());
+    return *result.first;
   }
 
   /// @brief Key-based subscript: return the mapped value for @p key, default-constructing and
@@ -911,30 +894,6 @@ class static_unordered_map
     }
 
     return false;
-  }
-
-  /// Shared body of try_insert_or_assign / insert_or_assign.
-  /// @return Index of the assigned-to or newly inserted slot, or `npos` if a new
-  ///         key does not fit. Returning the index rather than a bool is what lets
-  ///         the asserting form hand back a reference without a second lookup.
-  template <typename K, typename V>
-  size_type insert_or_assign_impl(K&& key, V&& value) {
-    const size_type existing = find_existing_index(key);
-    if (existing != npos) {
-      slot_value(existing)->value = std::forward<V>(value);
-      return existing;
-    }
-
-    if (key_equal_size_.value >= Capacity) {
-      return npos;
-    }
-
-    size_type index = npos;
-    if (!locate_insert_index(key, &index)) {
-      return npos;
-    }
-
-    return construct_at(index, std::forward<K>(key), std::forward<V>(value));
   }
 
   /// Places a new element at `index` (from locate_insert_index) and returns the

@@ -471,12 +471,11 @@ class static_unordered_set
   // ---- Modifiers ----
 
   /// @brief Insert @p key only if it is absent, without overflowing.
-  /// @return @c true if inserted; @c false if the key already exists OR the set is at capacity.
-  /// @note Unlike @c emplace, a full set is reported by the return value rather than an
-  ///       assertion, and so is a duplicate key, for which @c emplace returns the existing
-  ///       element.
+  /// @return @c {iterator to the new element, true}; @c {iterator to the equal element, false}
+  ///         if the key is present; @c {end(), false} if the set holds @c Capacity elements.
+  ///         A present key is checked first, so a full set still finds it.
   template <typename K>
-  METL_NODISCARD bool try_emplace(K&& key) {
+  METL_NODISCARD std::pair<iterator, bool> try_emplace(K&& key) {
     if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
       // Convert first, so the position, the duplicate check and the stored
       // key all come from the same value; a narrowing conversion would
@@ -486,57 +485,36 @@ class static_unordered_set
       key_type converted(std::forward<K>(key));
       return try_emplace(static_cast<key_type&&>(converted));
     } else {
+      // locate_insert_index stops at the key when it is present, so one probe
+      // sequence answers "present", "where it goes" and, when it finds neither, "full".
       size_type index = npos;
       if (!locate_insert_index(key, &index)) {
-        return false;
+        return {end(), false};
       }
-
       if (state(index) == slot_state::occupied) {
-        return false;
+        return {iterator(this, index, detail::at_slot), false};
       }
-
-      // Capacity is the user-requested element ceiling; bucket_count is the (larger) table size.
-      // Refuse insertion past Capacity even when an empty/tombstone slot is still available.
+      // Capacity is the element ceiling; bucket_count is the (larger) table size.
+      // Refuse a new key past Capacity even when a free slot is left.
       if (key_equal_size_.value >= Capacity) {
-        return false;
+        return {end(), false};
       }
-
-      (void)construct_at(index, std::forward<K>(key));
-      return true;
+      // construct_at returns the slot the key ended up in, which a rebuild can move.
+      index = construct_at(index, std::forward<K>(key));
+      return {iterator(this, index, detail::at_slot), true};
     }
   }
 
-  /// @brief Insert @p key and return a reference to the stored element.
-  /// @return Reference to the inserted (or, for a duplicate key, the matching) element.
-  /// @pre The set is not full when the key is absent; a violation asserts. Use @c try_emplace to
-  ///      handle a full set without asserting.
+  /// @brief Insert @p key if it is absent.
+  /// @return @c {iterator to the new element, true}, or @c {iterator to the equal element,
+  ///         false} if the key is present.
+  /// @pre A new key fits; a full set asserts. Use @c try_emplace to handle a full set.
   template <typename K>
-  reference emplace(K&& key) {
-    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
-      // Convert first, so the position, the duplicate check and the stored
-      // key all come from the same value; a narrowing conversion would
-      // otherwise store a key that does not belong where the argument put it.
-      // Direct-initialised, not cast, so a consumer still gets the conversion
-      // warning a narrowing key deserves.
-      key_type converted(std::forward<K>(key));
-      return emplace(static_cast<key_type&&>(converted));
-    } else {
-      // Find-existing first, as static_unordered_map::emplace does: a duplicate
-      // returns the stored element as documented, instead of asserting -- or, at
-      // METL_HARDENING_NONE, constructing over the live element.
-      const size_type existing = find_existing_index(key);
-      if (existing != npos) {
-        return *slot_value(existing);
-      }
-
-      METL_HARDEN(key_equal_size_.value < Capacity);
-      size_type index = npos;
-      const bool available = locate_insert_index(key, &index);
-      METL_ASSERT(available);
-      METL_ASSERT(state(index) != slot_state::occupied);
-      index = construct_at(index, std::forward<K>(key));
-      return *slot_value(index);
-    }
+  std::pair<iterator, bool> emplace(K&& key) {
+    const std::pair<iterator, bool> result = try_emplace(std::forward<K>(key));
+    // Hard guard, never stripped: a full set has no element to point at.
+    METL_HARDEN(result.first != end());
+    return result;
   }
 
   /// @brief Erase the element equal to the given key, if present (leaves a tombstone slot).

@@ -109,7 +109,7 @@ void exercise_handle_pool() noexcept {
 void exercise_unordered_map() noexcept {
   metl::static_unordered_map<std::uint32_t, std::uint32_t, 8> map;
   for (std::uint32_t i = 0; i < 8; ++i) {
-    sink(map.try_emplace(i, i * 2u) ? 1u : 0u);
+    sink(map.try_emplace(i, i * 2u).second ? 1u : 0u);
   }
   for (std::uint32_t i = 0; i < 8; ++i) {
     const std::uint32_t* found = map.find_value(i);
@@ -124,14 +124,14 @@ void exercise_unordered_map() noexcept {
     sink(entry.value);
   }
   // Overflow must fail cleanly rather than rehash onto the heap.
-  sink(map.try_emplace(999u, 0u) ? 1u : 0u);
+  sink(map.try_emplace(999u, 0u).second ? 1u : 0u);
 }
 
 void exercise_flat_map() noexcept {
   metl::flat_map<std::uint32_t, std::uint32_t, 8> map;
   for (std::uint32_t i = 0; i < 8; ++i) {
     // Descending keys: every insert lands at the front and shifts the rest.
-    sink(map.try_emplace(8u - i, i) ? 1u : 0u);
+    sink(map.try_emplace(8u - i, i).second ? 1u : 0u);
   }
   const std::uint32_t* found = map.find_value(4u);
   sink(found != nullptr ? *found : 0u);

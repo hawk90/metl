@@ -57,13 +57,17 @@ int demo_flat_map() {
   // Map sensor-channel id -> last reading. Kept sorted by key internally.
   metl::flat_map<std::uint8_t, std::int32_t, 16> readings;
 
-  // try_emplace inserts and returns false on a duplicate key or when full.
-  if (!readings.try_emplace(std::uint8_t{3}, 300) || !readings.try_emplace(std::uint8_t{1}, 100) ||
-      !readings.try_emplace(std::uint8_t{2}, 200)) {
+  // try_emplace returns {iterator, inserted}, as std::map's does. A present
+  // key gives the element already there and false; a full map gives
+  // {end(), false}, so the two stay apart.
+  if (!readings.try_emplace(std::uint8_t{3}, 300).second ||
+      !readings.try_emplace(std::uint8_t{1}, 100).second ||
+      !readings.try_emplace(std::uint8_t{2}, 200).second) {
     return 9;  // an empty 16-slot map has room for three keys
   }
-  if (readings.try_emplace(std::uint8_t{1}, 999)) {
-    return 10;  // duplicate key must be rejected
+  const auto [existing, inserted] = readings.try_emplace(std::uint8_t{1}, 999);
+  if (inserted || existing == readings.end() || existing->value != 100) {
+    return 10;  // a duplicate key is rejected, and the old value kept
   }
 
   // Key lookup. find() returns an iterator, or end() for an absent key, as

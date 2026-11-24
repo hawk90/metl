@@ -118,7 +118,7 @@ int main() {
     return 1;
   }
 
-  if (!map.try_emplace(1, 10) || !map.try_emplace(5, 50) || !map.try_emplace(9, 90)) {
+  if (!map.try_emplace(1, 10).second || !map.try_emplace(5, 50).second || !map.try_emplace(9, 90).second) {
     return 2;
   }
 
@@ -131,11 +131,13 @@ int main() {
     return 4;
   }
 
-  if (map.try_emplace(5, 55)) {
+  if (map.try_emplace(5, 55).second) {
     return 5;
   }
 
-  if (!map.try_insert_or_assign(5, 55) || value_of(map, 5) != 55) {
+  // An existing key is assigned, not inserted: {iterator to it, false}.
+  const auto assigned = map.try_insert_or_assign(5, 55);
+  if (assigned.second || assigned.first == map.end() || value_of(map, 5) != 55) {
     return 6;
   }
 
@@ -143,7 +145,7 @@ int main() {
     return 7;
   }
 
-  if (!map.try_emplace(13, 130) || value_of(map, 13) != 130) {
+  if (!map.try_emplace(13, 130).second || value_of(map, 13) != 130) {
     return 8;
   }
 
@@ -175,7 +177,7 @@ int main() {
     tracked.emplace(2, tracker(20));
 
     if (tracked.full()) {
-      if (tracked.try_emplace(3, tracker(30))) {
+      if (tracked.try_emplace(3, tracker(30)).second) {
         return 11;
       }
     } else {
@@ -226,7 +228,7 @@ int main() {
   // 15: find_iter is an STL-compatible iterator-returning lookup.
   {
     metl::static_unordered_map<int, int, 4> m;
-    if (!m.try_emplace(1, 11) || !m.try_emplace(2, 22)) {
+    if (!m.try_emplace(1, 11).second || !m.try_emplace(2, 22).second) {
       return 20;
     }
 
@@ -249,7 +251,7 @@ int main() {
   // 16: Heterogeneous lookup with transparent hasher / equal_to.
   {
     metl::static_unordered_map<test_string, int, 8, string_hash, string_equal> m;
-    if (!m.try_emplace(test_string("alpha"), 1) || !m.try_emplace(test_string("beta"), 2)) {
+    if (!m.try_emplace(test_string("alpha"), 1).second || !m.try_emplace(test_string("beta"), 2).second) {
       return 21;
     }
 
@@ -295,8 +297,8 @@ int main() {
     };
     metl::static_unordered_map<int, int, 4, identity_hash> m;
     // bucket_count == 8, all of these hash to bucket 0 then collide.
-    if (!m.try_emplace(0, 100) || !m.try_emplace(8, 108) || !m.try_emplace(16, 116) ||
-        !m.try_emplace(24, 124)) {
+    if (!m.try_emplace(0, 100).second || !m.try_emplace(8, 108).second || !m.try_emplace(16, 116).second ||
+        !m.try_emplace(24, 124).second) {
       return 22;
     }
     if (m.size() != 4 || !m.full()) {
@@ -305,7 +307,7 @@ int main() {
     if (value_of(m, 0) != 100 || value_of(m, 8) != 108 || value_of(m, 16) != 116 || value_of(m, 24) != 124) {
       return 17;
     }
-    if (!m.erase(8) || !m.try_emplace(32, 132) || value_of(m, 32) != 132) {
+    if (!m.erase(8) || !m.try_emplace(32, 132).second || value_of(m, 32) != 132) {
       return 17;
     }
   }
@@ -318,7 +320,7 @@ int main() {
     metl::static_unordered_map<int, int, 64> m;  // bucket_count == 128
     constexpr int stride = 128;
     for (int i = 0; i < 64; ++i) {
-      if (!m.try_emplace(i * stride, i)) {
+      if (!m.try_emplace(i * stride, i).second) {
         return 18;
       }
     }
@@ -339,7 +341,7 @@ int main() {
     if (!m.erase(10 * stride) || m.contains(10 * stride)) {
       return 18;
     }
-    if (!m.try_emplace(10 * stride, 999) || value_of(m, 10 * stride) != 999) {
+    if (!m.try_emplace(10 * stride, 999).second || value_of(m, 10 * stride) != 999) {
       return 18;
     }
   }
@@ -356,7 +358,7 @@ int main() {
     metl::static_unordered_map<int, int, window, identity_hash> m;
 
     for (int k = 0; k < window; ++k) {
-      if (!m.try_emplace(k, k * 7)) {
+      if (!m.try_emplace(k, k * 7).second) {
         return 19;
       }
     }
@@ -369,7 +371,7 @@ int main() {
       if (!m.erase(evicted)) {
         return 19;
       }
-      if (!m.try_emplace(inserted, inserted * 7)) {
+      if (!m.try_emplace(inserted, inserted * 7).second) {
         return 19;
       }
       ++base;
@@ -403,8 +405,8 @@ int main() {
     counting_hash::next_id = 0;
     metl::static_unordered_map<int, int, 4, counting_hash> source;  // hasher id 0
     metl::static_unordered_map<int, int, 4, counting_hash> target;  // hasher id 1
-    CHECK(source.try_emplace(1, 10));
-    CHECK(source.try_emplace(2, 20));
+    CHECK(source.try_emplace(1, 10).second);
+    CHECK(source.try_emplace(2, 20).second);
     target = source;
     counting_hash::calls[0] = 0;
     counting_hash::calls[1] = 0;

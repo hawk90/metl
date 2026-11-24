@@ -596,7 +596,7 @@ struct flat_map_adapter {
   static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
-    return c.try_emplace(id, probe(id));
+    return c.try_emplace(id, probe(id)).second;
   }
   template <typename C>
   static std::size_t held(const C& c) {
@@ -646,7 +646,7 @@ struct flat_set_adapter {
   static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
-    return c.try_emplace(probe(id));
+    return c.try_emplace(probe(id)).second;
   }
   template <typename C>
   static std::size_t held(const C& c) {
@@ -689,7 +689,7 @@ struct static_unordered_map_adapter {
   static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
-    return c.try_emplace(id, probe(id));
+    return c.try_emplace(id, probe(id)).second;
   }
   template <typename C>
   static std::size_t held(const C& c) {
@@ -758,7 +758,7 @@ struct static_unordered_set_adapter {
   static constexpr constant_init constant_init_level = constant_init::since_cxx20;
   template <typename C>
   static bool try_add(C& c, int id) {
-    return c.try_emplace(probe(id));
+    return c.try_emplace(probe(id)).second;
   }
   template <typename C>
   static std::size_t held(const C& c) {

@@ -199,8 +199,8 @@ static_assert(std::is_nothrow_move_assignable_v<metl::flat_set<int, 4>>);
 int main() {
   const auto push_back = [](auto& c) { return c.try_push_back(1); };
   const auto push = [](auto& c) { return c.try_push(1); };
-  const auto emplace_key = [](auto& c) { return c.try_emplace(1); };
-  const auto emplace_pair = [](auto& c) { return c.try_emplace(1, 1); };
+  const auto emplace_key = [](auto& c) { return c.try_emplace(1).second; };
+  const auto emplace_pair = [](auto& c) { return c.try_emplace(1, 1).second; };
 
   check<metl::fixed_vector<int, 4>>(push_back, 0);
   check<metl::ring_buffer<int, 4>>(push_back, 0);
@@ -215,8 +215,8 @@ int main() {
   check<metl::fixed_string<4>>([](auto& c) { return c.try_push_back('a'); }, 1);
 
   const auto push_value = [](auto& c, int v) { return c.try_push(v); };
-  const auto emplace_value = [](auto& c, int v) { return c.try_emplace(v); };
-  const auto emplace_entry = [](auto& c, int v) { return c.try_emplace(v, v); };
+  const auto emplace_value = [](auto& c, int v) { return c.try_emplace(v).second; };
+  const auto emplace_entry = [](auto& c, int v) { return c.try_emplace(v, v).second; };
   check_functors_survive<metl::fixed_priority_queue<int, 4, dying_less>>(push_value);
   check_functors_survive<metl::flat_map<int, int, 4, dying_less>>(emplace_entry);
   check_functors_survive<metl::flat_set<int, 4, dying_less>>(emplace_value);

@@ -94,9 +94,9 @@ int main() {
   // flat_map: mapped value taken from an entry the insert shifts.
   {
     metl::flat_map<int, poisoned, 8> m;
-    CHECK(m.try_emplace(5, poisoned(50)));
-    CHECK(m.try_emplace(7, poisoned(70)));
-    CHECK(m.try_emplace(1, m.nth(0).value));
+    CHECK(m.try_emplace(5, poisoned(50)).second);
+    CHECK(m.try_emplace(7, poisoned(70)).second);
+    CHECK(m.try_emplace(1, m.nth(0).value).second);
     CHECK_EQ(m.size(), 3u);
     CHECK_EQ(m.nth(0).value.value, 50);
     CHECK_EQ(m.nth(1).value.value, 50);

@@ -231,21 +231,25 @@ int main() {
   }
 
   // ---------------------------------------------------------------------
-  // try_insert_or_assign: the bool answers "did it fit", not "was it inserted"
+  // try_insert_or_assign: .second is std's "inserted rather than assigned";
+  // end() is "a new key did not fit"
   // ---------------------------------------------------------------------
   {
     metl::flat_map<int, int, 2> m;
-    CHECK(m.try_insert_or_assign(1, 10));
-    CHECK(m.try_insert_or_assign(2, 20));
+    CHECK(m.try_insert_or_assign(1, 10).second);
+    CHECK(m.try_insert_or_assign(2, 20).second);
     CHECK(m.full());
 
     // Assigning over an existing key still fits, even when full.
-    CHECK(m.try_insert_or_assign(1, 11));
-    CHECK(m.find(1) != m.end() && m.find(1)->value == 11);
+    const auto assigned = m.try_insert_or_assign(1, 11);
+    CHECK(!assigned.second);
+    CHECK(assigned.first != m.end() && assigned.first->key == 1 && assigned.first->value == 11);
     CHECK_EQ(m.size(), 2u);
 
     // A *new* key does not.
-    CHECK(!m.try_insert_or_assign(3, 30));
+    const auto refused = m.try_insert_or_assign(3, 30);
+    CHECK(!refused.second);
+    CHECK(refused.first == m.end());
     CHECK_EQ(m.size(), 2u);
     CHECK(!m.contains(3));
 
@@ -255,13 +259,17 @@ int main() {
 
   {
     metl::static_unordered_map<int, int, 2> m;
-    CHECK(m.try_insert_or_assign(1, 10));
-    CHECK(m.try_insert_or_assign(2, 20));
+    CHECK(m.try_insert_or_assign(1, 10).second);
+    CHECK(m.try_insert_or_assign(2, 20).second);
     CHECK(m.full());
 
-    CHECK(m.try_insert_or_assign(2, 22));
+    const auto assigned = m.try_insert_or_assign(2, 22);
+    CHECK(!assigned.second);
+    CHECK(assigned.first != m.end() && assigned.first->key == 2 && assigned.first->value == 22);
     CHECK_EQ(m.size(), 2u);
-    CHECK(!m.try_insert_or_assign(3, 30));
+    const auto refused = m.try_insert_or_assign(3, 30);
+    CHECK(!refused.second);
+    CHECK(refused.first == m.end());
     CHECK_EQ(m.size(), 2u);
     CHECK(!m.contains(3));
 

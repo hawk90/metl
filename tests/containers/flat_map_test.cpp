@@ -91,7 +91,7 @@ int main() {
     return 1;
   }
 
-  if (!map.try_emplace(2, 20) || !map.try_emplace(1, 10) || !map.try_emplace(3, 30)) {
+  if (!map.try_emplace(2, 20).second || !map.try_emplace(1, 10).second || !map.try_emplace(3, 30).second) {
     return 2;
   }
 
@@ -141,11 +141,13 @@ int main() {
     return 7;
   }
 
-  if (map.try_emplace(2, 99)) {
+  if (map.try_emplace(2, 99).second) {
     return 8;
   }
 
-  if (!map.try_insert_or_assign(2, 25) || map.find(2)->value != 25) {
+  // An existing key is assigned, not inserted: {iterator to it, false}.
+  const auto assigned = map.try_insert_or_assign(2, 25);
+  if (assigned.second || assigned.first == map.end() || assigned.first->value != 25) {
     return 9;
   }
 
@@ -158,7 +160,7 @@ int main() {
   }
 
   // equal_range tests on default-compared map.
-  if (!map.try_emplace(1, 11)) {
+  if (!map.try_emplace(1, 11).second) {
     return 12;
   }
   // map keys are now {1, 2, 3}
@@ -198,7 +200,8 @@ int main() {
   // --- Custom non-transparent Compare (reverse order) ---
   {
     metl::flat_map<int, int, 4, int_greater> rmap;
-    if (!rmap.try_emplace(1, 100) || !rmap.try_emplace(3, 300) || !rmap.try_emplace(2, 200)) {
+    if (!rmap.try_emplace(1, 100).second || !rmap.try_emplace(3, 300).second ||
+        !rmap.try_emplace(2, 200).second) {
       return 46;
     }
 
@@ -230,7 +233,8 @@ int main() {
   // --- Heterogeneous lookup with const char* + cstr_less ---
   {
     metl::flat_map<const char*, int, 4, cstr_less> smap;
-    if (!smap.try_emplace("banana", 2) || !smap.try_emplace("apple", 1) || !smap.try_emplace("cherry", 3)) {
+    if (!smap.try_emplace("banana", 2).second || !smap.try_emplace("apple", 1).second ||
+        !smap.try_emplace("cherry", 3).second) {
       return 47;
     }
 
@@ -305,7 +309,8 @@ int main() {
     metl::flat_map<int, int, 4> b;
     metl::flat_map<int, int, 8> wide;  // same entries, different capacity
     for (int i = 1; i <= 2; ++i) {
-      if (!a.try_emplace(i, i * 10) || !b.try_emplace(i, i * 10) || !wide.try_emplace(i, i * 10)) {
+      if (!a.try_emplace(i, i * 10).second || !b.try_emplace(i, i * 10).second ||
+          !wide.try_emplace(i, i * 10).second) {
         return 35;
       }
     }
@@ -322,7 +327,7 @@ int main() {
 
     // Same keys, one differing value: ordering falls through to the value.
     metl::flat_map<int, int, 4> higher_value;
-    if (!higher_value.try_emplace(1, 10) || !higher_value.try_emplace(2, 21)) {
+    if (!higher_value.try_emplace(1, 10).second || !higher_value.try_emplace(2, 21).second) {
       return 39;
     }
     if ((a == higher_value) || !(a < higher_value) || !(higher_value > a)) {
@@ -331,7 +336,7 @@ int main() {
 
     // A prefix orders before the longer sequence.
     metl::flat_map<int, int, 4> prefix;
-    if (!prefix.try_emplace(1, 10)) {
+    if (!prefix.try_emplace(1, 10).second) {
       return 41;
     }
     if (!(prefix < a) || !(a > prefix) || !(prefix <= a) || (prefix >= a)) {
@@ -340,7 +345,7 @@ int main() {
 
     // A differing KEY outranks the value comparison.
     metl::flat_map<int, int, 4> higher_key;
-    if (!higher_key.try_emplace(1, 10) || !higher_key.try_emplace(3, 0)) {
+    if (!higher_key.try_emplace(1, 10).second || !higher_key.try_emplace(3, 0).second) {
       return 43;
     }
     if (!(a < higher_key)) {
@@ -352,9 +357,9 @@ int main() {
     // decides `false` even where a later value, or the size, would say `true`.
     CHECK(!(higher_key < a));  // key 3 > key 2, though value 0 < 20
     metl::flat_map<int, int, 4> longer;
-    CHECK(longer.try_emplace(1, 10));
-    CHECK(longer.try_emplace(2, 20));
-    CHECK(longer.try_emplace(3, 30));
+    CHECK(longer.try_emplace(1, 10).second);
+    CHECK(longer.try_emplace(2, 20).second);
+    CHECK(longer.try_emplace(3, 30).second);
     CHECK(!(higher_value < longer));  // value 21 > 20, though size 2 < 3
     CHECK(higher_value > longer);
     CHECK(!(higher_value <= longer));

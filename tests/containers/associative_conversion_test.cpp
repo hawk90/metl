@@ -57,7 +57,7 @@ void converting_keys() {
     metl::static_unordered_set<std::uint32_t, 8, metl::fnv1a_hash> set;
     const int minus_one = -1;
     set.emplace(minus_one);
-    CHECK(!set.try_emplace(0xFFFFFFFFu));  // already present, as the uint32 it became
+    CHECK(!set.try_emplace(0xFFFFFFFFu).second);  // already present, as the uint32 it became
     CHECK_EQ(set.size(), std::size_t{1});
     CHECK(set.contains(0xFFFFFFFFu));
   }
@@ -80,14 +80,14 @@ void converting_keys() {
     metl::flat_set<int, 8, std::less<>> set;
     set.emplace(2);
     set.emplace(3);
-    CHECK(!set.try_emplace(2.5));  // 2.5 converts to 2, which is already there
+    CHECK(!set.try_emplace(2.5).second);  // 2.5 converts to 2, which is already there
     CHECK_EQ(set.size(), std::size_t{2});
   }
   {
     metl::static_unordered_map<wrapped, int, 8, overloaded_hash> map;
     map.emplace(5, 1);
     CHECK(map.contains(wrapped{5}));
-    CHECK(!map.try_emplace(wrapped{5}, 2));
+    CHECK(!map.try_emplace(wrapped{5}, 2).second);
     CHECK_EQ(map.size(), std::size_t{1});
   }
   // A narrowing key the enable_if accepts compiles on the maps as on the sets
@@ -96,17 +96,17 @@ void converting_keys() {
   {
     const long key = 7;
     metl::flat_map<int, int, 8> flat;
-    CHECK(flat.try_emplace(key, 1));
+    CHECK(flat.try_emplace(key, 1).second);
     flat.emplace(key + 1, 2);
-    CHECK(flat.try_insert_or_assign(key, 3));
+    CHECK(flat.try_insert_or_assign(key, 3).first != flat.end());  // assigned
     flat.insert_or_assign(key + 2, 4);
     CHECK_EQ(flat.size(), std::size_t{3});
     CHECK(flat.contains(7));
 
     metl::static_unordered_map<int, int, 8> unordered;
-    CHECK(unordered.try_emplace(key, 1));
+    CHECK(unordered.try_emplace(key, 1).second);
     unordered.emplace(key + 1, 2);
-    CHECK(unordered.try_insert_or_assign(key, 3));
+    CHECK(unordered.try_insert_or_assign(key, 3).first != unordered.end());  // assigned
     unordered.insert_or_assign(key + 2, 4);
     CHECK_EQ(unordered.size(), std::size_t{3});
     CHECK(unordered.contains(7));

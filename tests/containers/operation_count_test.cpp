@@ -78,7 +78,7 @@ template <std::size_t Capacity>
 void check_flat_map_lookup_bound() {
   metl::flat_map<std::uint32_t, std::uint32_t, Capacity, counting_less> map;
   for (std::uint32_t i = 0; i < Capacity; ++i) {
-    CHECK(map.try_emplace(100u + (i * 2u), i));
+    CHECK(map.try_emplace(100u + (i * 2u), i).second);
   }
   CHECK_EQ(map.size(), Capacity);
 
@@ -111,7 +111,7 @@ template <std::size_t Capacity>
 void check_flat_set_lookup_bound() {
   metl::flat_set<std::uint32_t, Capacity, counting_less> set;
   for (std::uint32_t i = 0; i < Capacity; ++i) {
-    CHECK(set.try_emplace(100u + (i * 2u)));
+    CHECK(set.try_emplace(100u + (i * 2u)).second);
   }
   CHECK_EQ(set.size(), Capacity);
 
@@ -155,7 +155,7 @@ int main() {
   {
     metl::flat_map<std::uint32_t, std::uint32_t, 1024, counting_less> map;
     for (std::uint32_t i = 0; i < 16; ++i) {
-      CHECK(map.try_emplace(i * 2u, i));
+      CHECK(map.try_emplace(i * 2u, i).second);
     }
     std::size_t worst = 0;
     for (std::uint32_t key = 0; key < 40u; ++key) {

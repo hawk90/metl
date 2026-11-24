@@ -111,9 +111,9 @@ int main() {
   // A stateful comparator's state decides the order, through copy and move.
   {
     metl::flat_set<int, 4, ordered_by> set(ordered_by{true});
-    CHECK(set.try_emplace(1));
-    CHECK(set.try_emplace(3));
-    CHECK(set.try_emplace(2));
+    CHECK(set.try_emplace(1).second);
+    CHECK(set.try_emplace(3).second);
+    CHECK(set.try_emplace(2).second);
     CHECK_EQ(*set.begin(), 3);
     metl::flat_set<int, 4, ordered_by> copied(set);
     CHECK_EQ(*copied.begin(), 3);
@@ -132,15 +132,15 @@ int main() {
   // A final comparator works as a member.
   {
     metl::flat_set<int, 4, final_less> set;
-    CHECK(set.try_emplace(2));
-    CHECK(set.try_emplace(1));
+    CHECK(set.try_emplace(2).second);
+    CHECK(set.try_emplace(1).second);
     CHECK_EQ(*set.begin(), 1);
   }
 
   // One type as both functors.
   {
     both_map map;
-    CHECK(map.try_emplace(7U, 70U));
+    CHECK(map.try_emplace(7U, 70U).second);
     CHECK(map.contains(7U));
     CHECK(!map.contains(8U));
   }

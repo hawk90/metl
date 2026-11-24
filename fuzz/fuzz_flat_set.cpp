@@ -65,7 +65,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
       case 0: {  // try_emplace -- false on duplicate or full, never asserts
         const bool present_before = set.contains(key);
         const std::size_t size_before = set.size();
-        const bool inserted = set.try_emplace(std::uint16_t{key});
+        const bool inserted = set.try_emplace(std::uint16_t{key}).second;
         if (inserted) {
           if (present_before) {
             METL_FUZZ_TRAP();  // inserted a key that was already there

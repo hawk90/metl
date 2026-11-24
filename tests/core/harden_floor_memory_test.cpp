@@ -383,16 +383,26 @@ int main() {
     CHECK_EQ(copy_counted::copies, copies);
   }
 
-  // flat_map / flat_set: a duplicate key would be stored twice.
+  // flat_map / flat_set: a duplicate key is not a precondition violation any
+  // more. emplace hands back the stored element, as the unordered containers
+  // do, and stores nothing twice at any level.
   {
     metl::flat_map<int, int, 4> map;
-    map.emplace(1, 10);
-    CHECK(guarded_against([&] { map.emplace(1, 20); }));
+    (void)map.emplace(1, 10);
+    bool inserted = true;
+    CHECK(!guarded_against([&] {
+      const auto result = map.emplace(1, 20);
+      inserted = result.second;
+      CHECK_EQ(result.first->value, 10);
+    }));
+    CHECK(!inserted);
     CHECK_EQ(map.size(), 1u);
 
     metl::flat_set<int, 4> set;
-    set.emplace(1);
-    CHECK(guarded_against([&] { set.emplace(1); }));
+    (void)set.emplace(1);
+    inserted = true;
+    CHECK(!guarded_against([&] { inserted = set.emplace(1).second; }));
+    CHECK(!inserted);
     CHECK_EQ(set.size(), 1u);
   }
 

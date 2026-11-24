@@ -88,8 +88,8 @@ int main() {
   using map_type = metl::flat_map<int, int, 4, copyable_less>;
   metl::fixed_vector<map_type, 2> maps;
   CHECK(maps.try_emplace_back(copyable_less(&less)));
-  CHECK(maps[0].try_emplace(2, 20));
-  CHECK(maps[0].try_emplace(1, 10));
+  CHECK(maps[0].try_emplace(2, 20).second);
+  CHECK(maps[0].try_emplace(1, 10).second);
   metl::fixed_vector<map_type, 2> moved(std::move(maps));
   CHECK_EQ(moved.size(), std::size_t{1});
   CHECK_EQ(moved[0].begin()->key, 1);

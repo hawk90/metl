@@ -206,11 +206,18 @@ import tempfile
 # instruction, and the unordered walk calls countr_zero) plus Thumb-1 density.
 # No other libc or libgcc symbol arrived, and no 64-bit or divide helper
 # (the probe object's undefined symbols, old against new, with ARM GCC 16).
+#
+# Moved by #162 (PR #723, run 45344322783): try_emplace returns
+# pair<iterator, bool>, and the probe reads .second. M0 +24, M3 -4, M4 -4,
+# M7 -8. On M0 the iterator held across the insert loops spills: probe_main
+# has 145 stack loads and stores against 124 (Thumb-1 has eight low
+# registers); on M3 the same function goes from 153 to 151. Disassembled with
+# ARM GCC 14.2.rel1, whose object deltas match these runs.
 BUDGETS = {
-    "cortex-m0": 4760,
-    "cortex-m3": 4656,
-    "cortex-m4": 4660,
-    "cortex-m7": 4664,
+    "cortex-m0": 4784,
+    "cortex-m3": 4652,
+    "cortex-m4": 4656,
+    "cortex-m7": 4656,
 }
 
 # No tolerance on any of the three sizes (#587). The toolchain does not move them

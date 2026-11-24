@@ -391,11 +391,11 @@ class flat_set : detail::capacity_storage<detail::array_storage<Key, Capacity>,
   }
 
   /// @brief Insert @p key only if it is absent, without overflowing.
-  /// @return @c true if inserted; @c false if the key already exists OR the set is full.
-  /// @note Unlike @c emplace, a full set or duplicate key is reported by the return value
-  ///       rather than an assertion.
+  /// @return @c {iterator to the new element, true}; @c {iterator to the equal element, false}
+  ///         if the key is present; @c {end(), false} if the set is full. A present key is
+  ///         checked first, so a full set still finds it.
   template <typename K>
-  METL_NODISCARD bool try_emplace(K&& key) {
+  METL_NODISCARD std::pair<iterator, bool> try_emplace(K&& key) {
     if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
       // Convert first, so the position, the duplicate check and the stored
       // key all come from the same value; a narrowing conversion would
@@ -407,35 +407,25 @@ class flat_set : detail::capacity_storage<detail::array_storage<Key, Capacity>,
     } else {
       const size_type index = lower_bound_index(key);
       if (index < comp_size_.value && !comp_size_.functor()(key, data()[index])) {
-        return false;
+        return {iterator_at(index), false};
       }
-
-      return try_insert_at(index, std::forward<K>(key));
+      if (!try_insert_at(index, std::forward<K>(key))) {
+        return {end(), false};
+      }
+      return {iterator_at(index), true};
     }
   }
 
-  /// @brief Insert @p key and return a reference to the new element.
-  /// @return Reference to the inserted element.
-  /// @pre The key is absent and the set is not full; violations assert. Use @c try_emplace to
-  ///      handle a full set or duplicate key without asserting.
+  /// @brief Insert @p key if it is absent.
+  /// @return @c {iterator to the new element, true}, or @c {iterator to the equal element,
+  ///         false} if the key is present.
+  /// @pre A new key fits; a full set asserts. Use @c try_emplace to handle a full set.
   template <typename K>
-  reference emplace(K&& key) {
-    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
-      // Convert first, so the position, the duplicate check and the stored
-      // key all come from the same value; a narrowing conversion would
-      // otherwise store a key that does not belong where the argument put it.
-      // Direct-initialised, not cast, so a consumer still gets the conversion
-      // warning a narrowing key deserves.
-      key_type converted(std::forward<K>(key));
-      return emplace(static_cast<key_type&&>(converted));
-    } else {
-      const size_type index = lower_bound_index(key);
-      METL_HARDEN(!(index < comp_size_.value && !comp_size_.functor()(key, data()[index])));
-      const bool inserted = try_insert_at(index, std::forward<K>(key));
-      // Hard guard on the full-set path; see the twin on flat_map::emplace.
-      METL_HARDEN(inserted);
-      return data()[index];
-    }
+  std::pair<iterator, bool> emplace(K&& key) {
+    const std::pair<iterator, bool> result = try_emplace(std::forward<K>(key));
+    // Hard guard, never stripped; see the twin on flat_map::emplace.
+    METL_HARDEN(result.first != end());
+    return result;
   }
 
   /// @brief Erase the element equal to the given key, if present.

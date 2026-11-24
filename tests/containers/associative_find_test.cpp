@@ -94,8 +94,8 @@ static_assert(!has_find<const table>::value, "lookup_table has no iterators, so 
 
 template <typename Map>
 void map_answers(Map& m) {
-  CHECK(m.try_emplace(1, 10));
-  CHECK(m.try_emplace(3, 30));
+  CHECK(m.try_emplace(1, 10).second);
+  CHECK(m.try_emplace(3, 30).second);
   const Map& cm = m;
 
   const auto hit = m.find(3);
@@ -129,8 +129,8 @@ void map_answers(Map& m) {
 
 template <typename Set>
 void set_answers(Set& s) {
-  CHECK(s.try_emplace(1));
-  CHECK(s.try_emplace(3));
+  CHECK(s.try_emplace(1).second);
+  CHECK(s.try_emplace(3).second);
   const Set& cs = s;
   const auto hit = s.find(3);
   CHECK(hit != s.end());
@@ -161,8 +161,8 @@ void std_idiom_on_all_four() {
 
 void erase_by_find() {
   fset s;
-  CHECK(s.try_emplace(1));
-  CHECK(s.try_emplace(2));
+  CHECK(s.try_emplace(1).second);
+  CHECK(s.try_emplace(2).second);
   const auto next = s.erase(s.find(1));
   CHECK(next != s.end());
   if (next != s.end()) {
@@ -171,7 +171,7 @@ void erase_by_find() {
   CHECK(s.size() == 1);
 
   umap m;
-  CHECK(m.try_emplace(5, 50));
+  CHECK(m.try_emplace(5, 50).second);
   (void)m.erase(m.find(5));
   CHECK(m.find(5) == m.end() && m.empty());
 }
@@ -189,7 +189,7 @@ struct long_equal {
 
 void heterogeneous() {
   metl::flat_map<int, int, 4, std::less<>> fm;
-  CHECK(fm.try_emplace(2, 20));
+  CHECK(fm.try_emplace(2, 20).second);
   const auto& cfm = fm;
   const long present = 2;
   const long absent = 7;
@@ -204,7 +204,7 @@ void heterogeneous() {
   CHECK(fm.find_value(absent) == nullptr && cfm.find_value(absent) == nullptr);
 
   metl::static_unordered_map<int, int, 4, long_hash, long_equal> um;
-  CHECK(um.try_emplace(2, 20));
+  CHECK(um.try_emplace(2, 20).second);
   const auto& cum = um;
   CHECK(um.find(present) != um.end());
   const auto um_hit = cum.find(present);
@@ -253,16 +253,16 @@ void every_position(C& c) {
 template <typename Key, typename Map>
 void every_position_map() {
   Map m;
-  CHECK(m.try_emplace(4, 40));
-  CHECK(m.try_emplace(2, 20));
+  CHECK(m.try_emplace(4, 40).second);
+  CHECK(m.try_emplace(2, 20).second);
   every_position<Key>(m);
 }
 
 template <typename Key, typename Set>
 void every_position_set() {
   Set s;
-  CHECK(s.try_emplace(4));
-  CHECK(s.try_emplace(2));
+  CHECK(s.try_emplace(4).second);
+  CHECK(s.try_emplace(2).second);
   every_position<Key>(s);
 }
 
@@ -313,7 +313,7 @@ void walk_one_iterator_type(It first, It last) {
 void flat_iterator_operations() {
   fset s;
   for (const int k : {40, 10, 30, 20}) {
-    CHECK(s.try_emplace(k));
+    CHECK(s.try_emplace(k).second);
   }
   walk_one_iterator_type(s.begin(), s.end());
   walk_one_iterator_type(s.cbegin(), s.cend());
@@ -321,7 +321,7 @@ void flat_iterator_operations() {
 
   fmap m;
   for (const int k : {4, 1, 3, 2}) {
-    CHECK(m.try_emplace(k, k * 10));
+    CHECK(m.try_emplace(k, k * 10).second);
   }
   walk_one_iterator_type(m.begin(), m.end());
   walk_one_iterator_type(m.cbegin(), m.cend());

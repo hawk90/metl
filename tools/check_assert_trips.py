@@ -40,8 +40,7 @@ ASSERT = re.compile(r"\bMETL_ASSERT\(")
 
 # header -> (asserts not yet tripped by any test, why). May only shrink.
 ALLOWED = {
-    "static_unordered_map.hpp": (6, "after size_ < Capacity holds a free slot always exists, so `available` and the free-slot check are internal invariants no caller can break"),
-    "static_unordered_set.hpp": (2, "after size_ < Capacity holds a free slot always exists, so `available` and the free-slot check are internal invariants no caller can break"),
+    "static_unordered_map.hpp": (4, "after size_ < Capacity holds a free slot always exists, so `available` and the free-slot check are internal invariants no caller can break"),
 }
 
 

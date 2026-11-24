@@ -3,9 +3,8 @@
 MUTANT = {
     "name": "unordered_set_emplace_capacity_harden_removed",
     "file": "include/metl/static_unordered_set.hpp",
-    "why": "at METL_HARDENING_NONE, emplace inserts a new key past Capacity, so size() "
-           "exceeds it and full() answers false (#579).",
+    "why": "emplace and try_emplace insert a new key past Capacity while a free slot is left, so size() exceeds it and full() answers false (#579).",
     "kills": "ctest:harden_floor_memory",
-    "old": '      METL_HARDEN(key_equal_size_.value < Capacity);\n      size_type index = npos;\n      const bool available = locate_insert_index(key, &index);\n      METL_ASSERT(available);\n      METL_ASSERT(state(index) != slot_state::occupied);\n      index = construct_at(index, std::forward<K>(key));',
-    "new": '      size_type index = npos;\n      const bool available = locate_insert_index(key, &index);\n      METL_ASSERT(available);\n      METL_ASSERT(state(index) != slot_state::occupied);\n      index = construct_at(index, std::forward<K>(key));',
+    "old": "        return {iterator(this, index, detail::at_slot), false};\n      }\n      // Capacity is the element ceiling; bucket_count is the (larger) table size.\n      // Refuse a new key past Capacity even when a free slot is left.\n      if (key_equal_size_.value >= Capacity) {\n        return {end(), false};\n      }\n",
+    "new": "        return {iterator(this, index, detail::at_slot), false};\n      }\n      // Capacity is the element ceiling; bucket_count is the (larger) table size.\n      // Refuse a new key past Capacity even when a free slot is left.\n",
 }

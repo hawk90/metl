@@ -49,6 +49,12 @@ _FIND_ITERATOR = ("it uses find's result as a pointer (compares it with nullptr,
                   "or dereferences it to the mapped value), calls find_iterator, or calls "
                   "lookup_table::find; #162 makes find return an iterator on the four associative "
                   "containers, as std's does, and names the pointer form find_value (#641)")
+# The reason shared by every old file that used the bool-returning inserts.
+_INSERT_PAIR = ("it uses the associative try_emplace or try_insert_or_assign result as a bool, or "
+                "emplace's as a reference; #162 makes try_emplace, emplace and try_insert_or_assign "
+                "return std::pair<iterator, bool> as std's do, so 'present' and 'full' stay apart")
+# An old file that does both.
+_FIND_AND_INSERT = _FIND_ITERATOR + "; and " + _INSERT_PAIR
 
 # {tag: {old test source or ctest name: "why it may break (#issue)"}}
 _VERSION_HEADER = ("it uses metl::version from <metl/version.hpp>, which #168 removes: the version is "
@@ -145,32 +151,47 @@ EXPECTED_BREAKS = {
                                                     "noexcept, as #317 decided for 2.0",
     },
     "v2.0.0-alpha.2": {
-        "examples/containers.cpp": _FIND_ITERATOR,
+        "examples/containers.cpp": _FIND_AND_INSERT,
         "fuzz/fuzz_flat_map.cpp": _FIND_ITERATOR,
-        "fuzz/fuzz_flat_set.cpp": _FIND_ITERATOR,
+        "fuzz/fuzz_flat_set.cpp": _FIND_AND_INSERT,
         "fuzz/fuzz_static_unordered_map.cpp": _FIND_ITERATOR,
-        "fuzz/fuzz_unordered_set.cpp": _FIND_ITERATOR,
+        "fuzz/fuzz_unordered_set.cpp": _FIND_AND_INSERT,
         "tests/bits/hash_by_value_test.cpp": _FIND_ITERATOR,
         "tests/conformance/conformance_alias_test.cpp": _FIND_ITERATOR,
-        "tests/containers/associative_conversion_test.cpp": _FIND_ITERATOR,
-        "tests/containers/container_edges_test.cpp": _FIND_ITERATOR,
-        "tests/containers/container_swap_test.cpp": _FIND_ITERATOR,
-        "tests/containers/contract_edges_test.cpp": _FIND_ITERATOR,
-        "tests/containers/flat_map_test.cpp": _FIND_ITERATOR,
-        "tests/containers/flat_set_test.cpp": _FIND_ITERATOR,
+        "tests/containers/associative_conversion_test.cpp": _FIND_AND_INSERT,
+        "tests/containers/container_edges_test.cpp": _FIND_AND_INSERT,
+        "tests/containers/container_swap_test.cpp": _FIND_AND_INSERT,
+        "tests/containers/contract_edges_test.cpp": _FIND_AND_INSERT,
+        "tests/containers/flat_map_test.cpp": _FIND_AND_INSERT,
+        "tests/containers/flat_set_test.cpp": _FIND_AND_INSERT,
         "tests/containers/lookup_table_test.cpp": _FIND_ITERATOR,
-        "tests/containers/recoverable_api_test.cpp": _FIND_ITERATOR,
-        "tests/containers/static_unordered_map_emplace_test.cpp": _FIND_ITERATOR,
-        "tests/containers/static_unordered_map_test.cpp": _FIND_ITERATOR,
-        "tests/containers/static_unordered_set_test.cpp": _FIND_ITERATOR,
-        "tests/containers/throwing_element_test.cpp": _FIND_ITERATOR,
-        "tests/containers/unordered_erase_iteration_test.cpp": _FIND_ITERATOR,
-        "tests/containers/unordered_reclaim_test.cpp": _FIND_ITERATOR,
-        "tests/containers/unordered_wide_key_test.cpp": _FIND_ITERATOR,
+        "tests/containers/recoverable_api_test.cpp": _FIND_AND_INSERT,
+        "tests/containers/static_unordered_map_emplace_test.cpp": _FIND_AND_INSERT,
+        "tests/containers/static_unordered_map_test.cpp": _FIND_AND_INSERT,
+        "tests/containers/static_unordered_set_test.cpp": _FIND_AND_INSERT,
+        "tests/containers/throwing_element_test.cpp": _FIND_AND_INSERT,
+        "tests/containers/unordered_erase_iteration_test.cpp": _FIND_AND_INSERT,
+        "tests/containers/unordered_reclaim_test.cpp": _FIND_AND_INSERT,
+        "tests/containers/unordered_wide_key_test.cpp": _FIND_AND_INSERT,
         "tests/containers/zero_length_test.cpp": _FIND_ITERATOR,
-        "tests/core/harden_floor_memory_test.cpp": _FIND_ITERATOR,
+        "tests/core/harden_floor_memory_test.cpp": _FIND_AND_INSERT,
         "tests/core/hostile_types_test.cpp": _FIND_ITERATOR,
         "tests/containers/container_assert_trips_test.cpp": "it forged a flat_map and a flat_set iterator one byte into an element by reinterpret_cast from a pointer; #162 makes the flat iterator a class, so that position cannot be formed, and the stride check it tripped is gone",
+        "tests/conformance/conformance_capacity_test.cpp": _INSERT_PAIR,
+        "tests/conformance/conformance_copy_test.cpp": _INSERT_PAIR,
+        "tests/conformance/conformance_move_test.cpp": _INSERT_PAIR,
+        "tests/conformance/conformance_removal_test.cpp": _INSERT_PAIR,
+        "tests/conformance/conformance_self_test.cpp": _INSERT_PAIR,
+        "tests/conformance/conformance_stability_test.cpp": _INSERT_PAIR,
+        "tests/conformance/conformance_std_parity_test.cpp": _INSERT_PAIR,
+        "tests/conformance/conformance_throwing_test.cpp": _INSERT_PAIR,
+        "tests/containers/alias_insert_test.cpp": _INSERT_PAIR,
+        "tests/containers/associative_erase_iterator_test.cpp": _INSERT_PAIR,
+        "tests/containers/functor_ebo_test.cpp": _INSERT_PAIR,
+        "tests/containers/moved_from_contract_test.cpp": _INSERT_PAIR,
+        "tests/containers/operation_count_test.cpp": _INSERT_PAIR,
+        "tests/containers/recoverable_unchanged_test.cpp": _INSERT_PAIR,
+        "tests/vocab/callable_as_functor_test.cpp": _INSERT_PAIR,
     },
 }
 

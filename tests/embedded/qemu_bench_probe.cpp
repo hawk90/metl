@@ -101,7 +101,7 @@ __attribute__((noinline)) void ring_buffer_push_overwrite() noexcept {
 __attribute__((noinline)) void flat_map_insert_find() noexcept {
   for (u32 i = 0; i < kIterations; ++i) {
     // Descending keys: every insert lands at the front and shifts the rest.
-    sink(g_flat_map.try_emplace(kIterations - i, i) ? 1u : 0u);
+    sink(g_flat_map.try_emplace(kIterations - i, i).second ? 1u : 0u);
   }
   for (u32 i = 0; i < kIterations; ++i) {
     const u32* found = g_flat_map.find_value(i + 1u);
@@ -114,7 +114,7 @@ __attribute__((noinline)) void flat_map_insert_find() noexcept {
 // with the even keys. Half the keys asked for are absent.
 __attribute__((noinline)) void flat_map_lookup_walk() noexcept {
   for (u32 i = 0; i < kIterations; ++i) {
-    sink(g_flat_map_walk.try_emplace(2u * i, i) ? 1u : 0u);
+    sink(g_flat_map_walk.try_emplace(2u * i, i).second ? 1u : 0u);
   }
   for (u32 i = 0; i < kIterations; ++i) {
     sink(g_flat_map_walk.find(i) != g_flat_map_walk.end() ? 1u : 0u);
@@ -131,7 +131,7 @@ __attribute__((noinline)) void flat_map_lookup_walk() noexcept {
 // scans every bucket for the live ones.
 __attribute__((noinline)) void static_unordered_map_lookup_walk() noexcept {
   for (u32 i = 0; i < kIterations; ++i) {
-    sink(g_unordered_map.try_emplace(2u * i, i) ? 1u : 0u);
+    sink(g_unordered_map.try_emplace(2u * i, i).second ? 1u : 0u);
   }
   for (u32 i = 0; i < kIterations; ++i) {
     const u32* found = g_unordered_map.find_value(i);

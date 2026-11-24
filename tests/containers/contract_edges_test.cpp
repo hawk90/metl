@@ -130,7 +130,7 @@ void test_map_rebuild_throw() {
   {
     map_type map;
     for (int k = 0; k < 8; ++k) {
-      CHECK(map.try_emplace(k, tracked(k)));
+      CHECK(map.try_emplace(k, tracked(k)).second);
     }
     // Four tombstones: more than bucket_count / 8, so the next new key rebuilds.
     for (int k = 0; k < 4; ++k) {
@@ -156,7 +156,7 @@ void test_map_rebuild_throw() {
     CHECK_EQ(g_live, 0);
     // Still a working, empty table.
     CHECK(!map.contains(4));
-    CHECK(map.try_emplace(7, tracked(70)));
+    CHECK(map.try_emplace(7, tracked(70)).second);
     CHECK_EQ(map.size(), std::size_t{1});
     const auto found = map.find(7);
     if (CHECK(found != map.end())) {
@@ -189,7 +189,7 @@ void test_set_rebuild_throw() {
   {
     set_type set;
     for (int k = 0; k < 8; ++k) {
-      CHECK(set.try_emplace(tracked_key(k)));
+      CHECK(set.try_emplace(tracked_key(k)).second);
     }
     for (int k = 0; k < 4; ++k) {
       CHECK(set.erase(tracked_key(k)));
@@ -211,7 +211,7 @@ void test_set_rebuild_throw() {
     CHECK(set.begin() == set.end());
     CHECK_EQ(g_live, 0);
     CHECK(!set.contains(tracked_key(4)));
-    CHECK(set.try_emplace(tracked_key(7)));
+    CHECK(set.try_emplace(tracked_key(7)).second);
     CHECK_EQ(set.size(), std::size_t{1});
     CHECK(set.contains(tracked_key(7)));
   }
