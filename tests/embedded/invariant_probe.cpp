@@ -36,6 +36,7 @@
 #include <metl/crc32.hpp>
 #include <metl/fixed_priority_queue.hpp>
 #include <metl/fixed_vector.hpp>
+#include <metl/flat_map.hpp>
 #include <metl/format.hpp>
 #include <metl/handle_pool.hpp>
 #include <metl/intrusive_forward_list.hpp>
@@ -114,8 +115,35 @@ void exercise_unordered_map() noexcept {
     const std::uint32_t* found = map.find_value(i);
     sink(found != nullptr ? *found : 0u);
   }
+  // The other lookup forms and a walk. Each one builds an iterator, either at
+  // a known slot or by scanning for the next live one, and the size budget
+  // holds what that costs.
+  sink(map.find(3u) != map.end() ? 1u : 0u);
+  sink(map.contains(999u) ? 1u : 0u);
+  for (const auto& entry : map) {
+    sink(entry.value);
+  }
   // Overflow must fail cleanly rather than rehash onto the heap.
   sink(map.try_emplace(999u, 0u) ? 1u : 0u);
+}
+
+void exercise_flat_map() noexcept {
+  metl::flat_map<std::uint32_t, std::uint32_t, 8> map;
+  for (std::uint32_t i = 0; i < 8; ++i) {
+    // Descending keys: every insert lands at the front and shifts the rest.
+    sink(map.try_emplace(8u - i, i) ? 1u : 0u);
+  }
+  const std::uint32_t* found = map.find_value(4u);
+  sink(found != nullptr ? *found : 0u);
+  sink(map.find(3u) != map.end() ? 1u : 0u);
+  sink(map.contains(999u) ? 1u : 0u);
+  const auto victim = map.find(2u);
+  if (victim != map.end()) {
+    sink(map.erase(victim) != map.end() ? 1u : 0u);
+  }
+  for (const auto& entry : map) {
+    sink(entry.value);
+  }
 }
 
 void exercise_priority_queue() noexcept {
@@ -220,6 +248,7 @@ extern "C" int probe_main(void) {
   exercise_object_pool();
   exercise_handle_pool();
   exercise_unordered_map();
+  exercise_flat_map();
   exercise_priority_queue();
   exercise_byte_ring();
   exercise_format();

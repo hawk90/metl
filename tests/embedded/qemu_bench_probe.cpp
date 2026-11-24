@@ -38,6 +38,7 @@
 #include <metl/span.hpp>
 #include <metl/spsc_byte_ring.hpp>
 #include <metl/spsc_queue.hpp>
+#include <metl/static_unordered_map.hpp>
 
 // mpmc_queue refuses, at compile time, a core without a lock-free CAS
 // (ARMv6-M). Its region is absent there, and the tool expects exactly that.
@@ -64,6 +65,7 @@ metl::fixed_vector<u32, 64> g_vector;
 metl::fixed_queue<u32, 64> g_queue;
 metl::ring_buffer<u32, 64> g_ring;
 metl::flat_map<u32, u32, 64> g_flat_map;
+metl::static_unordered_map<u32, u32, 64> g_unordered_map;
 metl::spsc_queue<u32, 64> g_spsc;
 metl::spsc_byte_ring<256> g_bytes;
 #if defined(METL_BENCH_HAS_MPMC)
@@ -102,6 +104,41 @@ __attribute__((noinline)) void flat_map_insert_find() noexcept {
     sink(found != nullptr ? *found : 0u);
   }
   g_flat_map.clear();
+}
+
+// The lookup forms that build an iterator, and a walk, on a map filled once
+// with the even keys. Half the keys asked for are absent.
+__attribute__((noinline)) void flat_map_lookup_walk() noexcept {
+  for (u32 i = 0; i < kIterations; ++i) {
+    sink(g_flat_map.try_emplace(2u * i, i) ? 1u : 0u);
+  }
+  for (u32 i = 0; i < kIterations; ++i) {
+    sink(g_flat_map.find(i) != g_flat_map.end() ? 1u : 0u);
+    sink(g_flat_map.contains(i + kIterations) ? 1u : 0u);
+  }
+  for (const auto& entry : g_flat_map) {
+    sink(entry.value);
+  }
+  g_flat_map.clear();
+}
+
+// The same on the hashed map, with find_value beside them: an absent key
+// probes to an empty slot, a present one stops at its match, and the walk
+// scans every bucket for the live ones.
+__attribute__((noinline)) void static_unordered_map_lookup_walk() noexcept {
+  for (u32 i = 0; i < kIterations; ++i) {
+    sink(g_unordered_map.try_emplace(2u * i, i) ? 1u : 0u);
+  }
+  for (u32 i = 0; i < kIterations; ++i) {
+    const u32* found = g_unordered_map.find_value(i);
+    sink(found != nullptr ? *found : 0u);
+    sink(g_unordered_map.find(i) != g_unordered_map.end() ? 1u : 0u);
+    sink(g_unordered_map.contains(i + kIterations) ? 1u : 0u);
+  }
+  for (const auto& entry : g_unordered_map) {
+    sink(entry.value);
+  }
+  g_unordered_map.clear();
 }
 
 __attribute__((noinline)) void spsc_queue_push_pop() noexcept {
@@ -224,6 +261,8 @@ const region kRegions[] = {
     {"fixed_queue_push_pop", fixed_queue_push_pop},
     {"ring_buffer_push_overwrite", ring_buffer_push_overwrite},
     {"flat_map_insert_find", flat_map_insert_find},
+    {"flat_map_lookup_walk", flat_map_lookup_walk},
+    {"static_unordered_map_lookup_walk", static_unordered_map_lookup_walk},
     {"spsc_queue_push_pop", spsc_queue_push_pop},
     {"spsc_byte_ring_write_read", spsc_byte_ring_write_read},
 #if defined(METL_BENCH_HAS_MPMC)
