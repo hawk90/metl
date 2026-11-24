@@ -138,10 +138,15 @@ CANARY_BYTES = 1024
 # main's runs: 44,842 at d57b075c4 and the same count as now at 950f8b819 on
 # Cortex-M0's attach_detach_4), whose null-poll METL_HARDEN runs on every
 # attach. They are recorded here at main's count from run 43776531930.
+# flat_map_lookup_walk and static_unordered_map_lookup_walk came with PR #721:
+# the lookup forms that build an iterator, and a walk, which no region timed
+# before. static_unordered_map_lookup_walk is from that PR's run 45305448270,
+# flat_map_lookup_walk from run 45306859201, after it got a map type of its own.
 _V7M_COUNTS = {
     "fixed_queue_push_pop": 2632,
     "fixed_vector_fill_clear": 1620,
     "flat_map_insert_find": 31918,
+    "flat_map_lookup_walk": 17769,
     "intrusive_scheduler_attach_detach_16": 74119,
     "intrusive_scheduler_attach_detach_4": 18823,
     "intrusive_scheduler_run_once_16": 59466,
@@ -154,12 +159,14 @@ _V7M_COUNTS = {
     "scheduler_run_once_4": 18670,
     "spsc_byte_ring_write_read": 6540,
     "spsc_queue_push_pop": 2697,
+    "static_unordered_map_lookup_walk": 42677,
 }
 INSTRUCTION_BUDGETS = {
     "cortex-m0": {
         "fixed_queue_push_pop": 3399,
         "fixed_vector_fill_clear": 1749,
         "flat_map_insert_find": 35326,
+        "flat_map_lookup_walk": 19561,
         "intrusive_scheduler_attach_detach_16": 89415,
         "intrusive_scheduler_attach_detach_4": 22599,
         "intrusive_scheduler_run_once_16": 69225,
@@ -171,6 +178,7 @@ INSTRUCTION_BUDGETS = {
         "scheduler_run_once_4": 24523,
         "spsc_byte_ring_write_read": 8054,
         "spsc_queue_push_pop": 2952,
+        "static_unordered_map_lookup_walk": 57215,
     },
     "cortex-m3": dict(_V7M_COUNTS, spsc_byte_ring_write_read=7052),
     "cortex-m4": dict(_V7M_COUNTS),

@@ -195,11 +195,22 @@ import tempfile
 # Lowered by #318 (PR #709, run 43784939235): empty comparators take no room. CI's
 # GCC 14 linked image: M0 -8, M3 0, M4 0, M7 0 (the M0 difference was not
 # disassembled).
+#
+# Raised a fifth time, on every core, by PR #721, which gives the probe the
+# lookup forms and walks that #718 and #720 made cheaper. Before it, no gate
+# measured them: four hand mutants, each undoing one of those savings, left
+# this image unchanged. The probe's static_unordered_map adds find(k) != end(),
+# contains and a range-for, and a new flat_map does the same plus erase(iterator).
+# Run 45304220111: M0 +640, M3 +504, M4 +508, M7 +512. The M0 excess, 136
+# bytes, is libgcc's __ctzsi2 (64 bytes: ARMv6-M has no count-trailing-zeros
+# instruction, and the unordered walk calls countr_zero) plus Thumb-1 density.
+# No other libc or libgcc symbol arrived, and no 64-bit or divide helper
+# (the probe object's undefined symbols, old against new, with ARM GCC 16).
 BUDGETS = {
-    "cortex-m0": 4120,
-    "cortex-m3": 4152,
-    "cortex-m4": 4152,
-    "cortex-m7": 4152,
+    "cortex-m0": 4760,
+    "cortex-m3": 4656,
+    "cortex-m4": 4660,
+    "cortex-m7": 4664,
 }
 
 # No tolerance on any of the three sizes (#587). The toolchain does not move them
@@ -233,11 +244,15 @@ TOLERANCE_BYTES = 0
 # Lowered to 564 by #168 (PR #672, run 41983220910, all four targets): at the new
 # FAST default the METL_DASSERT checks, and the file names and expression text
 # they store, are gone.
+#
+# Raised to 636 by PR #721 (run 45304220111, all four targets): the probe's new
+# flat_map::erase(iterator) has a METL_HARDEN check, which stores the file name
+# and the expression text.
 RODATA_BUDGETS = {
-    "cortex-m0": 564,
-    "cortex-m3": 564,
-    "cortex-m4": 564,
-    "cortex-m7": 564,
+    "cortex-m0": 636,
+    "cortex-m3": 636,
+    "cortex-m4": 636,
+    "cortex-m7": 636,
 }
 RODATA_TOLERANCE_BYTES = 0
 
