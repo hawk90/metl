@@ -168,7 +168,7 @@ int main() {
   {
     metl::static_unordered_set<counted_key, kCapacity, counted_hash, counted_equal> set;
     const std::size_t before = g_moves;
-    CHECK(set.try_emplace(counted_key{1}));
+    CHECK(set.try_emplace(counted_key{1}).second);
     CHECK(g_moves > before);
   }
 

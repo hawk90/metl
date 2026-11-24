@@ -33,7 +33,7 @@ void fill(Map& map, std::uint32_t seed, int (&keys)[kCapacity]) {
   while (n < kCapacity) {
     x = x * 1103515245U + 12345U;
     const int key = static_cast<int>(x >> 8U);
-    if (map.try_emplace(key, key)) {
+    if (map.try_emplace(key, key).second) {
       keys[n++] = key;
     }
   }
@@ -113,7 +113,7 @@ int main() {
       }
       CHECK(map.empty());
     }
-    CHECK(map.try_emplace(7, 70));
+    CHECK(map.try_emplace(7, 70).second);
     CHECK(map.contains(7));
     CHECK(!map.contains(8));
   }

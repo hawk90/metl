@@ -61,7 +61,7 @@ int main() {
     return 1;
   }
 
-  if (!set.try_emplace(2) || !set.try_emplace(1) || !set.try_emplace(3)) {
+  if (!set.try_emplace(2).second || !set.try_emplace(1).second || !set.try_emplace(3).second) {
     return 2;
   }
 
@@ -97,7 +97,7 @@ int main() {
     return 7;
   }
 
-  if (set.try_emplace(2)) {
+  if (set.try_emplace(2).second) {
     return 8;
   }
 
@@ -110,7 +110,7 @@ int main() {
   }
 
   // equal_range tests.
-  if (!set.try_emplace(1)) {
+  if (!set.try_emplace(1).second) {
     return 11;
   }
   // set is now {1, 2, 3}
@@ -150,7 +150,7 @@ int main() {
   // --- Custom non-transparent Compare (reverse order) ---
   {
     metl::flat_set<int, 4, int_greater> rset;
-    if (!rset.try_emplace(1) || !rset.try_emplace(3) || !rset.try_emplace(2)) {
+    if (!rset.try_emplace(1).second || !rset.try_emplace(3).second || !rset.try_emplace(2).second) {
       return 41;
     }
 
@@ -170,7 +170,8 @@ int main() {
   // --- Heterogeneous lookup with const char* + cstr_less ---
   {
     metl::flat_set<const char*, 4, cstr_less> sset;
-    if (!sset.try_emplace("banana") || !sset.try_emplace("apple") || !sset.try_emplace("cherry")) {
+    if (!sset.try_emplace("banana").second || !sset.try_emplace("apple").second ||
+        !sset.try_emplace("cherry").second) {
       return 42;
     }
 
@@ -243,7 +244,7 @@ int main() {
     metl::flat_set<int, 4> b;
     metl::flat_set<int, 8> wide;
     for (int key : {3, 1}) {  // inserted out of order; the set stores them sorted
-      if (!a.try_emplace(key) || !b.try_emplace(key) || !wide.try_emplace(key)) {
+      if (!a.try_emplace(key).second || !b.try_emplace(key).second || !wide.try_emplace(key).second) {
         return 32;
       }
     }
@@ -259,7 +260,7 @@ int main() {
     }
 
     metl::flat_set<int, 4> higher;
-    if (!higher.try_emplace(1) || !higher.try_emplace(4)) {
+    if (!higher.try_emplace(1).second || !higher.try_emplace(4).second) {
       return 36;
     }
     if ((a == higher) || !(a < higher) || !(higher > a)) {
@@ -267,7 +268,7 @@ int main() {
     }
 
     metl::flat_set<int, 4> prefix;
-    if (!prefix.try_emplace(1)) {
+    if (!prefix.try_emplace(1).second) {
       return 38;
     }
     if (!(prefix < a) || !(a > prefix) || !(prefix <= a) || (prefix >= a)) {

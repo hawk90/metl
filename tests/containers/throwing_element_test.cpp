@@ -590,7 +590,7 @@ int main() {
         for (int k = 0; k < 10; ++k) {
           armed value(k);
           const int before = g_moves;
-          CHECK(map.try_emplace(round * 100 + k, static_cast<armed&&>(value)));
+          CHECK(map.try_emplace(round * 100 + k, static_cast<armed&&>(value)).second);
           const int moved = g_moves - before;
           most_moves_in_one_insert = moved > most_moves_in_one_insert ? moved : most_moves_in_one_insert;
         }
@@ -600,7 +600,7 @@ int main() {
       }
       CHECK_EQ(most_moves_in_one_insert, 1);  // never rebuilt
       CHECK(map.empty());
-      CHECK(map.try_emplace(5, armed(5)));
+      CHECK(map.try_emplace(5, armed(5)).second);
       CHECK(map.contains(5));
     }
     CHECK_EQ(g_live, 0);
@@ -697,7 +697,7 @@ int main() {
   {
     throwing_table table;
     for (int k = 0; k < 6; ++k) {
-      CHECK(table.try_emplace(k, k));
+      CHECK(table.try_emplace(k, k).second);
     }
     for (int k = 0; k < 3; ++k) {
       CHECK(table.erase(k));  // 3 tombstones > bucket_count / 8, so the next new key rebuilds
@@ -712,7 +712,7 @@ int main() {
     g_countdown = -1;
     CHECK(threw);
     CHECK(table.empty());
-    CHECK(table.try_emplace(7, 70));  // and it is still usable
+    CHECK(table.try_emplace(7, 70).second);  // and it is still usable
     CHECK(table.contains(7));
   }
 

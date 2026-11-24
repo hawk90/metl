@@ -675,11 +675,12 @@ know *why* it failed:
 
 Sequence and concurrent containers return `bool`. Associative containers
 return `pair<iterator, bool>`, as `std::map::try_emplace` does, so "already
-present" and "full" stay apart. Two groups do not follow this yet, and 2.0.0
-changes them: `fixed_vector::try_insert` and positional `try_emplace` return an
-iterator, `end()` on failure (#161), and the associative `try_emplace` and
-`try_insert_or_assign` return `bool` (#162). A new `try_` form picks its row
-from this table; a shape not in it needs a reason recorded here.
+present" and "full" stay apart: `{it, false}` points at the element already
+there, and `{end(), false}` means a new key did not fit. `emplace` returns the
+same pair and asserts instead of returning `end()`. One group does not follow
+this yet, and 2.0.0 changes it: `fixed_vector::try_insert` and positional
+`try_emplace` return an iterator, `end()` on failure (#161). A new `try_` form
+picks its row from this table; a shape not in it needs a reason recorded here.
 
 ### How it is enforced
 

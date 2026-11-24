@@ -18,8 +18,8 @@ namespace {
 
 void flat_set_of_bool_erases_the_position() {
   metl::flat_set<bool, 2> s;
-  CHECK(s.try_emplace(false));
-  CHECK(s.try_emplace(true));
+  CHECK(s.try_emplace(false).second);
+  CHECK(s.try_emplace(true).second);
   const auto next = s.erase(s.begin());  // the first element, `false`
   CHECK_EQ(s.size(), 1u);
   CHECK(s.contains(true));
@@ -34,8 +34,8 @@ void transparent_set_of_pointers_erases_the_position() {
   int a = 0;
   int b = 0;
   metl::flat_set<const int*, 4, std::less<>> s;
-  CHECK(s.try_emplace(&a));
-  CHECK(s.try_emplace(&b));
+  CHECK(s.try_emplace(&a).second);
+  CHECK(s.try_emplace(&b).second);
   const int* first = *s.begin();
   (void)s.erase(s.begin());
   CHECK_EQ(s.size(), 1u);
@@ -45,7 +45,7 @@ void transparent_set_of_pointers_erases_the_position() {
 void flat_map_erases_while_iterating() {
   metl::flat_map<int, int, 8> m;
   for (int k = 0; k < 6; ++k) {
-    CHECK(m.try_emplace(k, k * 10));
+    CHECK(m.try_emplace(k, k * 10).second);
   }
   for (auto it = m.begin(); it != m.end();) {
     if (it->key % 2 == 0) {
@@ -67,14 +67,14 @@ void flat_map_erases_while_iterating() {
 
   metl::flat_map<int, int, 8> n;
   for (int k = 0; k < 6; ++k) {
-    CHECK(n.try_emplace(k, k));
+    CHECK(n.try_emplace(k, k).second);
   }
   CHECK_EQ(erase_if(n, [](const auto& entry) { return entry.key >= 4; }), 2u);
   CHECK_EQ(n.size(), 4u);
 
   metl::flat_set<int, 8> s;
   for (int k = 0; k < 6; ++k) {
-    CHECK(s.try_emplace(k));
+    CHECK(s.try_emplace(k).second);
   }
   CHECK_EQ(erase_if(s, [](int k) { return k % 3 == 0; }), 2u);
   CHECK_EQ(s.size(), 4u);
@@ -85,7 +85,7 @@ void flat_map_erases_while_iterating() {
 void unordered_erase_while_iterating() {
   metl::static_unordered_map<int, int, 8> m;
   for (int k = 0; k < 8; ++k) {
-    CHECK(m.try_emplace(k, k));
+    CHECK(m.try_emplace(k, k).second);
   }
   std::size_t visited = 0;
   for (auto it = m.begin(); it != m.end();) {
@@ -112,7 +112,7 @@ void unordered_erase_while_iterating() {
 
   metl::static_unordered_set<int, 8> s;
   for (int k = 0; k < 8; ++k) {
-    CHECK(s.try_emplace(k));
+    CHECK(s.try_emplace(k).second);
   }
   CHECK_EQ(erase_if(s, [](int k) { return k < 3; }), 3u);
   CHECK_EQ(s.size(), 5u);

@@ -119,7 +119,7 @@ __attribute__((noinline)) void churn_map() noexcept {
 #endif
   for (int round = 0; round < 4; ++round) {
     for (u32 i = 0; i < 200; ++i) {
-      sink(g_map.try_emplace(i, i) ? 1u : 0u);
+      sink(g_map.try_emplace(i, i).second ? 1u : 0u);
     }
     for (u32 i = 0; i < 200; ++i) {
       sink(g_map.erase(i) ? 1u : 0u);
@@ -130,7 +130,7 @@ __attribute__((noinline)) void churn_map() noexcept {
 __attribute__((noinline)) void churn_set() noexcept {
   for (int round = 0; round < 4; ++round) {
     for (u32 i = 0; i < 200; ++i) {
-      sink(g_set.try_emplace(i) ? 1u : 0u);
+      sink(g_set.try_emplace(i).second ? 1u : 0u);
     }
     for (u32 i = 0; i < 200; ++i) {
       sink(g_set.erase(i) ? 1u : 0u);
@@ -142,8 +142,8 @@ __attribute__((noinline)) void churn_set() noexcept {
 /// temporary buffer rather than element-by-element would show up here.
 __attribute__((noinline)) void churn_flat() noexcept {
   for (u32 i = 0; i < 200; ++i) {
-    sink(g_flat_map.try_emplace(i, i) ? 1u : 0u);
-    sink(g_flat_set.try_emplace(i) ? 1u : 0u);
+    sink(g_flat_map.try_emplace(i, i).second ? 1u : 0u);
+    sink(g_flat_set.try_emplace(i).second ? 1u : 0u);
   }
   for (u32 i = 0; i < 200; ++i) {
     sink(g_flat_map.erase(i) ? 1u : 0u);

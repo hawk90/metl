@@ -33,14 +33,18 @@ int main() {
   {
     metl::static_unordered_map<int, counted, 8> map;
 
-    auto& first = map.emplace(1, counted{10});
+    const auto inserted = map.emplace(1, counted{10});
+    CHECK(inserted.second);
+    auto& first = *inserted.first;
     CHECK_EQ(map.size(), std::size_t(1));
     CHECK_EQ(first.value.value, 10);
     const int live_after_first = counted::live;
 
     // Duplicate key: must be a no-op returning the *existing* element, no
     // second construction, no size change.
-    auto& again = map.emplace(1, counted{999});
+    const auto duplicate = map.emplace(1, counted{999});
+    CHECK(!duplicate.second);
+    auto& again = *duplicate.first;
     CHECK_EQ(map.size(), std::size_t(1));
     CHECK_EQ(again.value.value, 10);            // NOT overwritten
     CHECK_EQ(&again, &first);                   // same element

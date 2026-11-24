@@ -94,10 +94,10 @@ void map_comparisons() {
       map_type ma;
       map_type mb;
       for (const auto& [k, v] : a) {
-        CHECK(ma.try_emplace(k, v));
+        CHECK(ma.try_emplace(k, v).second);
       }
       for (const auto& [k, v] : b) {
-        CHECK(mb.try_emplace(k, v));
+        CHECK(mb.try_emplace(k, v).second);
       }
       check_ordering(ma, mb, a, b);
     }
@@ -110,10 +110,10 @@ void set_comparisons() {
       set_type sa;
       set_type sb;
       for (const int x : a) {
-        CHECK(sa.try_emplace(x));
+        CHECK(sa.try_emplace(x).second);
       }
       for (const int x : b) {
-        CHECK(sb.try_emplace(x));
+        CHECK(sb.try_emplace(x).second);
       }
       check_ordering(sa, sb, std::set<int>(a.begin(), a.end()), std::set<int>(b.begin(), b.end()));
     }
@@ -124,11 +124,11 @@ void set_comparisons() {
 // greater key, and by a key above every key, which lands past the end.
 void transparent_lookup_misses() {
   map_type m;
-  CHECK(m.try_emplace(1, 10));
-  CHECK(m.try_emplace(3, 30));
+  CHECK(m.try_emplace(1, 10).second);
+  CHECK(m.try_emplace(3, 30).second);
   set_type s;
-  CHECK(s.try_emplace(1));
-  CHECK(s.try_emplace(3));
+  CHECK(s.try_emplace(1).second);
+  CHECK(s.try_emplace(3).second);
   for (const long missing : {2L, 5L}) {
     CHECK(!m.contains(missing));
     CHECK(!m.erase(missing));
@@ -142,8 +142,8 @@ void transparent_lookup_misses() {
 // Erasing the last element returns end().
 void set_erase_last_returns_end() {
   set_type s;
-  CHECK(s.try_emplace(1));
-  CHECK(s.try_emplace(2));
+  CHECK(s.try_emplace(1).second);
+  CHECK(s.try_emplace(2).second);
   const auto next = s.erase(s.begin() + 1);
   CHECK(next == s.end());
   CHECK_EQ(s.size(), std::size_t{1});
@@ -172,7 +172,7 @@ using uset_type = metl::static_unordered_set<int, 4, one_bucket, same_value>;
 
 void unordered_lookup_misses() {
   umap_type m;
-  CHECK(m.try_emplace(1, 10));
+  CHECK(m.try_emplace(1, 10).second);
   const long missing = 7;
   CHECK(!m.contains(missing));
   CHECK(static_cast<const umap_type&>(m).find(missing) == m.cend());
@@ -182,7 +182,7 @@ void unordered_lookup_misses() {
   CHECK(static_cast<const umap_type&>(m).find(present) != m.cend());
 
   uset_type s;
-  CHECK(s.try_emplace(1));
+  CHECK(s.try_emplace(1).second);
   CHECK(!s.contains(missing));
   CHECK(s.find(missing) == s.end());
   CHECK(!s.erase(missing));
@@ -193,10 +193,10 @@ void unordered_lookup_misses() {
 // erase left, not the next empty slot.
 void unordered_set_reuses_a_tombstone() {
   uset_type s;
-  CHECK(s.try_emplace(1));
-  CHECK(s.try_emplace(2));
+  CHECK(s.try_emplace(1).second);
+  CHECK(s.try_emplace(2).second);
   CHECK(s.erase(1));
-  CHECK(s.try_emplace(3));
+  CHECK(s.try_emplace(3).second);
   CHECK_EQ(s.size(), std::size_t{2});
   CHECK(s.contains(2));
   CHECK(s.contains(3));
@@ -227,11 +227,11 @@ struct throwing_move_key_hash {
 void unordered_set_inserts_into_a_table_of_tombstones() {
   metl::static_unordered_set<throwing_move_key, 4, throwing_move_key_hash> s;
   for (int key = 0; key < 64; ++key) {
-    CHECK(s.try_emplace(throwing_move_key(key)));
+    CHECK(s.try_emplace(throwing_move_key(key)).second);
     CHECK(s.erase(throwing_move_key(key)));
   }
   CHECK(s.empty());
-  CHECK(s.try_emplace(throwing_move_key(100)));
+  CHECK(s.try_emplace(throwing_move_key(100)).second);
   CHECK_EQ(s.size(), std::size_t{1});
   CHECK(s.contains(throwing_move_key(100)));
   CHECK(!s.contains(throwing_move_key(63)));
@@ -268,8 +268,8 @@ void unordered_walk_from_find() {
   metl::static_unordered_map<int, int, 16> m;
   metl::static_unordered_set<int, 16> s;
   for (int key = 0; key < 12; ++key) {
-    CHECK(m.try_emplace(key * 7, key));
-    CHECK(s.try_emplace(key * 7));
+    CHECK(m.try_emplace(key * 7, key).second);
+    CHECK(s.try_emplace(key * 7).second);
   }
   for (int key = 0; key < 12; key += 3) {
     CHECK(m.erase(key * 7));

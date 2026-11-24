@@ -159,6 +159,7 @@ if(METL_BUILD_TESTS)
     containers/recoverable_unchanged
     containers/contract_edges containers/associative_erase_iterator containers/container_edges
     containers/associative_find
+    containers/associative_insert_result
     containers/container_assert_trips containers/container_swap containers/moved_from_contract
     containers/intrusive_forward_list containers/intrusive_list containers/copy_move_traits
     containers/constinit_size containers/zero_length containers/zero_capacity containers/functor_ebo

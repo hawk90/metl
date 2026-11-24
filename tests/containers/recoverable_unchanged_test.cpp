@@ -198,16 +198,16 @@ void arena_failed_emplace_unchanged() {
 
 void flat_set_full_new_key_unchanged() {
   metl::flat_set<int, 4> s;
-  CHECK(s.try_emplace(10));
-  CHECK(s.try_emplace(20));
-  CHECK(s.try_emplace(30));
-  CHECK(s.try_emplace(40));
+  CHECK(s.try_emplace(10).second);
+  CHECK(s.try_emplace(20).second);
+  CHECK(s.try_emplace(30).second);
+  CHECK(s.try_emplace(40).second);
   CHECK(s.full());
 
   // New keys that would land at the front, the middle and the back.
-  CHECK(!s.try_emplace(5));
-  CHECK(!s.try_emplace(25));
-  CHECK(!s.try_emplace(50));
+  CHECK(!s.try_emplace(5).second);
+  CHECK(!s.try_emplace(25).second);
+  CHECK(!s.try_emplace(50).second);
 
   CHECK_EQ(s.size(), 4u);
   const int expected[] = {10, 20, 30, 40};
@@ -226,15 +226,15 @@ void flat_set_full_new_key_unchanged() {
 
 void static_unordered_set_full_new_key_unchanged() {
   metl::static_unordered_set<int, 4> s;
-  CHECK(s.try_emplace(10));
-  CHECK(s.try_emplace(20));
-  CHECK(s.try_emplace(30));
-  CHECK(s.try_emplace(40));
+  CHECK(s.try_emplace(10).second);
+  CHECK(s.try_emplace(20).second);
+  CHECK(s.try_emplace(30).second);
+  CHECK(s.try_emplace(40).second);
   CHECK(s.full());
 
-  CHECK(!s.try_emplace(5));
-  CHECK(!s.try_emplace(25));
-  CHECK(!s.try_emplace(50));
+  CHECK(!s.try_emplace(5).second);
+  CHECK(!s.try_emplace(25).second);
+  CHECK(!s.try_emplace(50).second);
 
   CHECK_EQ(s.size(), 4u);
   std::size_t seen = 0;

@@ -88,8 +88,11 @@ Consequences:
   hazard, a `METL_HARDEN` guard remains; the rule is in `config.hpp`.
 - **`flat_map` is not `std::map`.** It has no `operator[]` or `at()`, so
   `m[k]` does not compile; `nth(i)` reaches the i-th entry in key order. To work
-  by key, use `find(key)` (returns `mapped_type*` / `nullptr`), `contains(key)`,
-  `try_emplace(key, value)`, `try_insert_or_assign(key, value)`, or `erase(key)`.
+  by key, use `find(key)` (an iterator, `end()` when absent), `find_value(key)`
+  (`mapped_type*` / `nullptr`), `contains(key)`, `try_emplace(key, value)`,
+  `try_insert_or_assign(key, value)`, or `erase(key)`. The two `try_` forms
+  return `std::pair<iterator, bool>`, as `std::map` does, with `end()` when a
+  new key does not fit.
 - **`function_ref` binds lvalues only.** Constructing one from a temporary
   callable is a compile error — **including passing a lambda directly as a
   `function_ref` parameter**, which `std::function_ref` allows — because the
@@ -174,11 +177,11 @@ binary search. It has no `operator[]`: use `find` by key and `nth` by position
 
 metl::flat_map<std::uint8_t, std::int32_t, 16> readings;
 
-if (!readings.try_emplace(std::uint8_t{3}, 300)) {
-    /* key exists, or full */
+if (const auto [it, inserted] = readings.try_emplace(std::uint8_t{3}, 300); !inserted) {
+    /* it == readings.end(): full. Otherwise it is the entry already there. */
 }
-if (!readings.try_insert_or_assign(std::uint8_t{2}, 250)) {
-    /* full: a NEW key won't fit */
+if (readings.try_insert_or_assign(std::uint8_t{2}, 250).first == readings.end()) {
+    /* full: a NEW key won't fit (an existing one is assigned) */
 }
 
 if (const std::int32_t* r = readings.find_value(2)) {   // KEY lookup -> pointer or null

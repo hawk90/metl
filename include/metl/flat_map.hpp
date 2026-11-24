@@ -43,6 +43,7 @@
 #include "metl/detail/copy_move_gate.hpp"
 #include "metl/detail/ebo_pair.hpp"
 #include "metl/detail/functor_move.hpp"
+#include "metl/detail/insert_code.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
 #include "metl/type_traits.hpp"
@@ -443,85 +444,38 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
   }
 
   /// @brief Insert @p key/@p value only if @p key is absent, without overflowing.
-  /// @return @c true if inserted; @c false if the key already exists OR the map is full.
-  /// @note Unlike @c emplace, a full map or duplicate key is reported by the return value
-  ///       rather than an assertion.
+  /// @return @c {iterator to the new element, true}; @c {iterator to the element with
+  ///         that key, false} if the key is present; @c {end(), false} if the map is full.
+  ///         A present key is checked first, so a full map still finds it.
   template <typename K,
             typename V,
             typename = std::enable_if_t<std::is_constructible_v<key_type, K&&> &&
                                         std::is_constructible_v<mapped_type, V&&>>>
-  METL_NODISCARD bool try_emplace(K&& key, V&& value) {
-    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
-      // Convert first, so the position, the duplicate check and the stored
-      // key all come from the same value; a narrowing conversion would
-      // otherwise store a key that does not belong where the argument put it.
-      // Direct-initialised, not cast, so a consumer still gets the conversion
-      // warning a narrowing key deserves.
-      key_type converted(std::forward<K>(key));
-      return try_emplace(static_cast<key_type&&>(converted), std::forward<V>(value));
-    } else {
-      const size_type index = lower_bound_index(key);
-      if (index < comp_size_.value && !comp_size_.functor()(key, data()[index].key)) {
-        return false;
-      }
-
-      return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
-    }
+  METL_NODISCARD METL_FORCE_INLINE std::pair<iterator, bool> try_emplace(K&& key, V&& value) {
+    return result_pair(emplace_result(std::forward<K>(key), std::forward<V>(value)));
   }
 
-  /// @brief Insert @p key/@p value and return a reference to the new element.
-  /// @return Reference to the inserted element.
-  /// @pre The key is absent and the map is not full; violations assert. Use @c try_emplace to
-  ///      handle a full map or duplicate key without asserting.
+  /// @brief Insert @p key/@p value if @p key is absent.
+  /// @return @c {iterator to the new element, true}, or @c {iterator to the element with that
+  ///         key, false} if the key is present; the value is not assigned then.
+  /// @pre A new key fits; a full map asserts. Use @c try_emplace to handle a full map.
   template <typename K,
             typename V,
             typename = std::enable_if_t<std::is_constructible_v<key_type, K&&> &&
                                         std::is_constructible_v<mapped_type, V&&>>>
-  reference emplace(K&& key, V&& value) {
-    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
-      // Convert first, so the position, the duplicate check and the stored
-      // key all come from the same value; a narrowing conversion would
-      // otherwise store a key that does not belong where the argument put it.
-      // Direct-initialised, not cast, so a consumer still gets the conversion
-      // warning a narrowing key deserves.
-      key_type converted(std::forward<K>(key));
-      return emplace(static_cast<key_type&&>(converted), std::forward<V>(value));
-    } else {
-      const size_type index = lower_bound_index(key);
-      METL_HARDEN(!(index < comp_size_.value && !comp_size_.functor()(key, data()[index].key)));
-      const bool inserted = try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
-      // Hard guard on the full-map path, never stripped: a refused insert
-      // leaves `index` where the key would have gone, so the reference below
-      // would be one past the end, or another key's element (#580).
-      METL_HARDEN(inserted);
-      return data()[index];
-    }
+  METL_FORCE_INLINE std::pair<iterator, bool> emplace(K&& key, V&& value) {
+    const detail::insert_code::type result = emplace_result(std::forward<K>(key), std::forward<V>(value));
+    // Hard guard, never stripped: a full map has no element to point at (#580).
+    METL_HARDEN(!detail::insert_code::is_full(result));
+    return result_pair(result);
   }
 
   /// @brief Assign @p value to an existing @p key, or insert the pair if absent.
-  /// @return @c true on assign or successful insert; @c false only if a new key cannot fit (full).
-  /// @note The boolean answers "did it fit", **not** std's "was it inserted rather than
-  ///       assigned" — hence the @c try_ prefix, which reserves the plain name for the
-  ///       asserting form below.
+  /// @return @c {iterator to the new element, true}; @c {iterator to the assigned-to element,
+  ///         false}; or @c {end(), false} if a new key does not fit, as @c try_emplace.
   template <typename K, typename V>
-  METL_NODISCARD bool try_insert_or_assign(K&& key, V&& value) {
-    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
-      // Convert first, so the position, the duplicate check and the stored
-      // key all come from the same value; a narrowing conversion would
-      // otherwise store a key that does not belong where the argument put it.
-      // Direct-initialised, not cast, so a consumer still gets the conversion
-      // warning a narrowing key deserves.
-      key_type converted(std::forward<K>(key));
-      return try_insert_or_assign(static_cast<key_type&&>(converted), std::forward<V>(value));
-    } else {
-      const size_type index = lower_bound_index(key);
-      if (index < comp_size_.value && !comp_size_.functor()(key, data()[index].key)) {
-        data()[index].value = std::forward<V>(value);
-        return true;
-      }
-
-      return try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
-    }
+  METL_NODISCARD METL_FORCE_INLINE std::pair<iterator, bool> try_insert_or_assign(K&& key, V&& value) {
+    return result_pair(insert_or_assign_result(std::forward<K>(key), std::forward<V>(value)));
   }
 
   /// @brief Assign @p value to an existing @p key, or insert the pair if absent.
@@ -529,26 +483,11 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
   /// @pre A new key fits; a full map asserts. Use @c try_insert_or_assign otherwise.
   template <typename K, typename V>
   reference insert_or_assign(K&& key, V&& value) {
-    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
-      // Convert first, so the position, the duplicate check and the stored
-      // key all come from the same value; a narrowing conversion would
-      // otherwise store a key that does not belong where the argument put it.
-      // Direct-initialised, not cast, so a consumer still gets the conversion
-      // warning a narrowing key deserves.
-      key_type converted(std::forward<K>(key));
-      return insert_or_assign(static_cast<key_type&&>(converted), std::forward<V>(value));
-    } else {
-      // One search, shared with the insert below (#644).
-      const size_type index = lower_bound_index(key);
-      if (index < comp_size_.value && !comp_size_.functor()(key, data()[index].key)) {
-        data()[index].value = std::forward<V>(value);
-        return data()[index];
-      }
-      const bool stored = try_insert_at(index, std::forward<K>(key), std::forward<V>(value));
-      // Same full-map hazard as emplace above (#580).
-      METL_HARDEN(stored);
-      return data()[index];
-    }
+    const detail::insert_code::type result =
+        insert_or_assign_result(std::forward<K>(key), std::forward<V>(value));
+    // Same full-map hazard as emplace above (#580).
+    METL_HARDEN(!detail::insert_code::is_full(result));
+    return data()[detail::insert_code::slot(result)];
   }
 
   /// @brief Erase the element with the given key, if present.
@@ -735,6 +674,63 @@ class flat_map : detail::no_implicit_copy_move<flat_map<Key, T, Capacity, Compar
       }
     }
     return first;
+  }
+
+  // The out-of-line halves of try_emplace / emplace and of the two
+  // insert_or_assign forms. They return one word; see detail/insert_code.hpp.
+  template <typename K, typename V>
+  detail::insert_code::type emplace_result(K&& key, V&& value) {
+    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
+      // Convert first, so the position, the duplicate check and the stored
+      // key all come from the same value; a narrowing conversion would
+      // otherwise store a key that does not belong where the argument put it.
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted(std::forward<K>(key));
+      return emplace_result(static_cast<key_type&&>(converted), std::forward<V>(value));
+    } else {
+      const size_type index = lower_bound_index(key);
+      if (index < comp_size_.value && !comp_size_.functor()(key, data()[index].key)) {
+        return detail::insert_code::found_at(index);
+      }
+      if (!try_insert_at(index, std::forward<K>(key), std::forward<V>(value))) {
+        return detail::insert_code::full;
+      }
+      return detail::insert_code::inserted_at(index);
+    }
+  }
+
+  template <typename K, typename V>
+  detail::insert_code::type insert_or_assign_result(K&& key, V&& value) {
+    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
+      // Convert first, so the position, the duplicate check and the stored
+      // key all come from the same value; a narrowing conversion would
+      // otherwise store a key that does not belong where the argument put it.
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted(std::forward<K>(key));
+      return insert_or_assign_result(static_cast<key_type&&>(converted), std::forward<V>(value));
+    } else {
+      // One search, shared with the insert below (#644).
+      const size_type index = lower_bound_index(key);
+      if (index < comp_size_.value && !comp_size_.functor()(key, data()[index].key)) {
+        data()[index].value = std::forward<V>(value);
+        return detail::insert_code::found_at(index);
+      }
+      if (!try_insert_at(index, std::forward<K>(key), std::forward<V>(value))) {
+        return detail::insert_code::full;
+      }
+      return detail::insert_code::inserted_at(index);
+    }
+  }
+
+  // Pure arithmetic, so a caller that reads only `.second` drops it; end()
+  // here would stay behind as a call.
+  METL_FORCE_INLINE std::pair<iterator, bool> result_pair(detail::insert_code::type result) noexcept {
+    return std::pair<iterator, bool>(
+        iterator_at(detail::insert_code::is_full(result) ? comp_size_.value
+                                                         : detail::insert_code::slot(result)),
+        detail::insert_code::inserted(result));
   }
 
   template <typename K, typename V>

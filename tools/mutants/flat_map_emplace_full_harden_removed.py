@@ -3,9 +3,8 @@
 MUTANT = {
     "name": "flat_map_emplace_full_harden_removed",
     "file": "include/metl/flat_map.hpp",
-    "why": "emplace of a new key into a full flat_map returns a one-past- "
-           "the-end reference, or another key's element (#580), at METL_HARDENING_NONE.",
+    "why": "emplace of a new key into a full flat_map hands back {end(), false} instead of trapping, at METL_HARDENING_NONE (#580).",
     "kills": "ctest:harden_floor_memory",
-    "old": "      // would be one past the end, or another key's element (#580).\n      METL_HARDEN(inserted);",
-    "new": "      // would be one past the end, or another key's element (#580).\n      (void)inserted;",
+    "old": "    // Hard guard, never stripped: a full map has no element to point at (#580).\n    METL_HARDEN(!detail::insert_code::is_full(result));",
+    "new": "    // Hard guard, never stripped: a full map has no element to point at (#580).",
 }

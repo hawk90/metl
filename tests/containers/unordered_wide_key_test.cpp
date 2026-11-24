@@ -72,7 +72,7 @@ void wide_on_a_64_bit_host() {
   if constexpr (hashes_as_integer<Wide>) {
     metl::static_unordered_map<Wide, int, keys, std::hash<Wide>, counting_equal_128> map;
     for (std::size_t i = 0; i < keys; ++i) {
-      CHECK(map.try_emplace(static_cast<Wide>(i) << 64, static_cast<int>(i)));
+      CHECK(map.try_emplace(static_cast<Wide>(i) << 64, static_cast<int>(i)).second);
     }
     g_compares = 0;
     for (std::size_t i = 0; i < keys; ++i) {
@@ -108,7 +108,7 @@ int main() {
   {
     metl::static_unordered_map<std::uint64_t, int, keys, std::hash<std::uint64_t>, counting_equal> map;
     for (std::size_t i = 0; i < keys; ++i) {
-      CHECK(map.try_emplace(static_cast<std::uint64_t>(i) << 32, static_cast<int>(i)));
+      CHECK(map.try_emplace(static_cast<std::uint64_t>(i) << 32, static_cast<int>(i)).second);
     }
     g_compares = 0;
     for (std::size_t i = 0; i < keys; ++i) {
@@ -122,7 +122,7 @@ int main() {
   {
     metl::static_unordered_set<std::uint64_t, keys, std::hash<std::uint64_t>, counting_equal> set;
     for (std::size_t i = 0; i < keys; ++i) {
-      CHECK(set.try_emplace(static_cast<std::uint64_t>(i) << 32));
+      CHECK(set.try_emplace(static_cast<std::uint64_t>(i) << 32).second);
     }
     g_compares = 0;
     for (std::size_t i = 0; i < keys; ++i) {

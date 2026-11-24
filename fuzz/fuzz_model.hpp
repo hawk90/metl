@@ -67,7 +67,14 @@ class map_oracle {
     const bool room = model_.size() < map_.capacity();
     const bool expected = absent && room;
 
-    require(map_.try_emplace(Key{key}, Value{value}) == expected);
+    const auto result = map_.try_emplace(Key{key}, Value{value});
+    require(result.second == expected);
+    // The iterator: the new element, the one already there, or end() when full.
+    require((result.first == map_.end()) == (absent && !room));
+    if (result.first != map_.end()) {
+      require(result.first->key == key);
+      require(absent || result.first->value == model_.find(key)->second);
+    }
     if (expected) {
       model_.emplace(key, value);
     }
@@ -82,7 +89,13 @@ class map_oracle {
     // hand-written invariant check does not notice.
     const bool expected = present || room;
 
-    require(map_.try_insert_or_assign(Key{key}, Value{value}) == expected);
+    const auto result = map_.try_insert_or_assign(Key{key}, Value{value});
+    // .second is std's "inserted rather than assigned"; end() means full.
+    require(result.second == (!present && room));
+    require((result.first == map_.end()) == !expected);
+    if (result.first != map_.end()) {
+      require(result.first->key == key && result.first->value == value);
+    }
     if (expected) {
       model_[key] = value;
     }

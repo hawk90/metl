@@ -86,7 +86,7 @@ int main() {
     return 1;
   }
 
-  if (!set.try_emplace(1) || !set.try_emplace(5) || !set.try_emplace(9)) {
+  if (!set.try_emplace(1).second || !set.try_emplace(5).second || !set.try_emplace(9).second) {
     return 2;
   }
 
@@ -104,7 +104,7 @@ int main() {
     return 5;
   }
 
-  if (set.try_emplace(5)) {
+  if (set.try_emplace(5).second) {
     return 6;
   }
 
@@ -112,7 +112,7 @@ int main() {
     return 7;
   }
 
-  if (!set.try_emplace(13) || !set.contains(13)) {
+  if (!set.try_emplace(13).second || !set.contains(13)) {
     return 8;
   }
 
@@ -139,7 +139,7 @@ int main() {
     tracked.emplace(tracker(10));
     tracked.emplace(tracker(20));
 
-    if (!tracked.full() || tracked.try_emplace(tracker(30))) {
+    if (!tracked.full() || tracked.try_emplace(tracker(30)).second) {
       return 11;
     }
 
@@ -165,7 +165,7 @@ int main() {
   // 14: find_iter is an STL-compatible alias for find_iterator.
   {
     metl::static_unordered_set<int, 4> s;
-    if (!s.try_emplace(7) || !s.try_emplace(11)) {
+    if (!s.try_emplace(7).second || !s.try_emplace(11).second) {
       return 21;
     }
     auto it = s.find(11);
@@ -184,7 +184,7 @@ int main() {
   // 15: Heterogeneous lookup.
   {
     metl::static_unordered_set<test_string, 8, string_hash, string_equal> s;
-    if (!s.try_emplace(test_string("alpha")) || !s.try_emplace(test_string("beta"))) {
+    if (!s.try_emplace(test_string("alpha")).second || !s.try_emplace(test_string("beta")).second) {
       return 19;
     }
 
@@ -218,7 +218,8 @@ int main() {
     };
     metl::static_unordered_set<int, 4, identity_hash> s;
     // bucket_count == 8, these all start at bucket 0.
-    if (!s.try_emplace(0) || !s.try_emplace(8) || !s.try_emplace(16) || !s.try_emplace(24)) {
+    if (!s.try_emplace(0).second || !s.try_emplace(8).second || !s.try_emplace(16).second ||
+        !s.try_emplace(24).second) {
       return 20;
     }
     if (s.size() != 4 || !s.full()) {
@@ -227,7 +228,7 @@ int main() {
     if (!s.contains(0) || !s.contains(8) || !s.contains(16) || !s.contains(24)) {
       return 16;
     }
-    if (!s.erase(8) || !s.try_emplace(32) || !s.contains(32)) {
+    if (!s.erase(8) || !s.try_emplace(32).second || !s.contains(32)) {
       return 16;
     }
   }
@@ -240,7 +241,7 @@ int main() {
     metl::static_unordered_set<int, 64> s;  // bucket_count == 128
     constexpr int stride = 128;
     for (int i = 0; i < 64; ++i) {
-      if (!s.try_emplace(i * stride)) {
+      if (!s.try_emplace(i * stride).second) {
         return 17;
       }
     }
@@ -260,7 +261,7 @@ int main() {
     if (!s.erase(10 * stride) || s.contains(10 * stride)) {
       return 17;
     }
-    if (!s.try_emplace(10 * stride) || !s.contains(10 * stride)) {
+    if (!s.try_emplace(10 * stride).second || !s.contains(10 * stride)) {
       return 17;
     }
   }
@@ -277,7 +278,7 @@ int main() {
     metl::static_unordered_set<int, window, identity_hash> s;
 
     for (int k = 0; k < window; ++k) {
-      if (!s.try_emplace(k)) {
+      if (!s.try_emplace(k).second) {
         return 18;
       }
     }
@@ -290,7 +291,7 @@ int main() {
       if (!s.erase(evicted)) {
         return 18;
       }
-      if (!s.try_emplace(inserted)) {
+      if (!s.try_emplace(inserted).second) {
         return 18;
       }
       ++base;
@@ -322,9 +323,9 @@ int main() {
   // assert -- or, with asserts stripped, construct over the live element.
   {
     metl::static_unordered_set<int, 8> dup_set;
-    int& first = dup_set.emplace(5);
-    int& again = dup_set.emplace(5);
-    if (&first != &again || dup_set.size() != 1) {
+    const auto first = dup_set.emplace(5);
+    const auto again = dup_set.emplace(5);
+    if (!first.second || again.second || &*first.first != &*again.first || dup_set.size() != 1) {
       return 19;
     }
   }

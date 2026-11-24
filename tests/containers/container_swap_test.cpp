@@ -327,9 +327,9 @@ void associative() {
         }
         CHECK(!b.contains(99));
         // Both still insert and find after the swap.
-        CHECK_EQ(a.try_emplace(42, counted(42)), right.size() < 4);
+        CHECK_EQ(a.try_emplace(42, counted(42)).second, right.size() < 4);
         CHECK_EQ(a.contains(42), right.size() < 4);
-        CHECK_EQ(b.try_emplace(43, counted(43)), left.size() < 4);
+        CHECK_EQ(b.try_emplace(43, counted(43)).second, left.size() < 4);
         CHECK_EQ(b.contains(43), left.size() < 4);
       }
     }
