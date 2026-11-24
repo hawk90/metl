@@ -65,6 +65,10 @@ metl::fixed_vector<u32, 64> g_vector;
 metl::fixed_queue<u32, 64> g_queue;
 metl::ring_buffer<u32, 64> g_ring;
 metl::flat_map<u32, u32, 64> g_flat_map;
+// A type of its own for flat_map_lookup_walk. Sharing g_flat_map's type gives
+// its members a second caller, GCC stops inlining them into
+// flat_map_insert_find, and that region's count moves (+837 on Cortex-M3).
+metl::flat_map<u32, u32, 128> g_flat_map_walk;
 metl::static_unordered_map<u32, u32, 64> g_unordered_map;
 metl::spsc_queue<u32, 64> g_spsc;
 metl::spsc_byte_ring<256> g_bytes;
@@ -110,16 +114,16 @@ __attribute__((noinline)) void flat_map_insert_find() noexcept {
 // with the even keys. Half the keys asked for are absent.
 __attribute__((noinline)) void flat_map_lookup_walk() noexcept {
   for (u32 i = 0; i < kIterations; ++i) {
-    sink(g_flat_map.try_emplace(2u * i, i) ? 1u : 0u);
+    sink(g_flat_map_walk.try_emplace(2u * i, i) ? 1u : 0u);
   }
   for (u32 i = 0; i < kIterations; ++i) {
-    sink(g_flat_map.find(i) != g_flat_map.end() ? 1u : 0u);
-    sink(g_flat_map.contains(i + kIterations) ? 1u : 0u);
+    sink(g_flat_map_walk.find(i) != g_flat_map_walk.end() ? 1u : 0u);
+    sink(g_flat_map_walk.contains(i + kIterations) ? 1u : 0u);
   }
-  for (const auto& entry : g_flat_map) {
+  for (const auto& entry : g_flat_map_walk) {
     sink(entry.value);
   }
-  g_flat_map.clear();
+  g_flat_map_walk.clear();
 }
 
 // The same on the hashed map, with find_value beside them: an absent key
