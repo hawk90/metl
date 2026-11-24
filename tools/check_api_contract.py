@@ -52,8 +52,6 @@ BOOL_ALLOWLIST = {
     "empty": "container state query",
     "full": "container state query",
     "contains": "lookup query",
-    "inserted": "detail::insert_code query: did the insert fill the slot",
-    "is_full": "detail::insert_code query: was the insert refused for room",
     "has_value": "engaged-state query, mirrors std::optional",
     "holds_value": "expected's private state query; false while a member is switched",
     "holds_error": "expected's private state query; false while a member is switched",

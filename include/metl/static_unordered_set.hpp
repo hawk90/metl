@@ -94,7 +94,6 @@
 #include "metl/detail/copy_move_gate.hpp"
 #include "metl/detail/ebo_pair.hpp"
 #include "metl/detail/functor_move.hpp"
-#include "metl/detail/insert_code.hpp"
 #include "metl/detail/nothrow_call.hpp"
 #include "metl/detail/transparent.hpp"
 #include "metl/hash.hpp"
@@ -476,8 +475,34 @@ class static_unordered_set
   ///         if the key is present; @c {end(), false} if the set holds @c Capacity elements.
   ///         A present key is checked first, so a full set still finds it.
   template <typename K>
-  METL_NODISCARD METL_FORCE_INLINE std::pair<iterator, bool> try_emplace(K&& key) {
-    return result_pair(emplace_result(std::forward<K>(key)));
+  METL_NODISCARD std::pair<iterator, bool> try_emplace(K&& key) {
+    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
+      // Convert first, so the position, the duplicate check and the stored
+      // key all come from the same value; a narrowing conversion would
+      // otherwise store a key that does not belong where the argument put it.
+      // Direct-initialised, not cast, so a consumer still gets the conversion
+      // warning a narrowing key deserves.
+      key_type converted(std::forward<K>(key));
+      return try_emplace(static_cast<key_type&&>(converted));
+    } else {
+      // locate_insert_index stops at the key when it is present, so one probe
+      // sequence answers "present", "where it goes" and, when it finds neither, "full".
+      size_type index = npos;
+      if (!locate_insert_index(key, &index)) {
+        return {end(), false};
+      }
+      if (state(index) == slot_state::occupied) {
+        return {iterator(this, index, detail::at_slot), false};
+      }
+      // Capacity is the element ceiling; bucket_count is the (larger) table size.
+      // Refuse a new key past Capacity even when a free slot is left.
+      if (key_equal_size_.value >= Capacity) {
+        return {end(), false};
+      }
+      // construct_at returns the slot the key ended up in, which a rebuild can move.
+      index = construct_at(index, std::forward<K>(key));
+      return {iterator(this, index, detail::at_slot), true};
+    }
   }
 
   /// @brief Insert @p key if it is absent.
@@ -485,11 +510,11 @@ class static_unordered_set
   ///         false} if the key is present.
   /// @pre A new key fits; a full set asserts. Use @c try_emplace to handle a full set.
   template <typename K>
-  METL_FORCE_INLINE std::pair<iterator, bool> emplace(K&& key) {
-    const detail::insert_code::type result = emplace_result(std::forward<K>(key));
+  std::pair<iterator, bool> emplace(K&& key) {
+    const std::pair<iterator, bool> result = try_emplace(std::forward<K>(key));
     // Hard guard, never stripped: a full set has no element to point at.
-    METL_HARDEN(!detail::insert_code::is_full(result));
-    return result_pair(result);
+    METL_HARDEN(result.first != end());
+    return result;
   }
 
   /// @brief Erase the element equal to the given key, if present (leaves a tombstone slot).
@@ -695,45 +720,6 @@ class static_unordered_set
       }
     }
     return npos;
-  }
-
-  // The out-of-line half of try_emplace / emplace. It returns one word; see
-  // detail/insert_code.hpp. locate_insert_index stops at the key when it is
-  // present, so one probe sequence answers all three outcomes.
-  template <typename K>
-  detail::insert_code::type emplace_result(K&& key) {
-    if constexpr (!std::is_same_v<std::decay_t<K>, key_type>) {
-      // Convert first, so the position, the duplicate check and the stored
-      // key all come from the same value; a narrowing conversion would
-      // otherwise store a key that does not belong where the argument put it.
-      // Direct-initialised, not cast, so a consumer still gets the conversion
-      // warning a narrowing key deserves.
-      key_type converted(std::forward<K>(key));
-      return emplace_result(static_cast<key_type&&>(converted));
-    } else {
-      size_type index = npos;
-      if (!locate_insert_index(key, &index)) {
-        return detail::insert_code::full;
-      }
-      if (state(index) == slot_state::occupied) {
-        return detail::insert_code::found_at(index);
-      }
-      // Capacity is the element ceiling; bucket_count is the (larger) table size.
-      // Refuse a new key past Capacity even when a free slot is left.
-      if (key_equal_size_.value >= Capacity) {
-        return detail::insert_code::full;
-      }
-      return detail::insert_code::inserted_at(construct_at(index, std::forward<K>(key)));
-    }
-  }
-
-  // Pure arithmetic, so a caller that reads only `.second` drops it.
-  METL_FORCE_INLINE std::pair<iterator, bool> result_pair(detail::insert_code::type result) noexcept {
-    return std::pair<iterator, bool>(
-        iterator(this,
-                 detail::insert_code::is_full(result) ? bucket_count : detail::insert_code::slot(result),
-                 detail::at_slot),
-        detail::insert_code::inserted(result));
   }
 
   template <typename K>

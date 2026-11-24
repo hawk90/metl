@@ -5,6 +5,6 @@ MUTANT = {
     "file": "include/metl/flat_map.hpp",
     "why": "try_insert_or_assign on a present key answers .second == true, std's 'inserted', although it only assigned.",
     "kills": "ctest:associative_insert_result",
-    "old": "        data()[index].value = std::forward<V>(value);\n        return detail::insert_code::found_at(index);",
-    "new": "        data()[index].value = std::forward<V>(value);\n        return detail::insert_code::inserted_at(index);",
+    "old": "        data()[index].value = std::forward<V>(value);\n        return {iterator_at(index), false};",
+    "new": "        data()[index].value = std::forward<V>(value);\n        return {iterator_at(index), true};",
 }

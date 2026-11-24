@@ -14,5 +14,9 @@
   | `auto& e = m.emplace(k, v);` | `auto& e = *m.emplace(k, v).first;` |
   | `m.try_emplace(k, v); auto* p = m.find_value(k);` | `auto [it, inserted] = m.try_emplace(k, v);` |
 
-  On Cortex-M (local ARM GCC 16.2 and clang 23, `-Os`, M0 to M7), a call site that reads only `.second` costs 4 bytes more: the flag is taken from the word the insert returns. A call site that goes on to use the element saves the second lookup: 6 bytes on `flat_map` and 44 to 46 on `static_unordered_map` with GCC, and up to 4 with clang, which spends 4 to 6 more on `flat_map`. A translation unit holding those call sites and the insert code they use is 8 to 10 bytes larger on `flat_map` with GCC, and 56 to 104 bytes smaller in the other three cases.
+  Measured on Cortex-M with ARM GCC 14.2, the compiler CI uses, at `-Os` on M0 to M7:
+  - Where the insert is inlined into the caller, which is usual when a container is filled from one or two places, the pair costs nothing. Three inlined inserts in one function cost 0 to 4 bytes less than before. The size probe shrinks by 4 to 8 bytes on M3, M4 and M7. On M0 it grows by 24 bytes, because Thumb-1 has eight low registers and the iterator held across the loop spills to the stack.
+  - Where the insert stays out of line, a call site that reads only `.second` costs 8 to 12 bytes more, because a pair comes back through memory.
+  - A call site that goes on to use the element saves the second lookup. That is 10 to 14 bytes on `flat_map` and 34 to 36 on `static_unordered_map`.
+  - A translation unit holding those call sites and the insert code they use is 20 to 28 bytes larger on `flat_map`, and between 6 bytes smaller and 4 bytes larger on `static_unordered_map`.
 - **Changed:** `emplace` on `flat_map` and `flat_set` with a key that is already present returns the element there, as the unordered containers already did. It used to trip an assertion. The unordered containers' `emplace` now finds the key and its slot in one probe sequence instead of two.

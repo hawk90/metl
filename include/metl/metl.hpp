@@ -39,7 +39,6 @@
 #include "metl/detail/enable_copy_move.hpp"
 #include "metl/detail/functor_move.hpp"
 #include "metl/detail/index_distance.hpp"
-#include "metl/detail/insert_code.hpp"
 #include "metl/detail/invocable.hpp"
 #include "metl/detail/low_bits.hpp"
 #include "metl/detail/nothrow_call.hpp"
